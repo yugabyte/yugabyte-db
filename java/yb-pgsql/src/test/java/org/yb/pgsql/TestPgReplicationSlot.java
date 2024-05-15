@@ -77,7 +77,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
-    flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4");
+    flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4");
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     flagMap.put("ysql_log_min_messages", "DEBUG1");
     flagMap.put("cdcsdk_publication_list_refresh_interval_micros",
@@ -1923,5 +1923,81 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Ignore("YB_TODO(stiwary)")
   public void testReplicationWithSpilledTransactionAndRestartOnDifferentNode() throws Exception {
     testReplicationWithSpilledTransactionAndRestart(true /* differentNode */);
+  }
+
+  // The aim is to assert that the replica identity which is sent in the RELATION message is the
+  // value which existed at the time of stream creation. Future ALTER TABLE REPLICA IDENTITY
+  // statement should have an impact.
+  @Test
+  @Ignore("YB_TODO(stiwary)")
+  public void testWithAlterReplicaIdentity() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+
+      // CHANGE is the default but we do it explicitly so that the tests do not need changing if we
+      // change the default.
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+      stmt.execute("ALTER TABLE t2 REPLICA IDENTITY FULL");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "testWithAlterReplicaIdentity";
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      // After the stream creation, we are changing the replica identity of each table.
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY NOTHING");
+      stmt.execute("ALTER TABLE t2 REPLICA IDENTITY CHANGE");
+
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO t2 VALUES(2, 'defg')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 6));
+
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abcd")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'f' /* replicaIdentity */,
+            Arrays.asList(
+                PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("defg")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
   }
 }

@@ -2315,8 +2315,14 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		 * tuples being freed before we attempt to fetch them, in case of
 		 * something using a slightly stale catcache entry.
 		 */
-		if (HeapTupleHasExternal(ntp))
+		if (HeapTupleHasExternal(ntp)) {
+			/* We should never have out-of-line toasted fields in YB. */
+			Assert(!IsYugaByteEnabled());
 			dtp = toast_flatten_tuple(ntp, cache->cc_tupdesc);
+		} else if (IsYugaByteEnabled() && 
+				   yb_toast_catcache_threshold > 0 && 
+				   ntp->t_len > yb_toast_catcache_threshold) 
+			dtp = yb_toast_compress_tuple(ntp, cache->cc_tupdesc);
 		else
 			dtp = ntp;
 

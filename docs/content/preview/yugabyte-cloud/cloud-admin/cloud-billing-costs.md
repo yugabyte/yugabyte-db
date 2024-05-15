@@ -185,7 +185,7 @@ Yugabyte meters and bills data transfer using the following three dimensions.
 
 This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
-Single-node ([fault tolerance](../../cloud-basics/create-clusters/#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
+Single-node ([fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
 
 {{< tip title="Rate card" >}}
 

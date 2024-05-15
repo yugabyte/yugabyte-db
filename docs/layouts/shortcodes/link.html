@@ -5,10 +5,10 @@
 {{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
 {{- $version := index $path 0 -}}
 {{- $url = replace $url ":version" $version -}}
-{{- $icon := "fa-file-lines" -}}
+{{- $icon := "fa-file-doc" -}}
 {{/* external link */}}
 {{- if and (strings.HasPrefix $url "http") (not (strings.HasPrefix  $url "https://docs.yugabyte")) -}}
 {{- $icon = "fa-arrow-up-right-from-square" -}}
 {{- end -}}
 
-<a href="{{$url}}"><i class="fa-solid {{$icon}}" aria-hidden="true"></i></a>
+<a href="{{$url}}"><i class="fa-sharp fa-regular {{$icon}}" aria-hidden="true"></i></a>

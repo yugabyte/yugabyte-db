@@ -98,7 +98,7 @@ func init() {
 			"\"https://<account-name>.blob.core.windows.net/<container-name>/<blob-name>\".")
 	createAZStorageConfigurationCmd.MarkFlagRequired("backup-location")
 	createAZStorageConfigurationCmd.Flags().String("sas-token", "",
-		fmt.Sprintf("AZ SAS Token. "+
+		fmt.Sprintf("AZ SAS Token. Provide the token within double quotes. "+
 			"Can also be set using environment variable %s.",
 			util.AzureStorageSasTokenEnv))
 

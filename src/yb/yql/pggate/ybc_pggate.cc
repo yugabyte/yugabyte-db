@@ -786,6 +786,11 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   return YBCStatusOK();
 }
 
+void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
+                                              const YBCPgOid table_oid) {
+  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
+}
+
 // Tablegroup Operations ---------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
@@ -987,6 +992,10 @@ YBCStatus YBCPgAlterTableSetTableId(
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
+}
+
+YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableInvalidateTableCacheEntry(handle));
 }
 
 YBCStatus YBCPgNewDropTable(const YBCPgOid database_oid,
@@ -2327,9 +2336,9 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   auto row_count = resp.cdc_sdk_proto_records_size();
 
   // Used for logging a summary of the response received from the CDC service.
-  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFF;
+  YBCPgXLogRecPtr min_resp_lsn = 0xFFFFFFFFFFFFFFFF;
   YBCPgXLogRecPtr max_resp_lsn = 0;
-  uint32_t min_txn_id = 0xFFFF;
+  uint32_t min_txn_id = 0xFFFFFFFF;
   uint32_t max_txn_id = 0;
 
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
@@ -2461,9 +2470,13 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       .publication_refresh_time = publication_refresh_time
   };
 
-  VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
-          << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
-          << "min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
+  if (row_count > 0) {
+    VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"
+            << "min_txn_id: " << min_txn_id << ", max_txn_id: " << max_txn_id
+            << ", min_lsn: " << min_resp_lsn << ", max_lsn: " << max_resp_lsn;
+  } else {
+    VLOG(1) << "Received 0 rows in GetConsistentChangesResponsePB response\n";
+  }
 
   return YBCStatusOK();
 }

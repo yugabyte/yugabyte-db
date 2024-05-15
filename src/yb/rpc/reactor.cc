@@ -845,7 +845,10 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
                       << ")";
 
   ConnectionPtr retained_conn = conn->shared_from_this();
-  conn->Shutdown(conn_status);
+  if (!conn->Shutdown(conn_status)) {
+    // Connection was already destroyed. Error logged by Connection::Shutdown itself.
+    return;
+  }
 
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
@@ -863,8 +866,10 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
         LOG_WITH_PREFIX(WARNING) << "  Client connection: " << p.first.ToString() << ", "
                                  << p.second->ToString();
       }
+      LOG_WITH_PREFIX(FATAL)
+          << "Couldn't find connection for any index to " << conn->ToString()
+          << ", destroy reason: " << conn_status;
     }
-    CHECK(erased) << "Couldn't find connection for any index to " << conn->ToString();
   } else if (conn->direction() == ConnectionDirection::SERVER) {
     auto it = server_conns_.begin();
     while (it != server_conns_.end()) {

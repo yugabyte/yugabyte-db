@@ -233,7 +233,10 @@ public class ReleaseController extends AuthenticatedController {
                   })
               .collect(
                   Collectors.toMap(
-                      entry -> entry.getVersion(),
+                      entry ->
+                          entry.getReleaseTag() == null
+                              ? entry.getVersion()
+                              : String.format("%s-%s", entry.getVersion(), entry.getReleaseTag()),
                       entry -> releasesUtils.releaseToReleaseMetadata(entry)));
     } else {
       Map<String, Object> releases = releaseManager.getReleaseMetadata();

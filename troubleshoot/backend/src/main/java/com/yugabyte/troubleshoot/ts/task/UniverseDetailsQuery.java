@@ -10,6 +10,7 @@ import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
 import io.prometheus.client.Summary;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.HttpHostConnectException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -94,6 +96,7 @@ public class UniverseDetailsQuery {
       progress.setInProgress(true);
       progress.setStartTimestamp(System.currentTimeMillis());
       UniverseDetails details = ybaClient.getUniverseDetails(metadata);
+      updateSyncStatusOnSuccess(details);
       universeDetailsService.save(details);
     } catch (YBAClientError error) {
       if (error.getStatusCode() == HttpStatus.BAD_REQUEST) {
@@ -106,9 +109,20 @@ public class UniverseDetailsQuery {
             metadata.getId(),
             error.getStatusCode(),
             error.getError());
+        if (error.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+          updateSyncStatusOnFailure(metadata, "API token expired");
+        } else {
+          updateSyncStatusOnFailure(metadata, "Status code" + error.getStatusCode() + " received");
+        }
       }
       QUERY_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
     } catch (Exception e) {
+      if (e.getCause() instanceof HttpHostConnectException) {
+        // This means connection to YBA failed
+        updateSyncStatusOnFailure(metadata, "YBA is unavailable");
+      } else {
+        updateSyncStatusOnFailure(metadata, "Error occurred: " + e.getMessage());
+      }
       QUERY_TIME.labels(RESULT_FAILURE).observe(System.currentTimeMillis() - startTime);
       log.error("Failed to get universe {} details", metadata.getId(), e);
     } finally {
@@ -117,6 +131,31 @@ public class UniverseDetailsQuery {
 
     log.info("Processed universe {}", metadata.getId());
     universesProcessStartTime.remove(metadata.getId());
+  }
+
+  private void updateSyncStatusOnSuccess(UniverseDetails universeDetails) {
+    Instant timestamp = Instant.now();
+    universeDetails.setLastSyncStatus(true);
+    universeDetails.setLastSyncTimestamp(timestamp);
+    universeDetails.setLastSuccessfulSyncTimestamp(timestamp);
+    universeDetails.setLastSyncError(null);
+  }
+
+  private void updateSyncStatusOnFailure(UniverseMetadata metadata, String errorMessage) {
+    try {
+      UniverseDetails universeDetails = universeDetailsService.get(metadata.getId());
+      if (universeDetails == null) {
+        return;
+      }
+      Instant timestamp = Instant.now();
+      universeDetails.setLastSyncStatus(false);
+      universeDetails.setLastSyncTimestamp(timestamp);
+      universeDetails.setLastSyncError(errorMessage);
+      universeDetailsService.save(universeDetails);
+    } catch (Exception e) {
+      log.error(
+          "Failed to update universe details sync status for universe {}", metadata.getId(), e);
+    }
   }
 
   @Data

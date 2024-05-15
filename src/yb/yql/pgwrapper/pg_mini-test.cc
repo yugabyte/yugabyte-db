@@ -73,7 +73,6 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);

@@ -18,7 +18,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Resilience, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
+Resilience, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs, to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
 
 YugabyteDB has been designed ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 
@@ -81,7 +81,7 @@ See [Handling node upgrades](./handling-node-upgrades) to understand how Yugabyt
 
 ## Transaction resilience
 
-YugabyteDB ensures that the [provisional records](../.././architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
+YugabyteDB ensures that the [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
 
 {{<tip>}}
 See [High availability of transactions](./transaction-availability) to understand how transactions do not fail during fault domain failures.

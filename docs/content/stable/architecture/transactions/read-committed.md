@@ -1565,7 +1565,10 @@ Read Committed interacts with the following feature:
 
     For more details, see [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494).
 
-* Read restart and serialization errors are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+* Read restart and serialization errors are not internally handled in read committed isolation in the following circumstances:
+  * the query's response size exceeds the YB-TServer `ysql_output_buffer_size` flag, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+  * multiple semicolon-separated statements in a single query string are sent via the simple query protocol (see [#21833](https://github.com/yugabyte/yugabyte-db/issues/21833)).
+  * for statements other than the first one in a batch sent by the driver (except for [#21607](https://github.com/yugabyte/yugabyte-db/issues/21607) currently).
 
 * Non-transactional side-effects can occur more than once when a `conflict` or `read restart` occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
 

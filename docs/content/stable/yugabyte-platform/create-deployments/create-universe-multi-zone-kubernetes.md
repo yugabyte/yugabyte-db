@@ -1,6 +1,6 @@
 ---
 title: Create a multi-zone universe using YugabyteDB Anywhere and Kubernetes
-headerTitle: Create a multi-zone universe with Kubernetes
+headerTitle: Create a multi-zone universe
 linkTitle: Multi-zone universe
 description: Use YugabyteDB Anywhere and Kubernetes to create a YugabyteDB universe that spans multiple availability zones.
 menu:
@@ -15,7 +15,7 @@ type: docs
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
-Generic</a>
+      Generic</a>
   </li>
 
   <li>
@@ -31,17 +31,13 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** list that you should be able to see if you use YugabyteDB Anywhere to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
+Before you start creating a universe, ensure that you performed steps described in [Create Kubernetes provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/).
 
-![img](/images/yb-platform/kubernetes-config1.png)
-
-Note that the cloud provider example used in this document has a cluster-level admin access.
+Note that the provider example used in this document has a cluster-level admin access.
 
 ## Create a universe
 
-If no universes have been created yet, the **Dashboard** does not display any.
-
-To start, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
+To start, navigate to **Dashboard** or **Universes**, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
 
 - In the **Name** field, enter the name for the YugabyteDB universe using lowercase characters (for example, yb-k8s).
 
@@ -53,27 +49,32 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 - Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (also known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
+- In the **Replication Factor** field, define the replication factor, as per the following illustration:
 
-  ![img](/images/yb-platform/kubernetes-config55.png)
+  ![Kubernetes Cloud Configuration](/images/yb-platform/kubernetes-config55.png)
 
-### Configure instance
+### Instance Configuration
 
 Complete the **Instance Configuration** section as follows:
 
-- Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
-- In the **Volume Info** field, specify the number of volumes multiplied by size. The default is 1 x 100GB.
-- Use the **Root Certificate** field to select an existing security certificate or create a new one.
-- Use the **Enable YSQL** field to specify whether or not to enable the YSQL API endpoint for running PostgreSQL-compatible workloads. This setting is enabled by default.
-- Use the **Enable YSQL Auth** field to specify whether or not to enable the YSQL password authentication.
-- Use the **Enable YCQL** field to specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
-- Use the **Enable YCQL Auth** field to specify whether or not to enable the YCQL password authentication.
-- Use the **Enable YEDIS** field to specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
-- Use the **Enable Node-to-Node TLS** field to specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- Use the **Enable Client-to-Node TLS** field to specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
-- Use the **Enable Encryption at Rest** field to specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
+- **Volume Info** - specify the number of volumes multiplied by size. The default is 1 x 100GB.
 
-### Perform advanced configurations
+### Security Configurations
+
+Complete the **Security Configurations** section as follows:
+
+- **Enable YSQL** - specify whether or not to enable the YSQL API endpoint for running PostgreSQL-compatible workloads. This setting is enabled by default.
+- **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
+- **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
+- **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
+- **Enable YEDIS** - specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
+- **Enable Node-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
+- **Enable Client-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
+- **Root Certificate** - select an existing security certificate or create a new one.
+- **Enable Encryption at Rest** - specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+
+### Advanced Configuration
 
 Complete the **Advanced** section as follows:
 
@@ -103,9 +104,9 @@ Optionally, use the **Helm Overrides** section, as follows:
 
 - Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
 
-  ![img](/images/yb-platform/kubernetes-config66.png)
+  ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
-- Using the YAML format, which is sensitive to spacing and indentation, specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
+- Using the YAML format (which is sensitive to spacing and indentation), specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
 
   ```yaml
   master:
@@ -158,13 +159,13 @@ The universe view consists of several tabs that provide different information ab
 
 The following illustration shows the **Overview** tab of a newly-created universe:
 
-![img](/images/yb-platform/kubernetes-config11.png)
+![Universe Overview](/images/yb-platform/kubernetes-config11.png)
 
 If you have defined Helm overrides for your universe, you can modify them at any time through **Overview** by clicking **Actions > Edit Kubernetes Overrides**.
 
 The following illustration shows the **Nodes** tab that allows you to see a list of nodes with their addresses:
 
-![img](/images/yb-platform/kubernetes-config12.png)
+![Universe Nodes](/images/yb-platform/kubernetes-config12.png)
 
 You can create a connection to a node as follows:
 

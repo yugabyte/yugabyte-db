@@ -349,6 +349,8 @@ class PgApiImpl {
 
   Status ExecAlterTable(PgStatement *handle);
 
+  Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
+
   Status NewDropTable(const PgObjectId& table_id,
                       bool if_exist,
                       PgStatement **handle);

@@ -134,7 +134,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Fail any calls which are currently queued or awaiting response.
   // Prohibits any future calls (they will be failed immediately with this
   // same Status).
-  void Shutdown(const Status& status) ON_REACTOR_THREAD EXCLUDES(outbound_data_queue_mtx_);
+  // Returns true if this call initiates shutdown. false when shutdown was already invoked.
+  bool Shutdown(const Status& status) ON_REACTOR_THREAD EXCLUDES(outbound_data_queue_mtx_);
 
   // Queue a new call to be made. If the queuing fails, the call will be
   // marked failed.

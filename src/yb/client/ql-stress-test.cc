@@ -54,7 +54,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -830,7 +830,7 @@ void QLStressTest::AddWriter(
 }
 
 void QLStressTest::TestWriteRejection() {
-  constexpr int kWriters = IsDebug() ? 10 : 20;
+  constexpr int kWriters = kIsDebug ? 10 : 20;
   constexpr int kKeyBase = 10000;
 
   std::array<std::atomic<int>, kWriters> keys;

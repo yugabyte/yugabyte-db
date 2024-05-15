@@ -311,6 +311,9 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream
 Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     const xrepl::StreamId& stream_id, GetConsistentChangesResponsePB* resp, HostPort hostport,
     CoarseTimePoint deadline) {
+  auto start_time = CoarseMonoClock::Now();
+  MicrosecondsInt64 time_in_get_changes_micros = 0;
+
   std::unordered_set<TabletId> tablet_to_poll_list;
   for (const auto& tablet_queue : tablet_queues_) {
     auto tablet_id = tablet_queue.first;
@@ -325,7 +328,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     }
   }
   if (!tablet_to_poll_list.empty()) {
+    auto curr_time_micros = GetCurrentTimeMicros();
     RETURN_NOT_OK(GetChangesInternal(stream_id, tablet_to_poll_list, hostport, deadline));
+    time_in_get_changes_micros = GetCurrentTimeMicros() - curr_time_micros;
   }
 
   TabletRecordPriorityQueue sorted_records;
@@ -434,28 +439,50 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       metadata.min_lsn = std::min(metadata.min_lsn, row_message->pg_lsn());
       metadata.max_lsn = std::max(metadata.max_lsn, row_message->pg_lsn());
 
-      if (record->row_message().op() == RowMessage_Op_BEGIN) {
-        RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
-        is_txn_in_progress = true;
-        metadata.begin_records++;
-        metadata.is_last_txn_fully_sent = false;
-      } else if (record->row_message().op() == RowMessage_Op_COMMIT) {
-        last_shipped_commit.commit_lsn = *lsn_result;
-        last_shipped_commit.commit_txn_id = *txn_id_result;
-        last_shipped_commit.commit_record_unique_id = unique_id;
-        last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
-
-        ResetCommitDecisionVariables();
-
-        metadata.commit_records++;
-        if (row_message->pg_transaction_id() == metadata.max_txn_id &&
-            !metadata.is_last_txn_fully_sent) {
-          metadata.is_last_txn_fully_sent = true;
+      switch (record->row_message().op()) {
+        case RowMessage_Op_INSERT: {
+          metadata.insert_records++;
+          break;
         }
-      } else {
-        // DML record
-        metadata.dml_records++;
+        case RowMessage_Op_UPDATE: {
+          metadata.update_records++;
+          break;
+        }
+        case RowMessage_Op_DELETE: {
+          metadata.delete_records++;
+          break;
+        }
+        case RowMessage_Op_BEGIN: {
+          RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
+          is_txn_in_progress = true;
+          metadata.begin_records++;
+          metadata.is_last_txn_fully_sent = false;
+          break;
+        }
+        case RowMessage_Op_COMMIT: {
+          last_shipped_commit.commit_lsn = *lsn_result;
+          last_shipped_commit.commit_txn_id = *txn_id_result;
+          last_shipped_commit.commit_record_unique_id = unique_id;
+          last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
+
+          ResetCommitDecisionVariables();
+
+          metadata.commit_records++;
+          if (row_message->pg_transaction_id() == metadata.max_txn_id &&
+              !metadata.is_last_txn_fully_sent) {
+            metadata.is_last_txn_fully_sent = true;
+          }
+          break;
+        }
+
+        case RowMessage_Op_DDL: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_TRUNCATE: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_READ: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_SAFEPOINT: FALLTHROUGH_INTENDED;
+        case RowMessage_Op_UNKNOWN:
+          break;
       }
+
       auto records = resp->add_cdc_sdk_proto_records();
       records->CopyFrom(*record);
     }
@@ -485,13 +512,23 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         << ", is_last_txn_fully_sent: " << (metadata.is_last_txn_fully_sent ? "true" : "false")
         << ", begin_records: " << metadata.begin_records
         << ", commit_records: " << metadata.commit_records
-        << ", dml_records: " << metadata.dml_records << ", ddl_records: " << metadata.ddl_records
+        << ", insert_records: " << metadata.insert_records
+        << ", update_records: " << metadata.update_records
+        << ", delete_records: " << metadata.delete_records
+        << ", ddl_records: " << metadata.ddl_records
         << ", contains_publication_refresh_record: " << metadata.contains_publication_refresh_record
         << ", VWAL lag: " << (metadata.commit_records > 0 ? Format("$0 ms", vwal_lag_in_ms) : "-1")
         << ", Number of unacked txns in VWAL: "
         << (metadata.max_txn_id -
             commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
   }
+
+  VLOG(1)
+      << "Total time spent in processing GetConsistentChanges (GetConsistentChangesInternal) is: "
+      << std::chrono::duration_cast<std::chrono::microseconds>(CoarseMonoClock::Now() - start_time)
+             .count()
+      << " microseconds, out of which the time spent in GetChangesInternal is: "
+      << time_in_get_changes_micros << " microseconds.";
 
   return Status::OK();
 }

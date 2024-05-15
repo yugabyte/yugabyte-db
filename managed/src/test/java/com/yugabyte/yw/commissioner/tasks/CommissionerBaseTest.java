@@ -440,7 +440,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -462,7 +462,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -493,7 +493,26 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TaskType taskType,
       ITaskParams taskParams) {
     verifyTaskRetries(
-        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true, 1);
+  }
+
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
+    verifyTaskRetries(
+        customer,
+        customerTaskType,
+        targetType,
+        targetUuid,
+        taskType,
+        taskParams,
+        checkStrictOrdering,
+        1);
   }
 
   /** This method returns all the subtasks of a task. */
@@ -539,7 +558,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID targetUuid,
       TaskType taskType,
       ITaskParams taskParams,
-      boolean checkStrictOrdering) {
+      boolean checkStrictOrdering,
+      int abortStep) {
     try {
 
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
@@ -666,7 +686,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           }
           totalSubTaskCount = retryTaskTypes.size();
         }
-        pendingSubTaskCount--;
+        pendingSubTaskCount -= abortStep;
       }
     } catch (RuntimeException e) {
       throw e;
@@ -794,5 +814,28 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     shellResponse2.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse2);
+  }
+
+  protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(
+            ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "/usr/bin/chronyc"))
+        .thenReturn(
+            ShellResponse.create(
+                ShellResponse.ERROR_CODE_SUCCESS,
+                ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                    + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                    + "    Stratum         : 3\n"
+                    + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                    + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                    + "    Last offset     : +0.000019514 seconds\n"
+                    + "    RMS offset      : 0.000011283 seconds\n"
+                    + "    Frequency       : 99.154 ppm slow\n"
+                    + "    Residual freq   : +0.009 ppm\n"
+                    + "    Skew            : 0.106 ppm\n"
+                    + "    Root delay      : 0.000162946 seconds\n"
+                    + "    Root dispersion : 0.000101734 seconds\n"
+                    + "    Update interval : 32.3 seconds\n"
+                    + "    Leap status     : Normal"));
   }
 }

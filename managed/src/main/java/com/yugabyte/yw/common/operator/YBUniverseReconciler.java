@@ -954,6 +954,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private UserIntent createUserIntent(YBUniverse ybUniverse, UUID customerUUID, boolean isCreate) {
     try {
       UserIntent userIntent = new UserIntent();
+      // Needed for the UI fix because all k8s universes have this now..
+      userIntent.dedicatedNodes = true;
       userIntent.universeName = OperatorUtils.getYbaUniverseName(ybUniverse);
       if (ybUniverse.getSpec().getKubernetesOverrides() != null) {
         userIntent.universeOverrides =

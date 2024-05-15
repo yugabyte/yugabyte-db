@@ -104,13 +104,14 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
 
         <Box mt={2.5} mb={1}>
           <img src={LightBulbIcon} alt="more" className={classes.learnMoreImage} />
-          {'To troubleshoot, '}
           {appName === AppName.YBA ? (
             <Link
               to={`/universes/${universeUuid}/troubleshoot/${troubleshootUUID}`}
               target="_blank"
             >
-              <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
+              <span className={classes.redirectLinkText}>
+                {'To troubleshoot, refer to the dashboard.'}
+              </span>
             </Link>
           ) : (
             <Box>
@@ -119,7 +120,9 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
                 data-testid="PrimaryDashboard-RouteToSecondaryButton"
                 onClick={() => routeToSecondary()}
               >
-                <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
+                <span className={classes.redirectLinkText}>
+                  {'To troubleshoot, refer to the dashboard.'}
+                </span>
               </YBButton>
             </Box>
           )}

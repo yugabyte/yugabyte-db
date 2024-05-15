@@ -1055,7 +1055,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
+To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
 ##### --ysql_enable_packed_row
 

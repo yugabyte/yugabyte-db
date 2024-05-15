@@ -49,6 +49,7 @@ Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-
     - Specify the regions where you want to place replicas.
     - Specify the number of nodes and the number of read replicas. The number of nodes must be greater than or equal to the number of replicas.
     - Customize the availability zones if desired.
+    - Choose the Linux version to be provisioned on the nodes of the replica cluster.
     - Configure the instance type to use for your read replica cluster.
     - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
 

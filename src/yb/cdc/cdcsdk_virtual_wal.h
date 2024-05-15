@@ -94,7 +94,9 @@ class CDCSDKVirtualWAL {
   struct GetConsistentChangesRespMetadata {
     int begin_records = 0;
     int commit_records = 0;
-    int dml_records = 0;
+    int insert_records = 0;
+    int update_records = 0;
+    int delete_records = 0;
     int ddl_records = 0;
     std::unordered_set<uint32_t> txn_ids;
     uint32_t min_txn_id = std::numeric_limits<uint32_t>::max();

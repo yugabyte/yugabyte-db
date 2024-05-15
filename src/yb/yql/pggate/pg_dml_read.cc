@@ -381,7 +381,7 @@ Status PgDmlRead::RetrieveYbctidsFromSecondaryIndex(const PgExecParameters *exec
   RETURN_NOT_OK(InitDocOpWithRowMark());
 
   size_t consumed_bytes = 0;
-  size_t work_mem_bytes = exec_params->work_mem * 1024;
+  size_t work_mem_bytes = exec_params->work_mem * 1024L;
 
   while (consumed_bytes < work_mem_bytes) {
     RETURN_NOT_OK(ProcessSecondaryIndexRequest(pg_exec_params_));

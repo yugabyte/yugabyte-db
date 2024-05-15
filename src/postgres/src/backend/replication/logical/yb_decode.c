@@ -50,9 +50,6 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
 static void
 YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static char
-YBGetReplicaIdentityForTable(Oid table_oid);
-
 static void 
 YBLogTupleDescIfRequested(const YBCPgVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc);
@@ -194,11 +191,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->lsn = yb_record->lsn;
 	change->origin_id = yb_record->lsn;
 
-	relation = RelationIdGetRelation(yb_record->table_oid);
-	if (!RelationIsValid(relation))
-		elog(ERROR, "could not open relation with OID %u",
-			 yb_record->table_oid);
-
+	relation = YbGetRelationWithOverwrittenReplicaIdentity(
+		yb_record->table_oid,
+		YBCGetReplicaIdentityForRelation(yb_record->table_oid));
 	tupdesc = RelationGetDescr(relation);
 	nattrs = tupdesc->natts;
 	YBLogTupleDescIfRequested(yb_record, tupdesc);
@@ -213,7 +208,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 * only CHANGE.
 	 */
 	should_handle_omitted_case =
-		YBGetReplicaIdentityForTable(yb_record->table_oid) ==
+		YBCGetReplicaIdentityForRelation(yb_record->table_oid) ==
 		YB_REPLICA_IDENTITY_CHANGE;
 	if (should_handle_omitted_case)
 	{
@@ -384,10 +379,16 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	int							nattrs;
 	HeapTuple					tuple;
 
-	relation = RelationIdGetRelation(yb_record->table_oid);
-	if (!RelationIsValid(relation))
-		elog(ERROR, "could not open relation with OID %u",
-			 yb_record->table_oid);
+	/*
+	 * Note that we don't strictly need to overwrite the replica identity in
+	 * yb_decode.c as this field is not read here. For correctness, we only need
+	 * to override it in the reorderbuffer. We do it here just for completeness
+	 * so that we don't end up with conflicting pieces of information about the
+	 * replica identity in two different files that can lead to confusion.
+	 */
+	relation = YbGetRelationWithOverwrittenReplicaIdentity(
+		yb_record->table_oid,
+		YBCGetReplicaIdentityForRelation(yb_record->table_oid));
 
 	tupdesc = RelationGetDescr(relation);
 	nattrs = tupdesc->natts;
@@ -441,20 +442,6 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 			 errmsg("Could not find column with name %s in tuple"
 					" descriptor", column_name)));
 	return -1;			/* keep compiler quiet */
-}
-
-static char
-YBGetReplicaIdentityForTable(Oid table_oid)
-{
-	Assert(MyReplicationSlot);
-	bool found;
-
-	YBCPgReplicaIdentityDescriptor *value =
-		hash_search(MyReplicationSlot->data.yb_replica_identities, &table_oid,
-					HASH_FIND, &found);
-
-	Assert(found);
-	return value->identity_type;
 }
 
 static void

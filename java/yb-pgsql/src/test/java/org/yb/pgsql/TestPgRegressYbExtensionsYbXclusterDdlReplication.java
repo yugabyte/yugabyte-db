@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
 import java.io.File;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressThirdPartyExtensionsYBXClusterDDLReplication extends BasePgSQLTest {
+public class TestPgRegressYbExtensionsYbXclusterDdlReplication extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -29,7 +29,7 @@ public class TestPgRegressThirdPartyExtensionsYBXClusterDDLReplication extends B
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
-                              "postgres_build/contrib/yb_xcluster_ddl_replication"),
+                              "postgres_build/yb-extensions/yb_xcluster_ddl_replication"),
                      "yb_schedule");
   }
 }

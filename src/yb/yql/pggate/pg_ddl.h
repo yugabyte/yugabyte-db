@@ -266,6 +266,8 @@ class PgAlterTable : public PgDdl {
 
   Status Exec();
 
+  void InvalidateTableCacheEntry();
+
   virtual ~PgAlterTable();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }

@@ -777,7 +777,16 @@ class PostgresBuilder(YbBuildToolBase):
 
         pg_compile_commands_paths = []
 
-        third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
+        external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
+                                   # YB_TODO: begin: workaround for some extensions not supported.
+                                   # in ('third-party-extensions', 'yb-extensions')]
+                                   in ('third-party-extensions/hypopg',
+                                       'third-party-extensions/orafce',
+                                       'third-party-extensions/pg_hint_plan',
+                                       'third-party-extensions/pgvector',
+                                       'third-party-extensions/postgresql-hll',
+                                       'yb-extensions')]
+        # YB_TODO: end: workaround for some extensions not supported.
         work_dirs = [
             self.pg_build_root,
             # self.pg_build_root,
@@ -801,19 +810,15 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/earthdistance'),
             os.path.join(self.pg_build_root, 'contrib/intarray'),
             os.path.join(self.pg_build_root, 'contrib/isn'),
-            os.path.join(self.pg_build_root, 'contrib/yb_pg_metrics'),
-            os.path.join(self.pg_build_root, 'contrib/yb_xcluster_ddl_replication'),
-            os.path.join(self.pg_build_root, 'contrib/yb_ycql_utils'),
             # YB_TODO: end
-            third_party_extensions_dir,
-        ]
+        ] + external_extension_dirs
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
                 self.write_debug_scripts(env_script_content)
 
                 make_cmd_suffix = []
-                if work_dir == third_party_extensions_dir:
+                if work_dir in external_extension_dirs:
                     make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
 
                 # Actually run Make.

@@ -253,6 +253,9 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 10
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+    "Size threshold in bytes for a catcache tuple to be compressed.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(

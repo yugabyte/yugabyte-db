@@ -256,4 +256,6 @@ extern void CheckPointReplicationSlots(void);
 extern void CheckSlotRequirements(void);
 extern void CheckSlotPermissions(void);
 
+extern char YBCGetReplicaIdentityForRelation(Oid relid);
+
 #endif							/* SLOT_H */

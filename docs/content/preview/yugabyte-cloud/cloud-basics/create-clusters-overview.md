@@ -180,7 +180,7 @@ There is currently no migration path from a preview release to a stable release.
 
 Use a staging cluster for the following tasks:
 
-- Verifying that your application is compatible with [database updates](#database-updates).
+- Verifying that your application is compatible with [database updates](#database-upgrades).
 - Ensuring that your application correctly handles a rolling restart of the database without errors.
 - Testing new features. Use your staging (also known as development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
 - Testing scaling operations and disaster recovery. Find out how your environment responds to a scaling operation, outages, or the loss of a node.

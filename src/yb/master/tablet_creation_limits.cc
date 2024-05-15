@@ -88,7 +88,6 @@ Status CanCreateTabletReplicas(
         "The requested number of tablet replicas ($0) would cause the total running tablet replica "
         "count ($1) to exceed the safe system maximum ($2)",
         tablet_replicas_to_create, new_tablet_count, cluster_limit);
-    YB_LOG_EVERY_N_SECS(ERROR, 10) << error_message;
     return STATUS(InvalidArgument, error_message);
   } else {
     VLOG_IF(1, cluster_limit < std::numeric_limits<int64_t>::max())

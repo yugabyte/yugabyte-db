@@ -151,7 +151,7 @@ func init() {
 	updateAZStorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
 	updateAZStorageConfigurationCmd.Flags().String("sas-token", "",
-		fmt.Sprintf("AZ SAS Token to be updated. "+
+		fmt.Sprintf("AZ SAS Token to be updated. Provide the token within double quotes. "+
 			"Can also be set using environment variable %s.",
 			util.AzureStorageSasTokenEnv))
 

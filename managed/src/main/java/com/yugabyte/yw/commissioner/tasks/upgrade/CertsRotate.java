@@ -88,29 +88,37 @@ public class CertsRotate extends UpgradeTaskBase {
           // For other cases we can do it in one round by updating respective certs.
           if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
               && taskParams().rootCARotationType == CertRotationType.RootCert) {
-            // Update the rootCA in platform to have both old cert and new cert.
+            // Update the rootCA in platform to generate a multi-cert containing both old cert and
+            // new cert. If it is already a multi-cert or the root CA of the universe is already
+            // pointing to the new root CA, it does not do anything.
             createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
-            // Append new root cert to the existing ca.crt.
+            // Append new root cert to the existing ca.crt. If the cert file already contains
+            // multiple certs on the DB node, it does not do anything.
             createCertUpdateTasks(allNodes, CertRotateAction.APPEND_NEW_ROOT_CERT);
 
             // Add task to use the updated certs
             createActivateCertsTask(universe, nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
-            // Copy new server certs to all nodes.
+            // Copy new server certs to all nodes. This deletes the old certs and uploads the new
+            // files to the same location.
             createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
 
             // Add task to use the updated certs.
             createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
-            // Remove old root cert from the ca.crt.
+            // Remove old root cert from the ca.crt by replacing (moving) the old cert with the new
+            // one.
             createCertUpdateTasks(allNodes, CertRotateAction.REMOVE_OLD_ROOT_CERT);
             // Update gflags of cert directories.
             createUpdateCertDirsTask(nodes.mastersList, ServerType.MASTER);
             createUpdateCertDirsTask(nodes.tserversList, ServerType.TSERVER);
 
-            // Reset the old rootCA content in platform.
+            // Reset the old rootCA content in platform. This sets the rootCA back to the old cert.
+            // Upon failure, there can be time window where universe still points to old cert, but
+            // retry should work.
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
-            // Update universe details with new cert values.
+            // Update universe details with new cert values. This sets the universe root cert to the
+            // new one.
             createUniverseSetTlsParamsTask(getTaskSubGroupType());
 
             // Add task to use the updated certs.

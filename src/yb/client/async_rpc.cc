@@ -102,11 +102,6 @@ DEFINE_test_flag(bool, asyncrpc_common_response_check_fail_once, false,
     "For testing only. When set to true triggers AsyncRpc::Failure() with RuntimeError status "
     "inside AsyncRpcBase::CommonResponseCheck() and returns false from this method.");
 
-// DEPRECATED. It is assumed that all t-servers and masters in the cluster has this capability.
-// Remove it completely when it won't be necessary to support upgrade from releases which checks
-// the existence on this capability.
-DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
-
 DECLARE_bool(collect_end_to_end_traces);
 
 using namespace std::placeholders;

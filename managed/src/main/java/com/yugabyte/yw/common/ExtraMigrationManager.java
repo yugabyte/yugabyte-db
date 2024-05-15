@@ -93,7 +93,9 @@ public class ExtraMigrationManager extends DevopsBase {
 
   private void createArtifacts(ReleaseMetadata metadata, Release release) {
     // create helm artifact if necessary
-    if (metadata.chartPath != null && release.getKubernetesArtifact() == null) {
+    if (metadata.chartPath != null
+        && !metadata.chartPath.isEmpty()
+        && release.getKubernetesArtifact() == null) {
       ReleaseLocalFile rlf = ReleaseLocalFile.create(metadata.chartPath);
       release.addArtifact(
           ReleaseArtifact.create(
@@ -162,7 +164,6 @@ public class ExtraMigrationManager extends DevopsBase {
       if (foundArtifact.isPresent()) {
         // http artifact exists, but needs update
         if (!foundArtifact.get().getPackageURL().equals(metadata.http.paths.x86_64)) {
-          LOG.trace("updating http artifact");
           foundArtifact.get().setPackageURL(metadata.http.paths.x86_64);
           foundArtifact.get().setSha256(metadata.gcs.paths.x86_64_checksum);
         }

@@ -2767,11 +2767,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * unexpected masters or tservers)
    */
   protected void verifyClustersConsistency() {
+    verifyClustersConsistency(null);
+  }
+
+  /**
+   * Verify that current cluster composition matches the expected one. (Check that we don't have
+   * unexpected masters or tservers)
+   *
+   * @param skipMaybeRunning - list of node names, which could have processes running despite yba
+   *     state
+   */
+  protected void verifyClustersConsistency(Set<String> skipMaybeRunning) {
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.verifyClusterStateBeforeTask)) {
       TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckCluster");
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.skipMayBeRunning = skipMaybeRunning;
       CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
       task.initialize(params);
       // Add it to the task list.

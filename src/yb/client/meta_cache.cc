@@ -221,8 +221,6 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   private_rpc_hostports_ = pb.private_rpc_addresses();
   public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
-  capabilities_.assign(pb.capabilities().begin(), pb.capabilities().end());
-  std::sort(capabilities_.begin(), capabilities_.end());
 }
 
 bool RemoteTabletServer::IsLocal() const {
@@ -271,11 +269,6 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
   return false;
 }
 
-bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
-  SharedLock lock(mutex_);
-  return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
-}
-
 bool RemoteTabletServer::IsLocalRegion() const {
   SharedLock lock(mutex_);
   return cloud_info_pb_.placement_cloud() == FLAGS_placement_cloud &&
@@ -311,14 +304,16 @@ RemoteTablet::RemoteTablet(std::string tablet_id,
                            dockv::Partition partition,
                            boost::optional<PartitionListVersion> partition_list_version,
                            uint64 split_depth,
-                           const TabletId& split_parent_tablet_id)
+                           const TabletId& split_parent_tablet_id,
+                           int64_t raft_config_opid_index)
     : tablet_id_(std::move(tablet_id)),
       log_prefix_(Format("T $0: ", tablet_id_)),
       partition_(std::move(partition)),
       partition_list_version_(partition_list_version),
       split_depth_(split_depth),
       split_parent_tablet_id_(split_parent_tablet_id),
-      stale_(false) {
+      stale_(false),
+      raft_config_opid_index_(raft_config_opid_index) {
 }
 
 RemoteTablet::~RemoteTablet() {
@@ -440,6 +435,11 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
       break;
     }
   }
+}
+
+void RemoteTablet::SetRaftConfigOpIdIndex(int64_t raft_config_opid_index) {
+  std::lock_guard lock(mutex_);
+  raft_config_opid_index_ = raft_config_opid_index;
 }
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
@@ -640,6 +640,8 @@ void RemoteTablet::AddReplicasAsJson(JsonWriter* writer) const {
   writer->StartObject();
   writer->String("tablet_id");
   writer->String(tablet_id());
+  writer->String("raft_config_opid_index");
+  writer->Int64(raft_config_opid_index());
   writer->String("replicas");
   writer->StartArray();
   SharedLock lock(mutex_);
@@ -1099,9 +1101,11 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
 
       dockv::Partition partition;
       dockv::Partition::FromPB(location.partition(), &partition);
+      // The committed opid is defaulted to -1 so that when we refresh the remote tablet later
+      // we will be able to update the committed opid.
       remote = new RemoteTablet(
           tablet_id, partition, table_partition_list_version, location.split_depth(),
-          location.split_parent_tablet_id());
+          location.split_parent_tablet_id(), RemoteTablet::kUnknownOpIdIndex);
 
       CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
     }
@@ -1118,6 +1122,9 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
       }
     }
     remote->Refresh(ts_cache_, location.replicas());
+    if (location.has_raft_config_opid_index()) {
+      remote->SetRaftConfigOpIdIndex(location.raft_config_opid_index());
+    }
     remote->SetExpectedReplicas(location.expected_live_replicas(),
                                 location.expected_read_replicas());
     if (table_partition_list_version.has_value()) {

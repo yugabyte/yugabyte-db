@@ -90,7 +90,7 @@ race:yb::ExternalDaemon::LogTailerThread::LogTailerThread
 race:boost::lockfree
 
 # Suppress TSAN data race in boost::regex_match (potential false positive)
-race:boost::regex_detail_500::saved_state::saved_state
+race:boost::re_detail_500::saved_state::saved_state
 
 # -------------------------------------------------------------------------------------------------
 # Supressions from libcds:

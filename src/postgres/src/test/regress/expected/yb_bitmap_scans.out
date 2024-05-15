@@ -250,6 +250,29 @@ NOTICE:  exceeded work_mem, switching to full table scan
  Storage Flush Requests: 0
 (16 rows)
 
+SET work_mem TO '4GB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1  (cost=69.05..76.05 rows=100 width=16) (actual rows=6407 loops=1)
+   Storage Table Read Requests: 7
+   Storage Table Rows Scanned: 6407
+   ->  BitmapOr  (cost=69.05..69.05 rows=200 width=0) (actual rows=6407 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1  (cost=0.00..34.50 rows=100 width=0) (actual rows=6000 loops=1)
+               Index Cond: (unique1 < 6000)
+               Storage Index Read Requests: 6
+               Storage Index Rows Scanned: 6000
+         ->  Bitmap Index Scan on tenk1_unique2  (cost=0.00..34.50 rows=100 width=0) (actual rows=1000 loops=1)
+               Index Cond: (unique2 < 1000)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1000
+ Storage Read Requests: 14
+ Storage Rows Scanned: 13407
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
 RESET work_mem;
 --
 -- test recheck condition and UPDATE
@@ -913,6 +936,56 @@ INSERT INTO test_false VALUES (1, 1), (2, 2);
  Storage Write Requests: 0
  Storage Flush Requests: 0
 (17 rows)
+
+--
+-- test recheck index conditions
+--
+create table recheck_test (col int);
+create index on recheck_test (col ASC);
+insert into recheck_test select i from generate_series(1, 10) i;
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col IN (5, 6);
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: ((col < 3) AND (col = ANY ('{5,6}'::integer[])))
+   Rows Removed by Index Recheck: 2
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=2 loops=1)
+         Index Cond: ((col < 3) AND (col = ANY ('{5,6}'::integer[])))
+(5 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col IN (5, 6) AND t.col < 3;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: ((col = ANY ('{5,6}'::integer[])) AND (col < 3))
+   Rows Removed by Index Recheck: 2
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=2 loops=1)
+         Index Cond: ((col = ANY ('{5,6}'::integer[])) AND (col < 3))
+(5 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: ((col < 3) AND (col = 5))
+   Rows Removed by Index Recheck: 1
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=1 loops=1)
+         Index Cond: ((col < 3) AND (col = 5))
+(5 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Recheck Cond: ((col < 3) AND (col = 5))
+   Rows Removed by Index Recheck: 1
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=1 loops=1)
+         Index Cond: ((col < 3) AND (col = 5))
+(5 rows)
 
 --
 -- test colocated queries
