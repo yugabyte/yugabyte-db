@@ -132,8 +132,6 @@ typedef struct TupleTableSlot
 
 	/* YugaByte support */
 	/* Datum tts_ybctid; */  /* Selected ybctid value. Replaced by field "tts_tid". */
-	Datum tts_yb_insert_oid; /* OID specified in INSERT during YSQL upgrade,
-							  * should not be used for any other purpose. */
 } TupleTableSlot;
 
 /* routines for a TupleTableSlot implementation */
