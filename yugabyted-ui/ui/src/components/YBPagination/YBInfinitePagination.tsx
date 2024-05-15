@@ -115,7 +115,7 @@ export const YBInfinitePagination = <T,>(props: YBInfinitePaginationProps<T>): R
       {data && typeof render === 'function' ? data.map((item, index) => render(item, index)) : null}
       <Grid container direction="row" alignItems="center" justify="space-between" className={classes.root}>
         <Grid item xs={12}>
-          <YBPagination currentPage={currentPage} pageSize={totalPages} onPageSelect={handleOnPageSelect} />
+          <YBPagination currentPage={currentPage} pageCount={totalPages} onPageSelect={handleOnPageSelect} />
         </Grid>
         {showRecordsPerPage && (
           <Grid item xs={12} className={classes.dropdownContainer}>

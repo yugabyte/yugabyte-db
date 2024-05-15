@@ -915,11 +915,11 @@
               "heading": "Source Objects",
               "totalObjects": "Total Objects",
               "sequenceCount": "Sequence Count",
-              "tableCount":"Table Count",
+              "tableCount": "Table Count",
               "indexCount": "Index Count",
               "functionCount": "Function Count",
               "type": "Type",
-              "search":"Search",
+              "search": "Search",
               "searchPlaceholder": "Search object name",
               "objectName": "Object Name",
               "size": "Size",
@@ -960,7 +960,20 @@
             "objectType": "Object Type",
             "acknowledged": "Acknowledged",
             "acknowledge": "Acknowledge",
-            "fileDirectory": "File directory"
+            "fileDirectory": "File directory",
+            "totalObjects": "Total Objects",
+            "acknowledgedObjects": "Acknowledged Objects",
+            "unsupportedDataType": "Unsupported Data Type",
+            "objectCount": "Object Count",
+            "expandAll": "Expand All",
+            "collapseAll": "Collapse All",
+            "details": {
+              "heading": "Unsupported Data Type: {{datatype}}",
+              "search": "Search",
+              "searchPlaceholder": "Search DDL",
+              "acknowledged": "Acknowledged",
+              "acknowledge": "Acknowledge"
+            }
           },
           "details": {
             "tableIndex": "Table / Index",

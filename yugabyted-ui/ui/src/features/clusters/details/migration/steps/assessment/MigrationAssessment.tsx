@@ -290,20 +290,33 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       ],
       suggestionsErrors: [
         {
-          objectType: "View",
-          filePath: "/home/nikhil/tradex/schema/views/view.sql",
-          reason: "JSON_ARRAYAGG() function is not available in YugabyteDB",
-          sql: `CREATE or REPLACE VIEW stock_trend (symbol_id, trend) AS (select trade_symbol as symbol_id, JSON_ARRAYAGG(trunc(high_price, 2) order by price_time DESC) as trend
-FROM trade_symbol_price_history tsph where interval_period = ‘1DAY’ group by trade_symbol_id
-);`,
-          issue: "issue-id98374",
+          datatype: "JSONB",
+          objects: [
+            {
+              type: "View",
+              filePath: "/home/nikhil/tradex/schema/views/view.sql",
+              sql: `CREATE or REPLACE VIEW stock_trend (symbol_id, trend) AS (select trade_symbol as symbol_id, JSON_ARRAYAGG(trunc(high_price, 2) order by price_time DESC) as trend FROM trade_symbol_price_history tsph where interval_period = ‘1DAY’ group by trade_symbol_id);`,
+            },
+            {
+              type: "Table",
+              filePath: "/home/nikhil/tradex/schema/tables/table.sql",
+              sql: `CREATE TABLE stock_trend (symbol_id INT, trend JSONB);`,
+            },
+            {
+              type: "View",
+              filePath: "/home/nikhil/tradex/schema/views/view.sql",
+              sql: `CREATE or REPLACE VIEW stock_trend (symbol_id, trend) AS (select trade_symbol as symbol_id, JSON_ARRAYAGG(trunc(high_price, 2) order by price_time DESC) as trend FROM trade_symbol_price_history tsph where interval_period = ‘1DAY’ group by trade_symbol_id);`,
+            },
+            {
+              type: "View",
+              filePath: "/home/nikhil/tradex/schema/views/view2.sql",
+              sql: `CREATE or REPLACE VIEW stock_trend (symbol_id, trend) AS (select trade_symbol as symbol_id, JSON_ARRAYAGG(trunc(high_price, 2) order by price_time DESC) as trend FROM trade_symbol_price_history tsph where interval_period = ‘1DAY’ group by trade_symbol_id);`,
+            },
+          ],
         },
         {
-          objectType: "Table",
-          filePath: "/home/nikhil/tradex/schema/tables/table.sql",
-          reason: "Table has a composite primary key",
-          sql: `CREATE TABLE stock_trend (symbol_id UUID, trend JSONB, PRIMARY KEY (symbol_id, trend));`,
-          issue: "issue-id98378",
+          datatype: "Function",
+          objects: [],
         },
       ],
     },

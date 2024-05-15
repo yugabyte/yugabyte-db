@@ -10,11 +10,11 @@ const useStyles = makeStyles(() => ({
 
 interface PaginationProps {
   onPageSelect: (pageNo: number) => void;
-  pageSize?: number;
+  pageCount?: number;
   currentPage?: number;
 }
 
-export const YBPagination: FC<PaginationProps> = ({ pageSize = 4, onPageSelect, currentPage }) => {
+export const YBPagination: FC<PaginationProps> = ({ pageCount = 4, onPageSelect, currentPage }) => {
   const classes = useStyles();
   const [page, setPage] = useState(1);
 
@@ -31,7 +31,7 @@ export const YBPagination: FC<PaginationProps> = ({ pageSize = 4, onPageSelect, 
       page={page}
       boundaryCount={1}
       shape="rounded"
-      count={pageSize}
+      count={pageCount}
       onChange={(_e, newpage) => {
         setPage(newpage);
         onPageSelect(newpage);

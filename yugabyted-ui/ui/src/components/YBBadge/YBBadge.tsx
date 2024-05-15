@@ -8,6 +8,7 @@ import InfoIcon from '@app/assets/info.svg';
 import LoadingIcon from '@app/assets/Default-Loading-Circles.svg';
 
 export enum BadgeVariant {
+  Light = 'light',
   Info = 'info',
   Warning = 'warning',
   Error = 'error',
@@ -38,6 +39,13 @@ const useStyles = makeStyles((theme) => ({
   icon: {
     height: "14px",
     width: "14px",
+  },
+  light: {
+    background: theme.palette.primary[100],
+    color: theme.palette.primary[600],
+  },
+  lightIcon: {
+    color: theme.palette.primary[700],
   },
   warning: {
     background: theme.palette.warning[100],
@@ -107,6 +115,11 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
       alertClassName = clsx(alertClassName, classes.inprogress);
       alertIcon = <LoadingIcon className={clsx(classes.icon, classes.inprogressIcon)} />;
       alertText = text || "In progress";
+      break;
+    case BadgeVariant.Light:
+      alertClassName = clsx(alertClassName, classes.light);
+      alertIcon = <span className={clsx(classes.icon, classes.lightIcon)} />;
+      alertText = text || "Light";
       break;
     case BadgeVariant.Info:
     default:

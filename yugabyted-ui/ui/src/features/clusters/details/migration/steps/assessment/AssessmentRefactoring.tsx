@@ -1,6 +1,7 @@
 import React, { FC, Fragment, useMemo } from "react";
 import {
   Box,
+  Button,
   Divider,
   MenuItem,
   Paper,
@@ -10,7 +11,7 @@ import {
   makeStyles,
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBCodeBlock, YBInput, YBSelect, YBTable, YBToggle } from "@app/components";
+import { YBButton, YBCodeBlock, YBInput, YBSelect, YBTable, YBToggle } from "@app/components";
 import {
   Bar,
   BarChart,
@@ -23,9 +24,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import SearchIcon from "@app/assets/search.svg";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 import clsx from "clsx";
+import ExpandIcon from "@app/assets/expand.svg";
+import CollpaseIcon from "@app/assets/collapse.svg";
+import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
+import PlusIcon from "@app/assets/plus_icon.svg";
+import MinusIcon from "@app/assets/minus_icon.svg";
+import { MigrationUnsupportedRefactoring } from "./AssessmentUnsupportedRefactoring";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -50,10 +56,11 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
   },
-  tableRow: {
+  arrowComponent: {
+    textAlign: "end",
     cursor: "pointer",
-    "&:hover": {
-      backgroundColor: theme.palette.background.default,
+    "& svg": {
+      marginTop: theme.spacing(0.25),
     },
   },
   tableCell: {
@@ -62,20 +69,30 @@ const useStyles = makeStyles((theme) => ({
     wordBreak: "break-word",
   },
   rowTableCell: {
-    paddingTop: "10px",
     borderBottom: "unset",
   },
-  actionsCell: {
-    width: theme.spacing(8),
+  w10: {
+    width: "10px",
   },
-  queryTableCell: {
-    padding: theme.spacing(1),
-  },
-  queryCodeBlock: {
-    lineHeight: 1.5,
-    padding: theme.spacing(1),
+  innerTable: {
+    borderRadius: theme.shape.borderRadius,
+    backgroundColor: theme.palette.background.default,
+    marginLeft: theme.spacing(4),
+    "& .MuiPaper-root": {
+      backgroundColor: "transparent !important",
+    },
   },
 }));
+
+export type RefactoringDataItems = ReadonlyArray<{
+  datatype: string;
+  objects: ReadonlyArray<{
+    filePath: string;
+    sql: string;
+    type: string;
+    ack?: boolean;
+  }>;
+}>;
 
 interface MigrationAssessmentRefactoringProps {
   schemaList: readonly string[];
@@ -84,51 +101,97 @@ interface MigrationAssessmentRefactoringProps {
     automaticDDLImport: number;
     manualRefactoring: number;
   }>;
-  suggestionsErrors: ReadonlyArray<{
-    objectType: string;
-    filePath: string;
-    reason: string;
-    sql: string;
-    issue: string;
-  }>;
+  suggestionsErrors: RefactoringDataItems;
 }
 
-type SugErrAckArray = Array<
-  MigrationAssessmentRefactoringProps["suggestionsErrors"][number] & { ack: boolean }
->;
-
 const getRowCellComponent = (
-  displayedRows: SugErrAckArray,
+  displayedRows: RefactoringDataItems,
+  expanded: boolean[],
   classes: ReturnType<typeof useStyles>
 ) => {
+  const { t } = useTranslation();
+
+  const innerColumns = [
+    {
+      name: "objecttype",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "fileDirectory",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "totalObjects",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.totalObjects"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "acknowledgedObjects",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.acknowledgedObjects"),
+      options: {
+        customBodyRenderLite: (dataIndex: number) =>
+          `${innerData[dataIndex].acknowledgedObjects} / ${innerData[dataIndex].totalObjects}`,
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+  ];
+
+  const innerData = [
+    {
+      objecttype: "View",
+      fileDirectory: "/home/nikhil/tradex/schema/views/view.sql",
+      totalObjects: 7,
+      acknowledgedObjects: 2,
+    },
+    {
+      objecttype: "Table",
+      fileDirectory: "/home/nikhil/tradex/schema/tables/table.sql",
+      totalObjects: 6,
+      acknowledgedObjects: 0,
+    },
+  ];
+
   const rowCellComponent = (data: any, dataIndex: number) => {
     return (
       <Fragment key={`row-fragment-${data}`}>
-        <TableRow className={classes.tableRow}>
+        <TableRow>
           {data.map((val: any, index: number) => (
             <TableCell
               key={`row-${dataIndex}-body-cell-${index}`}
-              className={clsx(classes.tableCell, classes.rowTableCell)}
+              className={clsx(
+                classes.tableCell,
+                expanded[dataIndex] && classes.rowTableCell,
+                index === 0 && classes.w10
+              )}
             >
               {typeof val === "function" ? val(dataIndex) : val}
             </TableCell>
           ))}
         </TableRow>
-        {!displayedRows[dataIndex].ack && (
+        {expanded[dataIndex] && (
           <TableRow>
-            <TableCell colSpan={7} className={classes.queryTableCell}>
-              <YBCodeBlock
-                text={
-                  <>
-                    {displayedRows[dataIndex].sql}
-                    <Divider className={classes.divider} />
-                    <Typography variant="body2">{displayedRows[dataIndex].reason}</Typography>
-                    <Divider className={classes.divider} />
-                    <Typography variant="body2">{displayedRows[dataIndex].issue}</Typography>
-                  </>
-                }
-                preClassName={classes.queryCodeBlock}
-              />
+            <TableCell colSpan={4}>
+              <Box className={classes.innerTable}>
+                <YBTable
+                  data={innerData}
+                  columns={innerColumns}
+                  options={{
+                    pagination: false,
+                  }}
+                />
+              </Box>
             </TableCell>
           </TableRow>
         )}
@@ -136,6 +199,14 @@ const getRowCellComponent = (
     );
   };
   return rowCellComponent;
+};
+
+const ArrowComponent = (classes: ReturnType<typeof useStyles>, onClick: () => void) => () => {
+  return (
+    <Box className={classes.arrowComponent} onClick={onClick}>
+      <ArrowRightIcon />
+    </Box>
+  );
 };
 
 export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringProps> = ({
@@ -146,65 +217,135 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [selectedSchema, setSelectedSchema] = React.useState<string>("");
-  const [search, setSearch] = React.useState<string>("");
-  const [selectedObjectType, setSelectedObjectType] = React.useState<string>("");
-  const [selectedAck, setSelectedAck] = React.useState<string>("");
-
-  const [sugErrData, setSugErrData] = React.useState<SugErrAckArray>(
-    suggestionsErrors.map((sugErr) => ({ ...sugErr, ack: false }))
+  const uniqueTypes = useMemo(
+    () =>
+      Array.from(new Set(suggestionsErrors.flatMap((item) => item.objects.map((obj) => obj.type)))),
+    [suggestionsErrors]
   );
 
-  const filteredSugErr = useMemo(() => {
-    const searchQuery = search.toLowerCase();
-    return sugErrData.filter(
-      (sugErr) =>
-        (selectedSchema ? sugErr.objectType === selectedSchema : true) &&
-        (selectedObjectType ? sugErr.objectType === selectedObjectType : true) &&
-        (selectedAck ? sugErr.ack === (selectedAck === "Acknowledged") : true) &&
-        (search
-          ? sugErr.filePath.toLowerCase().includes(searchQuery) ||
-            sugErr.reason.toLowerCase().includes(searchQuery)
-          : true)
-    );
-  }, [search, selectedSchema, selectedObjectType, selectedAck, sugErrData]);
+  const overviewData = useMemo(
+    () =>
+      suggestionsErrors.map((item) => ({
+        objectCount: item.objects.length,
+        ...item,
+      })),
+    [suggestionsErrors]
+  );
 
-  const suggestionErrorColumns = [
+  const subOverviewData = useMemo(
+    () =>
+      uniqueTypes
+        .map((type) => {
+          const objects = suggestionsErrors.flatMap((item) =>
+            item.objects.filter((obj) => obj.type === type)
+          );
+
+          return {
+            type,
+            totalViews: objects.length,
+            ackedViews: objects.filter((obj) => obj.ack).length,
+          };
+        })
+        .filter((item) => item.totalViews > 0),
+    [uniqueTypes, suggestionsErrors]
+  );
+
+  const detailedData = useMemo(
+    () =>
+      subOverviewData.map((item) => {
+        const details = suggestionsErrors.flatMap((suggestion) =>
+          suggestion.objects.filter((obj) => obj.type === item.type)
+        );
+
+        const uniqueFiles = Array.from(new Set(details.map((obj) => obj.filePath)));
+
+        return {
+          ...item,
+          details: uniqueFiles.map((file) => ({
+            file,
+            sql: details.filter((item) => item.filePath === file).map((item) => item.sql),
+          })),
+        };
+      }),
+    [subOverviewData, suggestionsErrors]
+  );
+
+  const [selectedDataType, setSelectedDataType] = React.useState<RefactoringDataItems[number]>();
+  const onSelectDataType = (dataIndex: number) => {
+    setSelectedDataType(suggestionsErrors[dataIndex]);
+  };
+
+  const [expandedSuggestions, setExpandedSuggestions] = React.useState<boolean[]>([]);
+
+  const refactoringOverviewColumns = [
     {
-      name: "objectType",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "filePath",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "ack",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.acknowledge"),
+      name: "",
+      label: "",
       options: {
         sort: false,
         customBodyRenderLite: (dataIndex: number) => (
-          <YBToggle
-            checked={filteredSugErr[dataIndex].ack}
-            label={t("clusterDetail.voyager.planAndAssess.refactoring.acknowledge")}
-            onChange={(e) => {
-              setSugErrData((prev) =>
-                prev.map((sugErr, index) => ({
-                  ...sugErr,
-                  ack: index === dataIndex ? e.target.checked : sugErr.ack,
-                }))
-              );
+          <Box
+            px={1}
+            style={{ cursor: "pointer" }}
+            onClick={() => {
+              const newExpandedSuggestions = [...expandedSuggestions];
+              newExpandedSuggestions[dataIndex] = !expandedSuggestions[dataIndex];
+              setExpandedSuggestions(newExpandedSuggestions);
             }}
-          />
+          >
+            {expandedSuggestions[dataIndex] ? <MinusIcon /> : <PlusIcon />}
+          </Box>
         ),
+      },
+    },
+    {
+      name: "datatype",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"),
+      options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "objectCount",
+      label: t("clusterDetail.voyager.planAndAssess.refactoring.objectCount"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "",
+      label: (
+        <Box display="flex" justifyContent="end">
+          <YBButton
+            variant="ghost"
+            startIcon={
+              expandedSuggestions.filter((s) => s).length < overviewData.length ? (
+                <ExpandIcon />
+              ) : (
+                <CollpaseIcon />
+              )
+            }
+            onClick={() => {
+              setExpandedSuggestions(
+                new Array(overviewData.length).fill(
+                  expandedSuggestions.filter((s) => s).length < overviewData.length
+                )
+              );
+            }}
+          >
+            {expandedSuggestions.filter((s) => s).length < overviewData.length
+              ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
+              : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
+          </YBButton>
+        </Box>
+      ) as unknown as string,
+      options: {
+        sort: false,
+        customBodyRenderLite: (dataIndex: number) =>
+          ArrowComponent(classes, () => onSelectDataType(dataIndex))(),
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
   ];
@@ -221,26 +362,6 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           <Typography variant="h4">
             {t("clusterDetail.voyager.planAndAssess.refactoring.heading")}
           </Typography>
-        </Box>
-        <Box>
-          <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.refactoring.schema")}
-          </Typography>
-          <YBSelect
-            style={{ minWidth: "250px" }}
-            value={selectedSchema}
-            onChange={(e) => setSelectedSchema(e.target.value)}
-          >
-            <MenuItem value="">All</MenuItem>
-            <Divider className={classes.divider} />
-            {schemaList?.map((schema) => {
-              return (
-                <MenuItem key={schema} value={schema}>
-                  {schema}
-                </MenuItem>
-              );
-            })}
-          </YBSelect>
         </Box>
 
         <Box my={4}>
@@ -329,72 +450,23 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           </ResponsiveContainer>
         </Box>
 
-        <Divider orientation="horizontal" variant="middle" className={classes.divider} />
-
-        <Box display="flex" alignItems="center" gridGap={10} my={2}>
-          <Box flex={3}>
-            <Typography variant="body1" className={classes.label}>
-              {t("clusterDetail.voyager.planAndAssess.refactoring.search")}
-            </Typography>
-            <YBInput
-              className={classes.fullWidth}
-              placeholder={t("clusterDetail.voyager.planAndAssess.refactoring.searchPlaceholder")}
-              InputProps={{
-                startAdornment: <SearchIcon />,
-              }}
-              onChange={(ev) => setSearch(ev.target.value)}
-              value={search}
-            />
-          </Box>
-          <Box flex={1}>
-            <Typography variant="body1" className={classes.label}>
-              {t("clusterDetail.voyager.planAndAssess.refactoring.objectType")}
-            </Typography>
-            <YBSelect
-              className={classes.fullWidth}
-              value={selectedObjectType}
-              onChange={(e) => setSelectedObjectType(e.target.value)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <Divider className={classes.divider} />
-              {sqlObjects.map((object) => {
-                return (
-                  <MenuItem key={object.objectType} value={object.objectType}>
-                    {object.objectType}
-                  </MenuItem>
-                );
-              })}
-            </YBSelect>
-          </Box>
-          <Box flex={1}>
-            <Typography variant="body1" className={classes.label}>
-              {t("clusterDetail.voyager.planAndAssess.refactoring.acknowledged")}
-            </Typography>
-            <YBSelect
-              className={classes.fullWidth}
-              value={selectedAck}
-              onChange={(e) => setSelectedAck(e.target.value)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <Divider className={classes.divider} />
-              <MenuItem value="Acknowledged">Acknowledged</MenuItem>
-              <MenuItem value="Not acknowledged">Not acknowledged</MenuItem>
-            </YBSelect>
-          </Box>
-        </Box>
-
         <Box>
           <YBTable
-            data={filteredSugErr}
-            columns={suggestionErrorColumns}
+            data={overviewData}
+            columns={refactoringOverviewColumns}
             options={{
-              customRowRender: getRowCellComponent(filteredSugErr, classes),
+              customRowRender: getRowCellComponent(overviewData, expandedSuggestions, classes),
               pagination: true,
             }}
-            withBorder={false}
+            withBorder
           />
         </Box>
       </Box>
+
+      <MigrationUnsupportedRefactoring
+        data={selectedDataType}
+        onClose={() => setSelectedDataType(undefined)}
+      />
     </Paper>
   );
 };
