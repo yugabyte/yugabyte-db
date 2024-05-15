@@ -183,7 +183,9 @@ Status RefreshAutoFlagConfigVersion(
                     << replication_info.ReplicationGroupId()
                     << " with requested source config version: " << requested_auto_flag_version;
 
-  // Lock ClusterConfig before ReplicationInfo.
+  // Lock ReplicationInfo before ClusterConfig.
+  auto replication_info_write_lock = replication_info.LockForWrite();
+
   auto cluster_config_lock = cluster_config.LockForWrite();
   auto& cluster_config_pb = cluster_config_lock.mutable_data()->pb;
 
@@ -196,7 +198,6 @@ Status RefreshAutoFlagConfigVersion(
     return Status::OK();
   }
 
-  auto replication_info_write_lock = replication_info.LockForWrite();
   auto& replication_info_pb = replication_info_write_lock.mutable_data()->pb;
 
   const auto local_auto_flags_config = get_local_auto_flags_config_func();
@@ -229,11 +230,11 @@ Status HandleLocalAutoFlagsConfigChange(
     }
   }
 
-  // Lock ClusterConfig before ReplicationInfo.
-  auto cluster_config_lock = cluster_config.LockForWrite();
-  auto& cluster_config_pb = cluster_config_lock.mutable_data()->pb;
-
+  // Lock ReplicationInfo before ClusterConfig.
   auto replication_info_write_lock = replication_info.LockForWrite();
+  auto cluster_config_lock = cluster_config.LockForWrite();
+
+  auto& cluster_config_pb = cluster_config_lock.mutable_data()->pb;
   auto& replication_info_pb = replication_info_write_lock.mutable_data()->pb;
 
   RETURN_NOT_OK(ValidateAutoFlagsInternal(
