@@ -18,7 +18,7 @@ type: docs
 
 ## Replace a live or unreachable node
 
-If a node (live or unreachable) needs to be replaced, do the following:
+To replace a live node for extended maintenance or replace an unhealthy node, do the following: 
 
 1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
 1. Click the associated node **Actions > Replace Node**.
@@ -27,11 +27,11 @@ If a node (live or unreachable) needs to be replaced, do the following:
 
 1. Click OK to confirm.
 
-YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab.
+YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
 
 For cloud providers (AWS, Azure, or GCP), YBA returns the node back to the provider.
 
-For on-premises universes, because the unresponsive node will likely fail to clean up its data directory, home directory, and so on, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
+For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
 
 ### Check on-premises node state
 
@@ -48,7 +48,7 @@ Perform the following steps to recommission a node:
 
 1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**.
+1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
@@ -62,7 +62,7 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
-When this happens, new Master leaders are elected for the underlying data shards. Because the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, it is recommended that you [replace the node](#replace-a-live-or-unreachable-node).
+When this happens, new tablet leaders are elected for the underlying data shards and availability is maintained. If no other nodes are available to rebuild the lost copies of these tablets, the universe enters a partially under-replicated state and it would not be able to tolerate additional failures. To remedy the situation, it is recommended that you [replace the node](#replace-a-live-or-unreachable-node).
 
 <!-- Alternatively, you can eliminate the unreachable node (not recommended) by taking actions in the following sequence:
 
@@ -82,7 +82,7 @@ A node status displayed in the UI is not always entirely indicative of the node'
 
 ### Stop a process
 
-If a node needs the intervention, you can click its associated **Actions > Stop Processes**.
+If a node needs to be briefly taken out of service (for example, to perform a quick OS patch), you can click its associated **Actions > Stop Processes**. It is expected that this node will be returned to service soon through the **Actions > Start Processes** operation.
 
 After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
