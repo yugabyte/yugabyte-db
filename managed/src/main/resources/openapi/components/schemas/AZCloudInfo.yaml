@@ -2,4 +2,4 @@ title: AZ info in a cloud provider
 type: object
 properties:
   kubernetes:
-    $ref: ./KubernetesRegionInfo.yaml
+    $ref: "./KubernetesRegionInfo.yaml"

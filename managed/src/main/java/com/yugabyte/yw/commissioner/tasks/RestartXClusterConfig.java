@@ -101,6 +101,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               taskParams().getTableInfoList(),
               taskParams().getMainTableIndexTablesMap(),
               taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+              null,
               taskParams().getPitrParams(),
               taskParams().isForceBootstrap());
         } else {

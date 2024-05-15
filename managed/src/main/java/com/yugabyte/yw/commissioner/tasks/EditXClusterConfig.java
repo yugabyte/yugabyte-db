@@ -218,6 +218,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           xClusterConfig,
           tableIdsNotNeedBootstrap,
           requestedTableInfoList,
+          null,
           true /* isReplicationConfigCreated */,
           taskParams().getPitrParams());
 
@@ -322,6 +323,18 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             dbToTablesInfoMapNeedBootstrap,
             true /* isReplicationConfigCreated */,
             taskParams().getPitrParams());
+
+        // After all the other subtasks are done, set the DR states to show replication is
+        // happening.
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Replicating,
+                  SourceUniverseState.ReplicatingData,
+                  TargetUniverseState.ReceivingData,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
       }
     }
   }

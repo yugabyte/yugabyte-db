@@ -154,6 +154,13 @@ public class DrConfigGetResp {
   }
 
   @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. List of db ids in replication")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Set<String> getDbs() {
+    return xClusterConfig.getDbIds();
+  }
+
+  @ApiModelProperty(
       value = "UUID of the underlying xCluster config that is managing the replication")
   public UUID getXClusterConfigUuid() {
     return xClusterConfig.getUuid();

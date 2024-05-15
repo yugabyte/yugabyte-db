@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.api.client.util.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -11,6 +13,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CreateOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteRemnantStreams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
@@ -21,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -72,6 +76,7 @@ import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -1715,6 +1720,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  public Set<MasterTypes.NamespaceIdentifierPB> getNamespaces(
+      Universe universe, Set<String> dbIds) {
+    try (YBClient client =
+        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+      ListNamespacesResponse response = client.getNamespacesList();
+      Set<MasterTypes.NamespaceIdentifierPB> filteredNamespaces =
+          response.getNamespacesList().stream()
+              .filter(db -> dbIds.contains(db.getId().toStringUtf8()))
+              .collect(Collectors.toSet());
+      return filteredNamespaces;
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
   // DR methods.
   // --------------------------------------------------------------------------------
   protected DrConfig getDrConfigFromTaskParams() {
@@ -1744,6 +1764,53 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
+
   // --------------------------------------------------------------------------------
   // End of DR methods.
+
+  // DB Scoped replication methods.
+  // --------------------------------------------------------------------------------
+
+  /**
+   * Checkpoints the databases on the source universe and verifies the checkpointing is completed.
+   *
+   * @param xClusterConfig config used
+   * @param sourceDbIds db ids on the source universe to checkpoint.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createCreateOutboundReplicationGroupTask(
+      XClusterConfig xClusterConfig, Set<String> sourceDbIds) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateOutboundReplicationGroup");
+    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
+    xClusterConfigParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
+    xClusterConfigParams.xClusterConfig = xClusterConfig;
+    xClusterConfigParams.dbs = sourceDbIds;
+
+    CreateOutboundReplicationGroup task = createTask(CreateOutboundReplicationGroup.class);
+    task.initialize(xClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Set up db scoped xcluster replication.
+   *
+   * @param xClusterConfig config used
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterDbReplicationSetupTask(XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterDbReplicationSetup");
+    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
+    xClusterConfigParams.xClusterConfig = xClusterConfig;
+
+    XClusterDbReplicationSetup task = createTask(XClusterDbReplicationSetup.class);
+    task.initialize(xClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  // --------------------------------------------------------------------------------
+  // End of DB Scoped replication methods.
 }

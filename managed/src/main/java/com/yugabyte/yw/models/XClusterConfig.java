@@ -184,12 +184,16 @@ public class XClusterConfig extends Model {
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
+  @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
+  private Set<XClusterNamespaceConfig> namespaces = new HashSet<>();
+
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
   private String replicationGroupName;
 
   public enum ConfigType {
     Basic,
-    Txn;
+    Txn,
+    Db;
 
     @Override
     @DbEnumValue
@@ -375,6 +379,13 @@ public class XClusterConfig extends Model {
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
+  @JsonProperty("dbs")
+  public Set<String> getDbIds() {
+    return this.namespaces.stream()
+        .map(XClusterNamespaceConfig::getSourceNamespaceId)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
     return this.getTableDetails().stream()
@@ -426,6 +437,12 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void updateNamespaces(Set<String> namespaceIds) {
+    this.getNamespaces().clear();
+    addNamespaces(namespaceIds);
+  }
+
+  @Transactional
   public void addTables(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
     if (tableIds == null) {
       throw new IllegalArgumentException("tableIds cannot be null");
@@ -447,6 +464,24 @@ public class XClusterConfig extends Model {
           addTableConfig(tableConfig);
         });
     update();
+  }
+
+  @Transactional
+  public void addNamespaces(Set<String> namespaceIds) {
+    for (String namespaceId : namespaceIds) {
+      XClusterNamespaceConfig namespaceConfig = new XClusterNamespaceConfig(this, namespaceId);
+      addNamespaceConfig(namespaceConfig);
+    }
+    update();
+  }
+
+  private void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
+    if (!this.getNamespaces().add(namespaceConfig)) {
+      log.debug(
+          "Namespace with id {} already exists in xCluster config ({})",
+          namespaceConfig.getSourceNamespaceId(),
+          this.getUuid());
+    }
   }
 
   @Transactional

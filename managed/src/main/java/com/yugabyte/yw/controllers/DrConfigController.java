@@ -156,62 +156,95 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, targetUniverse);
     }
 
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
-
-    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-    Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
-
-    XClusterConfigController.xClusterCreatePreChecks(
-        requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-            requestedTableInfoList, targetTableInfoList);
-
-    BootstrapParams bootstrapParams =
-        getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
-    XClusterConfigController.xClusterBootstrappingPreChecks(
-        requestedTableInfoList,
-        sourceTableInfoList,
-        targetUniverse,
-        sourceTableIdTargetTableIdMap,
-        ybService,
-        bootstrapParams,
-        null /* currentReplicationGroupName */);
-
-    // Todo: Ensure the PITR parameters have the right RPOs.
-
-    if (createForm.dryRun) {
-      return YBPSuccess.withMessage("The pre-checks are successful");
+    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it"
+              + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
     }
 
-    // Create xCluster config object.
-    DrConfig drConfig =
-        DrConfig.create(
-            createForm.name,
-            createForm.sourceUniverseUUID,
-            createForm.targetUniverseUUID,
-            tableIds,
-            bootstrapParams);
-    drConfig
-        .getActiveXClusterConfig()
-        .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
+    DrConfig drConfig;
+    DrConfigTaskParams taskParams;
+    if (createForm.dbScoped) {
+      if (createForm.dryRun) {
+        return YBPSuccess.withMessage("The pre-checks are successful");
+      }
 
-    // Submit task to set up xCluster config.
-    DrConfigTaskParams taskParams =
-        new DrConfigTaskParams(
-            drConfig,
-            bootstrapParams,
-            requestedTableInfoList,
-            mainTableIndexTablesMap,
-            sourceTableIdTargetTableIdMap,
-            createForm.pitrParams);
+      drConfig =
+          DrConfig.create(
+              createForm.name,
+              createForm.sourceUniverseUUID,
+              createForm.targetUniverseUUID,
+              createForm.bootstrapParams.backupRequestParams,
+              createForm.dbs);
+
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              getBootstrapParamsFromRestartBootstrapParams(
+                  createForm.bootstrapParams, new HashSet<>()),
+              createForm.dbs,
+              createForm.pitrParams);
+    } else {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+          getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+
+      Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+      Map<String, List<String>> mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService, sourceUniverse, tableIds);
+
+      XClusterConfigController.xClusterCreatePreChecks(
+          requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+      Map<String, String> sourceTableIdTargetTableIdMap =
+          XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+              requestedTableInfoList, targetTableInfoList);
+
+      BootstrapParams bootstrapParams =
+          getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
+      XClusterConfigController.xClusterBootstrappingPreChecks(
+          requestedTableInfoList,
+          sourceTableInfoList,
+          targetUniverse,
+          sourceTableIdTargetTableIdMap,
+          ybService,
+          bootstrapParams,
+          null /* currentReplicationGroupName */);
+
+      if (createForm.dryRun) {
+        return YBPSuccess.withMessage("The pre-checks are successful");
+      }
+
+      // Todo: Ensure the PITR parameters have the right RPOs.
+
+      // Create xCluster config object.
+      drConfig =
+          DrConfig.create(
+              createForm.name,
+              createForm.sourceUniverseUUID,
+              createForm.targetUniverseUUID,
+              tableIds,
+              createForm.bootstrapParams.backupRequestParams);
+      drConfig
+          .getActiveXClusterConfig()
+          .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
+
+      // Submit task to set up xCluster config.
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              bootstrapParams,
+              requestedTableInfoList,
+              mainTableIndexTablesMap,
+              sourceTableIdTargetTableIdMap,
+              createForm.pitrParams);
+    }
+
     UUID taskUUID = commissioner.submit(TaskType.CreateDrConfig, taskParams);
     CustomerTask.create(
         customer,
