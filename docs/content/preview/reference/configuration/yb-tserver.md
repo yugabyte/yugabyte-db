@@ -1165,12 +1165,6 @@ The time period, in milliseconds, after which the intents will be cleaned up if 
 
 Default: `14400000` (4 hours)
 
-##### --enable_update_local_peer_min_index
-
-Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
-
-Default: `false`
-
 ##### --cdcsdk_table_processing_limit_per_run
 
 Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
