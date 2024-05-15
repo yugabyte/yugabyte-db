@@ -60,11 +60,14 @@ public class UniverseActionsController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
-      notes = "Available since YBA version 2.2.0.0.",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.5.0.</b> Deprcated since"
+              + " YBA version 2.20.5.0. Use 'Create maintenance window' API instead.",
       value = "Configure alerts for a universe",
       nickname = "configureUniverseAlerts",
       response = YBPSuccess.class)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.5.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
