@@ -2392,32 +2392,22 @@ Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
-Result<master::DisableTabletSplittingResponsePB> ClusterAdminClient::DisableTabletSplitsInternal(
+Status ClusterAdminClient::DisableTabletSplitting(
     int64_t disable_duration_ms, const std::string& feature_name) {
   master::DisableTabletSplittingRequestPB req;
   req.set_disable_duration_ms(disable_duration_ms);
   req.set_feature_name(feature_name);
-  return InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req);
-}
-
-Status ClusterAdminClient::DisableTabletSplitting(
-    int64_t disable_duration_ms, const std::string& feature_name) {
-  const auto resp = VERIFY_RESULT(DisableTabletSplitsInternal(disable_duration_ms, feature_name));
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }
 
-Result<master::IsTabletSplittingCompleteResponsePB>
-    ClusterAdminClient::IsTabletSplittingCompleteInternal(
-    bool wait_for_parent_deletion, const MonoDelta timeout) {
+Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
   master::IsTabletSplittingCompleteRequestPB req;
   req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req,
-      nullptr /* error_message */, timeout);
-}
-
-Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
-  const auto resp = VERIFY_RESULT(IsTabletSplittingCompleteInternal(wait_for_parent_deletion));
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }
@@ -2659,177 +2649,6 @@ Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
   return document;
 }
 
-bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
-          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
-         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
-         HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
-}
-
-Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
-    const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline) {
-  for (;;) {
-        auto last_snapshot_time = HybridTime::kMin;
-        {
-      RpcController rpc;
-      rpc.set_deadline(deadline);
-      master::ListSnapshotSchedulesRequestPB req;
-      master::ListSnapshotSchedulesResponsePB resp;
-      if (schedule_id) {
-        req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
-      }
-
-      RETURN_NOT_OK_PREPEND(
-          master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc),
-          "Failed to list snapshot schedules");
-
-      if (resp.has_error()) {
-        return StatusFromPB(resp.error().status());
-      }
-
-      if (resp.schedules().size() < 1) {
-        return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
-      }
-
-      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
-        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
-        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
-          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-        }
-      }
-      if (last_snapshot_time > restore_at) {
-        return STATUS_FORMAT(
-            IllegalState, "Cannot restore at $0, last snapshot: $1, snapshots: $2", restore_at,
-            last_snapshot_time, resp.schedules()[0].snapshots());
-      }
-        }
-        RpcController rpc;
-        rpc.set_deadline(deadline);
-        master::CreateSnapshotRequestPB req;
-        master::CreateSnapshotResponsePB resp;
-        req.set_schedule_id(schedule_id.data(), schedule_id.size());
-        RETURN_NOT_OK_PREPEND(
-            master_backup_proxy_->CreateSnapshot(req, &resp, &rpc), "Failed to create snapshot");
-        if (resp.has_error()) {
-      auto status = StatusFromPB(resp.error().status());
-      if (master::MasterError(status) == master::MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
-        std::this_thread::sleep_until(std::min(deadline, CoarseMonoClock::now() + 1s));
-        continue;
-      }
-      return status;
-        }
-        return FullyDecodeTxnSnapshotId(resp.snapshot_id());
-  }
-}
-
-Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
-  // TODO(Sanket): Eventually all of this logic needs to be moved
-  // to the master and exposed as APIs for the clients to consume.
-  const auto splitting_disabled_until =
-      CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
-  // Disable splitting and then wait for all pending splits to complete before
-  // starting restoration.
-  VERIFY_RESULT_PREPEND(
-      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
-      "Failed to disable tablet split before restore.");
-
-  while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
-        // Wait for existing split operations to complete.
-        const auto resp = VERIFY_RESULT_PREPEND(
-            IsTabletSplittingCompleteInternal(
-                true /* wait_for_parent_deletion */,
-                deadline - CoarseMonoClock::now() /* timeout */),
-            "Tablet splitting did not complete. Cannot restore.");
-        if (resp.is_tablet_splitting_complete()) {
-      break;
-        }
-        SleepFor(MonoDelta::FromMilliseconds(kPitrSplitDisableCheckFreqMs));
-  }
-
-  if (CoarseMonoClock::now() >= deadline) {
-        return STATUS(TimedOut, "Timed out waiting for tablet splitting to complete.");
-  }
-
-  // Return if we have used almost all of our time in waiting for splitting to complete,
-  // since we can't guarantee that another split does not start.
-  if (CoarseMonoClock::now() + MonoDelta::FromSeconds(3) >= splitting_disabled_until) {
-        return STATUS(
-            TimedOut, "Not enough time after disabling splitting to disable ", "splitting again.");
-  }
-
-  // Disable for kPitrSplitDisableDurationSecs again so the restore has the full amount of time with
-  // splitting disables. This overwrites the previous value since the feature_name is the same so
-  // overall the time is still kPitrSplitDisableDurationSecs.
-  VERIFY_RESULT_PREPEND(
-      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
-      "Failed to disable tablet split before restore.");
-
-  return Status::OK();
-}
-
-Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotScheduleDeprecated(
-    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
-  auto deadline = CoarseMonoClock::now() + timeout_;
-
-  // Disable splitting for the entire run of restore.
-  RETURN_NOT_OK(DisableTabletSplitsDuringRestore(deadline));
-
-  // Get the suitable snapshot to restore from.
-  auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
-
-  for (;;) {
-        RpcController rpc;
-        rpc.set_deadline(deadline);
-        master::ListSnapshotsRequestPB req;
-        req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-        master::ListSnapshotsResponsePB resp;
-        RETURN_NOT_OK_PREPEND(
-            master_backup_proxy_->ListSnapshots(req, &resp, &rpc), "Failed to list snapshots");
-        if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-        }
-        if (resp.snapshots().size() != 1) {
-      return STATUS_FORMAT(
-          IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
-        }
-        if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
-      if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
-        break;
-      }
-      return STATUS_FORMAT(IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
-        }
-        auto now = CoarseMonoClock::now();
-        if (now >= deadline) {
-      return STATUS_FORMAT(TimedOut, "Timed out to complete a snapshot $0", snapshot_id);
-        }
-        std::this_thread::sleep_until(std::min(deadline, now + 100ms));
-  }
-
-  RpcController rpc;
-  rpc.set_deadline(deadline);
-  RestoreSnapshotRequestPB req;
-  RestoreSnapshotResponsePB resp;
-  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-  req.set_restore_ht(restore_at.ToUint64());
-  RETURN_NOT_OK_PREPEND(
-      master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc), "Failed to restore snapshot");
-
-  if (resp.has_error()) {
-        return StatusFromPB(resp.error().status());
-  }
-
-  auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
-
-  rapidjson::Document document;
-  document.SetObject();
-
-  AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
-  AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
-
-  return document;
-}
-
 Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
@@ -2837,24 +2656,12 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   RpcController rpc;
   rpc.set_deadline(deadline);
   master::RestoreSnapshotScheduleRequestPB req;
-  master::RestoreSnapshotScheduleResponsePB resp;
   req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
   req.set_restore_ht(restore_at.ToUint64());
 
-  Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
-  if (!s.ok()) {
-    if (s.IsRemoteError() &&
-        rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
-      cout << "WARNING: fallback to RestoreSnapshotScheduleDeprecated." << endl;
-      return RestoreSnapshotScheduleDeprecated(schedule_id, restore_at);
-    }
-    RETURN_NOT_OK_PREPEND(
-        s, Format("Failed to restore snapshot from schedule: $0", schedule_id.ToString()));
-  }
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterBackupProxy::RestoreSnapshotSchedule, *master_backup_proxy_, req,
+      Format("Failed to restore snapshot from schedule: $0", schedule_id.ToString()).c_str()));
 
   auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
   auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
