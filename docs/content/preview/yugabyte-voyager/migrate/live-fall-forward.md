@@ -382,9 +382,10 @@ Create a new database user, and assign the necessary user permissions.
     1. Check the replica identity using the following query:
 
         ```sql
-        SELECT relname, relreplident
-        FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
     1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
@@ -392,13 +393,14 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         DO $$
         DECLARE
-          table_name_var text;
+          r Record;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
           LOOP
-            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
           END LOOP;
         END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
 1. Create user `ybvoyager` for the migration using the following command:
@@ -454,13 +456,14 @@ Create a new database user, and assign the necessary user permissions.
     ```sql
     DO $$
     DECLARE
-      cur_table text;
+       r Record;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
       LOOP
-        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
       END LOOP;
     END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
 1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
@@ -485,12 +488,13 @@ Create a new database user, and assign the necessary user permissions.
 
 1. Check that the replica identity is FULL (`f`) for all tables on the database.
 
-    1. Check the Replica identity for all the tables on the database as follows:
+    1. Check the replica identity using the following query:
 
         ```sql
-        SELECT relname, relreplident
-        FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
     1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
@@ -498,13 +502,14 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         DO $$
         DECLARE
-          table_name_var text;
+          r Record;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
           LOOP
-            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
           END LOOP;
         END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
 1. Create user `ybvoyager` for the migration using the following command:
@@ -554,18 +559,19 @@ Create a new database user, and assign the necessary user permissions.
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group> as follows:
+1. Transfer ownership of the tables to the role `replication_group` as follows:
 
     ```sql
     DO $$
     DECLARE
-      cur_table text;
+       r Record;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
       LOOP
-        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
       END LOOP;
     END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
 1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
@@ -914,10 +920,9 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 Manually, set up the source-replica database with the same schema as that of the source database with the following considerations:
 
-- The table names on the source-replica database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
 - Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [cutover to source-replica](#cutover-to-source-replica-optional).
 
-- Disable foreign key constraints and check constraints on the source-replica database.
+- For Oracle migrations, disable foreign key constraints and check constraints on the source-replica database.
 
 ### Export data from source
 
@@ -1053,25 +1058,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-snapshot-import true
 ```
 
-If any of the CREATE INDEX DDLs fail in the preceding command, drop the INVALID indexes on the target database using:
-
-```sql
-DO $$
-DECLARE
-  index_name text;
-BEGIN
-  FOR index_name IN (
-    SELECT indexrelid::regclass
-    FROM pg_index
-    WHERE indisvalid = false
-  )
-  LOOP
-    EXECUTE 'DROP INDEX ' || index_name;
-  END LOOP;
-END $$;
-```
-
-and then retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
+If any of the CREATE INDEX DDLs fail in the preceding command, retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
