@@ -441,6 +441,8 @@ void HandlePreParsedDollarLastN(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
 void HandlePreParsedDollarMakeArray(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
+void HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult);
 void HandlePreParsedDollarRange(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
 void HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
@@ -500,6 +502,8 @@ void ParseDollarLiteral(const bson_value_t *inputDocument,
 						AggregationExpressionData *data);
 void ParseDollarMakeArray(const bson_value_t *inputDocument,
 						  AggregationExpressionData *data);
+void ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data);

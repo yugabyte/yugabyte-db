@@ -9,6 +9,7 @@
  */
 
 #include <postgres.h>
+#include <math.h>
 #include <miscadmin.h>
 #include <nodes/pg_list.h>
 #include <utils/hsearch.h>
@@ -17,8 +18,10 @@
 #include "query/helio_bson_compare.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
+#include "types/decimal128.h"
 #include "utils/hashset_utils.h"
 #include "commands/commands_common.h"
+#include "utils/heap_utils.h"
 
 #include "planner/helio_planner.h"
 
@@ -99,6 +102,19 @@ typedef struct DollarMapArguments
 	AggregationExpressionData as;
 } DollarMapArguments;
 
+/* Struct that represents the parsed arguments to a $maxN / $minN expression. */
+typedef struct DollarMaxMinNArguments
+{
+	/* The array input to the $maxN or $minN expression. */
+	AggregationExpressionData input;
+
+	/* The maxn n: <numeric-expression>, the number of results from input array. */
+	AggregationExpressionData n;
+
+	/* This bool serves both maxn and minn. true: maxn; false: minn;*/
+	bool isMaxN;
+} DollarMaxMinNArguments;
+
 /* Struct that represents the parsed arguments to a $reduce expression. */
 typedef struct DollarReduceArguments
 {
@@ -162,7 +178,12 @@ static bool ProcessDollarObjectToArrayElement(bson_value_t *result,
 static bool ProcessDollarConcatArraysElement(bson_value_t *result,
 											 const bson_value_t *currentElement,
 											 bool isFieldPathExpression, void *state);
+static void ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedInput,
+								 bson_value_t *evaluatedLimit, bool isMaxN);
 static void ProcessDollarConcatArraysResult(bson_value_t *result, void *state);
+static void ParseDollarMaxMinN(const bson_value_t *argument,
+							   AggregationExpressionData *data,
+							   bool isMaxN);
 static pgbsonelement ParseElementFromObjectForArrayToObject(const bson_value_t *element);
 static pgbsonelement ParseElementFromArrayForArrayToObject(const bson_value_t *element);
 static void ParseInputDocumentForFirstAndLastN(const bson_value_t *inputDocument,
@@ -194,6 +215,8 @@ static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isFindMax);
 static void SetResultValueForDollarSumAvg(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isSum);
+static bool HeapSortComparatorMaxN(const void *first, const void *second);
+static bool HeapSortComparatorMinN(const void *first, const void *second);
 static bson_value_t * ParseZipDefaultsArgument(int rowNum, bson_value_t
 											   evaluatedDefaultsArg, bool
 											   useLongestLengthArgBoolValue);
@@ -3105,6 +3128,294 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data)
 	ParseAggregationExpressionData(&arguments->initialValue, &initialValue);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $maxN/$minN expression. Via the new operator framework.
+ */
+void
+HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	DollarMaxMinNArguments *maxMinNArguments = arguments;
+	bool isMaxN = maxMinNArguments->isMaxN;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&maxMinNArguments->n, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedLimit = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&maxMinNArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInput = childExpression.value;
+
+	bson_value_t result;
+
+	ProcessDollarMaxMinN(&result, &evaluatedLimit, &evaluatedInput, isMaxN);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Parses the $maxN expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	ParseDollarMaxMinN(argument, data, true);
+}
+
+
+/* Parses the $minN expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	ParseDollarMaxMinN(argument, data, false);
+}
+
+
+/* Function that processes arguments for $maxN/MinN and calculate result.
+ * Validates if arguments are specified correctly
+ */
+static void
+ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
+					 bson_value_t *evaluatedInput, bool isMaxN)
+{
+	int64_t nValue;
+	if (!IsExpressionResultNullOrUndefined(evaluatedLimit) &&
+		BsonTypeIsNumber(evaluatedLimit->value_type))
+	{
+		nValue = BsonValueAsInt64(evaluatedLimit);
+
+		bool checkFixedInteger = true;
+		if (!IsBsonValue64BitInteger(evaluatedLimit, checkFixedInteger))
+		{
+			ereport(ERROR, (errcode(MongoLocation31109), errmsg(
+								"Can't coerce out of range value %s to long",
+								BsonValueToJsonForLogging(evaluatedLimit)),
+							errhint(
+								"Can't coerce out of range value to long")));
+		}
+
+		if (nValue < 1)
+		{
+			ereport(ERROR, (errcode(MongoLocation5787908), errmsg(
+								"'n' must be greater than 0, found %ld",
+								nValue),
+							errhint(
+								"'n' must be greater than 0, found %ld",
+								nValue)));
+		}
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoLocation5787902), errmsg(
+							"Value for 'n' must be of integral type, but found %s",
+							BsonValueToJsonForLogging(evaluatedLimit)),
+						errhint(
+							"Value for 'n' must be of integral type, but found %s",
+							BsonTypeName(evaluatedLimit->value_type))));
+	}
+
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(evaluatedInput))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	if (evaluatedInput->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation5788200)), errmsg(
+					"Input must be an array"));
+	}
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(evaluatedInput, &arrayIter);
+
+	int64_t nElementsInArray = BsonDocumentValueCountKeys(evaluatedInput);
+
+	if (nValue > nElementsInArray)
+	{
+		nValue = nElementsInArray;  /* n val result will at most be the size of the array */
+	}
+
+	HeapComparator comparator = isMaxN == true ? HeapSortComparatorMaxN :
+								HeapSortComparatorMinN;
+
+	BinaryHeap *valueHeap = AllocateHeap(nValue, comparator);
+
+	/* Insert all the elements into a heap */
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *next = (bson_iter_value(&arrayIter));
+
+		/* skip if value is null or undefined */
+		if (IsExpressionResultNullOrUndefined(next))
+		{
+			continue;
+		}
+
+		/* Heap is full, replace the top & heapify if the new value should be included instead */
+		if (valueHeap->heapSize == valueHeap->heapSpace)
+		{
+			const bson_value_t topHeap = TopHeap(valueHeap);
+			if (!valueHeap->heapComparator(next, &topHeap))
+			{
+				PopFromHeap(valueHeap);
+				PushToHeap(valueHeap, next);
+			}
+		}
+		else
+		{
+			PushToHeap(valueHeap, next);
+		}
+	}
+
+	int64_t numEntries = valueHeap->heapSize;
+
+	bson_value_t *valueArray = (bson_value_t *) palloc(
+		sizeof(bson_value_t) * numEntries);
+
+	/* Write the array in sorted order */
+	while (valueHeap->heapSize > 0)
+	{
+		valueArray[valueHeap->heapSize - 1] = PopFromHeap(valueHeap);
+	}
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+
+	/* Write the elements in cArray into result */
+	for (int64_t i = 0; i < numEntries; i++)
+	{
+		PgbsonArrayWriterWriteValue(&arrayWriter, &valueArray[i]);
+	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	*result = PgbsonArrayWriterGetValue(&arrayWriter);
+
+	pfree(valueArray);
+	FreeHeap(valueHeap);
+}
+
+
+/* Parses the $maxN/$minN expression specified in the bson_value_t and stores it in the data argument.
+ * $maxN is expressed as { "$maxN": { n : <numeric-expression>, input: <array-expression> } }
+ * $minN is expressed as { "$minN": { n : <numeric-expression>, input: <array-expression> } }
+ */
+static void
+ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data,
+				   bool isMaxN)
+{
+	const char *operatorName = isMaxN == true ? "$maxN" : "$minN";
+
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation5787900), errmsg(
+							"specification must be an object; found %s: %s", operatorName,
+							BsonValueToJsonForLogging(argument)),
+						errhint(
+							"specification must be an object; found opname:%s input type:%s",
+							operatorName, BsonTypeName(argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t count = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			count = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation5787901), errmsg(
+								"Unknown argument for 'n' operator: %s", key),
+							errhint(
+								"Unknown argument for 'n' operator: %s", key)));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5787907), errmsg(
+							"Missing value for 'input'")));
+	}
+
+	if (count.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation5787906), errmsg(
+							"Missing value for 'n'")));
+	}
+
+	DollarMaxMinNArguments *arguments = palloc0(sizeof(DollarMaxMinNArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->n, &count);
+
+	arguments->isMaxN = isMaxN;
+
+	if (IsAggregationExpressionConstant(&arguments->input) &&
+		IsAggregationExpressionConstant(&arguments->n))
+	{
+		ProcessDollarMaxMinN(&data->value, &arguments->n.value, &arguments->input.value,
+							 isMaxN);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/*
+ * Comparator function for heap utils. For MaxN, we need to build min-heap
+ */
+static bool
+HeapSortComparatorMaxN(const void *first,
+					   const void *second)
+{
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) < 0;
+}
+
+
+/*
+ * Comparator function for heap utils. For MinN, we need to build max-heap
+ */
+static bool
+HeapSortComparatorMinN(const void *first,
+					   const void *second)
+{
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) > 0;
 }
 
 

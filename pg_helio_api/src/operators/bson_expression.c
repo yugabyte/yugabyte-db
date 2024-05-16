@@ -253,6 +253,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_MAP },
 	{ "$max", NULL, &ParseDollarMax, &HandlePreParsedDollarMax,
 	  FEATURE_AGG_OPERATOR_MAX },
+	{ "$maxN", NULL, &ParseDollarMaxN, &HandlePreParsedDollarMaxMinN,
+	  FEATURE_AGG_OPERATOR_MAXN },
 	{ "$mergeObjects", &HandleDollarMergeObjects, NULL, NULL,
 	  FEATURE_AGG_OPERATOR_MERGEOBJECTS },
 	{ "$meta", &HandleDollarMeta, NULL, NULL, FEATURE_AGG_OPERATOR_META },
@@ -261,6 +263,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 
 	{ "$min", NULL, &ParseDollarMin, &HandlePreParsedDollarMin,
 	  FEATURE_AGG_OPERATOR_MIN },
+	{ "$minN", NULL, &ParseDollarMinN, &HandlePreParsedDollarMaxMinN,
+	  FEATURE_AGG_OPERATOR_MINN },
 	{ "$minute", &HandleDollarMinute, NULL, NULL, FEATURE_AGG_OPERATOR_MINUTE },
 	{ "$mod", &HandleDollarMod, NULL, NULL, FEATURE_AGG_OPERATOR_MOD },
 	{ "$month", &HandleDollarMonth, NULL, NULL, FEATURE_AGG_OPERATOR_MONTH },
