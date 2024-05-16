@@ -323,6 +323,7 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
       &proxy, table_name.namespace_type(), table_name.namespace_name(), MonoDelta::FromSeconds(60),
       MonoDelta::FromSeconds(600), timeout));
+  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
 
   auto table_creator = client_->NewTableCreator();
   client::YBSchemaBuilder b;
