@@ -1208,14 +1208,14 @@ This can happen in the following 2 scenarios:
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
-The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it otherwise you will lose data.
+The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it, otherwise you will lose data.
 
 ## Dropping a table part of the replication
 
-While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an appropriate error message indicating that the object is not found.
+While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an error message indicating that the object is not found.
 
-To avoid a connector failure or to resolve the failure, the recommended way is to follow these steps:
-1. Delete the connector which contains the dropped or the table to be dropped.
+To avoid or resolve a failure due to a dropped table, follow these steps:
+1. Delete the connector that contains the table that was dropped, or that you want to drop.
 2. Edit the configuration and remove the given table from `table.include.list`.
 3. Deploy a new connector with the updated configuration.
 

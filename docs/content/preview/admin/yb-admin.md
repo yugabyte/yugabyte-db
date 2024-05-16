@@ -1739,7 +1739,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `EXPLICIT`: Checkpointing type on the server.
-* *before_image_mode*: Record type indicating the server that the stream should send the before image too.
+* *before_image_mode*: Record type indicating the stream should include the before image.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -1747,7 +1747,7 @@ A successful operation of the above command returns a message with a DB stream I
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-For a full list of supported before image modes, see [before image modes](../explore/change-data-capture/cdc-get-started#before-image-modes).
+For a full list of supported before image modes, see [before image modes](../../explore/change-data-capture/cdc-get-started#before-image-modes).
 
 ##### Creating stream in EXPLICIT checkpointing mode
 

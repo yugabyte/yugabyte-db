@@ -266,7 +266,7 @@ With before image enabled, the update and delete records look like the following
 
 ### Before image modes
 
-YugabyteDB support multiple before image modes which can be leveraged by creating a stream ID accordingly.
+YugabyteDB supports multiple before image modes which can be leveraged by creating a stream ID accordingly.
 
 // TODO Vaibhav: Add information on complete before image modes.
 
@@ -341,11 +341,11 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 
-If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, one cannot deploy a new connector for this newly created table.
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, you cannot deploy a new connector for this newly created table.
 
 To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
 
