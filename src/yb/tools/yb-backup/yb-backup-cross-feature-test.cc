@@ -1917,12 +1917,13 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 
   auto client = VERIFY_RESULT(cluster_->CreateClient());
 
-  // Run all DDLs after pausing DDL rollback.
   RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
 
   if (inject_error) {
-    RETURN_NOT_OK(RunAllDdlsWithErrorInjection(&conn));
+    // Run one failed DDL after pausing DDL rollback.
+    RETURN_NOT_OK(RunOneDdlWithErrorInjection(&conn));
   } else {
+    // Run all DDLs after pausing DDL rollback.
     RETURN_NOT_OK(RunAllDdls(&conn));
   }
 
