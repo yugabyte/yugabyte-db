@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX common)
-set(YB_PCH_DEP_LIBS gmock gtest gutil opid_proto yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil yb_test_util yb_util)
 
 YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
@@ -41,6 +41,7 @@ YRPC_GENERATE(
       common.proto
       common_net.proto
       common_types.proto
+      opid.proto
       pgsql_protocol.proto
       redis_protocol.proto
       ql_protocol.proto
@@ -85,6 +86,7 @@ set(COMMON_SRCS
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
   key_encoder.cc
+  opid.cc
   pgsql_error.cc
   path-handler-util.cc
   placement_info.cc

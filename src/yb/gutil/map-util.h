@@ -81,6 +81,8 @@
 #include <vector>
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 //
 // Find*()
@@ -139,6 +141,14 @@ FindOrDieNoPrint(Collection& collection,  // NOLINT
   CHECK(it != collection.end()) << "Map key not found";
   return it->second;
 }
+
+#define FIND_OR_RESULT(collection, key) ({ \
+    Result<decltype(collection)::value_type::second_type> result = \
+        STATUS_FORMAT(NotFound, "Map key not found: $0", key); \
+    auto collection_it = collection.find(key); \
+    if (collection_it != collection.end()) \
+      result = collection_it->second; \
+    result;})
 
 // Returns a const reference to the value associated with the given key if it
 // exists, otherwise a const reference to the provided default value is

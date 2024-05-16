@@ -568,6 +568,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
 			   Oid oldRelfileNodeId)
 {
+	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
 	{
@@ -690,7 +691,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			if (OidIsValid(tablegroupId))
+			/*
+			 * If this is a table rewrite we don't need to emit this error as
+			 * this isn't a user supplied TABLEGROUP clause.
+			 */
+			if (!is_internal_rewrite && OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
@@ -723,7 +728,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	/*
 	 * Lazily create an underlying tablegroup in a colocated database if needed.
 	 */
-	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy
+		&& !is_internal_rewrite)
 	{
 		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
 		/* Default tablegroup doesn't exist, so create it. */
@@ -1927,18 +1933,6 @@ YBCGetReplicationSlot(const char *slot_name,
 }
 
 void
-YBCGetReplicationSlotStatus(const char *slot_name,
-							bool *active)
-{
-	char error_message[NAMEDATALEN + 64] = "";
-	snprintf(error_message, sizeof(error_message),
-			 "replication slot \"%s\" does not exist", slot_name);
-
-	HandleYBStatusWithCustomErrorForNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active), error_message);
-}
-
-void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;
@@ -1953,30 +1947,32 @@ YBCDropReplicationSlot(const char *slot_name)
 }
 
 void
-YBCGetTabletListToPollForStreamAndTable(const char *stream_id,
-										Oid relation_id,
-										YBCPgTabletCheckpoint **tablet_checkpoints,
-										size_t *numtablets)
+YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
+						size_t numrelations)
 {
-	HandleYBStatus(YBCPgGetTabletListToPollForStreamAndTable(
-		stream_id, MyDatabaseId, relation_id, tablet_checkpoints, numtablets));
+	Assert(MyDatabaseId);
+
+	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
+											 numrelations));
 }
 
 void
-YBCSetCDCTabletCheckpoint(const char *stream_id, const char *tablet_id,
-						  const YBCPgCDCSDKCheckpoint *checkpoint,
-						  uint64_t safe_time, bool is_initial_checkpoint)
+YBCDestroyVirtualWalForCDC()
 {
-	HandleYBStatus(YBCPgSetCDCTabletCheckpoint(
-		stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint));
+	HandleYBStatus(YBCPgDestroyVirtualWalForCDC());
 }
 
 void
-YBCGetCDCChanges(const char *stream_id,
-				 const char *tablet_id,
-				 const YBCPgCDCSDKCheckpoint *checkpoint,
-				 YBCPgChangeRecordBatch **record_batch)
+YBCGetCDCConsistentChanges(const char *stream_id,
+						   YBCPgChangeRecordBatch **record_batch)
 {
-	HandleYBStatus(
-		YBCPgGetCDCChanges(stream_id, tablet_id, checkpoint, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+}
+
+void
+YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
+					   XLogRecPtr confirmed_flush, YBCPgXLogRecPtr *restart_lsn)
+{
+	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
+											confirmed_flush, restart_lsn));
 }

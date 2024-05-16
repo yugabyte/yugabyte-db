@@ -51,9 +51,9 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((a)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
@@ -64,9 +64,9 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
                                QUERY PLAN
-------------------------------------------------------------------------
+-------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((a)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
@@ -106,9 +106,9 @@ SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((a)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
@@ -119,9 +119,9 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
                                QUERY PLAN
-------------------------------------------------------------------------
+-------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((a)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
 SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
@@ -164,9 +164,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
@@ -177,9 +177,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN
-------------------------------------------------------------------------
+-------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
@@ -225,7 +225,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
    Heap Fetches: 0
 (3 rows)
 
@@ -239,7 +239,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
    Heap Fetches: 0
 (3 rows)
 
@@ -282,9 +282,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
@@ -295,9 +295,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN
-------------------------------------------------------------------------
+-------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
@@ -346,7 +346,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                 QUERY PLAN
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
    Heap Fetches: 0
 (3 rows)
 
@@ -360,7 +360,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
                                 QUERY PLAN
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
    Heap Fetches: 0
 (3 rows)
 
@@ -403,9 +403,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
@@ -416,9 +416,9 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
                                QUERY PLAN
-------------------------------------------------------------------------
+-------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) = '1'::double precision)
+   Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
@@ -464,9 +464,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 -- cannot use a hash index on cbrt for a cbrt range clause
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
@@ -522,9 +522,9 @@ SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
 -- cannot use a hash index on cbrt for a cbrt range clause
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
                                 QUERY PLAN
---------------------------------------------------------------------------
+---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
-   Remote Filter: (cbrt((h)::double precision) < '1.2'::double precision)
+   Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
 SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;

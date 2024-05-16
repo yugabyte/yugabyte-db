@@ -179,6 +179,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
     "Sets the maximum number of transactions for which to return rows in pg_locks.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
@@ -253,6 +256,15 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -417,9 +429,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
-  metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
 #endif
+  metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pg_hint_plan");
 
   vector<string> lines;

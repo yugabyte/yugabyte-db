@@ -49,8 +49,6 @@ service PgClientService {
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
-  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
-      returns (PgGetReplicationSlotStatusResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
@@ -99,6 +97,10 @@ service PgClientService {
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
 
+  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
+  // So GetReplicationSlot should be used everywhere.
+  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
+      returns (PgGetReplicationSlotStatusResponsePB);
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
@@ -392,6 +394,9 @@ message PgGetLockStatusRequestPB {
 
   // Limit number of old transactions whose lock info is retrieved.
   uint32 max_num_txns = 4;
+
+  // Limit number of locks returned per transaction at each tablet
+  uint32 max_txn_locks_per_tablet = 5;
 }
 
 message PgGetLockStatusResponsePB {
@@ -413,10 +418,6 @@ message PgGetLockStatusResponsePB {
   map<string, TransactionList> transactions_by_node = 3;
 }
 
-message PgGetReplicationSlotStatusRequestPB {
-  string replication_slot_name = 1;
-}
-
 message PgGetReplicationSlotRequestPB {
   string replication_slot_name = 1;
 
@@ -431,6 +432,10 @@ message PgGetReplicationSlotResponsePB {
 enum ReplicationSlotStatus {
   ACTIVE = 0;
   INACTIVE = 1;
+}
+
+message PgGetReplicationSlotStatusRequestPB {
+  string replication_slot_name = 1;
 }
 
 message PgGetReplicationSlotStatusResponsePB {
@@ -478,6 +483,9 @@ message PgReplicationSlotInfoPB {
   bytes stream_id = 2;
   uint32 database_oid = 3;
   ReplicationSlotStatus replication_slot_status = 4;
+  uint64 confirmed_flush_lsn = 5;
+  uint64 restart_lsn = 6;
+  uint32 xmin = 7;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -808,12 +816,13 @@ message PgActiveSessionHistoryRequestPB {
   bool fetch_tserver_states = 1;
   bool fetch_flush_and_compaction_states = 2;
   bool fetch_cql_states = 3;
-  bool ignore_ash_calls = 4;
+  bool ignore_ash_and_perform_calls = 4;
   bool fetch_raft_log_appender_states = 5;
 }
 
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
+  uint32 component = 2;
 }
 
 message PgActiveSessionHistoryResponsePB {

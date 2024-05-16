@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -31,20 +32,26 @@ import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
-import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
@@ -65,14 +72,20 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock KubernetesClient client;
 
   @Mock
-  MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
+  MixedOperation<
+          YBUniverse,
+          KubernetesResourceList<YBUniverse>,
+          io.fabric8.kubernetes.client.dsl.Resource<YBUniverse>>
       ybUniverseClient;
 
   @Mock
-  NonNamespaceOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
+  NonNamespaceOperation<
+          YBUniverse,
+          KubernetesResourceList<YBUniverse>,
+          io.fabric8.kubernetes.client.dsl.Resource<YBUniverse>>
       inNamespaceYBUClient;
 
-  @Mock Resource<YBUniverse> ybUniverseResource;
+  @Mock io.fabric8.kubernetes.client.dsl.Resource<YBUniverse> ybUniverseResource;
   @Mock RuntimeConfGetter confGetter;
   @Mock RuntimeConfGetter confGetterForOperatorUtils;
   @Mock YBInformerFactory informerFactory;
@@ -352,6 +365,93 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertFalse(Universe.maybeGet(oldUniverse.getUniverseUUID()).isPresent());
   }
 
+  @Test
+  public void testCreateAutoProviderFailStatusUpdate() throws Exception {
+    String universeName = "test-provider-create-fail";
+    YBUniverse ybUniverse = createYbUniverse(universeName);
+    ybUniverse.getSpec().setProviderName("");
+    KubernetesProviderFormData providerData = new KubernetesProviderFormData();
+    Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
+    Mockito.when(
+            cloudProviderHandler.createKubernetes(
+                any(Customer.class), any(KubernetesProviderFormData.class)))
+        .thenThrow(new RuntimeException());
+    try {
+      UniverseDefinitionTaskParams taskParams =
+          ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    } catch (Exception e) {
+    }
+    Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_CREATING));
+  }
+
+  @Test
+  public void testMultipleSpecUpdatePickEditFirst() throws Exception {
+    String universeName = "test-multiple-spec-updates";
+    YBUniverse ybUniverse = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    // Update spec
+    ybUniverse.getSpec().getDeviceInfo().setVolumeSize(20L);
+    KubernetesOverrides ko = new KubernetesOverrides();
+    Map<String, String> nodeSelectorMap = new HashMap<>();
+    nodeSelectorMap.put("foo", "bar");
+    ko.setNodeSelector(nodeSelectorMap);
+    ybUniverse.getSpec().setKubernetesOverrides(ko);
+
+    // Call edit
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+    // Verify update is called
+    ArgumentCaptor<UniverseDefinitionTaskParams> uDTCaptor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(any(Customer.class), any(Universe.class), uDTCaptor.capture());
+    assertTrue(uDTCaptor.getValue().getPrimaryCluster().userIntent.deviceInfo.volumeSize == 20L);
+    // Verify upgrade handler is not called
+    Mockito.verifyNoInteractions(upgradeUniverseHandler);
+  }
+
+  @Test
+  public void testParseKubernetesOverridesNoAdditionalProperty() {
+    KubernetesOverrides overrides = createKubernetesOverrides();
+
+    String overridesString = ybUniverseReconciler.getKubernetesOverridesString(overrides);
+    assertTrue(overridesString.length() > 0);
+  }
+
+  @Test
+  public void testParseKubernetesOverridesWithAdditionalProperty() {
+    KubernetesOverrides overrides = createKubernetesOverrides();
+
+    Map<String, Object> additionalPropertiesMap = new HashMap<>();
+    additionalPropertiesMap.put("foo", "bar");
+    overrides.setAdditionalProperties(additionalPropertiesMap);
+
+    String overridesString = ybUniverseReconciler.getKubernetesOverridesString(overrides);
+    assertTrue(overridesString.length() > 0);
+    assertTrue(overridesString.contains("foo") && overridesString.contains("bar"));
+  }
+
+  private KubernetesOverrides createKubernetesOverrides() {
+    KubernetesOverrides overrides = new KubernetesOverrides();
+    Map<String, String> nodeSelectorMap = new HashMap<>();
+    nodeSelectorMap.put("label", "selector");
+    overrides.setNodeSelector(nodeSelectorMap);
+
+    Resource resource = new Resource();
+    Limits limit = new Limits();
+    limit.setCpu(new IntOrString(new Integer(4)));
+    Master masterResource = new Master();
+    masterResource.setLimits(limit);
+    resource.setMaster(masterResource);
+    overrides.setResource(resource);
+
+    return overrides;
+  }
+
   private YBUniverse createYbUniverse() {
     return createYbUniverse(null);
   }
@@ -380,6 +480,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setYcqlPassword(null);
     spec.setProviderName(defaultProvider.getName());
     DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.setVolumeSize(10L);
     spec.setDeviceInfo(deviceInfo);
 
     universe.setMetadata(metadata);

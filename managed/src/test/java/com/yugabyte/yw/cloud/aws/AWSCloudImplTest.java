@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -566,12 +567,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testPrivateKeyAlgo() {
-    RuntimeException re =
-        assertThrows(
-            RuntimeException.class, () -> awsCloudImpl.getPrivateKeyAlgoOrBadRequest("random_key"));
-    assertEquals("Could not fetch private key algorithm", re.getMessage());
-    assertEquals(
-        "RSA",
-        awsCloudImpl.getPrivateKeyAlgoOrBadRequest(CertificateHelperTest.getServerKeyContent()));
+    assertFalse(CertificateHelper.isValidRsaKey("random_key"));
+    assertTrue(CertificateHelper.isValidRsaKey(CertificateHelperTest.getServerKeyContent()));
   }
 }

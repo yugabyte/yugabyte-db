@@ -96,6 +96,8 @@ The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on
    - [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
    - [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
 
+1. Use a storage class based on remote volumes (like cloud provider disks) rather than [local storage volumes attached directly to the kubernetes node](https://kubernetes.io/docs/concepts/storage/volumes/#local) or [local ephemeral volumes](https://kubernetes.io/docs/concepts/storage/ephemeral-volumes/). Local storage provides great performance, but the data is not replicated and can be lost if the node fails or undergoes maintenance, requiring a full remote bootstrap of YugabyteDB data within a pod. Local storage is [not recommended for production use cases](../../../../deploy/kubernetes/best-practices/#local-versus-remote-ssds).
+   
 1. Use an SSD-based storage class and an extent-based file system (XFS), as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
 
 1. Set the `allowVolumeExpansion` to `true`. This enables you to expand the volumes later by performing additional steps if you run out of disk space. Note that some storage providers might not support this setting. For more information, see [Expanding persistent volumes claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims).

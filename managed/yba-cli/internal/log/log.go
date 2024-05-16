@@ -26,7 +26,7 @@ func SetFormatter() {
 func SetDebugFormatter() {
 	logrus.SetReportCaller(true)
 	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableColors:          viper.GetBool("no-color"),
+		DisableColors:          viper.GetBool("disable-color"),
 		DisableLevelTruncation: true,
 		CallerPrettyfier: func(f *runtime.Frame) (string, string) {
 			return "", fmt.Sprintf("%s:%d", filepath.Base(f.File), f.Line)

@@ -16,7 +16,6 @@ import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -76,12 +75,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate SSH private key content
     try {
       if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
-        for (AccessKey accessKey : provider.getAllAccessKeys()) {
-          String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
-          if (!awsCloudImpl.getPrivateKeyAlgoOrBadRequest(privateKeyContent).equals("RSA")) {
-            throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
-          }
-        }
+        validatePrivateKey(provider.getAllAccessKeys());
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {

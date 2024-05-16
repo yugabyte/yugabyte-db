@@ -40,6 +40,8 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
@@ -58,8 +60,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"

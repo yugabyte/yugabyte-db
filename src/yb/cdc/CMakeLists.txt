@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX cdc)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # cdc_service_proto
@@ -62,8 +61,7 @@ set(CDC_YRPC_LIBS
   yrpc
   yb_common_proto
   protobuf
-  master_proto
-  opid_proto)
+  master_proto)
 ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS} cdc_error.cc
   DEPS ${CDC_YRPC_LIBS}

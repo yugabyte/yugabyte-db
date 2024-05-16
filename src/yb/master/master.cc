@@ -40,7 +40,7 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/util/logging.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 
 #include "yb/common/pg_catversions.h"
@@ -55,7 +55,6 @@
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_backup.service.h"
-#include "yb/master/master_backup_service.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
@@ -71,7 +70,7 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/rpc_server.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/hybrid_clock.h"
 
 
@@ -104,7 +103,6 @@ DEFINE_NON_RUNTIME_int32(master_backup_svc_queue_length, 50,
              "RPC queue length for master backup service");
 TAG_FLAG(master_backup_svc_queue_length, advanced);
 
-DECLARE_string(cert_node_filename);
 DECLARE_bool(master_join_existing_universe);
 
 METRIC_DEFINE_entity(cluster);
@@ -293,10 +291,8 @@ Status Master::RegisterServices() {
   });
 #endif
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_master_backup_svc_queue_length, std::make_shared<MasterBackupServiceImpl>(this)));
-
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterBackupService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
@@ -629,7 +625,20 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
+CloneStateManager* Master::clone_state_manager() const {
+  return catalog_manager_->clone_state_manager();
+}
+
+
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
+
+const std::shared_future<client::YBClient*>& Master::client_future() const {
+  return async_client_init_->get_client_future();
+}
+
+const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() const {
+  return cdc_state_client_init_->get_client_future();
+}
 
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
@@ -683,8 +692,8 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
@@ -694,11 +703,9 @@ Status Master::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  return server::ReloadSecureContextKeysAndCertificates(
-        secure_context_.get(),
-        fs_manager_->GetDefaultRootDir(),
-        server::SecureContextType::kInternal,
-        options_.HostsString());
+  return rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+      options_.HostsString());
 }
 
 std::string Master::GetCertificateDetails() {

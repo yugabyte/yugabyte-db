@@ -2574,7 +2574,13 @@ YbRunWithPrefetcher(
 	static const size_t kStartersCount = lengthof(prefetcher_starters);
 
 	size_t starter_idx = kStartersCount - 1;
+	/*
+	 * YB_TODO: Decide whether skipping this block during IsBinaryUpgrade is the
+	 * right solution to avoid catalog refreshes during pg_upgrade, which can
+	 * confuse various DDLs we do on the PG15 catalog during the upgrade.
+	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
+		!IsBinaryUpgrade &&
 		*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		starter_idx = 0;

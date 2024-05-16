@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex opid_proto)
+set(YB_PCH_DEP_LIBS boost_regex)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs

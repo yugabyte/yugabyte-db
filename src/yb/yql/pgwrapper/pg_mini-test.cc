@@ -111,6 +111,9 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
 
@@ -392,7 +395,8 @@ TEST_F(PgMiniTest, Simple) {
 class PgMiniAsh : public PgMiniTestSingleNode {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_ash) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     PgMiniTestSingleNode::SetUp();
   }
 };

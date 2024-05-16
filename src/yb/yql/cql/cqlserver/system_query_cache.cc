@@ -210,7 +210,7 @@ MonoDelta SystemQueryCache::GetStaleness() {
 
 void SystemQueryCache::RefreshCache() {
   VLOG(1) << "Refreshing system query cache";
-  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled());
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
   auto new_cache = std::make_unique<std::unordered_map<std::string, RowsResult::SharedPtr>>();
   for (const auto& query : queries_) {
     Status status;

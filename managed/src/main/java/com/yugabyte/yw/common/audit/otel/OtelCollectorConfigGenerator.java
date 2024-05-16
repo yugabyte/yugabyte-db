@@ -51,12 +51,14 @@ public class OtelCollectorConfigGenerator {
       Provider provider,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       AuditLogConfig auditLogConfig,
-      String logLinePrefix) {
+      String logLinePrefix,
+      int otelColMetricsPort) {
     Path path =
         fileHelperService.createTempFile(
             "otel_collector_config_" + nodeParams.getUniverseUUID() + "_" + nodeParams.nodeUuid,
             ".yml");
-    generateConfigFile(nodeParams, provider, userIntent, auditLogConfig, logLinePrefix, path);
+    generateConfigFile(
+        nodeParams, provider, userIntent, auditLogConfig, logLinePrefix, path, otelColMetricsPort);
     return path;
   }
 
@@ -66,7 +68,8 @@ public class OtelCollectorConfigGenerator {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       AuditLogConfig auditLogConfig,
       String logLinePrefix,
-      Path path) {
+      Path path,
+      int otelColMetricsPort) {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
       Yaml yaml = new Yaml(new SkipNullRepresenter());
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
@@ -99,6 +102,10 @@ public class OtelCollectorConfigGenerator {
       telemetryConfig.setLogs(logsConfig);
       logsConfig.setOutput_paths(
           ImmutableList.of(provider.getYbHome() + "/otel-collector/logs/otel-collector.logs"));
+      OtelCollectorConfigFormat.MetricsConfig metricsConfig =
+          new OtelCollectorConfigFormat.MetricsConfig();
+      telemetryConfig.setMetrics(metricsConfig);
+      metricsConfig.setAddress("0.0.0.0:" + otelColMetricsPort);
       collectorConfigFormat.setService(service);
 
       // Exporters

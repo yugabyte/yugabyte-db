@@ -15,6 +15,12 @@ func (a *AuthAPIClient) ListUniverses() (
 	return a.APIClient.UniverseManagementApi.ListUniverses(a.ctx, a.CustomerUUID)
 }
 
+// GetUniverse fetches of universe associated with the universeUUID
+func (a *AuthAPIClient) GetUniverse(uUUID string) (
+	ybaclient.UniverseManagementApiApiGetUniverseRequest) {
+	return a.APIClient.UniverseManagementApi.GetUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // DeleteUniverse deletes universe associated with the universeUUID
 func (a *AuthAPIClient) DeleteUniverse(uUUID string) (
 	ybaclient.UniverseManagementApiApiDeleteUniverseRequest) {
@@ -32,6 +38,13 @@ func (a *AuthAPIClient) UpgradeSoftware(uUUID string) (
 	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest,
 ) {
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// RestartUniverse for restart operation
+func (a *AuthAPIClient) RestartUniverse(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest,
+) {
+	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create

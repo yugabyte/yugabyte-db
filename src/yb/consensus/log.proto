@@ -36,9 +36,9 @@ package yb.log;
 option java_package = "org.yb.log";
 
 import "yb/common/common.proto";
+import "yb/common/opid.proto";
 import "yb/consensus/consensus.proto";
 import "yb/rpc/lightweight_message.proto";
-import "yb/util/opid.proto";
 
 // ===========================================================================
 //  Log Entries - Log specific messages + single node messages

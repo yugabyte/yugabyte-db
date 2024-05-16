@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -79,9 +78,7 @@ public class CheckUpgrade extends ServerSubTaskBase {
       String releasePath = appConfig.getString(Util.YB_RELEASES_PATH);
       if (!gFlagsValidation.checkGFlagFileExists(
           releasePath, newVersion, Util.AUTO_FLAG_FILENAME)) {
-        ReleaseMetadata rm = releaseManager.getReleaseByVersion(newVersion);
-        try (InputStream inputStream =
-            releaseManager.getTarGZipDBPackageInputStream(newVersion, rm)) {
+        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(newVersion)) {
           gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
               inputStream,
               newVersion,

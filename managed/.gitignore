@@ -54,6 +54,12 @@ src/public/*
 
 client/*/v1
 client/*/v2
+!client/java/v1
+!client/java/v2
+client/java/v1/*
+client/java/v2/*
+!client/java/v1/pom.xml
+!client/java/v2/pom.xml
 client/*/generated
 lib
 

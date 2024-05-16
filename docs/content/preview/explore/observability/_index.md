@@ -13,7 +13,7 @@ menu:
   preview:
     identifier: explore-observability
     parent: explore
-    weight: 310
+    weight: 299
 type: indexpage
 showRightNav: true
 ---
@@ -32,28 +32,28 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 
 - [Throughput and latency metrics](../../launch-and-manage/monitor-and-alert/metrics/throughput)
 - [Connection metrics](../../launch-and-manage/monitor-and-alert/metrics/connections)
-- [Cache and storage metrics](../../launch-and-manage/monitor-and-alert/metrics/cache-storage)
+- [Cache and storage subsystem metrics](../../launch-and-manage/monitor-and-alert/metrics/cache-storage)
 - [Raft and distributed system metrics](../../launch-and-manage/monitor-and-alert/metrics/raft-dst)
 - [Replication metrics](../../launch-and-manage/monitor-and-alert/metrics/replication)
 - [YB-Master metrics](../../launch-and-manage/monitor-and-alert/metrics/ybmaster)
 
 ## Alerting and monitoring
 
-Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
+Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
 
-{{<note>}}
+{{<tip>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
-{{</note>}}
+{{</tip>}}
 
 ## Visualization and analysis
 
-YugabyteDB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port [15433](http://127.0.0.1:15433/performance/metrics?interval=lasthour&nodeName=all&showGraph=operations&showGraph=latency&showGraph=cpuUsage&showGraph=diskUsage&showGraph=totalLiveNodes) that displays different charts for various metrics.
+YugabyteDB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port 15433 that displays different charts for various metrics.
 
-You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
+You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
-{{<note>}}
+{{<tip>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
-{{</note>}}
+{{</tip>}}
 
 ## Logging
 
@@ -61,7 +61,14 @@ Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/
 
 ## Query-level metrics
 
-View live queries using the [pg_stat_activity](../query-1-performance/pg-stat-activity) view, and get query statistics (such as the _time spent by a query_) using the [pg_stat_statements](../query-1-performance/pg-stat-statements) view. Use these query-level metrics to tune query performance.
+The following table describes views in YSQL you can use to monitor and tune query performance.
+
+| View | Description |
+| :--- | :---------- |
+| [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
+| [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
+| [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
+| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
@@ -79,6 +86,30 @@ To get more details about the various steps of a query execution, use the [Expla
       body="Create dashboards using Prometheus metrics to understand the health and performance of YugabyteDB clusters."
       href="./grafana-dashboard/grafana/"
       icon="fa-solid fa-chart-bar">}}
+
+  {{<index/item
+      title="View live queries with pg_stat_activity"
+      body="Troubleshoot problems and identify long-running queries with the activity view."
+      href="./pg-stat-activity/"
+      icon="/images/section_icons/manage/diagnostics.png">}}
+
+  {{<index/item
+      title="View terminated queries with yb_terminated_queries"
+      body="Identify terminated queries with the get queries function."
+      href="./yb-pg-stat-get-queries/"
+      icon="/images/section_icons/explore/monitoring.png">}}
+
+  {{<index/item
+      title="View COPY status with pg_stat_progress_copy"
+      body="Get the COPY command status, number of tuples processed, and other COPY progress reports with this view."
+      href="./pg-stat-progress-copy/"
+      icon="/images/section_icons/explore/json_documents.png">}}
+
+  <!-- {{<index/item
+      title="Get lock information insights with pg_locks"
+      body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
+      href="./pg-locks/"
+      icon="/images/section_icons/explore/secure.png">}} -->
 
   {{<index/item
       title="Query statistics using pg_stat_statements"

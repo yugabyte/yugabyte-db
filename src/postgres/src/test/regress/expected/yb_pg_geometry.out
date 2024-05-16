@@ -5268,12 +5268,12 @@ EXPLAIN (COSTS OFF)
 -- YB note: avoid selecting ybsort column.
 SELECT f1 FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
-                     QUERY PLAN                      
------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Sort
    Sort Key: (area(f1))
    ->  Seq Scan on circle_tbl
-         Remote Filter: (f1 && '<(1,-2),1>'::circle)
+         Storage Filter: (f1 && '<(1,-2),1>'::circle)
 (4 rows)
 
 -- YB note: avoid selecting ybsort column.
@@ -5303,12 +5303,12 @@ EXPLAIN (COSTS OFF)
 -- YB note: avoid selecting ybsort column.
 SELECT f1 FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
-                          QUERY PLAN                           
----------------------------------------------------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
  Sort
    Sort Key: ((poly_center(f1))[0])
    ->  Seq Scan on polygon_tbl
-         Remote Filter: (f1 @> '((1,1),(2,2),(2,1))'::polygon)
+         Storage Filter: (f1 @> '((1,1),(2,2),(2,1))'::polygon)
 (4 rows)
 
 -- YB note: avoid selecting ybsort column.

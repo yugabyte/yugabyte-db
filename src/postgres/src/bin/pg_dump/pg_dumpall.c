@@ -813,11 +813,21 @@ dumpRoles(PGconn *conn)
 	i_is_current_user = PQfnumber(res, "is_current_user");
 
 	if (PQntuples(res) > 0)
+	{
 		fprintf(OPF, "--\n-- Roles\n--\n\n");
+
+		if (include_yb_metadata)
+			fprintf(OPF, "-- Set variable ignore_existing_roles (if not already set)\n"
+						 "\\if :{?ignore_existing_roles}\n"
+						 "\\else\n"
+						 "\\set ignore_existing_roles false\n"
+						 "\\endif\n\n");
+	}
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		const char *rolename;
+		char	   *frolename;
 		Oid			auth_oid;
 
 		auth_oid = atooid(PQgetvalue(res, i, i_oid));
@@ -840,6 +850,7 @@ dumpRoles(PGconn *conn)
 							  auth_oid);
 		}
 
+		frolename = pg_strdup(fmtId(rolename));
 		/*
 		 * We dump CREATE ROLE followed by ALTER ROLE to ensure that the role
 		 * will acquire the right properties even if it already exists (ie, it
@@ -850,8 +861,25 @@ dumpRoles(PGconn *conn)
 		 */
 		if (!binary_upgrade ||
 			strcmp(PQgetvalue(res, i, i_is_current_user), "f") == 0)
-			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", fmtId(rolename));
-		appendPQExpBuffer(buf, "ALTER ROLE %s WITH", fmtId(rolename));
+		{
+			if (include_yb_metadata)
+				appendPQExpBuffer(buf,
+					"\\set role_exists false\n"
+					"\\if :ignore_existing_roles\n"
+					"    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')"
+					" AS role_exists \\gset\n"
+					"\\endif\n"
+					"\\if :role_exists\n"
+					"    \\echo 'Role %s already exists.'\n"
+					"\\else\n    ", frolename, frolename);
+
+			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", frolename);
+
+			if (include_yb_metadata)
+				appendPQExpBufferStr(buf, "\\endif\n");
+		}
+
+		appendPQExpBuffer(buf, "ALTER ROLE %s WITH", frolename);
 
 		if (strcmp(PQgetvalue(res, i, i_rolsuper), "t") == 0)
 			appendPQExpBufferStr(buf, " SUPERUSER");
@@ -907,7 +935,7 @@ dumpRoles(PGconn *conn)
 
 		if (!no_comments && !PQgetisnull(res, i, i_rolcomment))
 		{
-			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", fmtId(rolename));
+			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", frolename);
 			appendStringLiteralConn(buf, PQgetvalue(res, i, i_rolcomment), conn);
 			appendPQExpBufferStr(buf, ";\n");
 		}
@@ -917,7 +945,11 @@ dumpRoles(PGconn *conn)
 							 "ROLE", rolename,
 							 buf);
 
+		if (include_yb_metadata)
+			appendPQExpBufferStr(buf, "\n");
+
 		fprintf(OPF, "%s", buf->data);
+		free(frolename);
 	}
 
 	/*

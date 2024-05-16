@@ -53,12 +53,12 @@
 /* DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
-/* DocDB Remote filter cost */
+/* DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */
 #define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per

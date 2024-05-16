@@ -121,7 +121,9 @@ public class TokenAuthenticator extends Action.Simple {
         } else {
           email = (String) profileManager.get(true).get().getAttribute(emailAttr);
         }
-        user = Users.getByEmail(email.toLowerCase());
+        if (email != null) {
+          user = Users.getByEmail(email.toLowerCase());
+        }
       }
       if (user == null) {
         // Defaulting to regular flow to support dual login.

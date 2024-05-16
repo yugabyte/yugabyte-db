@@ -1260,7 +1260,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 
 				forthree(opid, rcexpr->opnos,
 						 larg, rcexpr->largs,
-						 rarg, rcexpr->rargs)
+						 rarg, castNode(List, rcexpr->rargs))
 				{
 					Oid			funcid = get_opcode(lfirst_oid(opid));
 

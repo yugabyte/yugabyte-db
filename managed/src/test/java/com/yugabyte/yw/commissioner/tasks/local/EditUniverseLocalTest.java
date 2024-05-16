@@ -33,7 +33,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(2, 30);
+    return new Pair<>(2, 30);
   }
 
   @Test
@@ -62,6 +62,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
@@ -88,6 +89,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.placementInfo.azStream().limit(1).forEach(az -> az.uuid = az4.getUuid());
@@ -126,6 +128,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
               removingAz.set(az.uuid);
               az.uuid = az4.getUuid();
             });
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -246,8 +249,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     rrIntent.numNodes = 3;
     doAddReadReplica(universe, rrIntent);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     verifyYSQL(universe, true);
-
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getReadOnlyClusters().get(0);
     cluster.userIntent.replicationFactor--;

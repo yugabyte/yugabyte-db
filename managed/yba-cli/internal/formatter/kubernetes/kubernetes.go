@@ -29,7 +29,9 @@ const (
 	// Region4 provides header for K8S Region Cloud Info
 	Region4 = "table {{.KubernetesImageRegistry}}\t{{.KubernetesProvider}}\t{{.KubernetesPullSecret}}"
 	// Region5 provides header for K8S Region Cloud Info
-	Region5 = "table {{.KubernetesPullSecretName}}\t{{.KubernetesStorageClass}}\t{{.Overrides}}"
+	Region5 = "table {{.KubernetesPullSecretName}}\t{{.KubernetesStorageClass}}"
+	// Region6 provides header for K8S Region Cloud Info
+	Region6 = "table {{.Overrides}}"
 
 	certManagerClusterIssuerHeader = "Certificate Manager Cluster Issuer"
 	certManagerIssuerHeader        = "Certificate Manager Issuer"

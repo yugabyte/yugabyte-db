@@ -10,6 +10,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
@@ -47,8 +50,10 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -162,6 +167,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected YbcManager mockYbcManager;
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
+  protected CloudUtilFactory mockCloudUtilFactory;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -178,6 +184,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
+  protected ReleaseManager.ReleaseMetadata releaseMetadata;
+  protected ReleaseContainer releaseContainer;
 
   @Before
   public void setUp() {
@@ -198,6 +206,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
+    mockCloudUtilFactory = mock(CloudUtilFactory.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -226,6 +235,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
+    when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
+    releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
+    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
+    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
   @Override
@@ -739,5 +752,27 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     Optional<String>[] resp = response.toArray(new Optional[0]);
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
         .thenReturn(Optional.of(oldVersion), resp);
+  }
+
+  protected void mockLocaleCheckResponse(NodeUniverseManager mockNodeUniverseManager) {
+    List<String> command = new ArrayList<>();
+    command.add("locale");
+    command.add("-a");
+    command.add("|");
+    command.add("grep");
+    command.add("-E");
+    command.add("-q");
+    command.add("\"en_US.utf8|en_US.UTF-8\"");
+    command.add("&&");
+    command.add("echo");
+    command.add("\"Locale is present\"");
+    command.add("||");
+    command.add("echo");
+    command.add("\"Locale is not present\"");
+    ShellResponse shellResponse2 = new ShellResponse();
+    shellResponse2.message = "Command output:\\nLocale is present";
+    shellResponse2.code = 0;
+    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+        .thenReturn(shellResponse2);
   }
 }

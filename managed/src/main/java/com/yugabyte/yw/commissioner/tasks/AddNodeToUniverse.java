@@ -56,12 +56,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    Universe universe = getUniverse();
+  private void runBasicChecks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-
     if (currentNode == null) {
       String msg =
           String.format(
@@ -72,7 +68,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
     // Validate state check for Action only on first try as the task could fail on various
     // intermediate states
-    if (isFirstTry) {
+    if (isFirstTry()) {
       currentNode.validateActionOnState(NodeActionType.ADD);
     } else {
       log.info(
@@ -90,6 +86,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
       }
     }
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
   }
 
   private void configureNodeDetails(Universe universe) {
@@ -124,6 +126,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(universe);
     currentNode = universe.getNode(taskParams().nodeName);
     addMaster =
         areMastersUnderReplicated(currentNode, universe)

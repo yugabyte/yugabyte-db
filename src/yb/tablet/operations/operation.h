@@ -38,6 +38,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -51,7 +52,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 

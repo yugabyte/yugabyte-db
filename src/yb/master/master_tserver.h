@@ -58,8 +58,6 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
                                    uint64_t* last_breaking_version) const override;
-  bool catalog_version_table_in_perdb_mode() const override;
-
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
@@ -83,7 +81,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  rpc::Messenger* GetMessenger(tserver::ServerType type) const override;
+  rpc::Messenger* GetMessenger(ash::Component component) const override;
 
  private:
   Master* master_ = nullptr;

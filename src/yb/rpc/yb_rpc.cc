@@ -51,7 +51,7 @@ DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
-DECLARE_bool(TEST_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
@@ -281,7 +281,7 @@ void YBInboundCall::UpdateWaitStateInfo() {
         .method = method_name().ToBuffer(),
     });
   } else {
-    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
+    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash))
         << "Wait state is nullptr for " << ToString();
   }
 }

@@ -40,8 +40,10 @@
 
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
@@ -52,7 +54,9 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
@@ -1107,7 +1111,7 @@ Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 const auto disable_tablet_splitting_args = "<disable_duration_ms> <feature_name>";
 Status disable_tablet_splitting_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
+  if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
   const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
@@ -1488,6 +1492,44 @@ Status restore_snapshot_schedule_action(
   }
 
   return PrintJsonResult(client->RestoreSnapshotSchedule(schedule_id, restore_at));
+}
+
+const auto clone_from_snapshot_schedule_args =
+    Format("<schedule_id> <target_namespace_name> [<timestamp> | $0 <interval>]", kMinus);
+Status clone_from_snapshot_schedule_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 4));
+
+  auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+  auto target_namespace_name = args[1];
+
+  HybridTime restore_at;
+  if (args.size() == 2) {
+    auto now = VERIFY_RESULT(WallClock()->Now());
+    restore_at = HybridTime::FromMicros(now.time_point);
+  } else if (args.size() == 3) {
+    restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime(args[2]));
+  } else {
+    if (args[2] != kMinus) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime("-" + args[3]));
+  }
+
+  RETURN_NOT_OK(PrintJsonResult(
+      client->CloneFromSnapshotSchedule(schedule_id, target_namespace_name, restore_at)));
+  return Status::OK();
+}
+
+const auto is_clone_done_args = "<source_namespace_id> <seq_no>";
+Status is_clone_done_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+
+  auto source_namespace_id = args[0];
+  uint32_t seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+
+  return PrintJsonResult(client->IsCloneDone(source_namespace_id, seq_no));
 }
 
 const auto edit_snapshot_schedule_args =
@@ -2219,6 +2261,121 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
+const auto create_xcluster_checkpoint_args = "<replication_group_id> <database_names>";
+Status create_xcluster_checkpoint_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, args[1], boost::is_any_of(","));
+
+  auto namespace_ids =
+      VERIFY_RESULT(client->CheckpointXClusterReplication(replication_group_id, namespace_names));
+
+  SCHECK_EQ(
+      namespace_ids.size(), namespace_names.size(), IllegalState,
+      "Number of namespace ids does not match number of namespace names");
+
+  std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
+
+  std::vector<NamespaceName> dbs_with_bootstrap;
+  std::vector<NamespaceName> dbs_without_bootstrap;
+  for (size_t i = 0; i < namespace_ids.size(); i++) {
+    auto is_bootstrap_required =
+        VERIFY_RESULT(client->IsXClusterBootstrapRequired(replication_group_id, namespace_ids[i]));
+    std::cout << "Checkpointing of " << namespace_names[i] << " completed. Bootstrap is "
+              << (is_bootstrap_required ? "" : "not ")
+              << "required for setting up xCluster replication" << std::endl;
+    if (is_bootstrap_required) {
+      dbs_with_bootstrap.push_back(namespace_names[i]);
+    } else {
+      dbs_without_bootstrap.push_back(namespace_names[i]);
+    }
+  }
+  std::cout << "Successfully checkpointed databases for xCluster replication group "
+            << replication_group_id << std::endl
+            << std::endl;
+
+  if (!dbs_with_bootstrap.empty()) {
+    std::cout << "Perform a distributed Backup of database(s) " << AsString(dbs_with_bootstrap)
+              << " and Restore them on the target universe";
+  }
+  if (!dbs_without_bootstrap.empty()) {
+    std::cout << "Create equivalent YSQL objects (schemas, tables, indexes, ...) for databases "
+              << AsString(dbs_without_bootstrap) << " on the target universe";
+  }
+
+  std::cout << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
+
+  return Status::OK();
+}
+
+const auto is_xcluster_bootstrap_required_args = "<replication_group_id> <database_names>";
+Status is_xcluster_bootstrap_required_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, args[1], boost::is_any_of(","));
+
+  std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
+
+  for (size_t i = 0; i < namespace_names.size(); i++) {
+    const auto& namespace_info = VERIFY_RESULT_REF(
+        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_names[i]));
+    auto is_bootstrap_required = VERIFY_RESULT(
+        client->IsXClusterBootstrapRequired(replication_group_id, namespace_info.id()));
+    std::cout << "Checkpointing of " << namespace_names[i] << " completed. Bootstrap is "
+              << (is_bootstrap_required ? "" : "not ")
+              << "required for setting up xCluster replication" << std::endl;
+  }
+
+  return Status::OK();
+}
+
+const auto setup_xcluster_replication_args =
+    "<replication_group_id> <target_master_addresses>";
+Status setup_xcluster_replication_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+
+  RETURN_NOT_OK(client->CreateXClusterReplication(replication_group_id, args[1]));
+
+  RETURN_NOT_OK(client->WaitForCreateXClusterReplication(replication_group_id, args[1]));
+
+  std::cout << "xCluster Replication group " << replication_group_id << " setup successfully"
+            << endl;
+
+  return Status::OK();
+}
+
+const auto drop_xcluster_replication_args = "<replication_group_id>";
+Status drop_xcluster_replication_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+
+  RETURN_NOT_OK(client->DeleteXClusterOutboundReplicationGroup(replication_group_id));
+
+  std::cout << "Outbound xCluster Replication group " << replication_group_id
+            << " deleted successfully" << endl;
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2292,6 +2449,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_snapshot_schedules);
   REGISTER_COMMAND(delete_snapshot_schedule);
   REGISTER_COMMAND(restore_snapshot_schedule);
+  REGISTER_COMMAND(clone_from_snapshot_schedule);
+  REGISTER_COMMAND(is_clone_done);
   REGISTER_COMMAND(edit_snapshot_schedule);
   REGISTER_COMMAND(create_keyspace_snapshot);
   REGISTER_COMMAND(create_database_snapshot);
@@ -2332,6 +2491,11 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(setup_namespace_universe_replication);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
+  // xCluster V2 commands
+  REGISTER_COMMAND(create_xcluster_checkpoint);
+  REGISTER_COMMAND(is_xcluster_bootstrap_required);
+  REGISTER_COMMAND(setup_xcluster_replication);
+  REGISTER_COMMAND(drop_xcluster_replication);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

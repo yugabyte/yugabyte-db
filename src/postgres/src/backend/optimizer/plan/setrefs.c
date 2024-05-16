@@ -1334,6 +1334,13 @@ set_indexonlyscan_references(PlannerInfo *root,
 	plan->indextlist = fix_scan_list(root, plan->indextlist,
 									 rtoffset, NUM_EXEC_TLIST((Plan *) plan));
 
+	/*
+	 * YB note: yb_indexqual_for_recheck is already transformed to reference
+	 * index columns (see YbBuildIndexqualForRecheck). Just set any missing
+	 * opcodes.
+	 */
+	fix_opfuncids((Node *) plan->yb_indexqual_for_recheck);
+
 	pfree(index_itlist);
 
 	return (Plan *) plan;

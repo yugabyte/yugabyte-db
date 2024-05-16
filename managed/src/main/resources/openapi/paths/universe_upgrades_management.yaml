@@ -25,7 +25,7 @@
     tags:
       - Universe Upgrades Management
     requestBody:
-      $ref: ../components/requestBodies/UpgradeGFlagsParams.yaml
+      $ref: ../components/requestBodies/UpgradeUniverseGFlagsReq.yaml
     responses:
       '202':
         description: successful operation
@@ -39,6 +39,12 @@
         description: Server error
     security:
       - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeGFlags
+      taskUuid: obj.getTaskUuid()
+      additionalDetails: true
     x-yba-api-authz:
       - requiredPermission:
           resourceType: universe

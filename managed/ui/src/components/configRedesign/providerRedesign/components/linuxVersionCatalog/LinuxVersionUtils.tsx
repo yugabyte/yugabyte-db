@@ -12,8 +12,10 @@ import { useTranslation } from 'react-i18next';
 import { Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
 import {
+  CloudType,
   ImageBundle,
   ImageBundleType,
+  Provider,
   RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ArchitectureType } from '../../constants';
@@ -173,3 +175,6 @@ export function IsOsPatchingEnabled() {
   if (isRuntimeConfigLoading) return false;
   return osPatchingEnabled;
 }
+
+export const isImgBundleSupportedByProvider = (provider: Provider) =>
+  [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);

@@ -12,11 +12,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 -- query type 2
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
-            QUERY PLAN
------------------------------------
+             QUERY PLAN
+------------------------------------
  Nested Loop
    ->  Seq Scan on t1
-         Remote Filter: (val < 10)
+         Storage Filter: (val < 10)
    ->  Materialize
          ->  Seq Scan on t4
 (5 rows)

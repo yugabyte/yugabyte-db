@@ -41,11 +41,12 @@
      "(^troubleshoot/backend/gradlew[.]bat)",
      "(^troubleshoot/backend/build.gradle.kts)",
      "(^troubleshoot/backend/.*/application[.]properties)",
-     "(^troubleshoot/backend/src/main/resources/mocks/.*)",
-     "(^troubleshoot/backend/src/test/resources/query/.*)",
+     "(^troubleshoot/backend/src/main/resources/.*)",
+     "(^troubleshoot/backend/src/test/resources/.*)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
-     "(^yb_release_manifest.json$)"
+     "(^yb_release_manifest.json$)",
+     "(^managed/client/java/.*/pom.xml)"
   ],
   "linters": {
     "script-and-regex.script": {

@@ -10,7 +10,7 @@ import { YBModalForm } from '../../common/forms';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { TableType, Universe, UniverseNamespace } from '../../../redesign/helpers/dtos';
+import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
 import {
   api,
   drConfigQueryKey,
@@ -21,13 +21,19 @@ import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
-import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
-import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
-import { XClusterConfigStatus } from '../constants';
-
 import { XClusterTableType } from '../XClusterTypes';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
+import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import { XClusterConfig } from '../dtos';
+import {
+  AllowedTasks,
+  TableType,
+  Universe,
+  UniverseNamespace
+} from '../../../redesign/helpers/dtos';
 import { DrConfig } from '../disasterRecovery/dtos';
+import { XClusterConfigStatus } from '../constants';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 import styles from './RestartConfigModal.module.scss';
 
@@ -53,6 +59,7 @@ interface CommonRestartConfigModalProps {
   configTableType: XClusterTableType;
   isVisible: boolean;
   onHide: () => void;
+  allowedTasks: AllowedTasks;
   xClusterConfig: XClusterConfig;
 }
 type RestartConfigModalProps =
@@ -234,6 +241,10 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     );
   }
 
+  const isButtonDisabled = props.isDrInterface
+    ? isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.RESTART_DR)
+    : isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.RESTART_REPLICATION);
+
   return (
     <YBModalForm
       size="large"
@@ -248,6 +259,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
       onHide={() => {
         closeModal();
       }}
+      isButtonDisabled={isButtonDisabled}
       footerAccessory={<YBButton btnClass="btn" btnText={'Cancel'} onClick={closeModal} />}
       render={(formikProps: FormikProps<RestartXClusterConfigFormValues>) => {
         // workaround for outdated version of Formik to access form methods outside of <Formik>

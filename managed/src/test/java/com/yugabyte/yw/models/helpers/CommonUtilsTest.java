@@ -163,6 +163,10 @@ public class CommonUtilsTest {
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, true",
     "1.2.4.1sdfdsf, 1.2.3.4wqerq, false",
     "1.2.4.1sdfdsf, asdfdsaf, true",
+    "1.2.4.1-b1, 2024.1.0.0, true",
+    "2024.1.0.0-b1, 2.21.0.0-b1, false",
+    "2024.1.0.0-b1, 2024.1.0.0-b1, true",
+    "2024.1.0.0-b1, 2024.2.0.0, true",
   })
   public void testReleaseEqualOrAfter(
       String thresholdRelease, String actualRelease, boolean result) {
@@ -183,6 +187,9 @@ public class CommonUtilsTest {
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, false",
     "1.2.4.1sdfdsf, 1.2.3.4wqerq, true",
     "1.2.4.1sdfdsf, asdfdsaf, false",
+    "2024.1.0.0-b1, 2.21.0.0-b1, true",
+    "2024.1.0.0-b1, 2024.1.0.0-b1, false",
+    "2024.1.0.0-b1, 2024.2.0.0, false",
   })
   public void testReleaseBefore(String thresholdRelease, String actualRelease, boolean result) {
     assertThat(CommonUtils.isReleaseBefore(thresholdRelease, actualRelease), equalTo(result));

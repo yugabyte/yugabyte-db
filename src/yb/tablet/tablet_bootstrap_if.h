@@ -40,6 +40,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
 
@@ -49,7 +51,6 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/opid.h"
 #include "yb/util/shared_lock.h"
 
 namespace yb {

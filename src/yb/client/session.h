@@ -19,12 +19,12 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 

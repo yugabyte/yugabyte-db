@@ -16,7 +16,7 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
- x     | COPY FROM | SUCCESS   | PIPE |              90 |           0 |                5 |               0
+ x     | COPY FROM | SUCCESS   | PIPE |              93 |           0 |                5 |               0
 (1 row)
 
 -- non-existent column in column list: should fail

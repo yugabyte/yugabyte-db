@@ -484,6 +484,8 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   SharedExchange* exchange;
 
+  CoarseTimePoint deadline;
+
   CountDownLatch latch{1};
 
   SharedExchangeQuery(
@@ -494,8 +496,16 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
         session(std::move(session_)), exchange(exchange_) {
   }
 
+  // Initialize query from data stored in exchange with specified size.
+  // The serialized query has the following format:
+  // 8 bytes - timeout in milliseconds.
+  // remaining bytes - serialized PgPerformRequestPB protobuf.
   Status Init(size_t size) {
-    return pb_util::ParseFromArray(&req, to_uchar_ptr(exchange->Obtain(size)), size);
+    auto input = to_uchar_ptr(exchange->Obtain(size));
+    auto end = input + size;
+    deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(LittleEndian::Load64(input));
+    input += sizeof(uint64_t);
+    return pb_util::ParseFromArray(&req, input, end - input);
   }
 
   void Wait() {
@@ -516,7 +526,7 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto* start = exchange->Obtain(full_size);
     RefCntBuffer buffer;
     if (!start) {
-      buffer = RefCntBuffer(full_size);
+      buffer = RefCntBuffer(full_size - sidecars.size());
       start = pointer_cast<std::byte*>(buffer.data());
     }
     auto* out = start;
@@ -524,14 +534,14 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     out = SerializeWithCachedSizesToArray(header, out);
     out = WriteVarint32ToArray(body_size, out);
     out = SerializeWithCachedSizesToArray(resp, out);
-    sidecars.CopyTo(out);
-    out += sidecars.size();
-    DCHECK_EQ(out - start, full_size);
     if (!buffer) {
+      sidecars.CopyTo(out);
+      out += sidecars.size();
+      DCHECK_EQ(out - start, full_size);
       exchange->Respond(full_size);
     } else {
       auto locked_session = session.lock();
-      auto id = locked_session ? locked_session->SaveData(buffer) : 0;
+      auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
       exchange->Respond(kTooBigResponseMask | id);
     }
     latch.CountDown();
@@ -1188,7 +1198,8 @@ PgClientSession::SetupSession(
   auto session = Session(kind).get();
   client::YBTransaction* transaction = Transaction(kind).get();
 
-  VLOG_WITH_PREFIX(4) << __func__ << ": " << options.ShortDebugString();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
+                               << MonoDelta(deadline - CoarseMonoClock::now());
 
   const auto txn_serial_no = options.txn_serial_no();
   const auto read_time_serial_no = options.read_time_serial_no();
@@ -1498,15 +1509,18 @@ Status PgClientSession::UpdateSequenceTuple(
   return Status::OK();
 }
 
-size_t PgClientSession::SaveData(const RefCntBuffer& buffer) {
+size_t PgClientSession::SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
   std::lock_guard lock(pending_data_mutex_);
   for (size_t i = 0; i != pending_data_.size(); ++i) {
-    if (!pending_data_[i]) {
-      pending_data_[i] = buffer;
+    if (pending_data_[i].empty()) {
+      pending_data_[i].AddBlock(buffer, 0);
+      pending_data_[i].Take(&sidecars);
       return i;
     }
   }
-  pending_data_.push_back(buffer);
+  pending_data_.emplace_back(0);
+  pending_data_.back().AddBlock(buffer, 0);
+  pending_data_.back().Take(&sidecars);
   return pending_data_.size() - 1;
 }
 
@@ -1515,11 +1529,10 @@ Status PgClientSession::FetchData(
     rpc::RpcContext* context) {
   size_t data_id = req.data_id();
   std::lock_guard lock(pending_data_mutex_);
-  if (data_id >= pending_data_.size() || !pending_data_[data_id]) {
+  if (data_id >= pending_data_.size() || pending_data_[data_id].empty()) {
     return STATUS_FORMAT(NotFound, "Data $0 not found for session $1", data_id, id_);
   }
-  context->sidecars().Start().AddBlock(pending_data_[data_id], 0);
-  pending_data_[data_id].Reset();
+  context->sidecars().Start().Take(&pending_data_[data_id]);
   return Status::OK();
 }
 
@@ -1742,11 +1755,11 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
-  client::YBTransaction* transaction = Transaction(PgClientSessionKind::kPlain).get();
-  if (!transaction && (read_time_serial_no_ != req.read_time_serial_no())) {
+  const auto read_time_serial_no = req.read_time_serial_no();
+  if (read_time_serial_no_ != read_time_serial_no) {
     ResetReadPoint(PgClientSessionKind::kPlain);
+    read_time_serial_no_ = read_time_serial_no;
   }
-  read_time_serial_no_ = req.read_time_serial_no();
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),
@@ -1859,13 +1872,10 @@ Status PgClientSession::CheckPlainSessionReadTime() {
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
-  // TODO(shared_mem) Use the same timeout as RPC scenario.
-  const auto kTimeout = std::chrono::seconds(60);
-  auto deadline = CoarseMonoClock::now() + kTimeout;
   auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
   auto status = data->Init(size);
   if (status.ok()) {
-    status = DoPerform(data, deadline, nullptr);
+    status = DoPerform(data, data->deadline, nullptr);
   }
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());

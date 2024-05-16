@@ -821,7 +821,7 @@ class AzureCloudAdmin():
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
-                            use_spot_instance, vm_custom, disk_custom, is_edit=False,
+                            use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
                             json_output=True, cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
@@ -926,7 +926,7 @@ class AzureCloudAdmin():
                     "maxPrice": spot_price
                 }
             logging.info(f'[app] Using Azure spot instance')
-        if plan is not None:
+        if plan is not None and use_plan:
             vm_parameters["plan"] = plan
 
         if zone is not None:

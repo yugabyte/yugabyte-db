@@ -21,6 +21,23 @@
 
 namespace yb::master {
 
+#define DECLARE_MULTI_INSTANCE_LOADER_CLASS(name, key_type, entry_pb_name) \
+  class BOOST_PP_CAT(name, Loader) \
+      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+   public: \
+    explicit BOOST_PP_CAT(name, Loader)( \
+        std::function<Status(const key_type&, const entry_pb_name&)> & \
+        catalog_entity_inserter_func) \
+        : catalog_entity_inserter_func_(catalog_entity_inserter_func) {} \
+\
+   private: \
+    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
+      return catalog_entity_inserter_func_(key, metadata); \
+    } \
+    std::function<Status(const key_type&, const entry_pb_name&)>& catalog_entity_inserter_func_; \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
+
 class TasksTracker;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the

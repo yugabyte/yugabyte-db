@@ -46,6 +46,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -574,10 +575,11 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
         .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(ybVersion)
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz");
     when(mockReleaseManager.getReleaseByVersion(ybVersion))
-        .thenReturn(
-            ReleaseManager.ReleaseMetadata.create(ybVersion)
-                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz"));
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig));
     createTempFile(
         TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
 
@@ -597,6 +599,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("provider", p.getUuid().toString())
             .put("ybSoftwareVersion", ybVersion);
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
+
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.kubernetes));
     bodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
@@ -676,11 +679,12 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create("1.0.0.0")
+            .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz")
+            .withFilePath("/opt/yugabyte/releases/1.0.0.0/yb-1.0.0.0-x86_64-linux.tar.gz");
     when(mockReleaseManager.getReleaseByVersion("1.0.0.0"))
-        .thenReturn(
-            ReleaseManager.ReleaseMetadata.create("1.0.0.0")
-                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz")
-                .withFilePath("/opt/yugabyte/releases/1.0.0.0/yb-1.0.0.0-x86_64-linux.tar.gz"));
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig));
     createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0.0-helm.tar.gz", "Sample helm chart data");
     createTempFile(
         "/opt/yugabyte/releases/1.0.0.0", "yb-1.0.0.0-x86_64-linux.tar.gz", "Sample package data");
@@ -779,7 +783,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
-    when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    ReleaseContainer release =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockRuntimeConfig);
+    when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);

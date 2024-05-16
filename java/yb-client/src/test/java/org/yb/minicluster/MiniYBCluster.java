@@ -511,7 +511,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     final List<String> cmdLine = Lists.newArrayList(
-        TestUtils.findBinary("../ybc/yb-controller-server"),
+        TestUtils.findBinary("../../ybc/yb-controller-server"),
         "--log_dir=" + logDir,
         "--tmp_dir=" + tmpDir,
         "--server_address=" + bindAddress,

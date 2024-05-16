@@ -81,7 +81,9 @@ Status TableMutationCountSender::DoSendMutationCounts() {
 
   if (!client_) {
     auto client = std::make_unique<client::PgAutoAnalyzeServiceClient>();
-    RETURN_NOT_OK(client->Init(&server_));
+    RETURN_NOT_OK(client->Init(
+        server_.options().HostsString(), *server_.options().GetMasterAddresses(),
+        server_.fs_manager()->GetDefaultRootDir()));
     client_.swap(client);
   }
 

@@ -21,6 +21,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -59,6 +60,7 @@ public class SwamperHelperTest extends FakeDBApplication {
   @Mock Config appConfig;
 
   @Mock RuntimeConfGetter mockConfGetter;
+  private RuntimeConfGetter confGetter;
 
   SwamperHelper swamperHelper;
 
@@ -79,6 +81,7 @@ public class SwamperHelperTest extends FakeDBApplication {
             env,
             mockConfGetter,
             alertTemplateService);
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
   }
 
   @After
@@ -139,11 +142,16 @@ public class SwamperHelperTest extends FakeDBApplication {
       while ((line = br.readLine()) != null) {
         sb.append(line);
       }
-
+      int otelMetricsPort =
+          confGetter.getConfForScope(
+              Provider.getOrBadRequest(UUID.fromString(ui.provider)),
+              ProviderConfKeys.otelCollectorMetricsPort);
       ArrayNode targetsJson = (ArrayNode) Json.parse(sb.toString());
       String expectedTargetsTemplate = TestUtils.readResource(expectedFile);
       String expectedTargetsStr =
           expectedTargetsTemplate.replaceAll("UNIVERSE_UUID", u.getUniverseUUID().toString());
+      expectedTargetsStr =
+          expectedTargetsStr.replaceAll("OTEL_PORT", Integer.toString(otelMetricsPort));
       ArrayNode targetsExpectedJson = (ArrayNode) Json.parse(expectedTargetsStr);
 
       List<JsonNode> targets = new ArrayList<>();

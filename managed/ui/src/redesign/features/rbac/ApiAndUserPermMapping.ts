@@ -921,7 +921,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },
-    MODIFY_XLCUSTER_REPLICATION: {
+    MODIFY_XCLUSTER_REPLICATION: {
         requestType: ApiRequestType.PUT,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },

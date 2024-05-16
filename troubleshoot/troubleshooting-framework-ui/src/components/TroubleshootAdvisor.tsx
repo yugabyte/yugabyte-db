@@ -1,48 +1,37 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
+import { Box } from '@material-ui/core';
 import { YBErrorIndicator } from '@yugabytedb/ui-components';
 import { PrimaryDashboardData } from './PrimaryDashboardData';
 import { TroubleshootAPI, QUERY_KEY } from '../api';
-import { Anomaly, AppName, Universe } from '../helpers/dtos';
+import { Anomaly, AppName } from '../helpers/dtos';
 
-import LoadingIcon from '../assets/loading.svg';
+import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
+import { useHelperStyles } from './styles';
+// import LoadingIcon from '../assets/loading.svg';
 
 interface TroubleshootAdvisorProps {
   universeUuid: string;
-  // TODO: any should be replaced with YBM Node Response
-  universeData: Universe | any;
   appName: AppName;
-  baseUrl?: string;
   timezone?: string;
+  onSelectedIssue?: (troubleshootUuid: string) => void;
 }
-
-const useStyles = makeStyles((theme: Theme) => ({
-  icon: {
-    width: theme.spacing(3),
-    height: theme.spacing(3),
-    minWidth: theme.spacing(3),
-    minHeight: theme.spacing(3)
-  },
-  inProgressIcon: {
-    color: theme.palette.success[700]
-  }
-}));
 
 export const TroubleshootAdvisor = ({
   universeUuid,
-  universeData,
   appName,
-  baseUrl,
-  timezone
+  timezone,
+  onSelectedIssue
 }: TroubleshootAdvisorProps) => {
-  const classes = useStyles();
+  const classes = useHelperStyles();
+
   const [anomalyList, setAnomalyList] = useState<Anomaly[] | null>(null);
 
-  const { isLoading, isError, isIdle } = useQuery(
+  const { isLoading, isError, isIdle, refetch: anomaliesRefetch } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
     () => TroubleshootAPI.fetchAnamolies(universeUuid),
     {
+      enabled: anomalyList === null,
       onSuccess: (data: Anomaly[]) => {
         setAnomalyList(data);
       },
@@ -52,14 +41,23 @@ export const TroubleshootAdvisor = ({
     }
   );
 
-  // TODO: Display Error and Loading indicator based on API response
-  // if (isLoading) {
-  //   return <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list'} />;
-  // }
-  // if (isError || (isIdle && anomalyData === undefined)) {
-  //   return <LoadingIcon />;
-  // }
+  const onFilterByDate = async (startDate: any, endDate: any) => {
+    // TODO: Pass startDate and endDate to anomlay API once backend is ready
+    await anomaliesRefetch();
+  };
 
+  if (isLoading) {
+    // return <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />;;
+  }
+  if (isError || (isIdle && anomalyList === null)) {
+    return (
+      <Box className={classes.recommendation}>
+        <YBErrorIndicator
+          customErrorMessage={'Failed to fetch anomalies list, please try again.'}
+        />
+      </Box>
+    );
+  }
   return (
     <Box sx={{ width: '100%' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -67,8 +65,10 @@ export const TroubleshootAdvisor = ({
           <PrimaryDashboardData
             anomalyData={anomalyList}
             appName={appName}
-            baseUrl={baseUrl}
             timezone={timezone}
+            universeUuid={universeUuid}
+            onFilterByDate={onFilterByDate}
+            onSelectedIssue={onSelectedIssue}
           />
         </Box>
       </Box>

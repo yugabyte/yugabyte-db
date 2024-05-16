@@ -813,6 +813,24 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   return root_tracker;
 }
 
+uint64_t MemTracker::GetTrackedMemory() {
+  uint64_t tracked_memory = 0;
+  for (auto child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+      tracked_memory += child_tracker->consumption();
+    }
+  }
+  return tracked_memory;
+}
+
+uint64_t MemTracker::GetUntrackedMemory() {
+  #if YB_TCMALLOC_ENABLED
+  // generic.current_allocated_bytes = root - tcmalloc
+  return ::yb::GetTCMallocProperty("generic.current_allocated_bytes") - GetTrackedMemory();
+  #endif
+  return 0;
+}
+
 void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {
   if (metrics_) {
     LOG_IF(DFATAL, metric_entity->id() != metrics_->metric_entity_->id())

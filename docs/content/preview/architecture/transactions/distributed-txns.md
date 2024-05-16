@@ -39,7 +39,7 @@ There are three types of RocksDB key-value pairs corresponding to provisional re
 DocumentKey, SubKey1, ..., SubKeyN, LockType, ProvisionalRecordHybridTime -> TxnId, Value
 ```
 
-The `DocumentKey`, `SubKey1`, ..., `SubKey` components exactly match those in DocDB's [encoding](../../docdb/persistence/#mapping-docdb-documents-to-rocksdb) of paths to a particular subdocument (for example, a row, a column, or an element in a collection-type column) to RocksDB keys.
+The `DocumentKey`, `SubKey1`, ..., `SubKey` components exactly match those in DocDB's [encoding](../../docdb/persistence/#encoding-documents) of paths to a particular subdocument (for example, a row, a column, or an element in a collection-type column) to RocksDB keys.
 
 Each of these primary provisional records also acts as a persistent revocable lock. There are some similarities as well as differences when compared to [blocking in-memory locks](../isolation-levels/) maintained by every tablet's lock manager. These persistent locks can be of any of the same types as for in-memory leader-only locks (SI write, serializable write and read, and a separate strong and weak classification for handling nested document changes). However, unlike the leader-side in-memory locks, the locks represented by provisional records can be revoked by another conflicting transaction. The conflict resolution subsystem makes sure that for any two conflicting transactions, at least one of them is aborted.
 

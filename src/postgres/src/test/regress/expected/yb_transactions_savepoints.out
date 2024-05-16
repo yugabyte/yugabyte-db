@@ -296,7 +296,7 @@ BEGIN
   RETURN 'foo';
 END $$;
 BEGIN;
-DECLARE ok CURSOR FOR SELECT * FROM int8_tbl ORDER BY q1, q2 ASC;
+DECLARE ok CURSOR FOR SELECT q1, q2 FROM int8_tbl; -- YB: avoid ybsort column
 DECLARE ctt CURSOR FOR SELECT create_temp_tab();
 FETCH ok;
  q1  | q2  
@@ -318,9 +318,9 @@ SQL statement "INSERT INTO new_table SELECT invert(0.0)"
 PL/pgSQL function create_temp_tab() line 6 at SQL statement
 ROLLBACK TO s1;
 FETCH ok;  -- should work
-        q1        |        q2         
-------------------+-------------------
- 4567890123456789 | -4567890123456789
+        q1        | q2  
+------------------+-----
+ 4567890123456789 | 123
 (1 row)
 
 FETCH ctt; -- must be rejected

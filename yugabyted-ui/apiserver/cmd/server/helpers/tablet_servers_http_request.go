@@ -4,6 +4,7 @@ import (
         "encoding/json"
         "errors"
         "net"
+        "net/url"
         "regexp"
 )
 
@@ -48,13 +49,11 @@ func (h *HelperContainer) GetTabletServersFuture(nodeHost string, future chan Ta
                 Tablets: map[string]map[string]TabletServer{},
                 Error:   nil,
         }
-        urls, err := h.BuildMasterURLs("api/v1/tablet-servers")
-        if err != nil {
-                tabletServers.Error = err
-                future <- tabletServers
-                return
-        }
-        body, err := h.AttemptGetRequests(urls, true)
+        body, err := h.BuildMasterURLsAndAttemptGetRequests(
+            "api/v1/tablet-servers", // path
+            url.Values{}, // params
+            true, // expectJson
+        )
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
@@ -75,6 +74,20 @@ func (h *HelperContainer) GetTabletServersFuture(nodeHost string, future chan Ta
         err = json.Unmarshal([]byte(body), &tabletServers.Tablets)
         tabletServers.Error = err
         future <- tabletServers
+        // Update cache if successful. Note that this will happen in the background asynchronously.
+        if err == nil {
+            tserverAddresses := h.GetNodesList(tabletServers)
+            for index, host := range tserverAddresses {
+                if host == HOST {
+                    // Swap helpers.HOST to front of slice
+                    tserverAddresses[0], tserverAddresses[index] =
+                        tserverAddresses[index], tserverAddresses[0]
+                    break
+                }
+            }
+            TserverAddressCache.Update(tserverAddresses)
+            h.logger.Debugf("updated cached tserver addresses %v", tserverAddresses)
+        }
 }
 
 // Helper for getting the hostnames of each node given a TabletServersFuture response
@@ -95,11 +108,11 @@ func (h *HelperContainer) GetNodesList(tablets TabletServersFuture) []string {
 // For now, we hit the /tablet-servers endpoint and parse the html
 func (h *HelperContainer) GetHostToUuidMap(nodeHost string) (map[string]string, error) {
         hostToUuidMap := map[string]string{}
-        urls, err := h.BuildMasterURLs("tablet-servers")
-        if err != nil {
-                return hostToUuidMap, err
-        }
-        body, err := h.AttemptGetRequests(urls, false)
+        body, err := h.BuildMasterURLsAndAttemptGetRequests(
+            "tablet-servers", // path
+            url.Values{}, // params
+            false, // expectJson
+        )
         if err != nil {
                 return hostToUuidMap, err
         }

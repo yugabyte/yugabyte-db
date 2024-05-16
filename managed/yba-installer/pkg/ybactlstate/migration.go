@@ -16,6 +16,7 @@ const defaultMigratorValue = -1
 const promConfigMV = 2
 const postgresUserMV = 3
 const ymlTypeFixMV = 4
+const promOomConfgMV = 5
 
 func handleMigration(state *State) error {
 	for state._internalFields.SchemaVersion < schemaVersion {
@@ -137,12 +138,28 @@ func migrateYmlTypes(state *State) error {
 	return nil
 }
 
+func migratePrometheusOOMConfig(state *State) error {
+
+	if !viper.IsSet("prometheus.oomScoreAdjust") {
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		err := common.SetYamlValue(common.InputFile(), "prometheus.oomScoreAdjust",
+			viper.GetString("prometheus.oomScoreAdjust"))
+		if err != nil {
+			return fmt.Errorf("Error migrating prometheus OOM config: %s", err.Error())
+		}
+	}
+
+	common.InitViper()
+	return nil
+}
+
 // TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV: migratePrometheus,
 	postgresUserMV: migratePostgresUser,
 	ymlTypeFixMV: migrateYmlTypes,
+	promOomConfgMV: migratePrometheusOOMConfig,
 }
 
 func getMigrationHandler(toSchema int) migrator {

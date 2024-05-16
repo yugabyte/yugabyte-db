@@ -136,10 +136,14 @@ class BackendsCatalogVersionTS;
 //     master leader, jobs are started from scratch.  This is no big issue since there is no major
 //     accumulated progress in the first place.
 //   - On tserver network partitioning, master may be unable to reach a tserver to determine whether
-//     its backends satisfy the requested db+ver.  In that case, rely on tserver to block its own
-//     backends from functioning when its "lease" with master expires.  An example implementation of
-//     "lease" is FLAGS_tserver_unresponsive_timeout_ms to determine whether master views the
-//     tserver as live.  The blocking is currently not implemented and is required for correctness.
+//     its backends satisfy the requested db+ver.  master_ts_ysql_catalog_lease_ms bounds the amount
+//     of time we can be in this uncertain state.  The lease needs to be handled on both sides:
+//     - tserver: block its own backends from functioning when its "lease" with master expires.
+//       TODO(#13369): the blocking is currently not implemented and is required for correctness.
+//     - master: if newly elected as leader, it currently won't know when all tservers have
+//       re-registered.  In other words, it doesn't know all the tservers that exist.  Since there
+//       could always exist a tserver that is network partitioned, the new master must wait the
+//       lease period before it can be sure all tservers are accounted for.
 //
 // - Ownership: there are multiple in-memory objects that it is worth mentioning the memory model.
 //   - YsqlBackendsManager: there is only a single instance of this owned by master
@@ -282,7 +286,6 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
         target_version_(target_version),
-        epoch_(LeaderEpoch(1)),
         last_access_(CoarseMonoClock::Now()) {}
 
   std::shared_ptr<BackendsCatalogVersionJob> shared_from_this() {
@@ -303,10 +306,9 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.
-  Status Launch(LeaderEpoch epoch) EXCLUDES(mutex_);
+  Status Launch(int64_t term) EXCLUDES(mutex_);
   // Retry TS RPC.
-  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
+  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) EXCLUDES(mutex_);
   // Whether the job hasn't been accessed within expiration time.
   bool IsInactive() const EXCLUDES(mutex_);
   // Whether the current sys catalog leader term matches the term recorded at the start of the job.
@@ -354,8 +356,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
 
   const PgOid database_oid_;
   const Version target_version_;
-  // Master sys catalog consensus epoch when launching the job.
-  LeaderEpoch epoch_ GUARDED_BY(mutex_);
+  // Master sys catalog consensus term when launching the job.
+  int64_t term_ GUARDED_BY(mutex_);
   // Last time this job was accessed.  Used to determine when the job should be cleaned up for lack
   // of activity.  No need to guard with mutex since writes are already guarded by
   // YsqlBackendsManager mutex.
@@ -404,10 +406,10 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   // the response error complains about mismatched schema most likely due to not having run
   // upgrade_ysql.
   bool found_behind_ = false;
-  // Whether the tserver is considered dead (expired).  This is checked and set true on
-  // HandleResponse.  It may be the case that this is not set and tserver is found dead through a
+  // Whether the tserver's catalog lease expired.  This is checked and set true on HandleResponse.
+  // It may be the case that this is not set and tserver's lease is found expired through a
   // different way (e.g. rpc failure).
-  bool found_dead_ = false;
+  bool found_lease_expired_ = false;
 };
 
 }  // namespace master

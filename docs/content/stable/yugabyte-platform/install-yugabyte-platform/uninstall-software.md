@@ -43,7 +43,7 @@ If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cle
 
 You should also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 
-To erase this data, execute the following commands from the `centos` user on the node (or any user with access to sudo):
+To erase this data, execute the following commands using any user with access to sudo:
 
 ```sh
 sudo umount /data

@@ -79,7 +79,7 @@ TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ false));
 
@@ -115,7 +115,7 @@ TEST_F(CDCSDKYsqlTest, UpdateInsertedRowSnapshot) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ false));
   ASSERT_OK(UpdateRows(1 /* key */, 1 /* value */, &test_cluster_));
@@ -152,7 +152,7 @@ TEST_F(CDCSDKYsqlTest, DeleteInsertedRowSnapshot) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ false));
   ASSERT_OK(DeleteRows(1 /* key */, &test_cluster_));
@@ -749,7 +749,7 @@ TEST_F(CDCSDKYsqlTest, TestLeadershipChangeAndSnapshotAffectsCheckpoint) {
 
   ASSERT_OK(WriteRowsHelper(0 /* start */, 200 /* end */, &test_cluster_, true));
 
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ true));
   std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
@@ -896,7 +896,7 @@ TEST_F(CDCSDKYsqlTest, TestSnapshotNoData) {
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ false));
 

@@ -85,7 +85,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
       kubernetesStatus.startYBUniverseEventStatus(
           universe,

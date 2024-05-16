@@ -31,6 +31,14 @@ UNION ALL
 )
 SELECT * FROM t;
 
+-- UNION DISTINCT requires hashable type
+WITH RECURSIVE t(n) AS (
+    VALUES (1::money)
+UNION
+    SELECT n+1::money FROM t WHERE n < 100::money
+)
+SELECT sum(n) FROM t;
+
 -- recursive view
 CREATE RECURSIVE VIEW nums (n) AS
     VALUES (1)
@@ -69,14 +77,14 @@ SELECT * FROM t LIMIT 10;
 
 -- Test behavior with an unknown-type literal in the WITH
 WITH q AS (SELECT 'foo' AS x)
-SELECT x, x IS OF (text) AS is_text FROM q;
+SELECT x, pg_typeof(x) FROM q;
 
 WITH RECURSIVE t(n) AS (
     SELECT 'foo'
 UNION ALL
     SELECT n || ' bar' FROM t WHERE length(n) < 20
 )
-SELECT n, n IS OF (text) AS is_text FROM t;
+SELECT n, pg_typeof(n) FROM t;
 
 -- In a perfect world, this would work and resolve the literal as int ...
 -- but for now, we have to be content with resolving to text too soon.
@@ -85,7 +93,51 @@ WITH RECURSIVE t(n) AS (
 UNION ALL
     SELECT n+1 FROM t WHERE n < 10
 )
-SELECT n, n IS OF (int) AS is_int FROM t;
+SELECT n, pg_typeof(n) FROM t;
+
+-- Deeply nested WITH caused a list-munging problem in v13
+-- Detection of cross-references and self-references
+WITH RECURSIVE w1(c1) AS
+ (WITH w2(c2) AS
+  (WITH w3(c3) AS
+   (WITH w4(c4) AS
+    (WITH w5(c5) AS
+     (WITH RECURSIVE w6(c6) AS
+      (WITH w6(c6) AS
+       (WITH w8(c8) AS
+        (SELECT 1)
+        SELECT * FROM w8)
+       SELECT * FROM w6)
+      SELECT * FROM w6)
+     SELECT * FROM w5)
+    SELECT * FROM w4)
+   SELECT * FROM w3)
+  SELECT * FROM w2)
+SELECT * FROM w1;
+-- Detection of invalid self-references
+WITH RECURSIVE outermost(x) AS (
+ SELECT 1
+ UNION (WITH innermost1 AS (
+  SELECT 2
+  UNION (WITH innermost2 AS (
+   SELECT 3
+   UNION (WITH innermost3 AS (
+    SELECT 4
+    UNION (WITH innermost4 AS (
+     SELECT 5
+     UNION (WITH innermost5 AS (
+      SELECT 6
+      UNION (WITH innermost6 AS
+       (SELECT 7)
+       SELECT * FROM innermost6))
+      SELECT * FROM innermost5))
+     SELECT * FROM innermost4))
+    SELECT * FROM innermost3))
+   SELECT * FROM innermost2))
+  SELECT * FROM outermost
+  UNION SELECT * FROM innermost1)
+ )
+ SELECT * FROM outermost ORDER BY 1;
 
 --
 -- Some examples with a tree
@@ -293,7 +345,184 @@ UNION ALL
     FROM tree JOIN t ON (tree.parent_id = t.id)
 )
 SELECT t1.id, t2.path, t2 FROM t AS t1 JOIN t AS t2 ON
-(t1.id=t2.id) ORDER BY id;
+(t1.id=t2.id) ORDER BY id; -- YB ordering
+
+-- SEARCH clause
+
+create temp table graph0( f int, t int, label text );
+
+insert into graph0 values
+	(1, 2, 'arc 1 -> 2'),
+	(1, 3, 'arc 1 -> 3'),
+	(2, 3, 'arc 2 -> 3'),
+	(1, 4, 'arc 1 -> 4'),
+	(4, 5, 'arc 4 -> 5');
+
+explain (verbose, costs off)
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+select * from search_graph order by seq;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+select * from search_graph order by seq;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union distinct
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+select * from search_graph order by seq;
+
+explain (verbose, costs off)
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search breadth first by f, t set seq
+select * from search_graph order by seq;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search breadth first by f, t set seq
+select * from search_graph order by seq;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union distinct
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search breadth first by f, t set seq
+select * from search_graph order by seq;
+
+-- a constant initial value causes issues for EXPLAIN
+explain (verbose, costs off)
+with recursive test as (
+  select 1 as x
+  union all
+  select x + 1
+  from test
+) search depth first by x set y
+select * from test limit 5;
+
+with recursive test as (
+  select 1 as x
+  union all
+  select x + 1
+  from test
+) search depth first by x set y
+select * from test limit 5;
+
+explain (verbose, costs off)
+with recursive test as (
+  select 1 as x
+  union all
+  select x + 1
+  from test
+) search breadth first by x set y
+select * from test limit 5;
+
+with recursive test as (
+  select 1 as x
+  union all
+  select x + 1
+  from test
+) search breadth first by x set y
+select * from test limit 5;
+
+-- various syntax errors
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by foo, tar set seq
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set label
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t, f set seq
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+select * from search_graph order by seq;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	(select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t)
+) search depth first by f, t set seq
+select * from search_graph order by seq;
+
+-- check that we distinguish same CTE name used at different levels
+-- (this case could be supported, perhaps, but it isn't today)
+with recursive x(col) as (
+	select 1
+	union
+	(with x as (select * from x)
+	 select * from x)
+) search depth first by col set seq
+select * from x;
+
+-- test ruleutils and view expansion
+create temp view v_search as
+with recursive search_graph(f, t, label) as (
+	select * from graph0 g
+	union all
+	select g.*
+	from graph0 g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+select f, t, label from search_graph;
+
+select pg_get_viewdef('v_search');
+
+select * from v_search;
 
 --
 -- test cycle detection
@@ -308,40 +537,249 @@ insert into graph values
 	(4, 5, 'arc 4 -> 5'),
 	(5, 1, 'arc 5 -> 1');
 
--- ordering by the path column has same effect as SEARCH DEPTH FIRST
-with recursive search_graph(f, t, label, path, cycle) as (
-	select *, array[row(g.f, g.t)], false from graph g
+with recursive search_graph(f, t, label, is_cycle, path) as (
+	select *, false, array[row(g.f, g.t)] from graph g
 	union all
-	select g.*, path || row(g.f, g.t), row(g.f, g.t) = any(path)
+	select g.*, row(g.f, g.t) = any(path), path || row(g.f, g.t)
 	from graph g, search_graph sg
-	where g.f = sg.t and not cycle
+	where g.f = sg.t and not is_cycle
 )
-select * from search_graph order by path;
-DROP TABLE graph;
+select * from search_graph;
 
---
--- test cycle detection with regular table
---
-create table graph( f int, t int, label text );
-
-insert into graph values
-        (1, 2, 'arc 1 -> 2'),
-        (1, 3, 'arc 1 -> 3'),
-        (2, 3, 'arc 2 -> 3'),
-        (1, 4, 'arc 1 -> 4'),
-        (4, 5, 'arc 4 -> 5'),
-        (5, 1, 'arc 5 -> 1');
+-- UNION DISTINCT exercises row type hashing support
+with recursive search_graph(f, t, label, is_cycle, path) as (
+	select *, false, array[row(g.f, g.t)] from graph g
+	union distinct
+	select g.*, row(g.f, g.t) = any(path), path || row(g.f, g.t)
+	from graph g, search_graph sg
+	where g.f = sg.t and not is_cycle
+)
+select * from search_graph;
 
 -- ordering by the path column has same effect as SEARCH DEPTH FIRST
-with recursive search_graph(f, t, label, path, cycle) as (
-        select *, array[row(g.f, g.t)], false from graph g
-        union all
-        select g.*, path || row(g.f, g.t), row(g.f, g.t) = any(path)
-        from graph g, search_graph sg
-        where g.f = sg.t and not cycle
+with recursive search_graph(f, t, label, is_cycle, path) as (
+	select *, false, array[row(g.f, g.t)] from graph g
+	union all
+	select g.*, row(g.f, g.t) = any(path), path || row(g.f, g.t)
+	from graph g, search_graph sg
+	where g.f = sg.t and not is_cycle
 )
 select * from search_graph order by path;
-DROP TABLE graph;
+
+-- CYCLE clause
+
+explain (verbose, costs off)
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union distinct
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle to 'Y' default 'N' using path
+select * from search_graph;
+
+explain (verbose, costs off)
+with recursive test as (
+  select 0 as x
+  union all
+  select (x + 1) % 10
+  from test
+) cycle x set is_cycle using path
+select * from test;
+
+with recursive test as (
+  select 0 as x
+  union all
+  select (x + 1) % 10
+  from test
+) cycle x set is_cycle using path
+select * from test;
+
+with recursive test as (
+  select 0 as x
+  union all
+  select (x + 1) % 10
+  from test
+    where not is_cycle  -- redundant, but legal
+) cycle x set is_cycle using path
+select * from test;
+
+-- multiple CTEs
+with recursive
+graph(f, t, label) as (
+  values (1, 2, 'arc 1 -> 2'),
+         (1, 3, 'arc 1 -> 3'),
+         (2, 3, 'arc 2 -> 3'),
+         (1, 4, 'arc 1 -> 4'),
+         (4, 5, 'arc 4 -> 5'),
+         (5, 1, 'arc 5 -> 1')
+),
+search_graph(f, t, label) as (
+        select * from graph g
+        union all
+        select g.*
+        from graph g, search_graph sg
+        where g.f = sg.t
+) cycle f, t set is_cycle to true default false using path
+select f, t, label from search_graph;
+
+-- star expansion
+with recursive a as (
+	select 1 as b
+	union all
+	select * from a
+) cycle b set c using p
+select * from a;
+
+-- search+cycle
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set seq
+  cycle f, t set is_cycle using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) search breadth first by f, t set seq
+  cycle f, t set is_cycle using path
+select * from search_graph;
+
+-- various syntax errors
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle foo, tar set is_cycle using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle to true default 55 using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle to point '(1,1)' default point '(0,0)' using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set label to true default false using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle to true default false using label
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set foo to true default false using foo
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t, f set is_cycle to true default false using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set foo
+  cycle f, t set foo to true default false using path
+select * from search_graph;
+
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) search depth first by f, t set foo
+  cycle f, t set is_cycle to true default false using foo
+select * from search_graph;
+
+-- test ruleutils and view expansion
+create temp view v_cycle1 as
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle using path
+select f, t, label from search_graph;
+
+create temp view v_cycle2 as
+with recursive search_graph(f, t, label) as (
+	select * from graph g
+	union all
+	select g.*
+	from graph g, search_graph sg
+	where g.f = sg.t
+) cycle f, t set is_cycle to 'Y' default 'N' using path
+select f, t, label from search_graph;
+
+select pg_get_viewdef('v_cycle1');
+select pg_get_viewdef('v_cycle2');
+
+select * from v_cycle1;
+select * from v_cycle2;
 
 --
 -- test multiple WITH queries
@@ -426,6 +864,9 @@ DROP TABLE y;
 -- error cases
 --
 
+WITH x(n, b) AS (SELECT 1)
+SELECT * FROM x;
+
 -- INTERSECT
 WITH RECURSIVE x(n) AS (SELECT 1 INTERSECT SELECT n+1 FROM x)
 	SELECT * FROM x;
@@ -448,7 +889,7 @@ WITH RECURSIVE x(n) AS (SELECT n FROM x)
 WITH RECURSIVE x(n) AS (SELECT n FROM x UNION ALL SELECT 1)
 	SELECT * FROM x;
 
-CREATE TABLE y (a INTEGER);
+CREATE TABLE y (a INTEGER, ybsort SERIAL, PRIMARY KEY (ybsort ASC)); -- YB: exercise YB table instead of temp table
 INSERT INTO y SELECT generate_series(1, 10);
 
 -- LEFT JOIN
@@ -567,13 +1008,17 @@ with cte(foo) as ( select 42 ) select * from ((select foo from cte)) q;
 
 -- test CTE referencing an outer-level variable (to see that changed-parameter
 -- signaling still works properly after fixing this bug)
+SELECT * FROM ( -- YB
 select ( with cte(foo) as ( values(f1) )
          select (select foo from cte) )
-from int4_tbl ORDER BY foo;
+from int4_tbl
+LIMIT ALL) ybview ORDER BY (abs(foo) - sign(foo)); -- YB ordering
 
+SELECT * FROM ( -- YB
 select ( with cte(foo) as ( values(f1) )
           values((select foo from cte)) )
-from int4_tbl ORDER BY column1;
+from int4_tbl
+LIMIT ALL) ybview ORDER BY (abs(column1) - sign(column1)); -- YB ordering
 
 --
 -- test for nested-recursive-WITH bug
@@ -637,7 +1082,7 @@ with
 A as ( select q2 as id, (select q1) as x from int8_tbl ),
 B as ( select id, row_number() over (partition by id) as r from A ),
 C as ( select A.id, array(select B.id from B where B.id = A.id) from A )
-select * from C ORDER BY id;
+select * from C ORDER BY id; -- YB ordering (not sorted like upstream PG)
 
 --
 -- Test CTEs read in non-initialization orders
@@ -700,7 +1145,6 @@ SELECT * FROM iter;
 --
 
 -- INSERT ... RETURNING
-
 WITH t AS (
     INSERT INTO y
     VALUES
@@ -716,9 +1160,9 @@ WITH t AS (
         (20)
     RETURNING *
 )
-SELECT * FROM t ORDER BY a;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- UPDATE ... RETURNING
 WITH t AS (
@@ -726,9 +1170,9 @@ WITH t AS (
     SET a=a+1
     RETURNING *
 )
-SELECT * FROM t ORDER BY a;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- DELETE ... RETURNING
 WITH t AS (
@@ -736,9 +1180,9 @@ WITH t AS (
     WHERE a <= 10
     RETURNING *
 )
-SELECT * FROM t ORDER BY a;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- forward reference
 WITH RECURSIVE t AS (
@@ -746,14 +1190,13 @@ WITH RECURSIVE t AS (
 		SELECT a+5 FROM t2 WHERE a > 5
 	RETURNING *
 ), t2 AS (
-	UPDATE y SET a=a-11 RETURNING *
+	UPDATE y SET a=a-11, ybsort=nextval('y_ybsort_seq') RETURNING * -- YB: mimic upstream PG's new ctid allocation
 )
-SELECT * FROM t
+SELECT a FROM t -- YB: avoid ybsort column
 UNION ALL
-SELECT * FROM t2
-ORDER BY a;
+SELECT a FROM t2; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- unconditional DO INSTEAD rule
 CREATE RULE y_rule AS ON DELETE TO y DO INSTEAD
@@ -762,9 +1205,9 @@ CREATE RULE y_rule AS ON DELETE TO y DO INSTEAD
 WITH t AS (
 	DELETE FROM y RETURNING *
 )
-SELECT * FROM t;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 DROP RULE y_rule ON y;
 
@@ -783,13 +1226,69 @@ CREATE TEMP TABLE bug6051_2 (i int);
 
 CREATE RULE bug6051_ins AS ON INSERT TO bug6051 DO INSTEAD
  INSERT INTO bug6051_2
- SELECT NEW.i;
+ VALUES(NEW.i);
 
 WITH t1 AS ( DELETE FROM bug6051 RETURNING * )
 INSERT INTO bug6051 SELECT * FROM t1;
 
 SELECT * FROM bug6051;
 SELECT * FROM bug6051_2;
+
+-- check INSERT...SELECT rule actions are disallowed on commands
+-- that have modifyingCTEs
+CREATE OR REPLACE RULE bug6051_ins AS ON INSERT TO bug6051 DO INSTEAD
+ INSERT INTO bug6051_2
+ SELECT NEW.i;
+
+WITH t1 AS ( DELETE FROM bug6051 RETURNING * )
+INSERT INTO bug6051 SELECT * FROM t1;
+
+-- silly example to verify that hasModifyingCTE flag is propagated
+CREATE TEMP TABLE bug6051_3 AS
+  SELECT a FROM generate_series(11,13) AS a;
+
+CREATE RULE bug6051_3_ins AS ON INSERT TO bug6051_3 DO INSTEAD
+  SELECT i FROM bug6051_2;
+
+BEGIN; SET LOCAL force_parallel_mode = on;
+
+WITH t1 AS ( DELETE FROM bug6051_3 RETURNING * )
+  INSERT INTO bug6051_3 SELECT * FROM t1;
+
+COMMIT;
+
+SELECT * FROM bug6051_3;
+
+-- check case where CTE reference is removed due to optimization
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT q1 FROM
+(
+  WITH t_cte AS (SELECT * FROM int8_tbl t)
+  SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
+  FROM int8_tbl i8
+) ss;
+
+SELECT q1 FROM
+(
+  WITH t_cte AS (SELECT * FROM int8_tbl t)
+  SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
+  FROM int8_tbl i8
+) ss;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT q1 FROM
+(
+  WITH t_cte AS MATERIALIZED (SELECT q1, q2 FROM int8_tbl t) -- YB: avoid ybsort column
+  SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
+  FROM int8_tbl i8
+) ss;
+
+SELECT q1 FROM
+(
+  WITH t_cte AS MATERIALIZED (SELECT * FROM int8_tbl t)
+  SELECT q1, (SELECT q2 FROM t_cte WHERE t_cte.q1 = i8.q1) AS t_sub
+  FROM int8_tbl i8
+) ss;
 
 -- a truly recursive CTE in the same list
 WITH RECURSIVE t(a) AS (
@@ -800,9 +1299,9 @@ WITH RECURSIVE t(a) AS (
 	INSERT INTO y
 		SELECT * FROM t RETURNING *
 )
-SELECT * FROM t2 JOIN y USING (a) ORDER BY a;
+SELECT a FROM t2 JOIN y USING (a) ORDER BY a; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- data-modifying WITH in a modifying statement
 WITH t AS (
@@ -810,21 +1309,17 @@ WITH t AS (
     WHERE a <= 10
     RETURNING *
 )
+INSERT INTO y SELECT -a FROM t RETURNING a; -- YB: avoid ybsort column
 
--- Removing Returning clause to make result deterministic.
-INSERT INTO y SELECT -a FROM t;
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- check that WITH query is run to completion even if outer query isn't
 WITH t AS (
     UPDATE y SET a = a * 100 RETURNING *
 )
--- Disable test as results are not deterministic.
-/*
-SELECT * FROM t ORDER BY a LIMIT 10;
-*/
-SELECT * FROM t ORDER BY a;
-SELECT * FROM y ORDER BY a;
+SELECT a FROM t LIMIT 10; -- YB: avoid ybsort column
+
+SELECT a FROM y; -- YB: avoid ybsort column
 
 -- data-modifying WITH containing INSERT...ON CONFLICT DO UPDATE
 CREATE TABLE withz AS SELECT i AS k, (i || ' v')::text v FROM generate_series(1, 16, 3) i;
@@ -836,7 +1331,7 @@ WITH t AS (
     ON CONFLICT (k) DO UPDATE SET v = withz.v || ', now update'
     RETURNING *
 )
-SELECT * FROM t JOIN y ON t.k = y.a ORDER BY a, k;
+SELECT k, v, a FROM t JOIN y ON t.k = y.a ORDER BY a, k; -- YB: avoid ybsort column
 
 -- Test EXCLUDED.* reference within CTE
 WITH aa AS (
@@ -869,7 +1364,7 @@ WITH aa AS (SELECT 1 a, 2 b)
 INSERT INTO withz VALUES(1, (SELECT b || ' insert' FROM aa WHERE a = 1 ))
 ON CONFLICT (k) DO UPDATE SET v = (SELECT b || ' update' FROM aa WHERE a = 1 LIMIT 1);
 
-/* Disable the below test until #6782 is fixed
+/* YB: Disable the below test until #6782 is fixed
 -- Update a row more than once, in different parts of a wCTE. That is
 -- an allowed, presumably very rare, edge case, but since it was
 -- broken in the past, having a test seems worthwhile.
@@ -885,35 +1380,54 @@ RETURNING k, v;
 */
 DROP TABLE withz;
 
+-- WITH referenced by MERGE statement
+CREATE TABLE m AS SELECT i AS k, (i || ' v')::text v FROM generate_series(1, 16, 3) i;
+ALTER TABLE m ADD UNIQUE (k);
+
+WITH RECURSIVE cte_basic AS (SELECT 1 a, 'cte_basic val' b)
+MERGE INTO m USING (select 0 k, 'merge source SubPlan' v) o ON m.k=o.k
+WHEN MATCHED THEN UPDATE SET v = (SELECT b || ' merge update' FROM cte_basic WHERE cte_basic.a = m.k LIMIT 1)
+WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
+
+-- Basic:
+WITH cte_basic AS MATERIALIZED (SELECT 1 a, 'cte_basic val' b)
+MERGE INTO m USING (select 0 k, 'merge source SubPlan' v offset 0) o ON m.k=o.k
+WHEN MATCHED THEN UPDATE SET v = (SELECT b || ' merge update' FROM cte_basic WHERE cte_basic.a = m.k LIMIT 1)
+WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v); -- YB: port more queries from the original test once this query is fixed
+
+DROP TABLE m;
+
 -- check that run to completion happens in proper ordering
 
 TRUNCATE TABLE y;
 INSERT INTO y SELECT generate_series(1, 3);
-CREATE TABLE yy (a INTEGER);
+CREATE TABLE yy (a INTEGER, ybsort INT); -- YB: exercise YB table
 
+ALTER TABLE y DROP CONSTRAINT y_pkey; -- YB: ybsort column needs to be non-unique for the next queries
 WITH RECURSIVE t1 AS (
-  INSERT INTO y SELECT * FROM y RETURNING *
+  INSERT INTO y SELECT a FROM y ORDER BY y.ybsort RETURNING * -- YB: add ordering; avoid selecting ybsort column to auto-generate it during insert
 ), t2 AS (
   INSERT INTO yy SELECT * FROM t1 RETURNING *
 )
 SELECT 1;
 
-SELECT * FROM y ORDER BY a;
-SELECT * FROM yy ORDER BY a;
+SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
+SELECT a FROM yy ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
 
 WITH RECURSIVE t1 AS (
   INSERT INTO yy SELECT * FROM t2 RETURNING *
 ), t2 AS (
-  INSERT INTO y SELECT * FROM y RETURNING *
+  INSERT INTO y SELECT a FROM y ORDER BY y.ybsort RETURNING * -- YB: add ordering; avoid selecting ybsort column to auto-generate it during insert
 )
 SELECT 1;
 
-SELECT * FROM y ORDER BY a;
-SELECT * FROM yy ORDER BY a;
+SELECT a FROM y ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
+SELECT a FROM yy ORDER BY ybsort; -- YB: avoid ybsort column; add ordering
 
 -- triggers
 
 TRUNCATE TABLE y;
+ALTER TABLE y ADD PRIMARY KEY (ybsort ASC); -- YB: ybsort column can be unique again
 INSERT INTO y SELECT generate_series(1, 10);
 
 CREATE FUNCTION y_trigger() RETURNS trigger AS $$
@@ -934,9 +1448,9 @@ WITH t AS (
         (23)
     RETURNING *
 )
-SELECT * FROM t ORDER BY a;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 DROP TRIGGER y_trig ON y;
 
@@ -951,9 +1465,9 @@ WITH t AS (
         (33)
     RETURNING *
 )
-SELECT * FROM t LIMIT 1;
+SELECT a FROM t LIMIT 1; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 DROP TRIGGER y_trig ON y;
 
@@ -975,9 +1489,9 @@ WITH t AS (
         (43)
     RETURNING *
 )
-SELECT * FROM t ORDER BY a;
+SELECT a FROM t; -- YB: avoid ybsort column
 
-SELECT * FROM y ORDER BY a;
+SELECT a FROM y; -- YB: avoid ybsort column
 
 DROP TRIGGER y_trig ON y;
 DROP FUNCTION y_trigger();
@@ -986,7 +1500,7 @@ DROP FUNCTION y_trigger();
 
 CREATE TEMP TABLE parent ( id int, val text );
 CREATE TEMP TABLE child1 ( ) INHERITS ( parent );
-/*
+/* YB
 CREATE TEMP TABLE child2 ( ) INHERITS ( parent );
 INSERT INTO parent VALUES ( 1, 'p1' );
 INSERT INTO child1 VALUES ( 11, 'c11' ),( 12, 'c12' );
@@ -997,6 +1511,7 @@ SELECT * FROM parent;
 WITH wcte AS ( INSERT INTO child1 VALUES ( 42, 'new' ) RETURNING id AS newid )
 UPDATE parent SET id = id + newid FROM wcte;
 SELECT * FROM parent;
+WITH rcte AS ( SELECT max(id) AS maxid FROM parent )
 DELETE FROM parent USING rcte WHERE id = maxid;
 SELECT * FROM parent;
 WITH wcte AS ( INSERT INTO child2 VALUES ( 42, 'new2' ) RETURNING id AS newid )
@@ -1014,7 +1529,7 @@ WITH RECURSIVE t AS (
 	INSERT INTO y
 		SELECT * FROM t
 )
-VALUES(FALSE);
+VALUES(FALSE); -- YB: it's unclear why the line number in output is different from upstream.
 
 -- no RETURNING in a referenced data-modifying WITH
 WITH t AS (
@@ -1034,6 +1549,27 @@ WITH t AS (
 	INSERT INTO y VALUES(0)
 )
 VALUES(FALSE);
+CREATE OR REPLACE RULE y_rule AS ON INSERT TO y DO INSTEAD NOTHING;
+WITH t AS (
+	INSERT INTO y VALUES(0)
+)
+VALUES(FALSE);
+CREATE OR REPLACE RULE y_rule AS ON INSERT TO y DO INSTEAD NOTIFY foo;
+WITH t AS (
+	INSERT INTO y VALUES(0)
+)
+VALUES(FALSE);
+CREATE OR REPLACE RULE y_rule AS ON INSERT TO y DO ALSO NOTIFY foo;
+WITH t AS (
+	INSERT INTO y VALUES(0)
+)
+VALUES(FALSE);
+CREATE OR REPLACE RULE y_rule AS ON INSERT TO y
+  DO INSTEAD (NOTIFY foo; NOTIFY bar);
+WITH t AS (
+	INSERT INTO y VALUES(0)
+)
+VALUES(FALSE);
 DROP RULE y_rule ON y;
 
 -- check that parser lookahead for WITH doesn't cause any odd behavior
@@ -1042,12 +1578,12 @@ create table foo (with ordinality);  -- fail, WITH is a reserved word
 with ordinality as (select 1 as x) select * from ordinality;
 
 -- check sane response to attempt to modify CTE relation
-WITH test AS (SELECT 42) INSERT INTO test VALUES (1);
+WITH with_test AS (SELECT 42) INSERT INTO with_test VALUES (1);
 
 -- check response to attempt to modify table with same name as a CTE (perhaps
 -- surprisingly it works, because CTEs don't hide tables from data-modifying
 -- statements)
-create temp table test (i int);
-with test as (select 42) insert into test select * from test;
-select * from test;
-drop table test;
+create temp table with_test (i int);
+with with_test as (select 42) insert into with_test select * from with_test;
+select * from with_test;
+drop table with_test;

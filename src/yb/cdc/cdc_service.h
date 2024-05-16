@@ -13,7 +13,6 @@
 #pragma once
 
 #include <memory>
-#include <queue>
 
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/xrepl_metrics.h"
@@ -22,9 +21,6 @@
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
-#include "yb/client/async_initializer.h"
-
-#include "yb/common/schema.h"
 
 #include "yb/master/master_client.fwd.h"
 
@@ -32,10 +28,8 @@
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/net/net_util.h"
-#include "yb/util/service_util.h"
 #include "yb/util/semaphore.h"
 
 #include <boost/optional.hpp>
@@ -154,6 +148,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void DestroyVirtualWALForCDC(
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void UpdateAndPersistLSN(
+      const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
       rpc::RpcContext context) override;
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);

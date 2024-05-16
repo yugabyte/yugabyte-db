@@ -31,35 +31,53 @@
 
 static MemoryContext virtual_wal_context = NULL;
 
-/*
- * Checkpoint per tablet.
- *
- * TODO(#20726): This will not be needed once we have the virtual WAL component
- * ready in the CDC service.
- */
-static List *tablet_checkpoints = NIL;
-
 /* Cached records received from the CDC service. */
 static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
 
-/* The LSN of the last record streamed via logical replication. */
-static XLogRecPtr yb_last_lsn = InvalidXLogRecPtr;
+typedef struct UnackedTransactionInfo {
+	TransactionId xid;
+	XLogRecPtr begin_lsn;
+	XLogRecPtr commit_lsn;
+} YBUnackedTransactionInfo;
+
+/*
+ * A List of YBUnackedTransactionInfo.
+ *
+ * Keeps tracked of the metadata of all transactions that are yet to be
+ * confirmed as flushed by the client. Used for the calculation of restart_lsn
+ * from the confirmed_flush_lsn sent by the client.
+ *
+ * Transactions are appended at the end of the list and removed from the start.
+ *
+ * Relies on the following guarantees:
+ * 1. No interleaved transactions sent from the GetConsistentChanges RPC
+ * 2. Only committed transactions are sent from the GetConsistentChanges RPC
+ * 3. The LSN values of transaction BEGIN/COMMIT are monotonically increasing
+ *    i.e. if commit_ht(t2) > commit_ht(t1), then:
+ *        a) begin_lsn(t2) > begin_lsn(t1)
+ *        b) commit_lsn(t2) > commit_lsn (t1).
+ *    Also note that begin_lsn(t2) > commit_lsn(t1) by the guarantee of no
+ *    interleaved transactions.
+ *
+ * The size of this list depends on how fast the client confirms the flush of
+ * the streamed changes.
+ *
+ * TODO(#21399): Store this in a separate memory context for ease of tracking.
+ */
+static List *unacked_transactions = NIL;
 
 static List *YBCGetTables(List *publication_names);
-/*
- * TODO(#20726): These functions will not be needed once we have the virtual WAL
- * component ready in the CDC service.
- */
-static void YBCGetTabletCheckpoints(List *tables);
-static void YBCSetInitialTabletCheckpoints();
-static XLogRecPtr YBCGenerateLSN();
+static void InitVirtualWal(List *publication_names);
+
+static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
+static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
+static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
 {
 	MemoryContext	caller_context;
-	List			*tables;
 
 	elog(DEBUG1, "YBCInitVirtualWal");
 
@@ -71,28 +89,25 @@ YBCInitVirtualWal(List *yb_publication_names)
 	/* Start a transaction to be able to read the catalog tables. */
 	StartTransactionCommand();
 
-	/* Persist the tablet checkpoints outside of the transaction context. */
+	/*
+	 * Allocate any data within the virtual wal context i.e. outside of the
+	 * transaction context.
+	 */
 	MemoryContextSwitchTo(virtual_wal_context);
 
-	tables = YBCGetTables(yb_publication_names);
+	InitVirtualWal(yb_publication_names);
 
-	/*
-	 * TODO(#20726): Replace these two calls with a call to InitVirtualWal in
-	 * the CDC service once it is ready.
-	 */
-	YBCGetTabletCheckpoints(tables);
-	YBCSetInitialTabletCheckpoints();
-
-	list_free(tables);
 	AbortCurrentTransaction();
 	MemoryContextSwitchTo(caller_context);
 
-	yb_last_lsn = 0;
+	unacked_transactions = NIL;
 }
 
 void
 YBCDestroyVirtualWal()
 {
+	YBCDestroyVirtualWalForCDC();
+
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
 }
@@ -111,54 +126,30 @@ YBCGetTables(List *publication_names)
 }
 
 static void
-YBCGetTabletCheckpoints(List *tables)
+InitVirtualWal(List *publication_names)
 {
+	List		*tables;
+	Oid			*table_oids;
+
+	tables = YBCGetTables(publication_names);
+
+	table_oids = palloc(sizeof(Oid) * list_length(tables));
 	ListCell *lc;
+	size_t table_idx = 0;
 	foreach (lc, tables)
-	{
-		YBCPgTabletCheckpoint	*checkpoints;
-		size_t 					numtablets;
-		Oid						table_oid = lfirst_oid(lc);
+		table_oids[table_idx++] = lfirst_oid(lc);
 
-		YBCGetTabletListToPollForStreamAndTable(
-			MyReplicationSlot->data.yb_stream_id, table_oid, &checkpoints,
-			&numtablets);
+	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
+							list_length(tables));
 
-		for (size_t i = 0; i < numtablets; i++)
-		{
-			checkpoints[i].table_oid = table_oid;
-			tablet_checkpoints = lappend(tablet_checkpoints, &checkpoints[i]);
-		}
-	}
-}
-
-static void
-YBCSetInitialTabletCheckpoints()
-{
-	ListCell *lc;
-	foreach (lc, tablet_checkpoints)
-	{
-		YBCPgTabletCheckpoint *tc = (YBCPgTabletCheckpoint *) lfirst(lc);
-		YBCPgCDCSDKCheckpoint *new_checkpoint;
-
-		new_checkpoint = palloc(sizeof(YBCPgCDCSDKCheckpoint));
-		new_checkpoint->index = 0;
-		new_checkpoint->term = 0;
-
-		YBCSetCDCTabletCheckpoint(MyReplicationSlot->data.yb_stream_id,
-								  tc->location->tablet_id, new_checkpoint, 0,
-								  true);
-
-		tc->checkpoint->index = 0;
-		tc->checkpoint->term = 0;
-	}
+	pfree(table_oids);
+	list_free(tables);
 }
 
 YBCPgVirtualWalRecord *
 YBCReadRecord(XLogReaderState *state, char **errormsg)
 {
 	MemoryContext			caller_context;
-	XLogRecPtr				record_lsn = InvalidXLogRecPtr;
 	YBCPgVirtualWalRecord	*record = NULL;
 
 	elog(DEBUG4, "YBCReadRecord");
@@ -177,33 +168,12 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	{
 		elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 
-		/*
-		 * TODO(#20726): The below code assumes that the number of tablets in 1.
-		 * Once the virtual WAL component is ready, this Walsender code will not
-		 * be aware of tablets. It will just get a stream of records from the
-		 * virtual wal and would not need to know/care about the tablet it came
-		 * from.
-		 */
-		Assert(list_length(tablet_checkpoints) == 1);
-		ListCell *lc;
-		foreach (lc, tablet_checkpoints)
-		{
-			YBCPgTabletCheckpoint *tc = (YBCPgTabletCheckpoint *) lfirst(lc);
+		/* We no longer need the earlier record batch. */
+		if (cached_records)
+			pfree(cached_records);
 
-			/* We no longer need the earlier record batch. */
-			if (cached_records)
-				pfree(cached_records);
-
-			YBCGetCDCChanges(MyReplicationSlot->data.yb_stream_id,
-							 tc->location->tablet_id, tc->checkpoint,
-							 &cached_records);
-
-			if (tc->checkpoint)
-				pfree(tc->checkpoint);
-
-			tc->checkpoint = cached_records->checkpoint;
-			cached_records->table_oid = tc->table_oid;
-		}
+		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
+								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
 	}
@@ -213,33 +183,71 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	 * We did not get any records from CDC service, return NULL and retry in the
 	 * next iteration.
 	 */
-	if (cached_records->row_count == 0)
+	if (!cached_records || cached_records->row_count == 0)
 	{
+		/*
+		 * TODO(#20726): Sleep for a configurable amount of time here to avoid
+		 * spamming the CDC service.
+		 */
 		MemoryContextSwitchTo(caller_context);
 		return NULL;
 	}
 
-	/* Get an LSN from the generator. */
-	record_lsn = YBCGenerateLSN();
-
-	record = palloc(sizeof(YBCPgVirtualWalRecord));
-	record->data = &cached_records->rows[cached_records_last_sent_row_idx++];
-	record->table_oid = cached_records->table_oid;
-	record->lsn = record_lsn;
-	/*
-	 * TODO(#20726): Remove this hardcoded value once the Virtual WAL component
-	 * is ready in CDC service. It will return the xid in the response.
-	 */
-	record->xid = 1;
-
-	state->ReadRecPtr = record_lsn;
-
-	if (state->yb_virtual_wal_record)
-		pfree(state->yb_virtual_wal_record);
+	record = &cached_records->rows[cached_records_last_sent_row_idx++];
+	state->ReadRecPtr = record->lsn;
 	state->yb_virtual_wal_record = record;
+
+	TrackUnackedTransaction(record);
 
 	MemoryContextSwitchTo(caller_context);
 	return record;
+}
+
+static void
+TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
+{
+	YBUnackedTransactionInfo *transaction = NULL;
+
+	switch (record->action)
+	{
+		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
+		{
+			transaction = palloc(sizeof(YBUnackedTransactionInfo));
+			transaction->xid = record->xid;
+			transaction->begin_lsn = record->lsn;
+			transaction->commit_lsn = InvalidXLogRecPtr;
+
+			unacked_transactions = lappend(unacked_transactions, transaction);
+			break;
+		}
+
+		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+		{
+			YBUnackedTransactionInfo *txninfo = NULL;
+
+			/*
+			 * We should at least have one transaction which we appended while
+			 * handling the corresponding BEGIN record.
+			 */
+			Assert(list_length(unacked_transactions) > 0);
+
+			txninfo = (YBUnackedTransactionInfo *) lfirst(
+				list_tail((List *) unacked_transactions));
+			Assert(txninfo->xid == record->xid);
+			Assert(txninfo->begin_lsn != InvalidXLogRecPtr);
+			Assert(txninfo->commit_lsn == InvalidXLogRecPtr);
+
+			txninfo->commit_lsn = record->lsn;
+			break;
+		}
+
+		/* Not of interest here. */
+		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
+			return;
+	}
 }
 
 XLogRecPtr
@@ -261,8 +269,98 @@ YBCGetFlushRecPtr(void)
 	return PG_UINT64_MAX;
 }
 
-static XLogRecPtr
-YBCGenerateLSN()
+XLogRecPtr
+YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 {
-	return ++yb_last_lsn;
+	XLogRecPtr		restart_lsn_hint = CalculateRestartLSN(confirmed_flush);
+	YBCPgXLogRecPtr	restart_lsn = InvalidXLogRecPtr;
+
+	/* There was nothing to ack, so we can return early. */
+	if (restart_lsn_hint == InvalidXLogRecPtr)
+	{
+		elog(DEBUG4, "No unacked transaction were found, skipping the "
+					 "persistence of confirmed_flush and restart_lsn_hint");
+		return restart_lsn_hint;
+	}
+
+	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id, restart_lsn_hint,
+						   confirmed_flush, &restart_lsn);
+
+	CleanupAckedTransactions(confirmed_flush);
+	return restart_lsn;
+}
+
+static XLogRecPtr
+CalculateRestartLSN(XLogRecPtr confirmed_flush)
+{
+	XLogRecPtr					restart_lsn = InvalidXLogRecPtr;
+	ListCell					*lc;
+	YBUnackedTransactionInfo	*txn;
+	int							numunacked = list_length(unacked_transactions);
+
+	if (numunacked == 0)
+		return InvalidXLogRecPtr;
+
+	foreach (lc, unacked_transactions)
+	{
+		txn = (YBUnackedTransactionInfo *) lfirst(lc);
+
+		/*
+		 * The previous transaction was fully flushed by the client but this
+		 * transaction hasn't been flushed or flushed partially. So if we were
+		 * to restart at this point, streaming should start from the begin of
+		 * this transaction which is logically equivalent to the end of the last
+		 * transaction.
+		 *
+		 * Example: 3 unacked transactions with begin and commit lsn as follows
+		 * T1: [3, 5]
+		 * T2: [7, 10]
+		 * T3: [11, 14]
+		 * Suppose confirmed_flush = 8, then:
+		 * The restart lsn could be 6 or 7 in this case. We choose 6 here as
+		 * the commit_lsn(T1) + 1.
+		 */
+		if (confirmed_flush < txn->commit_lsn)
+			break;
+
+		/*
+		 * The client has fully flushed this transaction. If there were to
+		 * be any restart at this point, the streaming should start from the
+		 * next unacked transaction onwards (if it exists).
+		 *
+		 * There are two cases here:
+		 * 1. There are more transactions in the unacked_transactions list after
+		 * this one: the next iteration of this 'for' loop will handle this
+		 * case.
+		 * 2. This is the last unacked transaction: The assignment of
+		 * restart_lsn below handles this case.
+		 */
+		restart_lsn = txn->commit_lsn + 1;
+	}
+
+	return restart_lsn;
+}
+
+/*
+ * Delete all transactions which have been fully flushed by the client and will
+ * not be streamed again.
+ */
+static void
+CleanupAckedTransactions(XLogRecPtr confirmed_flush)
+{
+	ListCell					*cell;
+	ListCell					*next;
+	YBUnackedTransactionInfo	*txn;
+
+	for (cell = list_head(unacked_transactions); cell; cell = next)
+	{
+		txn = (YBUnackedTransactionInfo *) lfirst(cell);
+		next = lnext(unacked_transactions, cell);
+
+		if (txn->commit_lsn <= confirmed_flush)
+			unacked_transactions =
+				list_delete_cell(unacked_transactions, cell);
+		else
+			break;
+	}
 }

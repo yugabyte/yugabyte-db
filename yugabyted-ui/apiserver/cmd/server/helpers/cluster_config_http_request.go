@@ -2,6 +2,7 @@ package helpers
 
 import (
     "encoding/json"
+    "net/url"
 )
 
 type PlacementBlock struct {
@@ -49,18 +50,11 @@ func (h *HelperContainer) GetClusterConfigFuture(nodeHost string, future chan Cl
         ClusterConfig: ClusterConfigStruct{},
         Error:         nil,
     }
-    urls, err := h.BuildMasterURLs("api/v1/cluster-config")
-    if err != nil {
-        clusterConfig.Error = err
-        future <- clusterConfig
-        return
-    }
-    body, err := h.AttemptGetRequests(urls, true)
-    if err != nil {
-        clusterConfig.Error = err
-        future <- clusterConfig
-        return
-    }
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "api/v1/cluster-config", // path
+        url.Values{}, // params
+        true, // expectJson
+    )
     if err != nil {
         clusterConfig.Error = err
         future <- clusterConfig

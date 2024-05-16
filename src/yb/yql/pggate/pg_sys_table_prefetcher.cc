@@ -46,7 +46,7 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, false, "Enable read request caching");
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
     "Lifetime limit for response cache soft renewing process");

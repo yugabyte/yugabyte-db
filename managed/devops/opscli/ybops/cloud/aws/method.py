@@ -136,7 +136,7 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
 
-    def get_device_names(self, args, host_info):
+    def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args, host_info)
 
 
@@ -572,3 +572,6 @@ class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
         super(AwsUpdateMountedDisksMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
+
+    def get_device_names(self, args, host_info=None):
+        return self.cloud.get_device_names(args, host_info)

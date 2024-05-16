@@ -42,6 +42,9 @@
 
 #include "utils/guc.h"
 
+/* YB includes. */
+#include "utils/builtins.h"
+
 PG_MODULE_MAGIC;
 
 /*

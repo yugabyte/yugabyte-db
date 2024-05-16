@@ -90,4 +90,10 @@ The following table lists different types of indexes and their support in YSQL.
     href="other-constraints/"
     icon="/images/section_icons/develop/learn.png">}}
 
+  {{<index/item
+    title="Index backfill"
+    body="Understand how you can create indexes without affecting ongoing queries."
+    href="index-backfill/"
+    icon="/images/section_icons/develop/learn.png">}}
+
 {{</index/block>}}

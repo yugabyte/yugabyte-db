@@ -12,7 +12,7 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { AlertName, XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -20,16 +20,17 @@ import {
   drConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { generateUniqueName } from '../../../../redesign/helpers/utils';
+import { generateUniqueName, isActionFrozen } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
+import { createAlertConfiguration, getAlertTemplates } from '../../../../actions/universe';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
+import { AllowedTasks, TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { DurationUnit, DURATION_UNIT_TO_MS } from '../constants';
-
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import { AlertName, XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
-import { createAlertConfiguration, getAlertTemplates } from '../../../../actions/universe';
 
 export interface CreateDrConfigFormValues {
   targetUniverse: { label: string; value: Universe };
@@ -57,6 +58,7 @@ export interface CreateXClusterConfigFormWarnings {
 interface CreateConfigModalProps {
   modalProps: YBModalProps;
   sourceUniverseUuid: string;
+  allowedTasks: AllowedTasks;
 }
 
 export const FormStep = {
@@ -72,7 +74,11 @@ const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
 const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
-export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
+export const CreateConfigModal = ({
+  modalProps,
+  sourceUniverseUuid,
+  allowedTasks
+}: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
 
@@ -355,7 +361,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isConfigureActionFrozen =
+    currentFormStep === FormStep.CONFIGURE_ALERT &&
+    isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
+  const isFormDisabled = formMethods.formState.isSubmitting || isConfigureActionFrozen;
+
   return (
     <YBModal
       title={modalTitle}

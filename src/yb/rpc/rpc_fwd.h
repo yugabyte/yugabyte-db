@@ -51,6 +51,7 @@ class LightweightMessage;
 class MessengerBuilder;
 class PeriodicTimer;
 class Proxy;
+class ProxyBase;
 class ProxyCache;
 class ProxyContext;
 class Reactor;

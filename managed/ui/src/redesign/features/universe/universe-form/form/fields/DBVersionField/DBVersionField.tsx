@@ -6,6 +6,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { getActiveDBVersions, sortVersionStrings } from './DBVersionHelper';
+import { isVersionStable } from '../../../../../../../utils/universeUtilsTyped';
 import { DEFAULT_ADVANCED_CONFIG, UniverseFormData, YBSoftwareMetadata } from '../../../utils/dto';
 import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 
@@ -56,9 +57,14 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
         //pre-select first available db version
-        const sorted: Record<string, string>[] = sortVersionStrings(data);
-        if (!getValues(SOFTWARE_VERSION_FIELD) && sorted.length) {
-          setValue(SOFTWARE_VERSION_FIELD, sorted[0].value, { shouldValidate: true });
+        const stableSorted: Record<string, string>[] = sortVersionStrings(
+          data?.filter(version => {
+            return isVersionStable(version.label);
+          })
+        );
+        // Display the latest stable version on the Create Universe page
+        if (!getValues(SOFTWARE_VERSION_FIELD) && stableSorted.length) {
+          setValue(SOFTWARE_VERSION_FIELD, stableSorted[0].value, { shouldValidate: true });
         }
       },
       select: transformData
@@ -77,7 +83,28 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
     });
   };
 
-  const dbVersions: Record<string, string>[] = data ? sortVersionStrings(data) : [];
+  const stableDbVersions: Record<string, string>[] = data ? sortVersionStrings(
+    data?.filter(version => {
+      return isVersionStable(version.label);
+    })) : [];
+  const previewDbVersions: Record<string, string>[] = data ? sortVersionStrings(
+    data?.filter(version => {
+      return !isVersionStable(version.label);
+    })) : [];
+
+  // Display the Stable versions first, followed by the Preview versions
+  const dbVersions: Record<string, any>[] = [
+    ...stableDbVersions.map((stableDbVersion: Record<string, string>) => ({
+      label: stableDbVersion.value,
+      value: stableDbVersion.value,
+      series: `v${stableDbVersion.value.split('.')[0]}.${stableDbVersion.value.split('.')[1]} Series (Standard Term Support)`
+    })),
+    ...previewDbVersions.map((previewDbVersion: Record<string, string>) => ({
+      label: previewDbVersion.value,
+      value: previewDbVersion.value,
+      series: `v${previewDbVersion.value.split('.')[0]}.${previewDbVersion.value.split('.')[1]} Series (Preview)`
+    }))
+  ];
 
   return (
     <Controller
@@ -91,7 +118,7 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
           : ''
       }}
       render={({ field, fieldState }) => {
-        const value = dbVersions.find((item) => item.value === field.value) ?? '';
+        const value = dbVersions.find((version) => version.value === field.value) ?? '';
         return (
           <Box display="flex" width="100%" data-testid="DBVersionField-Container">
             <YBLabel dataTestId="DBVersionField-Label" className={classes.advancedConfigLabel}>
@@ -101,7 +128,8 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
               <YBAutoComplete
                 disabled={disabled}
                 loading={isLoading}
-                options={(dbVersions as unknown) as Record<string, string>[]}
+                options={(dbVersions as unknown) as Record<string, any>[]}
+                groupBy={(option: Record<string, string>) => option.series}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
                 onChange={handleChange}

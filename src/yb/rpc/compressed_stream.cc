@@ -39,6 +39,10 @@ using namespace std::literals;
 DEFINE_UNKNOWN_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
                                          "0 - no compression, 1 - gzip, 2 - snappy, 3 - lz4.");
 
+DEFINE_RUNTIME_int32(gzip_stream_compression_level, 1,
+    "Compression level used by gzip stream compression. "
+    "0 - no compression, 1 - best speed, 9 - best compression.");
+
 namespace yb {
 namespace rpc {
 
@@ -158,7 +162,8 @@ class ZlibCompressor : public Compressor {
 
   Status Init() override {
     memset(&deflate_stream_, 0, sizeof(deflate_stream_));
-    int res = deflateInit(&deflate_stream_, /* level= */ Z_DEFAULT_COMPRESSION);
+    auto level = std::max(std::min(FLAGS_gzip_stream_compression_level, 9), 1);
+    int res = deflateInit(&deflate_stream_, level);
     if (res != Z_OK) {
       return STATUS_FORMAT(RuntimeError, "Cannot init deflate stream: $0", res);
     }

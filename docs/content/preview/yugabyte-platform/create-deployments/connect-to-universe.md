@@ -46,7 +46,7 @@ ssh -i <path_to_secret> username@<platform_machine_external_ip>
 For example, for an AWS instance, you can SSH using a command similar to the following:
 
 ```sh
-ssh -i ~/.yugabyte/yb-dev-aws-2.pem centos@my.yugabyte.aws
+ssh -i ~/.yugabyte/yb-dev-aws-2.pem ec2-user@my.yugabyte.aws
 ```
 
 If your instance is on Kubernetes, use kubectl commands to connect. For example:
@@ -76,7 +76,7 @@ To run a shell from a universe node, do the following:
     sudo ssh -i /opt/yugabyte/yugaware/data/keys/f000ad00-aafe-4a67-bd1f-34bdaf3bee00/yb-dev-yugabyte-google-provider_f033ad00-aafe-4a00-bd1f-34bdaf3bee00-key.pem -ostricthostkeychecking=no -p 22 yugabyte@<node_ip_address>
 
     Are you sure you want to continue connecting (yes/no)? yes
-    [centos@yb-dev-helloworld1-n1 ~]$
+    [ec2-user@yb-dev-helloworld1-n1 ~]$
     ```
 
 1. On the node, navigate to the tserver/bin directory:

@@ -259,7 +259,7 @@ CompactionJob::CompactionJob(
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       file_numbers_provider_(file_numbers_provider),
       table_cache_(std::move(table_cache)),
-      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled()),
+      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()),
       event_logger_(event_logger),
       paranoid_file_checks_(paranoid_file_checks),
       measure_io_stats_(measure_io_stats) {

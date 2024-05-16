@@ -16,7 +16,7 @@ syntax = "proto2";
 
 package rocksdb;
 
-import "yb/util/opid.proto";
+import "yb/common/opid.proto";
 import "google/protobuf/any.proto";
 
 message DeletedFilePB {

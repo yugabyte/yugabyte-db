@@ -647,7 +647,7 @@ select array(select array['Hello', i::text] from generate_series(9,11) i);
 
 create temp table t1 (f1 int8_tbl[]);
 insert into t1 (f1[5].q1) values(42);
-select * from t1;
+select * from t1; -- YB note: output differs because of ybsort column
 update t1 set f1[5].q2 = 43;
 select * from t1;
 

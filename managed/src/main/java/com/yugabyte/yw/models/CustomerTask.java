@@ -147,6 +147,9 @@ public class CustomerTask extends Model {
     @EnumValue("Hard Reboot")
     HardReboot,
 
+    @EnumValue("Replace")
+    Replace,
+
     @EnumValue("Edit")
     Edit,
 
@@ -378,6 +381,8 @@ public class CustomerTask extends Model {
           return completed ? "Removed " : "Removing ";
         case ResizeNode:
           return completed ? "Resized Node " : "Resizing Node ";
+        case Replace:
+          return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
           return completed ? "Resumed " : "Resuming ";
         case Start:

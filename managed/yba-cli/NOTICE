@@ -1,0 +1,341 @@
+YugabyteDB Anywhere Command Line Interface (CLI)
+Copyright © 2022-present Yugabyte, Inc. All Rights Reserved.
+
+This product is licensed to you under the Apache License, Version
+2.0 (the "License"). You may not use this file except in compliance
+with the License. This product may include a number of subcomponents 
+with separate copyright notices and license terms. Your use of these
+subcomponents is subject to the terms and conditions of the
+subcomponent's license, as noted in the LICENSE file.
+
+The following subcomponents are used:
+
+## github.com/AlecAivazis/survey/v2
+
+* Name: github.com/AlecAivazis/survey/v2
+* Version: v2.3.7
+* License: [MIT](https://github.com/AlecAivazis/survey/blob/v2.3.7/LICENSE)
+
+
+## github.com/AlecAivazis/survey/v2/terminal
+
+* Name: github.com/AlecAivazis/survey/v2/terminal
+* Version: v2.3.7
+* License: [MIT](https://github.com/AlecAivazis/survey/blob/v2.3.7/terminal/LICENSE.txt)
+
+
+## github.com/Masterminds/goutils
+
+* Name: github.com/Masterminds/goutils
+* Version: v1.1.1
+* License: [Apache-2.0](https://github.com/Masterminds/goutils/blob/v1.1.1/LICENSE.txt)
+
+
+## github.com/Masterminds/semver/v3
+
+* Name: github.com/Masterminds/semver/v3
+* Version: v3.2.0
+* License: [MIT](https://github.com/Masterminds/semver/blob/v3.2.0/LICENSE.txt)
+
+
+## github.com/Masterminds/sprig/v3
+
+* Name: github.com/Masterminds/sprig/v3
+* Version: v3.2.3
+* License: [MIT](https://github.com/Masterminds/sprig/blob/v3.2.3/LICENSE.txt)
+
+
+## github.com/aws/aws-sdk-go
+
+* Name: github.com/aws/aws-sdk-go
+* Version: v1.45.24
+* License: [Apache-2.0](https://github.com/aws/aws-sdk-go/blob/v1.45.24/LICENSE.txt)
+
+
+## github.com/aws/aws-sdk-go/internal/sync/singleflight
+
+* Name: github.com/aws/aws-sdk-go/internal/sync/singleflight
+* Version: v1.45.24
+* License: [BSD-3-Clause](https://github.com/aws/aws-sdk-go/blob/v1.45.24/internal/sync/singleflight/LICENSE)
+
+
+## github.com/common-nighthawk/go-figure
+
+* Name: github.com/common-nighthawk/go-figure
+* Version: v0.0.0-20210622060536-734e95fb86be
+* License: [MIT](https://github.com/common-nighthawk/go-figure/blob/734e95fb86be/LICENSE)
+
+
+## github.com/cpuguy83/go-md2man/v2/md2man
+
+* Name: github.com/cpuguy83/go-md2man/v2/md2man
+* Version: v2.0.3
+* License: [MIT](https://github.com/cpuguy83/go-md2man/blob/v2.0.3/LICENSE.md)
+
+
+## github.com/fatih/color
+
+* Name: github.com/fatih/color
+* Version: v1.13.0
+* License: [MIT](https://github.com/fatih/color/blob/v1.13.0/LICENSE.md)
+
+
+## github.com/fsnotify/fsnotify
+
+* Name: github.com/fsnotify/fsnotify
+* Version: v1.6.0
+* License: [BSD-3-Clause](https://github.com/fsnotify/fsnotify/blob/v1.6.0/LICENSE)
+
+
+## github.com/google/uuid
+
+* Name: github.com/google/uuid
+* Version: v1.3.0
+* License: [BSD-3-Clause](https://github.com/google/uuid/blob/v1.3.0/LICENSE)
+
+
+## github.com/hashicorp/hcl
+
+* Name: github.com/hashicorp/hcl
+* Version: v1.0.0
+* License: [MPL-2.0](https://github.com/hashicorp/hcl/blob/v1.0.0/LICENSE)
+
+
+## github.com/huandu/xstrings
+
+* Name: github.com/huandu/xstrings
+* Version: v1.3.3
+* License: [MIT](https://github.com/huandu/xstrings/blob/v1.3.3/LICENSE)
+
+
+## github.com/imdario/mergo
+
+* Name: github.com/imdario/mergo
+* Version: v0.3.11
+* License: [BSD-3-Clause](https://github.com/imdario/mergo/blob/v0.3.11/LICENSE)
+
+
+## github.com/kballard/go-shellquote
+
+* Name: github.com/kballard/go-shellquote
+* Version: v0.0.0-20180428030007-95032a82bc51
+* License: [MIT](https://github.com/kballard/go-shellquote/blob/95032a82bc51/LICENSE)
+
+
+## github.com/magiconair/properties
+
+* Name: github.com/magiconair/properties
+* Version: v1.8.7
+* License: [BSD-2-Clause](https://github.com/magiconair/properties/blob/v1.8.7/LICENSE.md)
+
+
+## github.com/mattn/go-colorable
+
+* Name: github.com/mattn/go-colorable
+* Version: v0.1.12
+* License: [MIT](https://github.com/mattn/go-colorable/blob/v0.1.12/LICENSE)
+
+
+## github.com/mattn/go-isatty
+
+* Name: github.com/mattn/go-isatty
+* Version: v0.0.14
+* License: [MIT](https://github.com/mattn/go-isatty/blob/v0.0.14/LICENSE)
+
+
+## github.com/mgutz/ansi
+
+* Name: github.com/mgutz/ansi
+* Version: v0.0.0-20170206155736-9520e82c474b
+* License: [MIT](https://github.com/mgutz/ansi/blob/9520e82c474b/LICENSE)
+
+
+## github.com/mitchellh/copystructure
+
+* Name: github.com/mitchellh/copystructure
+* Version: v1.2.0
+* License: [MIT](https://github.com/mitchellh/copystructure/blob/v1.2.0/LICENSE)
+
+
+## github.com/mitchellh/mapstructure
+
+* Name: github.com/mitchellh/mapstructure
+* Version: v1.5.0
+* License: [MIT](https://github.com/mitchellh/mapstructure/blob/v1.5.0/LICENSE)
+
+
+## github.com/mitchellh/reflectwalk
+
+* Name: github.com/mitchellh/reflectwalk
+* Version: v1.0.2
+* License: [MIT](https://github.com/mitchellh/reflectwalk/blob/v1.0.2/LICENSE)
+
+
+## github.com/pelletier/go-toml/v2
+
+* Name: github.com/pelletier/go-toml/v2
+* Version: v2.0.8
+* License: [MIT](https://github.com/pelletier/go-toml/blob/v2.0.8/LICENSE)
+
+
+## github.com/pkg/errors
+
+* Name: github.com/pkg/errors
+* Version: v0.9.1
+* License: [BSD-2-Clause](https://github.com/pkg/errors/blob/v0.9.1/LICENSE)
+
+
+## github.com/russross/blackfriday/v2
+
+* Name: github.com/russross/blackfriday/v2
+* Version: v2.1.0
+* License: [BSD-2-Clause](https://github.com/russross/blackfriday/blob/v2.1.0/LICENSE.txt)
+
+
+## github.com/shopspring/decimal
+
+* Name: github.com/shopspring/decimal
+* Version: v1.2.0
+* License: [MIT](https://github.com/shopspring/decimal/blob/v1.2.0/LICENSE)
+
+
+## github.com/sirupsen/logrus
+
+* Name: github.com/sirupsen/logrus
+* Version: v1.9.3
+* License: [MIT](https://github.com/sirupsen/logrus/blob/v1.9.3/LICENSE)
+
+
+## github.com/spf13/afero
+
+* Name: github.com/spf13/afero
+* Version: v1.9.5
+* License: [Apache-2.0](https://github.com/spf13/afero/blob/v1.9.5/LICENSE.txt)
+
+
+## github.com/spf13/cast
+
+* Name: github.com/spf13/cast
+* Version: v1.5.1
+* License: [MIT](https://github.com/spf13/cast/blob/v1.5.1/LICENSE)
+
+
+## github.com/spf13/cobra
+
+* Name: github.com/spf13/cobra
+* Version: v1.8.0
+* License: [Apache-2.0](https://github.com/spf13/cobra/blob/v1.8.0/LICENSE.txt)
+
+
+## github.com/spf13/jwalterweatherman
+
+* Name: github.com/spf13/jwalterweatherman
+* Version: v1.1.0
+* License: [MIT](https://github.com/spf13/jwalterweatherman/blob/v1.1.0/LICENSE)
+
+
+## github.com/spf13/pflag
+
+* Name: github.com/spf13/pflag
+* Version: v1.0.5
+* License: [BSD-3-Clause](https://github.com/spf13/pflag/blob/v1.0.5/LICENSE)
+
+
+## github.com/spf13/viper
+
+* Name: github.com/spf13/viper
+* Version: v1.16.0
+* License: [MIT](https://github.com/spf13/viper/blob/v1.16.0/LICENSE)
+
+
+## github.com/subosito/gotenv
+
+* Name: github.com/subosito/gotenv
+* Version: v1.4.2
+* License: [MIT](https://github.com/subosito/gotenv/blob/v1.4.2/LICENSE)
+
+
+## github.com/t-tomalak/logrus-easy-formatter
+
+* Name: github.com/t-tomalak/logrus-easy-formatter
+* Version: v0.0.0-20190827215021-c074f06c5816
+* License: [MIT](https://github.com/t-tomalak/logrus-easy-formatter/blob/c074f06c5816/LICENSE)
+
+
+## github.com/yugabyte/yugabyte-db/managed/yba-cli
+
+* Name: github.com/yugabyte/yugabyte-db/managed/yba-cli
+* Version: Unknown
+* License: [Apache-2.0](https://github.com/yugabyte/yugabyte-db/blob/HEAD/managed/yba-cli/LICENSE)
+
+
+## github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/templates
+
+* Name: github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/templates
+* Version: Unknown
+* License: [Apache-2.0](https://github.com/yugabyte/yugabyte-db/blob/HEAD/managed/yba-cli/internal/formatter/templates/LICENSE)
+
+
+## golang.org/x/crypto
+
+* Name: golang.org/x/crypto
+* Version: v0.14.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.14.0:LICENSE)
+
+
+## golang.org/x/exp
+
+* Name: golang.org/x/exp
+* Version: v0.0.0-20230905200255-921286631fa9
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/exp/+/92128663:LICENSE)
+
+
+## golang.org/x/oauth2
+
+* Name: golang.org/x/oauth2
+* Version: v0.8.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/oauth2/+/v0.8.0:LICENSE)
+
+
+## golang.org/x/sys/unix
+
+* Name: golang.org/x/sys/unix
+* Version: v0.13.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/v0.13.0:LICENSE)
+
+
+## golang.org/x/term
+
+* Name: golang.org/x/term
+* Version: v0.13.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/term/+/v0.13.0:LICENSE)
+
+
+## golang.org/x/text
+
+* Name: golang.org/x/text
+* Version: v0.13.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.13.0:LICENSE)
+
+
+## gopkg.in/ini.v1
+
+* Name: gopkg.in/ini.v1
+* Version: v1.67.0
+* License: [Apache-2.0](https://github.com/go-ini/ini/blob/v1.67.0/LICENSE)
+
+
+## gopkg.in/yaml.v2
+
+* Name: gopkg.in/yaml.v2
+* Version: v2.4.0
+* License: [Apache-2.0](https://github.com/go-yaml/yaml/blob/v2.4.0/LICENSE)
+
+
+## gopkg.in/yaml.v3
+
+* Name: gopkg.in/yaml.v3
+* Version: v3.0.1
+* License: [MIT](https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE)
+
+

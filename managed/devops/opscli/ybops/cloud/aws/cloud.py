@@ -464,7 +464,7 @@ class AwsCloud(AbstractCloud):
             results.append(result)
         return results
 
-    def get_device_names(self, args, host_info):
+    def get_device_names(self, args, host_info=None):
         if has_ephemerals(args.instance_type, args.region):
             return []
         else:

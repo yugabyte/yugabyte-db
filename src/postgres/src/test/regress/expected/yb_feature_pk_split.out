@@ -82,7 +82,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_text = 'partition 3'::text)
+   Storage Filter: (col_text = 'partition 3'::text)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
@@ -95,10 +95,10 @@ SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 
 -- Operator `IN`
 EXPLAIN SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
-                                 QUERY PLAN
------------------------------------------------------------------------------
+                                  QUERY PLAN
+------------------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
+   Storage Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
@@ -117,7 +117,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 10;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '10'::double precision)
+   Storage Filter: (col_double <= '10'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 10;
@@ -137,10 +137,10 @@ SELECT * FROM feature_pk_split WHERE col_double <= 10;
 
 -- Operator `AND`
 EXPLAIN SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
-                                           QUERY PLAN
--------------------------------------------------------------------------------------------------
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..105.00 rows=1000 width=262)
-   Remote Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
+   Storage Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
@@ -345,7 +345,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 11;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '11'::double precision)
+   Storage Filter: (col_double <= '11'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 11;
@@ -369,7 +369,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 14;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '14'::double precision)
+   Storage Filter: (col_double <= '14'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 14;
@@ -396,7 +396,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 17;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '17'::double precision)
+   Storage Filter: (col_double <= '17'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 17;
@@ -426,7 +426,7 @@ EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 100;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '100'::double precision)
+   Storage Filter: (col_double <= '100'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 100;

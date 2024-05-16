@@ -15,7 +15,6 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
 
@@ -570,7 +569,7 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
 
   target_universe_info->set_universe_uuid(target_uuid.ToString());
   target_universe_info->set_state(
-      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::CREATING_REPLICATION_GROUP);
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::CREATING_REPLICATION_GROUP);
 
   RETURN_NOT_OK(Upsert(l, epoch));
 
@@ -590,13 +589,13 @@ Result<IsOperationDoneResult> XClusterOutboundReplicationGroup::IsCreateXCluster
   auto& target_universe = *outbound_group.mutable_target_universe_info();
 
   if (target_universe.state() ==
-      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING) {
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::REPLICATING) {
     return IsOperationDoneResult::Done();
   }
 
   auto setup_result = IsOperationDoneResult::NotDone();
   if (target_universe.state() ==
-      SysXClusterOutboundReplicationGroupEntryPB_TargetUniverseInfo::FAILED) {
+      SysXClusterOutboundReplicationGroupEntryPB_TargetUniverseInfoPB::FAILED) {
     Status status;
     if (target_universe.has_error_status()) {
       status = StatusFromPB(target_universe.error_status());
@@ -620,7 +619,7 @@ Result<IsOperationDoneResult> XClusterOutboundReplicationGroup::IsCreateXCluster
 
   if (setup_result.status().ok()) {
     target_universe.set_state(
-        SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING);
+        SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::REPLICATING);
   } else {
     LOG_WITH_PREFIX(WARNING) << "Failed to create replication group on target cluster: "
                              << setup_result.status();

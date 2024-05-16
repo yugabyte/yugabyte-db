@@ -68,7 +68,7 @@ Depending on whether the application should read the latest data or stale data, 
 
 ## Pick the right pattern
 
-Use the following matrix to choose a [design pattern](#design-patterns-explained), based on the architectures described in the preceding section.
+Use the following matrix to choose a [design pattern](#design-patterns), based on the architectures described in the preceding section.
 
 |         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Dataset                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |

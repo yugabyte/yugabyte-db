@@ -1443,9 +1443,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @JsonIgnore
-  public Cluster getClusterByNodeUUID(UUID nodeUUID) {
+  public Cluster getClusterByNodeName(String nodeName) {
     NodeDetails node =
-        nodeDetailsSet.stream().filter(n -> n.nodeUuid.equals(nodeUUID)).findFirst().orElse(null);
+        nodeDetailsSet.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
     if (node == null) {
       return null;
     }

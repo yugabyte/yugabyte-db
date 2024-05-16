@@ -66,8 +66,9 @@
 #include "yb/rpc/yb_rpc.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/server/async_client_initializer.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
 
@@ -183,9 +184,9 @@ DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres us
 
 DECLARE_int32(num_concurrent_backfills_allowed);
 
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+constexpr int kTServerYBClientDefaultTimeoutMs = 60 * 1000;
 
-DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYBClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
@@ -206,7 +207,6 @@ DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
-DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
 DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
@@ -462,7 +462,8 @@ Status TabletServer::Init() {
     encryption::UniverseKeyRegistryPB universe_key_registry;
     while (true) {
       auto res = client::UniverseKeyClient::GetFullUniverseKeyRegistry(
-          options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager());
+          options_.HostsString(), JoinStrings(master_addresses, ","),
+          fs_manager()->GetDefaultRootDir());
       if (res.ok()) {
         universe_key_registry = *res;
         break;
@@ -913,8 +914,22 @@ void TabletServer::SetYsqlDBCatalogVersions(
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1})));
     if (ysql_db_catalog_version_map_.size() > 1) {
-      catalog_version_table_in_perdb_mode_ = true;
-      shared_object().SetCatalogVersionTableInPerdbMode();
+      if (!catalog_version_table_in_perdb_mode_.has_value() ||
+          !catalog_version_table_in_perdb_mode_.value()) {
+        LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
+        catalog_version_table_in_perdb_mode_ = true;
+        shared_object().SetCatalogVersionTableInPerdbMode(true);
+      }
+    } else {
+      DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
+      if (!catalog_version_table_in_perdb_mode_.has_value()) {
+        // We can initialize to false at most one time. Once set,
+        // catalog_version_table_in_perdb_mode_ can only go from false to
+        // true (i.e., from global mode to perdb mode).
+        LOG(INFO) << "set pg_yb_catalog_version table in global mode";
+        catalog_version_table_in_perdb_mode_ = false;
+        shared_object().SetCatalogVersionTableInPerdbMode(false);
+      }
     }
     bool row_inserted = it.second;
     bool row_updated = false;
@@ -1159,8 +1174,8 @@ void TabletServer::InvalidatePgTableCache() {
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
@@ -1312,10 +1327,8 @@ Status TabletServer::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(),
-      fs_manager_->GetDefaultRootDir(),
-      server::SecureContextType::kInternal,
+  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
       options_.HostsString()));
 
   std::lock_guard l(xcluster_consumer_mutex_);
@@ -1358,15 +1371,18 @@ void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
   cql_server_.store(server);
 }
 
-rpc::Messenger* TabletServer::GetMessenger(ServerType server_type) const {
-  switch (server_type) {
-    case ServerType::TServer:
+rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
+  switch (component) {
+    case ash::Component::kYSQL:
+    case ash::Component::kMaster:
+      return nullptr;
+    case ash::Component::kTServer:
       return messenger();
-    case ServerType::CQLServer:
+    case ash::Component::kYCQL:
       auto cql_server = cql_server_.load();
       return (cql_server ? cql_server->messenger() : nullptr);
   }
-  FATAL_INVALID_ENUM_VALUE(ServerType, server_type);
+  FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
 }  // namespace yb::tserver

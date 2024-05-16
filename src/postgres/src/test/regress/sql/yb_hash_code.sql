@@ -113,6 +113,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table 
 SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
 SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
 DROP TABLE text_table;
 
 -- testing on a table with multiple hash key columns on

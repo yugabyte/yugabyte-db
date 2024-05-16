@@ -184,11 +184,6 @@ DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "of the server's schema, but is determined to be compatible with the current version.");
 TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
 
-DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
-    "A safety switch to disable the changes from D8710 which makes a schema "
-    "operation take an exclusive lock making all write operations wait for it.");
-TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
-
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
 
@@ -1928,18 +1923,6 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
     return;
   }
 
-  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
-    auto write_permit = GetPermitToWrite(query->deadline());
-    if (!write_permit.ok()) {
-      TRACE("Could not get the write permit.");
-      WriteQuery::StartSynchronization(std::move(query), MoveStatus(write_permit));
-      return;
-    }
-    // Save the write permit to be released after the operation is submitted
-    // to Raft queue.
-    query->UseSubmitToken(std::move(write_permit));
-  }
-
   WriteQuery::Execute(std::move(query));
 }
 
@@ -2439,7 +2422,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint deadline)
+  explicit BackfillParams(const CoarseTimePoint deadline, bool is_ysql)
       : start_time(CoarseMonoClock::Now()),
         deadline(deadline),
         rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
@@ -2447,8 +2430,13 @@ struct BackfillParams {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
-      // By default, we will set it to twice the minimum value + 1s.
-      grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+      // To be safe, set it to twice that number or the default margin, whichever is higher.
+      // YSQL default: 3m
+      // YCQL default: 1s
+      const auto kDefaultGraceMarginMs = is_ysql ? 180000 : 1000;
+      grace_margin_ms = std::max<decltype(grace_margin_ms)>(
+          kDefaultGraceMarginMs,
+          rate_per_sec > 0 ? 1000 * (2.0 * batch_size / rate_per_sec) : 0);
       YB_LOG_EVERY_N_SECS(INFO, 10)
           << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
           << MonoDelta(deadline - start_time);
@@ -2534,7 +2522,7 @@ Status Tablet::BackfillIndexesForYsql(
             << "\" for indexes " << AsString(indexes);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
-  BackfillParams backfill_params(deadline);
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
                                 pgsql_proxy_bind_address, database_name, postgres_auth_key,
                                 backfill_params.modified_deadline)
@@ -2679,7 +2667,7 @@ Status Tablet::BackfillIndexes(
   QLTableRow row;
   docdb::IndexRequests index_requests;
 
-  BackfillParams backfill_params{deadline};
+  BackfillParams backfill_params{deadline, false /* is_ysql */};
   constexpr auto kProgressInterval = 1000;
 
   if (!backfill_from.empty()) {
@@ -4410,7 +4398,7 @@ Status Tablet::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config) 
 Status PopulateLockInfoFromIntent(
     Slice key, Slice val, const TableInfoProvider& table_info_provider,
     const std::map<TransactionId, SubtxnSet>& aborted_subtxn_info,
-    TransactionLockInfoManager* lock_info_manager) {
+    TransactionLockInfoManager* lock_info_manager, uint32_t max_txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
@@ -4426,13 +4414,18 @@ Status PopulateLockInfoFromIntent(
   }
 
   auto& lock_entry = *lock_info_manager->GetOrAddTransactionLockInfo(decoded_value.transaction_id);
+  if (max_txn_locks && static_cast<uint32_t>(lock_entry.granted_locks().size()) >= max_txn_locks) {
+    lock_entry.set_has_additional_granted_locks(true);
+    return Status::OK();
+  }
   return docdb::PopulateLockInfoFromParsedIntent(
       parsed_intent, decoded_value, table_info_provider, lock_entry.add_granted_locks());
 }
 
 Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                              TabletLockInfoPB* tablet_lock_info,
-                             uint64_t max_single_shard_waiter_start_time_us) const {
+                             uint64_t max_single_shard_waiter_start_time_us,
+                             uint32_t max_txn_locks_per_tablet) const {
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4472,7 +4465,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), *this, transactions, &lock_info_manager));
+          key, intent_iter->value(), *this, transactions, &lock_info_manager,
+          max_txn_locks_per_tablet));
 
       intent_iter->Next();
     }
@@ -4527,14 +4521,16 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       DCHECK_EQ(intent_iter->key(), key);
 
       auto val = intent_iter->value();
-      RETURN_NOT_OK(PopulateLockInfoFromIntent(key, val, *this, transactions, &lock_info_manager));
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(
+          key, val, *this, transactions, &lock_info_manager, max_txn_locks_per_tablet));
     }
   }
 
   const auto* wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
     RETURN_NOT_OK(wait_queue->GetLockStatus(
-        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager));
+        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager,
+        max_txn_locks_per_tablet));
   }
 
   return Status::OK();

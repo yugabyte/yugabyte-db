@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -66,6 +67,7 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -169,7 +171,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider =
         Provider.create(
             defaultCustomer.getUuid(), Common.CloudType.aws, "test", new ProviderDetails());
-    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(any())).thenReturn("AHAHA");
     AccessKey.create(
         provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     Region region = Region.create(provider, "us-west-1", "us-west-1", "yb-image1");
@@ -456,7 +457,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider.setUsabilityState(Provider.UsabilityState.ERROR);
     provider.save();
     provider.setName("new name");
-    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(any())).thenReturn("RSA");
+    provider.setAllAccessKeys(createTempAccesskeys());
     Image image = new Image();
     image.setArchitecture("x86_64");
     image.setRootDeviceType("ebs");
@@ -805,9 +806,11 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ImageBundle ib = new ImageBundle();
     ib.setName("ib-2");
     ib.setProvider(p);
+    ib.setUseAsDefault(true);
     ib.setDetails(details);
 
     List<ImageBundle> ibs = p.getImageBundles();
+    ibs.get(0).setUseAsDefault(false);
     ibs.add(ib);
     p.setImageBundles(ibs);
     UUID taskUUID = doEditProvider(p, false);
@@ -816,6 +819,15 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(2, p.getImageBundles().size());
+    p.getImageBundles()
+        .forEach(
+            bundle -> {
+              if (bundle.getName().equals("ib-1")) {
+                assertEquals(false, bundle.getUseAsDefault());
+              } else {
+                assertEquals(true, bundle.getUseAsDefault());
+              }
+            });
   }
 
   @Test
@@ -1205,5 +1217,14 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     bodyJson.put("vnetName", "vnetName");
 
     return bodyJson;
+  }
+
+  private List<AccessKey> createTempAccesskeys() {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.sshPrivateKeyContent = CertificateHelperTest.getServerKeyContent();
+    AccessKey accessKeyTemp = AccessKey.create(provider.getUuid(), "access-key-temp", keyInfo);
+    List<AccessKey> accessKeys = new ArrayList<>();
+    accessKeys.add(accessKeyTemp);
+    return accessKeys;
   }
 }

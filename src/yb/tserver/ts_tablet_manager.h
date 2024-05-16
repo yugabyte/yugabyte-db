@@ -42,7 +42,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/async_initializer.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
@@ -377,6 +376,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
+
+  // Background task that emits metrics.
+  void EmitMetrics();
 
   // Background task that Retires old metrics.
   void CleanupOldMetrics();
@@ -720,6 +722,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for verifying tablet metadata data integrity.
   std::unique_ptr<TabletMetadataValidator> tablet_metadata_validator_;
 
+  std::unique_ptr<rpc::Poller> metrics_emitter_;
+
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
@@ -748,8 +752,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
-  // Gauge for the count of live tablet peers running on this tserver.
+  // Gauge for the count of live tablet peers running on this TServer
   scoped_refptr<yb::AtomicGauge<uint32_t>> ts_live_tablet_peers_metric_;
+
+  // Gauge for the number of tablet peers this TServer can support
+  scoped_refptr<yb::AtomicGauge<int64_t>> ts_supportable_tablet_peers_metric_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>

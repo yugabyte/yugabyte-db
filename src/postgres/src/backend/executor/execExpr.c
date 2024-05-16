@@ -50,6 +50,11 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
+/* YB includes. */
+#include "optimizer/clauses.h"
+#include "optimizer/planner.h"
+#include "pg_yb_utils.h"
+
 
 typedef struct LastAttnumInfo
 {
@@ -1992,6 +1997,11 @@ ExecInitExprRec(Expr *node, ExprState *state,
 						   *l_opfamily,
 						   *l_inputcollid;
 				ListCell   *lc;
+				int			off;
+
+				FunctionCallInfo *fcinfos =
+					palloc0(sizeof(FunctionCallInfo) * nopers);
+				PGFunction *fn_addrs = palloc0(sizeof(PGFunction) * nopers);
 
 				/*
 				 * Iterate over each field, prepare comparisons.  To handle
@@ -1999,18 +2009,37 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				 * comparison yields a != 0 result, jump to the final step.
 				 */
 				Assert(list_length(rcexpr->largs) == nopers);
-				Assert(list_length(rcexpr->rargs) == nopers);
 				Assert(list_length(rcexpr->opfamilies) == nopers);
 				Assert(list_length(rcexpr->inputcollids) == nopers);
 
-				forfive(l_left_expr, rcexpr->largs,
-						l_right_expr, rcexpr->rargs,
-						l_opno, rcexpr->opnos,
-						l_opfamily, rcexpr->opfamilies,
-						l_inputcollid, rcexpr->inputcollids)
+				bool yb_is_for_row_in =
+					IsYugaByteEnabled() && rcexpr->rctype == ROWCOMPARE_EQ;
+
+				if (yb_is_for_row_in)
+					Assert(IsA(rcexpr->rargs, ArrayExpr));
+				else
+					Assert(list_length(castNode(List, rcexpr->rargs)) == nopers);
+
+				off = 0;
+				for (off = 0,
+					 l_left_expr = list_head(rcexpr->largs),
+					 l_right_expr = yb_is_for_row_in ? NULL :
+					 	list_head(castNode(List, rcexpr->rargs)),
+					 l_opno = list_head(rcexpr->opnos),
+					 l_opfamily = list_head(rcexpr->opfamilies),
+					 l_inputcollid = list_head(rcexpr->inputcollids);
+					 off < nopers;
+					 off++,
+					 l_left_expr = lnext(rcexpr->largs, l_left_expr),
+					 l_right_expr = yb_is_for_row_in ? NULL :
+					 	lnext(castNode(List, rcexpr->rargs), l_right_expr),
+					 l_opno = lnext(rcexpr->opnos, l_opno),
+					 l_opfamily = lnext(rcexpr->opfamilies, l_opfamily),
+					 l_inputcollid = lnext(rcexpr->inputcollids, l_inputcollid))
 				{
 					Expr	   *left_expr = (Expr *) lfirst(l_left_expr);
-					Expr	   *right_expr = (Expr *) lfirst(l_right_expr);
+					Expr	   *right_expr = (Expr *)
+						yb_is_for_row_in ? NULL : lfirst(l_right_expr);
 					Oid			opno = lfirst_oid(l_opno);
 					Oid			opfamily = lfirst_oid(l_opfamily);
 					Oid			inputcollid = lfirst_oid(l_inputcollid);
@@ -2041,6 +2070,9 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					InitFunctionCallInfoData(*fcinfo, finfo, 2,
 											 inputcollid, NULL, NULL);
 
+					fcinfos[off] = fcinfo;
+					fn_addrs[off] = finfo->fn_addr;
+
 					/*
 					 * If we enforced permissions checks on index support
 					 * functions, we'd need to make a check here.  But the
@@ -2051,20 +2083,44 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					/* evaluate left and right args directly into fcinfo */
 					ExecInitExprRec(left_expr, state,
 									&fcinfo->args[0].value, &fcinfo->args[0].isnull);
-					ExecInitExprRec(right_expr, state,
-									&fcinfo->args[1].value, &fcinfo->args[1].isnull);
+					/*
+					 * YB: If this for for a row IN condition, then we can't
+					 * treat the right hand side as a singular row. It is an
+					 * array whose evaluation bytecode
+					 * is emitted later after we emit the bytecode for the LHS.
+					 */
+					if (!yb_is_for_row_in)
+					{
+						ExecInitExprRec(right_expr, state,
+										&fcinfo->args[1].value, &fcinfo->args[1].isnull);
 
-					scratch.opcode = EEOP_ROWCOMPARE_STEP;
-					scratch.d.rowcompare_step.finfo = finfo;
-					scratch.d.rowcompare_step.fcinfo_data = fcinfo;
-					scratch.d.rowcompare_step.fn_addr = finfo->fn_addr;
-					/* jump targets filled below */
-					scratch.d.rowcompare_step.jumpnull = -1;
-					scratch.d.rowcompare_step.jumpdone = -1;
+						scratch.opcode = EEOP_ROWCOMPARE_STEP;
+						scratch.d.rowcompare_step.finfo = finfo;
+						scratch.d.rowcompare_step.fcinfo_data = fcinfo;
+						scratch.d.rowcompare_step.fn_addr = finfo->fn_addr;
+						/* jump targets filled below */
+						scratch.d.rowcompare_step.jumpnull = -1;
+						scratch.d.rowcompare_step.jumpdone = -1;
 
+						ExprEvalPushStep(state, &scratch);
+						adjust_jumps = lappend_int(adjust_jumps,
+												state->steps_len - 1);
+					}
+				}
+
+				if (yb_is_for_row_in)
+				{
+					ExecInitExprRec((Expr *) rcexpr->rargs, state, resv, resnull);
+					/*
+					 * YB: This bytecode op will read the evaluated RHS array from the return value,
+					 * much like the operation for EEOP_SCALARARRAYOP.
+					 */
+					scratch.opcode = EEOP_ROWARRAY_COMPARE;
+					scratch.d.row_array_compare.fcinfos = fcinfos;
+					scratch.d.row_array_compare.fn_addrs = fn_addrs;
+					scratch.d.row_array_compare.ncols = nopers;
 					ExprEvalPushStep(state, &scratch);
-					adjust_jumps = lappend_int(adjust_jumps,
-											   state->steps_len - 1);
+					break;
 				}
 
 				/*

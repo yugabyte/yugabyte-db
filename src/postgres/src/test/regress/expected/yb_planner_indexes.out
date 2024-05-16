@@ -13,7 +13,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 = 1 and v3 = 1;
 --------------------------------------------------------------------------
  Index Scan using t1_v3_uniq_idx on t1  (cost=0.00..4.13 rows=1 width=20)
    Index Cond: (v3 = 1)
-   Remote Filter: ((v1 = 1) AND (v2 = 1))
+   Storage Filter: ((v1 = 1) AND (v2 = 1))
 (3 rows)
 
 -- Expect to use t1_v1_v2_idx because the inequality condition on v3 (HASH) is not useful.
@@ -22,7 +22,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 = 1 and v3 > 1;
 -------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
    Index Cond: ((v1 = 1) AND (v2 = 1))
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 > 1 and v3 > 1;
@@ -30,7 +30,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 > 1 and v3 > 1;
 -------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
    Index Cond: ((v1 = 1) AND (v2 > 1))
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 --------------------------------------
@@ -41,7 +41,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1;
 ----------------------------------------------------------------------
  Index Scan using t1_pkey on t1  (cost=0.00..15.75 rows=100 width=20)
    Index Cond: (h = 1)
-   Remote Filter: (v1 = 1)
+   Storage Filter: (v1 = 1)
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and v1 = 1;
@@ -56,7 +56,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
 --------------------------------------------------------------------
  Index Scan using t1_pkey on t1  (cost=0.00..5.20 rows=10 width=20)
    Index Cond: (yb_hash_code(h) = 4624)
-   Remote Filter: (v1 = 1)
+   Storage Filter: (v1 = 1)
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
@@ -71,7 +71,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
 -------------------------------------------------------------------
  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
    Index Cond: ((h = 1) AND (r = 2))
-   Remote Filter: ((v1 = 1) AND (v2 = 2))
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
@@ -85,7 +85,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v
 --------------------------------------------------------------------
  Index Scan using t1_pkey on t1  (cost=0.00..5.28 rows=10 width=20)
    Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
-   Remote Filter: ((v2 = 2) AND (v1 = 1))
+   Storage Filter: ((v2 = 2) AND (v1 = 1))
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v1 = 1 and v2 = 2;
@@ -100,7 +100,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
 -------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
    Index Cond: ((v1 = 1) AND (v2 = 2))
-   Remote Filter: (h = 1)
+   Storage Filter: (h = 1)
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
@@ -114,7 +114,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and 
 --------------------------------------------------------------------
  Index Scan using t1_pkey on t1  (cost=0.00..5.25 rows=10 width=20)
    Index Cond: (yb_hash_code(h) = 4624)
-   Remote Filter: ((v1 = 1) AND (v2 = 2))
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and v2 = 2;
@@ -131,7 +131,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 1;
 ---------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 2;
@@ -139,7 +139,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 2;
 ---------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 2)
+   Storage Filter: (v3 > 2)
 (3 rows)
 
 EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
@@ -147,7 +147,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
 ---------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 3)
+   Storage Filter: (v3 > 3)
 (3 rows)
 
 CREATE INDEX t1_v1_v2_uniq_partial_idx ON t1(v1, v2) WHERE v3 > 2;
@@ -157,7 +157,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 1;
 ---------------------------------------------------------------------------
  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 -- Should both use t1_v1_v2_uniq_partial_idx.
@@ -173,7 +173,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
 ----------------------------------------------------------------------------------------
  Index Scan using t1_v1_v2_uniq_partial_idx on t1  (cost=0.00..14.20 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 3)
+   Storage Filter: (v3 > 3)
 (3 rows)
 
 --------------------------------------
@@ -207,35 +207,35 @@ EXPLAIN SELECT * from t4 where h1 = 1;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on t4  (cost=0.00..102.50 rows=1000 width=12)
-   Remote Filter: (h1 = 1)
+   Storage Filter: (h1 = 1)
 (2 rows)
 
 EXPLAIN SELECT * from t4 where h1 = 1 and h2 > 10;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
-   Remote Filter: ((h2 > 10) AND (h1 = 1))
+   Storage Filter: ((h2 > 10) AND (h1 = 1))
 (2 rows)
 
 EXPLAIN SELECT * from t4 where h1 > 1 and h2 > 10;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
-   Remote Filter: ((h1 > 1) AND (h2 > 10))
+   Storage Filter: ((h1 > 1) AND (h2 > 10))
 (2 rows)
 
 EXPLAIN SELECT * from t4 where h1 > 1 and h2 = 10;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
-   Remote Filter: ((h1 > 1) AND (h2 = 10))
+   Storage Filter: ((h1 > 1) AND (h2 = 10))
 (2 rows)
 
 EXPLAIN SELECT * from t4 where h1 = 1 or h2 = 2;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
-   Remote Filter: ((h1 = 1) OR (h2 = 2))
+   Storage Filter: ((h1 = 1) OR (h2 = 2))
 (2 rows)
 
 --------------------------------------
@@ -250,7 +250,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 and v2 = 1 and v3 = 1;
 --------------------------------------------------------------------------
  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.13 rows=1 width=20)
    Index Cond: (v3 = 1)
-   Remote Filter: ((v1 = 1) AND (v2 = 1))
+   Storage Filter: ((v1 = 1) AND (v2 = 1))
 (3 rows)
 
 -- Expect to use t2_v1_v2_idx because condition partly matches.
@@ -269,7 +269,7 @@ EXPLAIN SELECT * FROM t2 WHERE h = 1 and v1 = 1;
 ----------------------------------------------------------------------
  Index Scan using t2_pkey on t2  (cost=0.00..15.75 rows=100 width=20)
    Index Cond: (h = 1)
-   Remote Filter: (v1 = 1)
+   Storage Filter: (v1 = 1)
 (3 rows)
 
 EXPLAIN SELECT * FROM t2 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
@@ -277,7 +277,7 @@ EXPLAIN SELECT * FROM t2 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
 -------------------------------------------------------------------
  Index Scan using t2_pkey on t2  (cost=0.00..4.12 rows=1 width=20)
    Index Cond: ((h = 1) AND (r = 2))
-   Remote Filter: ((v1 = 1) AND (v2 = 2))
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
 (3 rows)
 
 -- Should prioritize the t1_v1_v2_idx because it is fully specified.
@@ -286,7 +286,7 @@ EXPLAIN SELECT * FROM t2 WHERE h = 1 and v1 = 1 and v2 = 2;
 -------------------------------------------------------------------------
  Index Scan using t2_v1_v2_idx on t2  (cost=0.00..5.30 rows=10 width=20)
    Index Cond: ((v1 = 1) AND (v2 = 2))
-   Remote Filter: (h = 1)
+   Storage Filter: (h = 1)
 (3 rows)
 
 --------------------------------------
@@ -298,7 +298,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 1;
 ---------------------------------------------------------------------------
  Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 2;
@@ -306,7 +306,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 2;
 ---------------------------------------------------------------------------
  Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 2)
+   Storage Filter: (v3 > 2)
 (3 rows)
 
 EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 3;
@@ -314,7 +314,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 3;
 ---------------------------------------------------------------------------
  Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 3)
+   Storage Filter: (v3 > 3)
 (3 rows)
 
 CREATE INDEX t2_v1_v2_uniq_partial_idx ON t2(v1, v2) WHERE v3 > 2;
@@ -324,7 +324,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 1;
 ---------------------------------------------------------------------------
  Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 1)
+   Storage Filter: (v3 > 1)
 (3 rows)
 
 -- Should both use t1_v1_v2_uniq_partial_idx.
@@ -340,7 +340,7 @@ EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 3;
 ----------------------------------------------------------------------------------------
  Index Scan using t2_v1_v2_uniq_partial_idx on t2  (cost=0.00..14.20 rows=100 width=20)
    Index Cond: (v1 = 1)
-   Remote Filter: (v3 > 3)
+   Storage Filter: (v3 > 3)
 (3 rows)
 
 --------------------------------------
@@ -397,3 +397,71 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
+-- Issue #21133
+CREATE TABLE bb (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT bb_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE c (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT c_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE cc (
+    pk serial NOT NULL,
+    col_int_nokey integer,
+    col_int_key integer,
+    CONSTRAINT cc_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX bb_int_key ON bb (col_int_key ASC);
+CREATE INDEX c_int_key ON c (col_int_key ASC);
+CREATE INDEX cc_int_key ON cc (col_int_key ASC);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT
+FROM
+    CC AS table1
+    JOIN CC AS table2 ON (
+        table2.col_int_key = table1.pk
+    )
+WHERE
+    table2.col_int_key < (
+        SELECT
+            col_int_nokey
+        FROM
+            CC
+        WHERE
+            col_int_nokey IN (
+                SELECT
+                    CHILD_SUBQUERY1_t1.pk
+                FROM
+                    BB AS CHILD_SUBQUERY1_t1
+                    JOIN C AS CHILD_SUBQUERY1_t2 ON (
+                        CHILD_SUBQUERY1_t2.pk = CHILD_SUBQUERY1_t1.col_int_key
+                    )
+                WHERE
+                    CHILD_SUBQUERY1_t2.col_int_key <= table1.pk
+            )
+    );
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Nested Loop (actual rows=0 loops=1)
+   ->  Seq Scan on cc table1 (actual rows=0 loops=1)
+   ->  Index Only Scan using cc_int_key on cc table2 (never executed)
+         Index Cond: ((col_int_key < (SubPlan 1)) AND (col_int_key = table1.pk))
+         Heap Fetches: 0
+         SubPlan 1
+           ->  Hash Semi Join (never executed)
+                 Hash Cond: (cc.col_int_nokey = child_subquery1_t1.pk)
+                 ->  Seq Scan on cc (never executed)
+                 ->  Hash (never executed)
+                       ->  YB Batched Nested Loop Join (never executed)
+                             Join Filter: (child_subquery1_t1.col_int_key = child_subquery1_t2.pk)
+                             ->  Index Scan using c_int_key on c child_subquery1_t2 (never executed)
+                                   Index Cond: (col_int_key <= table1.pk)
+                             ->  Index Scan using bb_int_key on bb child_subquery1_t1 (never executed)
+                                   Index Cond: (col_int_key = ANY (ARRAY[child_subquery1_t2.pk, $2, $3, ..., $1024]))
+(16 rows)
+
+DROP TABLE bb;
+DROP TABLE c;
+DROP TABLE cc;

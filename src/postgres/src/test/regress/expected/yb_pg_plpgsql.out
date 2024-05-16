@@ -4862,38 +4862,36 @@ create function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
 $$ language plpgsql;
 select * from conflict_test();
 ERROR:  column reference "q1" is ambiguous
-LINE 1: select q1,q2 from int8_tbl
+LINE 1: select q1,q2,ybsort from int8_tbl
                ^
 DETAIL:  It could refer to either a PL/pgSQL variable or a table column.
-QUERY:  select q1,q2 from int8_tbl
+QUERY:  select q1,q2,ybsort from int8_tbl
 CONTEXT:  PL/pgSQL function conflict_test() line 5 at FOR over SELECT rows
 create or replace function conflict_test() returns setof int8_tbl as $$
 #variable_conflict use_variable
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
 $$ language plpgsql;
--- YB note: add ordering.  Unfortunately, cannot match upstream PG's ordering
--- exactly in this case unless we modify the definition of int8_tbl itself.
-select * from conflict_test() ORDER BY 1, 2;
+select q1, q2 from conflict_test(); -- YB: avoid ybsort column
  q1 |        q2
 ----+-------------------
- 42 | -4567890123456789
- 42 |               123
  42 |               456
  42 |  4567890123456789
+ 42 |               123
  42 |  4567890123456789
+ 42 | -4567890123456789
 (5 rows)
 
 create or replace function conflict_test() returns setof int8_tbl as $$
@@ -4901,21 +4899,19 @@ create or replace function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
 $$ language plpgsql;
--- YB note: add ordering.  Unfortunately, cannot match upstream PG's ordering
--- exactly in this case unless we modify the definition of int8_tbl itself.
-select * from conflict_test() ORDER BY 1, 2;
+select q1, q2 from conflict_test(); -- YB: avoid ybsort column
         q1        |        q2
 ------------------+-------------------
               123 |               456
               123 |  4567890123456789
- 4567890123456789 | -4567890123456789
  4567890123456789 |               123
  4567890123456789 |  4567890123456789
+ 4567890123456789 | -4567890123456789
 (5 rows)
 
 drop function conflict_test();

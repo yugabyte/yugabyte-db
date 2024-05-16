@@ -4,8 +4,8 @@ import clsx from 'clsx';
 import { YBCheckbox } from '@yugabytedb/ui-components';
 import { IssueMetadata } from './IssueMetadata';
 import { AnomalyCategory, Anomaly, AppName } from '../helpers/dtos';
-import { assertUnreachableCase } from '../helpers/ErrorHandlingUtils';
-import { useStyles } from './styles';
+import { assertUnreachableCase } from '../helpers/errorHandlingUtils';
+import { useHelperStyles } from './styles';
 
 import TraingleDownIcon from '../assets/traingle-down.svg';
 import TraingleUpIcon from '../assets/traingle-up.svg';
@@ -13,7 +13,6 @@ import TraingleUpIcon from '../assets/traingle-up.svg';
 interface PrimaryDashboardProps {
   category: AnomalyCategory;
   data: Anomaly;
-  baseUrl?: string;
   key: string;
   uuid: string;
   idKey: string;
@@ -21,6 +20,7 @@ interface PrimaryDashboardProps {
   universeUuid: string;
   appName: AppName;
   timezone?: string;
+  onSelectedIssue?: (troubleshootUuid: string) => void;
   onResolve: (key: string, value: boolean) => void;
 }
 
@@ -29,14 +29,14 @@ export const PrimaryDashboard: FC<PrimaryDashboardProps> = ({
   category,
   uuid,
   data,
-  baseUrl,
   resolved,
   universeUuid,
   appName,
   timezone,
+  onSelectedIssue,
   onResolve
 }) => {
-  const classes = useStyles();
+  const classes = useHelperStyles();
 
   // State variables
   const [open, setOpen] = useState(false);
@@ -64,8 +64,8 @@ export const PrimaryDashboard: FC<PrimaryDashboardProps> = ({
         uuid={uuid}
         universeUuid={universeUuid}
         appName={appName}
-        baseUrl={baseUrl}
         timezone={timezone}
+        onSelectedIssue={onSelectedIssue}
       />
     );
   };

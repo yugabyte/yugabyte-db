@@ -58,7 +58,7 @@ export const CurrentFormStep = ({
           </ol>
           <TableSelect {...tableSelectProps} />
           <div className={classes.bannerContainer}>
-            <YBBanner variant={YBBannerVariant.INFO} showBannerIcon={false}>
+            <YBBanner variant={YBBannerVariant.INFO}>
               <Typography variant="body2">
                 <Trans
                   i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}

@@ -336,6 +336,17 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
+PG_PARITY_FLAGS_DICT = {
+"allowed_preview_flags_csv": "yb_enable_read_committed_isolation=true,"
+                             "ysql_enable_read_request_caching=true",
+
+"ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
+                      "yb_enable_optimizer_statistics=true,"
+                      "yb_bnl_batch_size=1024,"
+                      "yb_fetch_row_limit=0,"
+                      "yb_fetch_size_limit=1MB,"
+                      "yb_use_hash_splitting_by_default=false"
+                    }
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -959,7 +970,10 @@ class ControlScript(object):
     # Prints status of YugabyteDB.
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
-            Output.print_out(self.get_status_string())
+            Output.init_animation("Fetching status...")
+            status_output = self.get_status_string().strip()
+            Output.update_animation("")
+            Output.print_out(status_output)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -978,11 +992,6 @@ class ControlScript(object):
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
         config_path = os.path.dirname(self.conf_file)
-        is_config_passed=False
-        for arg in sys.argv[1:]:
-            if (arg.startswith("--config")):
-                is_config_passed=True
-                break
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -1005,14 +1014,9 @@ class ControlScript(object):
             shutil.rmtree(certs_dir)
             Output.print_out("Deleted certs at {}.".format(certs_dir))
 
-        if is_config_passed:
-            if os.path.exists(self.conf_file):
-                os.remove(self.conf_file)
-                Output.print_out("Deleted conf file at {}.".format(self.conf_file))
-        else:
-            if os.path.isdir(config_path):
-                shutil.rmtree(config_path)
-                Output.print_out("Deleted conf at {}.".format(config_path))
+        if os.path.isdir(config_path):
+            shutil.rmtree(config_path)
+            Output.print_out("Deleted conf at {}.".format(config_path))
 
         sys.exit(0)
 
@@ -2162,6 +2166,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -2181,6 +2186,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -2741,16 +2747,55 @@ class ControlScript(object):
                 "--default_memory_limit_to_ram_ratio=0.35",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
             ]
+
+        master_flags = self.configs.saved_data.get("master_flags","")
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
             yb_master_cmd.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
 
-        if self.configs.saved_data.get("master_flags"):
+        # If allowed_preview_flags_csv is present
+        # Extract the value of allowed_preview_flags_csv
+        # Remove the flag present in the master_flags string
+        if master_flags.find("allowed_preview_flags_csv") != -1:
+            allowed_preview_flags_csv_start_index = master_flags.find('allowed_preview_flags_csv')
+            allowed_preview_flags_csv_end_index = master_flags.find('}',
+                                                    allowed_preview_flags_csv_start_index) + 1
+            allowed_preview_flags_csv_flag = master_flags[allowed_preview_flags_csv_start_index:\
+                        allowed_preview_flags_csv_end_index]
+            allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[
+                                                    allowed_preview_flags_csv_flag.find("{")+1:-1]
+
+            # Check and handle if the allowed_preview_flags_csv_flag is
+            # empty after removing the curly braces
+            if allowed_preview_flags_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if allowed_preview_flags_csv_flag[0] == "'" and \
+                            allowed_preview_flags_csv_flag[-1] == "'":
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+                elif allowed_preview_flags_csv_flag[0] == '"' and \
+                            allowed_preview_flags_csv_flag[-1] == '"':
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+
+                yb_master_cmd.extend(["--allowed_preview_flags_csv={}".format(
+                                                            allowed_preview_flags_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
+            # Remove the flag present in master_flags
+            if allowed_preview_flags_csv_start_index == 0:
+                master_flags = master_flags[allowed_preview_flags_csv_end_index+1:]
+            else:
+                master_flags = master_flags[:allowed_preview_flags_csv_start_index-1] + \
+                    master_flags[allowed_preview_flags_csv_end_index:]
+
+        if master_flags:
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("master_flags").split(",")])
+                    master_flags.split(",")])
 
         return yb_master_cmd
 
@@ -2784,7 +2829,70 @@ class ControlScript(object):
                 "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
             ]
 
-        tserver_flags = self.configs.saved_data.get("tserver_flags")
+        tserver_flags = self.configs.saved_data.get("tserver_flags","")
+
+        if self.configs.temp_data.get("enable_pg_parity"):
+            for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
+                # If pg_parity_flag present in tserver_flags
+                # Extract the value and append any default missing pg_parity_flag_values
+                pg_parity_flag_start_index = tserver_flags.find(pg_parity_flag)
+                tserver_pg_parity_flag_values = ""
+                if pg_parity_flag_start_index != -1:
+                    pg_parity_flag_end_index = \
+                        tserver_flags.find('}', pg_parity_flag_start_index) + 1
+                    tserver_pg_parity_flag = \
+                        tserver_flags[pg_parity_flag_start_index:pg_parity_flag_end_index]
+                    tserver_pg_parity_flag_values = \
+                        tserver_pg_parity_flag[tserver_pg_parity_flag.find("{")+1:-1]
+
+                    # Parse the tserver_pg_parity_flag_values into a dictionary
+                    tserver_pg_parity_flag_values_dict = {}
+                    for item in tserver_pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            tserver_pg_parity_flag_values_dict[key] = value
+
+                    # Parse the PG_PARITY_FLAGS_DICT values into a dictionary
+                    pg_parity_flag_values_dict = {}
+                    for item in pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            pg_parity_flag_values_dict[key] = value
+
+                    # Identify missing flags in tserver_pg_parity_flag_values
+                    missing_pg_parity_flag_values_dict = {}
+                    for key, value in pg_parity_flag_values_dict.items():
+                        if tserver_pg_parity_flag_values_dict.get(key) is None:
+                            missing_pg_parity_flag_values_dict[key] = value
+
+                    # If there are missing pg_parity_flag_values, append them to
+                    # tserver_pg_parity_flag_values
+                    if len(missing_pg_parity_flag_values_dict) > 0:
+                        missing_pg_parity_flag_values = ",".join("{}={}".format(k, v) \
+                                    for k, v in missing_pg_parity_flag_values_dict.items())
+                        if tserver_pg_parity_flag_values:
+                            updated_tserver_pg_parity_flag_values = tserver_pg_parity_flag_values \
+                                                            + "," + missing_pg_parity_flag_values
+                        else:
+                            updated_tserver_pg_parity_flag_values = missing_pg_parity_flag_values
+
+                        updated_tserver_pg_parity_flag = "{}={{{}}}".format(
+                                        pg_parity_flag, updated_tserver_pg_parity_flag_values)
+                        tserver_flags = tserver_flags[:pg_parity_flag_start_index] \
+                                        + updated_tserver_pg_parity_flag \
+                                        + tserver_flags[pg_parity_flag_end_index:]
+                    # No missing pg_parity_flag values found in tserver_flag
+                    else:
+                        pass
+                else:
+                    # If the pg_parity_flag is not present,
+                    # append the entire flag with its default values
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    tserver_flags += "{}={{{}}}".format(pg_parity_flag, pg_parity_flag_values)
+
+            # Update the tserver_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["tserver_flags"] = tserver_flags
 
         # If ysql_hba_conf_csv is present
         # Extract the value of ysql_hba_conf_csv
@@ -2796,13 +2904,20 @@ class ControlScript(object):
                     ysql_hba_conf_csv_end_index]
             ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
 
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+            # Check and handle if the ysql_hba_conf_csv_flag is
+            # empty after removing the curly braces
+            if ysql_hba_conf_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
+                    ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+                elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
+                    ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
 
+                yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
             # Remove the flag present in tserver_flags
             if ysql_hba_conf_csv_start_index == 0:
                 tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
@@ -2810,7 +2925,41 @@ class ControlScript(object):
                 tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
                     tserver_flags[ysql_hba_conf_csv_end_index:]
 
-            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+        # If allowed_preview_flags_csv is present
+        # Extract the value of allowed_preview_flags_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("allowed_preview_flags_csv") != -1:
+            allowed_preview_flags_csv_start_index = tserver_flags.find('allowed_preview_flags_csv')
+            allowed_preview_flags_csv_end_index = tserver_flags.find('}',
+                                                    allowed_preview_flags_csv_start_index) + 1
+            allowed_preview_flags_csv_flag = tserver_flags[allowed_preview_flags_csv_start_index:\
+                        allowed_preview_flags_csv_end_index]
+            allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[
+                                                    allowed_preview_flags_csv_flag.find("{")+1:-1]
+
+            # Check and handle if the allowed_preview_flags_csv_flag is
+            # empty after removing the curly braces
+            if allowed_preview_flags_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if allowed_preview_flags_csv_flag[0] == "'" and \
+                            allowed_preview_flags_csv_flag[-1] == "'":
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+                elif allowed_preview_flags_csv_flag[0] == '"' and \
+                            allowed_preview_flags_csv_flag[-1] == '"':
+                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
+
+                yb_tserver_cmd.extend(["--allowed_preview_flags_csv={}".format(
+                                                            allowed_preview_flags_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
+            # Remove the flag present in tserver_flags
+            if allowed_preview_flags_csv_start_index == 0:
+                tserver_flags = tserver_flags[allowed_preview_flags_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:allowed_preview_flags_csv_start_index-1] + \
+                    tserver_flags[allowed_preview_flags_csv_end_index:]
 
         # If ysql_ident_conf_csv is present
         # Extract the value of ysql_ident_conf_csv
@@ -2824,21 +2973,26 @@ class ControlScript(object):
             ysql_ident_conf_csv_flag = \
                 ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
 
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
-                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
-            elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
-                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+            # Check and handle if the ysql_ident_conf_csv_flag is
+            # empty after removing the curly braces
+            if ysql_ident_conf_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
+                    ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+                elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
+                    ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
 
+                yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
             # Remove the flag present in tserver_flags
             if ysql_ident_conf_csv_start_index == 0:
                 tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
             else:
                 tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
                     tserver_flags[ysql_ident_conf_csv_end_index:]
-
-            yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
 
         # If ysql_pg_conf_csv is present
         # Extract the value of ysql_pg_conf_csv given through CLI
@@ -2850,21 +3004,26 @@ class ControlScript(object):
                     ysql_pg_conf_csv_end_index]
             ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
 
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+            # Check and handle if the ysql_pg_conf_csv_flag is
+            # empty after removing the curly braces
+            if ysql_pg_conf_csv_flag:
+                # If the value was given through the config file
+                # remove the starting and ending quotes.
+                if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
+                    ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+                elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
+                    ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
 
+                yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
+            else:
+                # If the flag is empty, reset the configuration by not adding it
+                pass
             # Remove the flag present in tserver_flags
             if ysql_pg_conf_csv_start_index == 0:
                 tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
             else:
                 tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
                     tserver_flags[ysql_pg_conf_csv_end_index:]
-
-            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
 
         if tserver_flags:
             yb_tserver_cmd.extend(
@@ -3239,6 +3398,10 @@ class ControlScript(object):
         except HTTPError as http_err:
             Output.log('HTTP error occurred while fetching current' +
                     'masters from tserver: {}', http_err)
+            return ''
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
             return ''
         except Exception as err:
             Output.log('Other error occurred while fetching current' +
@@ -4357,7 +4520,6 @@ class ControlScript(object):
             # join_ip, let's try to add ourselves to it, otherwise
             # it is a hard failure.
             if current_node_master_uuid in master_uuids:
-                self.configs.saved_data["cluster_member"] = True
                 if not join_ip:
                     placement_uuid = self.configs.saved_data.get("placement_uuid")
                     placement_info = list()
@@ -4402,7 +4564,6 @@ class ControlScript(object):
 
         try:
             if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
-                self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
         except RuntimeError:
@@ -4550,6 +4711,8 @@ class ControlScript(object):
             if was_already_setup:
                 if master_addrs:
                     status = "Running."
+                else:
+                    status = "Bootstrapping."
             else:
                 if self.wait_get_all_masters(timeout=10):
                     status = "Running."
@@ -4582,10 +4745,10 @@ class ControlScript(object):
                 Output.update_animation("Data placement constraint successfully verified")
             else:
                 rf = YBAdminProxy.get_cluster_rf(master_addrs)
-            status_info = [
-                (Output.make_yellow("Status"), status),
-                (Output.make_yellow("Replication Factor"), rf),
-            ]
+
+            status_info = [(Output.make_yellow("Status"), status)]
+            if rf:
+                status_info.append((Output.make_yellow("Replication Factor"), rf))
 
             if enabled_security_features:
                 status_info += [
@@ -4890,8 +5053,32 @@ class ControlScript(object):
             Output.log_error_and_exit("Other error occurred while checking for security of " +
                                     "leader master: {}".format(err))
 
+    def handle_config_files(self, args, conf_dir, config_file, base_dir):
+        if not os.path.isdir(conf_dir):
+            if args.parser == "start":
+                os.makedirs(conf_dir)
+
+        if os.path.exists(config_file):
+            # Load already saved configs if yugabyted.conf exists
+            self.configs = Configs.parse_config_file(config_file, base_dir)
+        else:
+            # Initialise configs
+            self.configs = Configs(config_file, base_dir)
+            if args.parser == "start":
+                open(config_file, 'a').close()
+
+        if args.parser == "start" and args.config:
+            args.config = \
+                os.path.realpath(
+                os.path.abspath(
+                os.path.expanduser(args.config)))
+            user_configs = Configs.parse_user_config_file(args.config)
+            # Update saved configs with user configurations
+            self.configs.saved_data.update(user_configs)
+
+        return self.configs
     # Parse the config file and input parent flags to validate and set them.
-    # Parent flags: --config, --data_dir, --log_dir
+    # Parent flags: --data_dir, --log_dir
     def validate_and_set_parent_configs(self, args):
 
         home_dir = os.path.expanduser("~")
@@ -4905,15 +5092,12 @@ class ControlScript(object):
 
         has_errors = False
 
-        self.conf_file = args.config or base_dir_conf or \
+        self.conf_file = base_dir_conf or \
                          Configs.get_brew_config() or default_conf_path
         self.conf_file = os.path.realpath(os.path.expanduser(self.conf_file))
 
         conf_dir = os.path.dirname(self.conf_file)
-        if not os.path.isdir(conf_dir):
-            os.makedirs(conf_dir)
-
-        self.configs = Configs.parse_config_file(self.conf_file, base_dir)
+        self.configs = self.handle_config_files(args, conf_dir, self.conf_file, base_dir)
 
         for path_args in ("data_dir", "log_dir"):
             path = getattr(args, path_args, None)
@@ -4944,7 +5128,7 @@ class ControlScript(object):
         if has_errors:
             sys.exit(1)
 
-        parent_flags = ["config", "log_dir", "data_dir"]
+        parent_flags = ["log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
             if (v is not None and k in parent_flags and k in self.configs.saved_data
@@ -5814,6 +5998,7 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
+            cluster_member = self.configs.saved_data.get("cluster_member")
             if args.join is not None:
                 if not self.validate_hostname_ip(args.join):
                     Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
@@ -5821,66 +6006,79 @@ class ControlScript(object):
                         "IPV6 or DNS.")
 
                 Output.print_and_log("Fetching configs from join IP...")
-                # Check if tserver webserver at join_IP is reachable or not
-                # Also get the leader master(used to get the info of all tservers)
-                master_leader = self.get_current_master_leader_from_api(args.join)
-                args.join = master_leader
+                if not cluster_member:
+                    # Check if tserver webserver at join_IP is reachable or not
+                    # Also get the leader master(used to get the info of all tservers)
+                    master_leader = self.get_current_master_leader_from_api(args.join)
+                    args.join = master_leader
 
-                # Get info on all tservers
-                master_leader_hostport = "{}:{}".format(master_leader,
-                                    self.configs.saved_data.get("master_webserver_port"))
-                tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
+                    # Get info on all tservers
+                    master_leader_hostport = "{}:{}".format(master_leader,
+                                        self.configs.saved_data.get("master_webserver_port"))
+                    tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
-                # Check if any existing node has the same IP as advertise address
-                for uuid, nodes in tservers_info.items():
-                    for node in [node.split(":")[0] for node in list(nodes.keys())]:
-                        if args.advertise_address == node:
-                            Output.log_error_and_exit(Output.make_red("ERROR:") + " A node is " +
-                                        "already running on {}, please ".format(args.join) +
-                                        "specify a valid address.")
+                    # Check if any existing node has the same IP as advertise address
+                    for uuid, nodes in tservers_info.items():
+                        for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                            if args.advertise_address == node:
+                                Output.log_error_and_exit(Output.make_red("ERROR:") + " A node" +
+                                    " is already running on {}, please ".format(args.join) +
+                                    "specify a valid address.")
 
-                is_placement_uuid_set = False
+                    is_placement_uuid_set = False
 
-                # Set placement UUID for the node according to it's properties(rr or primary)
-                if args.read_replica:
-                    # When the 1st read replica node is started use a new uuid
-                    if len(tservers_info) == 1:
-                        is_placement_uuid_set = True
-                        Output.log("Starting first read replica node. " +
-                                    "Using {} as placement_uuid".format(
-                                        self.configs.saved_data.get("placement_uuid")))
-                    # When a read replica cluster exists use the existing placement UUID
+                    # Set placement UUID for the node according to it's properties(rr or primary)
+                    if args.read_replica:
+                        # When the 1st read replica node is started use a new uuid
+                        if len(tservers_info) == 1:
+                            is_placement_uuid_set = True
+                            Output.log("Starting first read replica node. " +
+                                        "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
+                        # When a read replica cluster exists use the existing placement UUID
+                        else:
+                            for uuid, nodes in tservers_info.items():
+                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                                if master_leader not in nodes_list and len(nodes) != 0:
+                                    self.configs.saved_data["placement_uuid"] = uuid
+                                    Output.log("Using placement_uuid {} from ".format(uuid) +
+                                                "existing read replica cluster.")
+                                    is_placement_uuid_set = True
                     else:
+                        # Use placement uuid set for the primary cluster when 1st node was started.
                         for uuid, nodes in tservers_info.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if master_leader not in nodes_list and len(nodes) != 0:
+                            if master_leader in nodes_list:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing read replica cluster.")
+                                                "existing primary cluster.")
                                 is_placement_uuid_set = True
+
+                    # If placement UUID could not be set for some reason, throw an error
+                    if not is_placement_uuid_set:
+                        Output.log("Cannot find placement UUID for the node. " +
+                                "Leader Master node: {}. ".format(master_leader) +
+                                "Response from tablet-servers API: {}".format(
+                                    str(tservers_info)))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") +
+                                " Unable to start the node.")
+
+                # Restart node as a part of an existing cluster with the join flag specified
                 else:
-                    # Use placement uuid set for the primary cluster when 1st node was started.
-                    for uuid, nodes in tservers_info.items():
-                        nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                        if master_leader in nodes_list:
-                            self.configs.saved_data["placement_uuid"] = uuid
-                            Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing primary cluster.")
-                            is_placement_uuid_set = True
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
-                # If placement UUID could not be set for some reason, throw an error
-                if not is_placement_uuid_set:
-                    Output.log("Cannot find placement UUID for the node. " +
-                            "Leader Master node: {}. ".format(master_leader) +
-                            "Response from tablet-servers API: {}".format(
-                                str(tservers_info)))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") +
-                            " Unable to start the node.")
-
-            # If no --join is passed then start a new cluster with a new placement_uuid
+            # If no --join is passed, check if its a first time start or its a restart
             else:
-                Output.log("Starting first primary node. Using {} as placement_uuid".format(
+                if not cluster_member:
+                    Output.log("Starting first primary node. Using {} as placement_uuid".format(
                                            self.configs.saved_data.get("placement_uuid")))
+                # Restart node as a part of an existing cluster without the join flag specified
+                else:
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
             self.find_security_nature_of_deployment(args)
 
@@ -5891,7 +6089,7 @@ class ControlScript(object):
                     ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
@@ -5902,7 +6100,7 @@ class ControlScript(object):
                             "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
                             "secure and an insecure node.")
             elif args.secure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
@@ -5921,6 +6119,9 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
+            if args.enable_pg_parity:
+                self.configs.temp_data["enable_pg_parity"] = \
+                                args.enable_pg_parity
 
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
@@ -5969,7 +6170,7 @@ class ControlScript(object):
         if has_errors:
             sys.exit(1)
 
-        parent_flags = ["config", "log_dir", "data_dir"]
+        parent_flags = ["log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
             if (v is not None and k not in parent_flags and k in self.configs.saved_data
@@ -5984,9 +6185,6 @@ class ControlScript(object):
     def run(self):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
-        common_parser.add_argument(
-            "--config", help="{} configuration file path".format(
-                              SCRIPT_NAME), metavar="")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
@@ -6375,6 +6573,12 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--fault_tolerance", metavar="",
                 help="Determines the type of deployment of the cluster. Default is None.")
+            cur_parser.add_argument(
+            "--config", help="{} user configuration file path".format(
+                              SCRIPT_NAME), metavar="")
+            cur_parser.add_argument(
+                "--enable_pg_parity", help="Enable PostgreSQL compatibility features."
+                " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -6407,8 +6611,11 @@ class ControlScript(object):
 
         Output.log("Running yugabyted command: '{}'".format(' '.join(sys.argv)))
 
-        Output.log("cmd = {} using config file: {} (args.config={})".format(
-            args.parser, self.conf_file, args.config))
+        Output.log("cmd = {} using config file: {}".format(args.parser, self.conf_file))
+
+        if args.parser == "start" and args.config:
+            Output.log("Updating yugabyted config file with"
+                    " user-specified configs located at: {}".format(args.config))
 
         # Initialize the script path of openssl_proxy.sh
         OpenSSLProxy.init()
@@ -6535,6 +6742,7 @@ class Configs(object):
             "backup_daemon": False,
             "dns_enabled": False,
             "read_replica": False,
+            "cluster_member": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -6548,6 +6756,7 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
+            "enable_pg_parity": False,
             "admin_command": "",
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
@@ -6570,8 +6779,9 @@ class Configs(object):
 
     # Saves current configs to config file.
     def save_configs(self):
-        with open(self.config_file, "w+") as f:
-            json.dump(self.saved_data, f, indent=4)
+        if os.path.exists(self.config_file):
+            with open(self.config_file, "w+") as f:
+                json.dump(self.saved_data, f, indent=4)
 
     # Custom parser for reading config file.
     @staticmethod
@@ -6585,13 +6795,42 @@ class Configs(object):
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
 
+        configs.saved_data = Configs.expand_path_variables(configs.saved_data)
+
+        return configs
+
+    # Custom parser for reading user config file.
+    @staticmethod
+    def parse_user_config_file(user_conf_file):
+        user_configs = {}
+        if not os.path.exists(user_conf_file):
+            Output.log_error_and_exit("User config file {} does not exist.".format(user_conf_file))
+        try:
+            with open(user_conf_file, 'r') as f:
+                content = f.read()
+                # If the file is empty or contains only whitespace,
+                # user_configs remains an empty dictionary
+                if content.strip():
+                    user_configs = json.loads(content)
+        except Exception as e:
+            Output.log_error_and_exit("Failed to read user config file {}: {}".format(
+                                        user_conf_file, str(e)))
+
+        user_configs = Configs.expand_path_variables(user_configs)
+
+        return user_configs
+
+    # Expand path variables in config files
+    @staticmethod
+    def expand_path_variables(configs):
         paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
-        for k, v in configs.saved_data.items():
-            if v is not None and k in paths:
-                if "$" in v:
-                    configs.saved_data[k] = os.path.expanduser(os.path.expandvars(v))
+        for key, value in configs.items():
+            if value is not None and key in paths:
+                if "$" in value:
+                    configs[key] = os.path.expanduser(os.path.expandvars(value))
                 else:
-                    configs.saved_data[k] = os.path.expanduser(v)
+                    configs[key] = os.path.expanduser(value)
+
         return configs
 
     @staticmethod
@@ -7951,7 +8190,12 @@ class Output(object):
                     symbol = status
                     running = False
 
-                line = "\r{} {}".format(symbol, msg)
+                if msg == "":
+                    line = "\r" + " " * line_len
+                    running = False
+                else:
+                    line = "\r{} {}".format(symbol, msg)
+
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:

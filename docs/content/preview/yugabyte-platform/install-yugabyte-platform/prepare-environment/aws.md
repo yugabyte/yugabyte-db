@@ -180,6 +180,8 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
 
   If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-optional), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
 
+- If you are operating YBA and deploying universes in airgapped mode, create endpoints (**VPC > Endpoints**) for EC2, S3 (for backup), and KMS (for encryption at rest) services so that they can connect through the internal network.
+
 - Increase the root storage volume size to at least 100GiB.
 
 - Add a tag to name the instance. You can set key to `Name` and value to `yugaware-1`.

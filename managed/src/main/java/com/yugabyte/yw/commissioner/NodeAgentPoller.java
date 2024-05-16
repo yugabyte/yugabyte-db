@@ -162,8 +162,7 @@ public class NodeAgentPoller {
 
     private boolean checkVersion(NodeAgent nodeAgent) {
       String ybaVersion = param.getSoftwareVersion();
-      boolean versionMatched =
-          Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0;
+      boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
       NODE_AGENT_VERSION_MISMATCH_GAUGE
           .labels(nodeAgent.getUuid().toString())
           .set(versionMatched ? 0 : 1);

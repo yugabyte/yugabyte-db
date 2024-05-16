@@ -180,7 +180,8 @@ static inline void od_cron_stat(od_cron_t *cron)
 	if (instance->yb_stats != NULL) {
 		struct timespec t;
 		clock_gettime(CLOCK_REALTIME, &t);
-		instance->yb_stats[0].last_updated_timestamp = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+		uint64_t time_ns = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+		instance->yb_stats[0].last_updated_timestamp = time_ns/1000000;
 	}
 
 	if (instance->config.log_stats) {

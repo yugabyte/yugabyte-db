@@ -121,17 +121,17 @@ public class StatStatementsQueryTest {
                 .setId(
                     new PgStatStatementsQueryId()
                         .setUniverseId(universeMetadata.getId())
+                        .setDbId("13243")
                         .setQueryId(10))
                 .setQuery("query1")
-                .setDbId("13243")
                 .setDbName("postgres"),
             new PgStatStatementsQuery()
                 .setId(
                     new PgStatStatementsQueryId()
                         .setUniverseId(universeMetadata.getId())
+                        .setDbId("13243")
                         .setQueryId(11))
                 .setQuery("query2")
-                .setDbId("13243")
                 .setDbName("postgres"));
     assertThat(queries).containsExactlyInAnyOrderElementsOf(expectedQueries);
 
@@ -169,6 +169,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node2")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(10)
                 .setRps(0.0016666666666666668)
                 .setRowsAvg(1.0)
@@ -181,6 +182,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node1")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(10)
                 .setRps(0.16666666666666666)
                 .setRowsAvg(4.95)
@@ -193,6 +195,7 @@ public class StatStatementsQueryTest {
                 .setActualTimestamp(Instant.parse("2023-12-25T15:58:39.246982Z"))
                 .setNodeName("node1")
                 .setUniverseId(universeMetadata.getId())
+                .setDbId("13243")
                 .setQueryId(11)
                 .setRps(0.16666666666666666)
                 .setRowsAvg(9.9)

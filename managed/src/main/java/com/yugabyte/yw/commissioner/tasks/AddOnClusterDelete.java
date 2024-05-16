@@ -66,7 +66,9 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       } else {
-        universe = lockUniverseForUpdate(params().expectedUniverseVersion);
+        universe =
+            lockAndFreezeUniverseForUpdate(
+                params().expectedUniverseVersion, null /* Txn callback */);
       }
 
       Cluster clusterToDelete = universe.getCluster(params().clusterUUID);

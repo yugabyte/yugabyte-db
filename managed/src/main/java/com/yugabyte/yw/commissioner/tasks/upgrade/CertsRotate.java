@@ -16,9 +16,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -248,15 +248,11 @@ public class CertsRotate extends UpgradeTaskBase {
           universeConfigured);
       return false;
     }
-    List<String> supportedVersions =
-        this.runtimeConfigFactory
-            .staticApplicationConf()
-            .getStringList("yb.features.cert_reload.supportedVersions");
-    Version ybSoftwareVersion =
-        new Version(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    return supportedVersions.stream()
-        .map(Version::new)
-        .anyMatch(supportedVersion -> (supportedVersion.compareTo(ybSoftwareVersion) == 0));
+    return Util.compareYbVersions(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            "2.14.0.0-b1",
+            true /* suppressFormatError */)
+        >= 0;
   }
 
   private boolean isCertReloadFeatureEnabled() {

@@ -90,6 +90,11 @@ extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
 
 /*
+ * GUC variable to set the number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
+
+/*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
  * restore, we copy the docdb SST files of those tables from the source database and reuse them
  * for a newly created target database to restore those tables.
@@ -142,10 +147,13 @@ extern int yb_xcluster_consistency_level;
 
 /*
  * Allows user to query a databases as of the point in time.
- * yb_read_time is UNIX timestamp in microsecond.
+ * yb_read_time can be expressed in the following 2 ways -
+ *  - UNIX timestamp in microsecond (default unit)
+ *  - as a uint64 representation of HybridTime with unit "ht"
  * Zero value means reading data as of current time.
  */
 extern uint64_t yb_read_time;
+extern bool yb_is_read_time_ht;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -181,6 +189,7 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
+bool YBCIsTxnAbortedError(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();

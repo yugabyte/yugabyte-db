@@ -33,7 +33,7 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** list that you should be able to see if you use YugabyteDB Anywhere to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
 
-![img](/images/yb-platform/kubernetes-config1.png)
+![Managed Kubernetes Service](/images/yb-platform/kubernetes-config1.png)
 
 Note that the cloud provider example used in this document has a cluster-level admin access.
 
@@ -53,9 +53,9 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 - Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (also known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
+- In the **Replication Factor** field, define the replication factor, as per the following illustration:
 
-  ![img](/images/yb-platform/kubernetes-config55.png)
+  ![Replication Factor field](/images/yb-platform/kubernetes-config55.png)
 
 ### Configure instance
 
@@ -103,7 +103,7 @@ Optionally, use the **Helm Overrides** section, as follows:
 
 - Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
 
-  ![img](/images/yb-platform/kubernetes-config66.png)
+  ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
 - Using the YAML format, which is sensitive to spacing and indentation, specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
 
@@ -134,7 +134,7 @@ The final step is to click **Create** and wait for the YugabyteDB cluster to app
 
 The following illustration shows the universe in its pending state:
 
-![img](/images/yb-platform/kubernetes-config10.png)
+![Pending universe](/images/yb-platform/kubernetes-config10.png)
 
 ## Examine the universe and connect to nodes
 
@@ -142,13 +142,13 @@ The universe view consists of several tabs that provide different information ab
 
 The following illustration shows the **Overview** tab of a newly-created universe:
 
-![img](/images/yb-platform/kubernetes-config11.png)
+![Overview](/images/yb-platform/kubernetes-config11.png)
 
 If you have defined Helm overrides for your universe, you can modify them at any time through **Overview** by clicking **Actions > Edit Kubernetes Overrides**.
 
 The following illustration shows the **Nodes** tab that allows you to see a list of nodes with their addresses:
 
-![img](/images/yb-platform/kubernetes-config12.png)
+![Nodes](/images/yb-platform/kubernetes-config12.png)
 
 You can create a connection to a node as follows:
 

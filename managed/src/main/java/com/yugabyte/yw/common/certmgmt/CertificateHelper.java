@@ -1061,4 +1061,13 @@ public class CertificateHelper {
 
     return false;
   }
+
+  public static Boolean isValidRsaKey(String privateKeyString) {
+    try {
+      return getPrivateKey(privateKeyString).getAlgorithm().equals("RSA");
+    } catch (RuntimeException e) {
+      log.error("Private key Algorithm extraction failed: ", e);
+      return false;
+    }
+  }
 }

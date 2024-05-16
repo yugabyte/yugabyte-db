@@ -7,11 +7,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yugabyte.troubleshoot.ts.CommonUtils;
+import com.yugabyte.troubleshoot.ts.models.GraphData;
+import com.yugabyte.troubleshoot.ts.models.GraphPoint;
 import com.yugabyte.troubleshoot.ts.models.GraphResponse;
 import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import org.apache.commons.math3.util.Precision;
@@ -39,7 +40,7 @@ public class MockedGraphsGenerator {
         String name = response.getName();
         double normalValue = 0.0;
         double anomalyValue = 0.0;
-        for (GraphResponse.GraphData graphData : response.getData()) {
+        for (GraphData graphData : response.getData()) {
           switch (name) {
             case "query_latency":
               switch (graphData.getName()) {
@@ -112,10 +113,7 @@ public class MockedGraphsGenerator {
               break;
           }
           long point = periodStart;
-          graphData.x = new ArrayList<>();
-          graphData.y = new ArrayList<>();
           while (point < periodEnd) {
-            graphData.x.add(point);
             double lowerBound = normalValue - normalValue * 0.1;
             double upperBound = normalValue + normalValue * 0.1;
             if (point > anomalyPeriodStart && point < anomalyPeriodEnd) {
@@ -127,7 +125,7 @@ public class MockedGraphsGenerator {
                     ? new Random().nextDouble(lowerBound, upperBound)
                     : upperBound;
 
-            graphData.y.add(String.valueOf(Precision.round(value, 2)));
+            graphData.getPoints().add(new GraphPoint().setX(point).setY(Precision.round(value, 2)));
             point += step;
           }
         }
@@ -159,7 +157,7 @@ public class MockedGraphsGenerator {
         String name = response.getName();
         double normalValue = 0.0;
         double anomalyValue = 0.0;
-        for (GraphResponse.GraphData graphData : response.getData()) {
+        for (GraphData graphData : response.getData()) {
           switch (name) {
             case "ysql_server_rpc_per_second":
               if (graphData.getName().equals("Select")) {
@@ -194,10 +192,7 @@ public class MockedGraphsGenerator {
               break;
           }
           long point = periodStart;
-          graphData.x = new ArrayList<>();
-          graphData.y = new ArrayList<>();
           while (point < periodEnd) {
-            graphData.x.add(point);
             double lowerBound = normalValue - normalValue * 0.1;
             double upperBound = normalValue + normalValue * 0.1;
             if (point > anomalyPeriodStart && point < anomalyPeriodEnd) {
@@ -209,7 +204,7 @@ public class MockedGraphsGenerator {
                     ? new Random().nextDouble(lowerBound, upperBound)
                     : upperBound;
 
-            graphData.y.add(String.valueOf(Precision.round(value, 2)));
+            graphData.getPoints().add(new GraphPoint().setX(point).setY(Precision.round(value, 2)));
             point += step;
           }
         }

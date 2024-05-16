@@ -56,6 +56,7 @@ import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -69,7 +70,15 @@ import static org.yb.AssertionWrappers.fail;
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
-  // This value must be synced with the same variable in `yb_backup.py` script.
+  private static final String PERMISSION_DENIED = "permission denied";
+
+  // This constant must be synced with the same variable in `yb_backup.py` script.
+  // This temporary constant enables the features:
+  // 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+  // 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+  //    instead of old 'use_tablespaces'
+  // 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
+  //    with '--no-privileges' flag.
   private static final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
 
   @Before
@@ -1445,6 +1454,97 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
+      throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table(id INT PRIMARY KEY)");
+      stmt.execute("INSERT INTO test_table (id) VALUES (1)");
+
+      stmt.execute("CREATE ROLE admin LOGIN NOINHERIT");
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("GRANT SELECT ON TABLE test_table TO admin");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte", "--backup_roles");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withUser("admin").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("DROP ROLE admin");
+    }
+
+    List<String> args = new ArrayList<>(Arrays.asList(
+        "--keyspace", "ysql.yb2", "--ignore_existing_roles"));
+    if (restoreRoles) {
+      args.add("--restore_roles");
+    }
+    if (useRoles) {
+      args.add("--use_roles");
+    }
+
+    try {
+      YBBackupUtil.runYbBackupRestore(backupDir, args);
+    } catch (YBBackupException ex) {
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && !restoreRoles) {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
+        return;
+      } else {
+        throw ex;
+      }
+    }
+
+    try (Connection connection3 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection3.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+    }
+
+    try (Connection connection4 =
+             getConnectionBuilder().withDatabase("yb2").withUser("admin").connect();
+         Statement stmt = connection4.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    } catch (PSQLException ex) {
+      if (restoreRoles) {
+        throw ex;
+      } else {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
+     }
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testBackupRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ true);
+  }
+
+  @Test
+  public void testBackupRolesWithoutUseRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ false);
+  }
+
+  @Test
+  public void testBackupRolesWithoutRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ false, /* useRoles */ false);
+  }
+
   @Test
   public void testUserDefinedTypes() throws Exception {
     // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
@@ -1778,7 +1878,7 @@ public class TestYbBackup extends BasePgSQLTest {
                    " '', 'SeqScan(tbl1)')");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),
@@ -1801,10 +1901,10 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl2 WHERE tbl2.k = 3",
                   new Row("Seq Scan on tbl2"),
-                  new Row("  Remote Filter: (k = 3)"));
+                  new Row("  Storage Filter: (k = 3)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),

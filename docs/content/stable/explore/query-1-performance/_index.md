@@ -9,105 +9,121 @@ menu:
   stable:
     identifier: query-tuning
     parent: explore
-    weight: 280
+    weight: 300
 type: indexpage
 ---
-<div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="query-tuning-intro/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Introduction</div>
-      </div>
-      <div class="body">
-        Tune and optimize query performance in YugabyteDB.
-      </div>
-    </a>
-  </div>
+YugabyteDB provides a number of familiar performance tuning tools you can use to tune queries.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pg-stat-statements/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Get query statistics using pg_stat_statements</div>
-      </div>
-      <div class="body">
-        Track planning and execution statistics for all SQL statements executed by a server.
-      </div>
-    </a>
-  </div>
+### Find slow queries
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pg-stat-activity/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View live queries with pg_stat_activity</div>
-      </div>
-      <div class="body">
-        Troubleshoot problems and identify long-running queries with the activity view.
-      </div>
-    </a>
-  </div>
+Use the `pg_stat_statements` extension to get statistics on past queries. Using `pg_stat_statements`, you can investigate queries by userid and dbid, calls, rows, and min, max, mean, standard deviation and total time.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-pg-stat-get-queries/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View terminated queries with yb_terminated_queries</div>
-      </div>
-      <div class="body">
-        Identify terminated queries with the get queries function.
-      </div>
-    </a>
-  </div>
+The `pg_stat_statements` extension module is installed by default, but must be enabled for a database before you can query the `pg_stat_statements` view.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pg-stat-progress-copy/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View COPY status with pg_stat_progress_copy</div>
-      </div>
-      <div class="body">
-        Get the COPY command status, number of tuples processed, and other COPY progress reports with this view.
-      </div>
-    </a>
-  </div>
+```sql
+CREATE EXTENSION if not exists pg_stat_statements;
+```
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pg-stat-progress-create-index/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View CREATE INDEX status with pg_stat_progress_create_index</div>
-      </div>
-      <div class="body">
-        Get the CREATE INDEX command status, including the status of an ongoing concurrent index backfill, and the index build's progress reports.
-      </div>
-    </a>
-  </div>
+To get the output of `pg_stat_statements` in JSON format, visit `https://<yb-tserver-ip>:13000/statements` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explain-analyze/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Analyze queries with EXPLAIN</div>
-      </div>
-      <div class="body">
-        Tune your queries by creating and analyzing execution plans.
-      </div>
-    </a>
-  </div>
+For more information, refer to [Get query statistics using `pg_stat_statements`](./pg-stat-statements).
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pg-hint-plan/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Optimize YSQL queries using pg_hint_plan</div>
-      </div>
-      <div class="body">
-        Control query execution plans with hinting phrases.
-      </div>
-    </a>
-  </div>
+<!-- ### View live queries
 
-</div>
+Use the `pg_stat_activity` view to get information on currently running tasks. Using `pg_stat_activity` you can identify inactive, active, and long time active sessions, and get process information and the current query.
+
+To get the output of `pg_stat_activity` in JSON format, visit `https://<yb-tserver-ip>:13000/rpcz` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
+
+For more information, refer to [View live queries with `pg_stat_activity`](../../observability/pg-stat-activity).
+
+### View COPY operation status
+
+Use the `pg_stat_progress_copy` view to get status information of a COPY command execution. In addition to the COPY status, `pg_stat_progress_copy` provides the number of tuples processed and other additional information, and retains the COPY progress report after the command execution.
+
+For more information, refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy). -->
+
+### View plans with EXPLAIN
+
+Like PostgreSQL, YugabyteDB provides the `EXPLAIN` statement to show the query execution plan generated by YSQL for a given SQL statement. Using `EXPLAIN`, you can discover where in the query plan the query is spending most of its time, and using this information, decide on the best approach for improving query performance. This could include strategies such as adding an index or changing index sort order.
+
+For more information, refer to [Analyze queries with EXPLAIN](./explain-analyze).
+
+## Advanced tools
+
+Use the following tools to log slow-running queries and optimize queries using hint plans.
+
+### Log slow queries
+
+You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
+
+```sh
+$ ./bin/yb-tserver --ysql_log_min_duration_statement 1000
+```
+
+Example log output:
+
+```output
+2021-05-26 21:13:49.701 EDT [73005] LOG:  duration: 34.378 ms  statement: SELECT c.oid,
+        n.nspname,
+        c.relname
+    FROM pg_catalog.pg_class c
+        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relname OPERATOR(pg_catalog.~) '^(products)$'
+        AND pg_catalog.pg_table_is_visible(c.oid)
+    ORDER BY 2, 3;
+```
+
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+
+{{< note title="Note" >}}
+
+Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized.
+
+Ensure that the threshold is high enough so that you don't flood the `postgres*log` log files.
+
+{{< /note >}}
+
+For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql-flags).
+
+### Use a hint plan
+
+YugabyteDB uses the PostgreSQL `pg_hint_plan` extension to control query execution plans with hints.
+
+`pg_hint_plan` makes it possible to influence the query planner using so-called "hints", which are C-style comments that use a special syntax.
+
+{{< note title="Note" >}}
+
+To use `pg_hint_plan` effectively, you need a thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
+
+{{< /note >}}
+
+For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan).
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Introduction"
+    body="Tune and optimize query performance in YugabyteDB."
+    href="query-tuning-intro/"
+    icon="/images/section_icons/develop/learn.png">}}
+
+  {{<index/item
+    title="Get query statistics using pg_stat_statements"
+    body="Track planning and execution statistics for all SQL statements executed by a server."
+    href="pg-stat-statements/"
+    icon="/images/section_icons/develop/learn.png">}}
+
+  {{<index/item
+    title="Analyze queries with EXPLAIN"
+    body="Tune your queries by creating and analyzing execution plans."
+    href="explain-analyze/"
+    icon="/images/section_icons/develop/learn.png">}}
+
+  {{<index/item
+    title="Optimize YSQL queries using pg_hint_plan"
+    body="Control query execution plans with hinting phrases."
+    href="pg-hint-plan/"
+    icon="/images/section_icons/develop/learn.png">}}
+
+{{</index/block>}}

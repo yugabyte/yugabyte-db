@@ -22,6 +22,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
 
@@ -334,7 +335,11 @@ Status CatalogManager::LoadXReplStream() {
 
   // Load retained_by_xcluster_ and retained_by_cdcsdk_ only after loading all CDC streams to reduce
   // loops.
-  LoadCDCRetainedTabletsSet();
+  for (const auto& tablet : hidden_tablets_) {
+    TabletDeleteRetainerInfo delete_retainer;
+    XReplPopulateTabletDeleteRetainerInfo(*tablet->table(), {tablet}, delete_retainer);
+    LoadXReplRetainedTablets({tablet}, delete_retainer);
+  }
 
   // Refresh the Consumer registry.
   if (cluster_config_) {
@@ -351,29 +356,27 @@ Status CatalogManager::LoadXReplStream() {
   return Status::OK();
 }
 
-void CatalogManager::LoadCDCRetainedTabletsSet() {
-  for (const auto& hidden_tablet : hidden_tablets_) {
-    // Only keep track of hidden tablets that have been split and that are part of a CDC stream.
-    if (hidden_tablet->old_pb().split_tablet_ids_size() > 0) {
-      bool is_table_cdc_producer = IsTableXClusterProducer(*hidden_tablet->table());
-      bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*hidden_tablet->table());
-      if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
-        auto tablet_lock = hidden_tablet->LockForRead();
-        HiddenReplicationParentTabletInfo info{
-            .table_id_ = hidden_tablet->table()->id(),
-            .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
-                                     ? tablet_lock->pb.split_parent_tablet_id()
-                                     : "",
-            .split_tablets_ = {
-                tablet_lock->pb.split_tablet_ids(0), tablet_lock->pb.split_tablet_ids(1)}};
+void CatalogManager::LoadXReplRetainedTablets(
+    const std::vector<TabletInfoPtr>& tablets, const TabletDeleteRetainerInfo& delete_retainer) {
+  if (!delete_retainer.active_cdcsdk && !delete_retainer.active_xcluster) {
+    return;
+  }
 
-        if (is_table_cdc_producer) {
-          retained_by_xcluster_.emplace(hidden_tablet->id(), info);
-        }
-        if (is_table_part_of_cdcsdk) {
-          retained_by_cdcsdk_.emplace(hidden_tablet->id(), info);
-        }
-      }
+  for (const auto& hidden_tablet : tablets) {
+    auto tablet_lock = hidden_tablet->LockForRead();
+    auto& tablet_pb = tablet_lock->pb;
+    CHECK_GE(tablet_pb.split_tablet_ids_size(), 2);
+    HiddenReplicationParentTabletInfo info{
+        .table_id_ = hidden_tablet->table()->id(),
+        .parent_tablet_id_ =
+            tablet_pb.has_split_parent_tablet_id() ? tablet_pb.split_parent_tablet_id() : "",
+        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)}};
+
+    if (delete_retainer.active_cdcsdk) {
+      retained_by_cdcsdk_.emplace(hidden_tablet->id(), info);
+    }
+    if (delete_retainer.active_xcluster) {
+      retained_by_xcluster_.emplace(hidden_tablet->id(), info);
     }
   }
 }
@@ -1202,6 +1205,26 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
         entries.push_back(std::move(col_entry));
       }
     }
+  }
+
+  // Add a new entry in cdc_state table representing the replication slot for the associated stream.
+  // This entry holds metadata for two main usages:
+  // 1. Represent the slot's consistent point i.e. first record sent in the streaming phase will
+  // have LSN & txnID set to 2.
+  // 2. Initialize components (LSN & txnID generators) of the CDCSDK Virtual WAL on restarts.
+  //
+  // If these values are changed here, also update the consistent point sent as part of the
+  // creation of logical replication slot in walsender.c and slotfuncs.c.
+  if (FLAGS_ysql_TEST_enable_replication_slot_consumption && has_consistent_snapshot_option) {
+    cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+    entry.confirmed_flush_lsn = 2;
+    entry.restart_lsn = 1;
+    entry.xmin = 1;
+    entry.record_id_commit_time = consistent_snapshot_time;
+    entry.cdc_sdk_safe_time = consistent_snapshot_time;
+    entries.push_back(entry);
+    VLOG(1) << "Added entry in cdc_state for the replication slot with tablet_id: "
+            << kCDCSDKSlotEntryTabletId << " stream_id: " << stream_id;
   }
 
   return cdc_state_table_->UpsertEntries(entries);
@@ -2764,7 +2787,6 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::IMPORT_SNAPSHOT);
 
-  ImportSnapshotMetaResponsePB import_resp;
   NamespaceMap namespace_map;
   UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
@@ -2773,7 +2795,8 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10 + 1 * tables_data.size());
   auto epoch = bootstrap_info->LockForRead()->epoch();
   RETURN_NOT_OK(DoImportSnapshotMeta(
-      snapshot, epoch, &import_resp, &namespace_map, &type_map, &tables_data, deadline));
+      snapshot, epoch, std::nullopt /* clone_target_namespace_name */, &namespace_map,
+      &type_map, &tables_data, deadline));
 
   // Update sys catalog with new information.
   {
@@ -2784,7 +2807,6 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
     const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
     l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
   }
-  auto tables_meta = import_resp.tables_meta();
 
   ///////////////////////////
   // CreateConsumerSnapshot
@@ -2797,6 +2819,13 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
 
   CreateSnapshotRequestPB snapshot_req;
   CreateSnapshotResponsePB snapshot_resp;
+
+  std::vector<TableMetaPB> tables_meta;
+  for (const auto& [table_id, table_data] : tables_data) {
+    if (table_data.table_meta) {
+      tables_meta.push_back(std::move(*table_data.table_meta));
+    }
+  }
 
   for (const auto& table_meta : tables_meta) {
     SCHECK(
@@ -6252,7 +6281,7 @@ Status CatalogManager::ResumeXClusterConsumerAfterNewSchema(
   return Status::OK();
 }
 
-void CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
+void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   // Clean up Deleted CDC Streams on the Producer.
   std::vector<CDCStreamInfoPtr> streams;
   WARN_NOT_OK(FindCDCStreamsMarkedAsDeleting(&streams), "Failed Finding Deleting CDC Streams");
@@ -6276,7 +6305,7 @@ void CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
   WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
 
   // Restart xCluster and CDCSDK parent tablet deletion bg task.
-  StartCDCParentTabletDeletionTaskIfStopped();
+  StartXReplParentTabletDeletionTaskIfStopped();
 
   // Run periodic task for namespace-level replications.
   ScheduleXClusterNSReplicationAddTableTask();
@@ -6532,22 +6561,22 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
   return Status::OK();
 }
 
-void CatalogManager::StartCDCParentTabletDeletionTaskIfStopped() {
+void CatalogManager::StartXReplParentTabletDeletionTaskIfStopped() {
   if (GetAtomicFlag(&FLAGS_cdc_parent_tablet_deletion_task_retry_secs) <= 0) {
     // Task is disabled.
     return;
   }
-  const bool is_already_running = cdc_parent_tablet_deletion_task_running_.exchange(true);
+  const bool is_already_running = xrepl_parent_tablet_deletion_task_running_.exchange(true);
   if (!is_already_running) {
-    ScheduleCDCParentTabletDeletionTask();
+    ScheduleXReplParentTabletDeletionTask();
   }
 }
 
-void CatalogManager::ScheduleCDCParentTabletDeletionTask() {
+void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   int wait_time = GetAtomicFlag(&FLAGS_cdc_parent_tablet_deletion_task_retry_secs);
   if (wait_time <= 0) {
     // Task has been disabled.
-    cdc_parent_tablet_deletion_task_running_ = false;
+    xrepl_parent_tablet_deletion_task_running_ = false;
     return;
   }
 
@@ -6555,26 +6584,26 @@ void CatalogManager::ScheduleCDCParentTabletDeletionTask() {
   cdc_parent_tablet_deletion_task_.Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::ProcessCDCParentTabletDeletionPeriodically, this));
+            std::bind(&CatalogManager::ProcessXReplParentTabletDeletionPeriodically, this));
         if (!s.IsOk()) {
           // Failed to submit task to the thread pool. Mark that the task is now no longer running.
-          LOG(WARNING) << "Failed to schedule: ProcessCDCParentTabletDeletionPeriodically";
-          cdc_parent_tablet_deletion_task_running_ = false;
+          LOG(WARNING) << "Failed to schedule: ProcessXReplParentTabletDeletionPeriodically";
+          xrepl_parent_tablet_deletion_task_running_ = false;
         }
       },
       wait_time * 1s);
 }
 
-void CatalogManager::ProcessCDCParentTabletDeletionPeriodically() {
+void CatalogManager::ProcessXReplParentTabletDeletionPeriodically() {
   if (!CheckIsLeaderAndReady().IsOk()) {
-    cdc_parent_tablet_deletion_task_running_ = false;
+    xrepl_parent_tablet_deletion_task_running_ = false;
     return;
   }
   WARN_NOT_OK(DoProcessCDCSDKTabletDeletion(), "Failed to run DoProcessCDCSdkTabletDeletion.");
   WARN_NOT_OK(DoProcessXClusterTabletDeletion(), "Failed to run DoProcessXClusterTabletDeletion.");
 
   // Schedule the next iteration of the task.
-  ScheduleCDCParentTabletDeletionTask();
+  ScheduleXReplParentTabletDeletionTask();
 }
 
 Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
@@ -6797,7 +6826,7 @@ Status CatalogManager::DoProcessXClusterTabletDeletion() {
 }
 
 std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
-  auto ybclient = master_->cdc_state_client_initializer().client();
+  auto ybclient = master_->cdc_state_client_future().get();
   auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
   DCHECK(!hostport.host().empty());
 
@@ -7354,12 +7383,7 @@ Status CatalogManager::XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epo
     return Status::OK();
   }
 
-  bool operation_succeeded = false;
-  auto se = ScopeExit([this, &operation_succeeded] {
-    if (!operation_succeeded) {
-      xcluster_auto_flags_revalidation_needed_ = true;
-    }
-  });
+  auto se = ScopeExit([this] { xcluster_auto_flags_revalidation_needed_ = true; });
   xcluster_auto_flags_revalidation_needed_ = false;
 
   std::vector<xcluster::ReplicationGroupId> replication_group_ids;
@@ -7400,7 +7424,7 @@ Status CatalogManager::XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epo
 
   SCHECK(!update_failed, IllegalState, "Failed to handle local AutoFlags config change");
 
-  operation_succeeded = true;
+  se.Cancel();
 
   return Status::OK();
 }
@@ -7460,6 +7484,25 @@ void CatalogManager::ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_i
   TRACE("Acquired catalog manager lock");
 
   cdc_stream_map_.erase(stream_id);
+}
+
+void CatalogManager::XReplPopulateTabletDeleteRetainerInfo(
+    const TableInfo& table_info, const TabletInfos& tablets_to_check,
+    TabletDeleteRetainerInfo& delete_retainer) const {
+  // For xCluster and CDCSDK , the only time we try to delete a single tablet that is part of an
+  // active stream is during tablet splitting, where we need to keep the parent tablet around until
+  // we have replicated its SPLIT_OP record.
+  if (tablets_to_check.size() != 1) {
+    return;
+  }
+  {
+    auto tablet_lock = tablets_to_check.front()->LockForRead();
+    if (tablet_lock->pb.split_tablet_ids_size() < 2) {
+      return;
+    }
+  }
+  delete_retainer.active_xcluster = IsTableXClusterProducer(table_info);
+  delete_retainer.active_cdcsdk = IsTablePartOfCDCSDK(table_info);
 }
 
 }  // namespace master

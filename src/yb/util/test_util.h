@@ -191,9 +191,9 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
-// For now this assumes that YB Controller binaries are present in build/latest/ybc.
+// For now this assumes that YB Controller binaries are present in build/ybc.
 inline std::string GetYbcToolPath(const std::string& tool_name) {
-  return GetToolPath("../../latest/ybc", tool_name);
+  return GetToolPath("../../ybc", tool_name);
 }
 
 std::string GetCertsDir();

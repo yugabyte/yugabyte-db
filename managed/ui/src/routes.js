@@ -38,6 +38,7 @@ import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
 import {
   clearRbacCreds,
@@ -255,6 +256,7 @@ export default (store) => {
             path="/universes/:uuid/troubleshoot/:troubleshootUUID"
             component={SecondaryDashboard}
           />
+          <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}

@@ -13,5 +13,6 @@ public enum Measure {
   STATUS,
   COUNT,
   PERCENTAGE,
-  TIME
+  TIME,
+  SIZE
 }

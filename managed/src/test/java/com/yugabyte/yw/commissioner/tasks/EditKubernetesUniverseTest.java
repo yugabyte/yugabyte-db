@@ -9,12 +9,10 @@ import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod.C
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -151,6 +149,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_ADD_POD_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
@@ -164,7 +163,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
@@ -180,6 +178,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_REMOVE_POD_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.KubernetesCommandExecutor,
@@ -195,10 +194,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -209,6 +207,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -229,6 +228,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
@@ -254,11 +254,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       List<JsonNode> resultList,
       String type) {
     int position = 0;
-    // Since we create two empty subGroupTasks for add (namespace create and apply secret)
-    // they need to skipped over.
-    if (type.equals("add")) {
-      position = 2;
-    }
     for (TaskType task : taskList) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       // In the case of adding and wait for server, we need to ensure that
@@ -275,11 +270,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
-
-      // Similar to add, we expect two empty subGroupTasks (namespace and volume delete).
-      if (position == 3 && type.equals("remove")) {
-        position += 2;
-      }
     }
   }
 
@@ -612,24 +602,5 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
-  }
-
-  @Test
-  public void testVolumeDecreaseIsForbidden() {
-    setupUniverseSingleAZ(/* Create Masters */ true);
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
-    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
-    UniverseDefinitionTaskParams.UserIntent newUserIntent =
-        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    newUserIntent.instanceType = "c5.xlarge";
-    newUserIntent.deviceInfo.volumeSize--;
-    RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
-    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
-    assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(
-        taskInfo.getErrorMessage().contains("Cannot decrease disk size in a Kubernetes cluster"));
   }
 }

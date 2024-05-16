@@ -303,29 +303,29 @@ SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT c_bigint, c_text FROM T WHERE c_bigint = -1 LIMIT 1;
-                     QUERY PLAN                      
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Limit
    Output: c_bigint, c_text
    ->  Seq Scan on fast_default.t
          Output: c_bigint, c_text
-         Remote Filter: (t.c_bigint = '-1'::integer)
+         Storage Filter: (t.c_bigint = '-1'::integer)
 (5 rows)
 
 SELECT c_bigint, c_text FROM T WHERE c_text = 'hello' LIMIT 1;
- c_bigint | c_text 
+ c_bigint | c_text
 ----------+--------
        -1 | hello
 (1 row)
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE) SELECT c_bigint, c_text FROM T WHERE c_text = 'hello' LIMIT 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                     QUERY PLAN
+----------------------------------------------------
  Limit
    Output: c_bigint, c_text
    ->  Seq Scan on fast_default.t
          Output: c_bigint, c_text
-         Remote Filter: (t.c_text = 'hello'::text)
+         Storage Filter: (t.c_text = 'hello'::text)
 (5 rows)
 
 -- COALESCE
@@ -400,8 +400,8 @@ SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
-                        QUERY PLAN                         
------------------------------------------------------------
+                         QUERY PLAN
+------------------------------------------------------------
  Limit
    Output: pk, c_bigint, c_text
    ->  Sort
@@ -409,7 +409,7 @@ SELECT * FROM T WHERE c_bigint > -1 ORDER BY c_bigint, c_text, pk LIMIT 10;
          Sort Key: t.c_bigint, t.c_text, t.pk
          ->  Seq Scan on fast_default.t
                Output: pk, c_bigint, c_text
-               Remote Filter: (t.c_bigint > '-1'::integer)
+               Storage Filter: (t.c_bigint > '-1'::integer)
 (8 rows)
 
 --  DELETE with RETURNING
@@ -432,13 +432,13 @@ WITH deleted AS (DELETE FROM T WHERE pk BETWEEN 10 AND 20 RETURNING *)
 
 EXPLAIN (VERBOSE TRUE, COSTS FALSE)
 DELETE FROM T WHERE pk BETWEEN 10 AND 20 RETURNING *;
-                       QUERY PLAN                       
---------------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Delete on fast_default.t
    Output: pk, c_bigint, c_text
    ->  Seq Scan on fast_default.t
          Output: pk, c_bigint, c_text, ybctid
-         Remote Filter: ((t.pk >= 10) AND (t.pk <= 20))
+         Storage Filter: ((t.pk >= 10) AND (t.pk <= 20))
 (5 rows)
 
 -- UPDATE
@@ -756,9 +756,6 @@ SELECT * FROM vtype;
 ALTER TABLE vtype
       ALTER b TYPE text USING b::text,
       ALTER c TYPE text USING c::text;
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.

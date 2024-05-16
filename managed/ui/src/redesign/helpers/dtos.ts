@@ -23,7 +23,7 @@ export interface HostInfo {
         project: string;
       }
     | string;
-  azu: |{}| string;
+  azu: {} | string;
 }
 
 export interface SuggestedKubernetesConfig {
@@ -257,6 +257,12 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  universePaused: boolean;
+}
+
+export interface AllowedTasks {
+  restricted: boolean;
+  taskIds: string[];
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;
@@ -271,6 +277,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  allowedTasks: AllowedTasks;
 }
 
 export const TableType = {
@@ -289,11 +296,16 @@ export interface YBTable {
   pgSchemaName: string;
   relationType: YBTableRelationType;
   sizeBytes: number;
-  tableID: string;
+  tableID: string; // UUID without `-`
   tableName: string;
   tableType: TableType;
-  tableUUID: string;
+  tableUUID: string; // UUID with `-`
   walSizeBytes: number;
+
+  // mainTableUUID is provided for index tables when the
+  // query param `xClusterSupportedOnly` is true
+  mainTableUUID?: string;
+  indexTableIDs?: string[];
 }
 
 export interface UniverseNamespace {

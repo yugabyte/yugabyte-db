@@ -368,9 +368,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
 
-  Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
-      const ReplicationSlotName& slot_name);
-
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
@@ -378,6 +375,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
+
+  const std::string LogPrefix() const;
 
   class RunHelper;
 

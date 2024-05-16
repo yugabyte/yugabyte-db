@@ -19,7 +19,6 @@
 #include "utils/relcache.h"
 #include "utils/wait_event.h"	/* for backward compatibility */
 
-
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
  * ----------
@@ -992,7 +991,6 @@ extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
 
 #ifdef YB_TODO
 /* These functions need new implementation to match with Postgres 15. */
-extern PgBackendStatus *getBackendStatusArray(void);
 extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t* num_queries);
 #endif
 

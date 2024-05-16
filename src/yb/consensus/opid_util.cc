@@ -33,12 +33,13 @@
 
 #include <limits>
 
+#include "yb/common/opid.h"
+
 #include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace consensus {

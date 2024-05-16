@@ -86,6 +86,7 @@ func NewRPCServer(
 				listener,
 				&tls.Config{
 					Certificates: tlsConfig.Certificates,
+					MinVersion:   tls.VersionTLS12,
 					NextProtos:   []string{http2.NextProtoTLS, "http/1.1"},
 				},
 			)
@@ -159,6 +160,7 @@ func loadTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.NoClientCert,
+		MinVersion:   tls.VersionTLS12,
 	}
 	return tlsConfig, nil
 }

@@ -33,6 +33,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBefore
   ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
   ASSERT_OK(UpdatePrimaryKey(1 /* key */, 9 /* value */, &test_cluster_));
 
+  OpId historical_max_op_id;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        historical_max_op_id = GetHistoricalMaxOpId(tablets);
+        return historical_max_op_id > OpId::Invalid();
+      },
+      MonoDelta::FromSeconds(5),
+      "historical_max_op_id should change"));
+
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 2, 1, 1, 0, 0};
   const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 1, 0, 0};
@@ -85,9 +94,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention))
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
   SleepFor(MonoDelta::FromSeconds(2));
 
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, kCompactionTimeoutSec, true));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
@@ -1224,6 +1231,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 1, 2, 0, 0, 0};
@@ -1492,7 +1502,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
   constexpr int kCompactionTimeoutSec = 60;
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
 
@@ -1503,6 +1513,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
 
@@ -1880,6 +1893,76 @@ TEST_P(CDCYsqlAddColumnBeforeImageTest, TestAddColumnBeforeImage) {
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
+}
+
+TEST_F(CDCSDKBeforeImageTest, TestCompactionWithBeforeImageGetChangesCallFailed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  // Testing compaction without compaction file filtering for TTL expiration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  GetChangesResponsePB change_resp_updated =
+      ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+  LOG(INFO) << "change_resp_updated = " << change_resp_updated.DebugString();
+
+  int get_changes_idx = 1;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test_table VALUES($0,$1)", get_changes_idx, get_changes_idx + 1));
+  for (int j = 2; j <= 4; ++j) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test_table SET $0 = $1 WHERE $2 = $3", kValueColumnName, get_changes_idx + j,
+        kKeyColumnName, get_changes_idx));
+  }
+  ASSERT_OK(
+      conn.ExecuteFormat("DELETE from test_table WHERE $0 = $1", kKeyColumnName, get_changes_idx));
+
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+
+  auto result = test_cluster_.mini_cluster_->CompactTablets();
+  auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+
+  GetChangesResponsePB change_resp_saved = change_resp_updated;
+
+  // This call will fail with failure to get before image if compaction occurs in above step
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &change_resp_saved.cdc_sdk_checkpoint(), 0,
+      change_resp_saved.safe_hybrid_time()));
+  LOG(INFO) << "Get changes response = " << change_resp.DebugString();
+
+  LOG(INFO) << "Adding sleep to move forward retention barriers";
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  result = test_cluster_.mini_cluster_->CompactTablets();
+  count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+
+  // This call will fail with failure to get before image if compaction occurs in above step
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &change_resp_saved.cdc_sdk_checkpoint(), 0,
+      change_resp_saved.safe_hybrid_time()));
+  LOG(INFO) << "Get changes response for 2nd call = " << change_resp.DebugString();
 }
 
 INSTANTIATE_TEST_CASE_P(

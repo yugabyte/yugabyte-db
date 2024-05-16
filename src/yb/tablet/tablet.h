@@ -890,7 +890,8 @@ class Tablet : public AbstractTablet,
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
       TabletLockInfoPB* tablet_lock_info,
-      uint64_t max_single_shard_waiter_start_time_us) const;
+      uint64_t max_single_shard_waiter_start_time_us,
+      uint32_t max_txn_locks_per_tablet) const;
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();

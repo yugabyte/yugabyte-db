@@ -178,6 +178,8 @@ class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
     return internal::StatusFromResp(*resp_);
   }
 
+  bool ShouldRetry(const Status& status) override;
+
  private:
   RespClass* resp_;
   std::string name_;
@@ -311,17 +313,31 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterReportNewAutoFlagConfigVersion);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGroup);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterAddNamespaceToOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterRemoveNamespaceFromOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, SetupUniverseReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsSetupUniverseReplicationDone);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateXClusterReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsCreateXClusterReplicationDone);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_FOR(rpcs) \
   BOOST_PP_SEQ_FOR_EACH(YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH, ~, rpcs)
 
-YB_CLIENT_SPECIALIZE_SIMPLE_FOR(CLIENT_SYNC_LEADER_MASTER_RPC_LIST)
+template<class ProxyClass, class RespClass>
+bool SyncClientMasterRpc<ProxyClass, RespClass>::ShouldRetry(const Status& status) {
+  return internal::ClientMasterRpcBase::ShouldRetry(status);
+}
+
+template<>
+bool SyncClientMasterRpc<master::MasterAdminProxy,
+                         WaitForYsqlBackendsCatalogVersionResponsePB>::ShouldRetry(
+    const Status& status) {
+  return status.IsTryAgain();
+}
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -1198,6 +1214,9 @@ Status YBClient::Data::IsFlushTableInProgress(YBClient* client,
       &master::MasterAdminProxy::IsFlushTablesDoneAsync));
 
   *flush_in_progress = !resp.done();
+  if (!resp.success()) {
+    return STATUS_FORMAT(InternalError, "Flush operation for id: $0 failed", flush_id);
+  }
   return Status::OK();
 }
 
@@ -2121,7 +2140,8 @@ class GetXClusterStreamsRpc
           master::GetXClusterStreamsRequestPB, master::GetXClusterStreamsResponsePB> {
  public:
   GetXClusterStreamsRpc(
-      YBClient* client, GetXClusterStreamsCallback user_cb, CoarseTimePoint deadline)
+      YBClient* client, std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb,
+      CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
 
   Status Init(
@@ -2179,7 +2199,7 @@ class GetXClusterStreamsRpc
     user_cb_(std::move(resp_));
   }
 
-  GetXClusterStreamsCallback user_cb_;
+  std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb_;
 };
 
 // A simple RPC that keeps retrying if resp has not_ready set.
@@ -2188,7 +2208,7 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
                                            master::IsXClusterBootstrapRequiredResponsePB> {
  public:
   IsXClusterBootstrapRequiredRpc(
-      YBClient* client, IsXClusterBootstrapRequiredCallback user_cb, CoarseTimePoint deadline)
+      YBClient* client, std::function<void(Result<bool>)> user_cb, CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
 
   Status Init(
@@ -2234,7 +2254,7 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
     user_cb_(resp_.initial_bootstrap_required());
   }
 
-  IsXClusterBootstrapRequiredCallback user_cb_;
+  std::function<void(Result<bool>)> user_cb_;
 };
 
 } // namespace internal
@@ -2884,7 +2904,7 @@ Status YBClient::Data::GetXClusterStreams(
     YBClient* client, CoarseTimePoint deadline,
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
-    GetXClusterStreamsCallback user_cb) {
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb) {
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, table_names, pg_schema_names));
@@ -2896,7 +2916,7 @@ Status YBClient::Data::GetXClusterStreams(
 Status YBClient::Data::IsXClusterBootstrapRequired(
     YBClient* client, CoarseTimePoint deadline,
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    IsXClusterBootstrapRequiredCallback user_cb) {
+    std::function<void(Result<bool>)> user_cb) {
   auto rpc = std::make_shared<internal::IsXClusterBootstrapRequiredRpc>(
       client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id));

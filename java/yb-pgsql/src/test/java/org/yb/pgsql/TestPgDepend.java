@@ -277,30 +277,16 @@ public class TestPgDepend extends BasePgSQLTest {
   }
 
   @Test
-  public void testPinnedSystemTables() throws SQLException {
+  public void testForSuperfluousEntries() throws SQLException {
     try (Statement statement = connection.createStatement()) {
 
       // Check that we cannot drop system tables.
       runInvalidQuery(statement, "DROP TABLE pg_class", "permission denied");
       runInvalidQuery(statement, "DROP TABLE pg_database", "permission denied");
 
-      // Check that there are pinned entries in pg_depend.
-      ResultSet rs = statement.executeQuery("SELECT count(*) AS num_pinned FROM pg_depend " +
-                                                "WHERE deptype = 'p'");
-      assertTrue(rs.next());
-      assertTrue(rs.getInt("num_pinned") > 50);
-
-
-      // Check that there are pinned entries in pg_shdepend.
-      rs = statement.executeQuery("SELECT count(*) AS num_pinned FROM pg_shdepend " +
-                                                "WHERE deptype = 'p'");
-      assertTrue(rs.next());
-      assertTrue(rs.getInt("num_pinned") > 3);
-
-
       // Create a simple table and get its oid.
-      statement.execute("CREATE TABLE pin_test(a int PRIMARY KEY, b int)");
-      rs = statement.executeQuery("SELECT oid FROM pg_class where relname = 'pin_test'");
+      statement.execute("CREATE TABLE test(a int PRIMARY KEY, b int)");
+      ResultSet rs = statement.executeQuery("SELECT oid FROM pg_class where relname = 'test'");
       assertTrue(rs.next());
       int tableOid = rs.getInt("oid");
 

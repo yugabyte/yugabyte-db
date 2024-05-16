@@ -51,6 +51,8 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 
 /* GUC variables */
+bool yb_ash_enable_infra;
+bool yb_enable_ash;
 int yb_ash_circular_buffer_size;
 int yb_ash_sampling_interval_ms;
 int yb_ash_sample_size;
@@ -102,6 +104,17 @@ static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
+
+bool
+yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
+{
+	if (*newval && !yb_ash_enable_infra)
+	{
+		GUC_check_errdetail("ysql_yb_ash_enable_infra must be enabled.");
+		return false;
+	}
+	return true;
+}
 
 void
 YbAshRegister(void)
@@ -205,11 +218,14 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * pg_stat_statements does. query_id can also be zero when pg_stat_statements
 	 * is disabled, then this field won't be useful for ASH users at all.
 	 */
-	uint64 query_id = query->queryId != 0
-					  ? query->queryId
-					  : yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
-					  							query->stmt_location);
-	yb_set_ash_metadata(query_id);
+	if (yb_enable_ash)
+	{
+		uint64 query_id = query->queryId != 0
+						? query->queryId
+						: yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
+													query->stmt_location);
+		yb_set_ash_metadata(query_id);
+	}
 }
 
 static void
@@ -219,7 +235,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * In case of prepared statements, the 'Parse' phase might be skipped.
 	 * We set the ASH metadata here if it's not been set yet.
 	 */
-	if (MyProc->yb_is_ash_metadata_set == false)
+	if (yb_enable_ash && MyProc->yb_is_ash_metadata_set == false)
 	{
 		/* Query id can be zero here only if pg_stat_statements is disabled */
 		uint64 query_id = queryDesc->plannedstmt->queryId != 0
@@ -248,7 +264,8 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 	 * Unset ASH metadata. Utility statements do not go through this
 	 * code path.
 	 */
-	yb_unset_ash_metadata();
+	if (yb_enable_ash)
+		yb_unset_ash_metadata();
 }
 
 static void
@@ -273,7 +290,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * Unset ASH metadata in case of utility statements. This function
 	 * might recurse, and we only want to unset in the last step.
 	 */
-	if (YBGetDdlNestingLevel() == 0)
+	if (yb_enable_ash && YBGetDdlNestingLevel() == 0)
 		yb_unset_ash_metadata();
 }
 
@@ -423,7 +440,7 @@ YbAshMain(Datum main_arg)
 					(errmsg("bgworker yb_ash signal: processed SIGHUP")));
 		}
 
-		if (yb_ash_sample_size > 0)
+		if (yb_enable_ash && yb_ash_sample_size > 0)
 		{
 			sample_time = GetCurrentTimestamp();
 
@@ -495,7 +512,7 @@ copy_pgproc_sample_fields(PGPROC *proc)
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	cb_sample->wait_event_code = proc->wait_event_info;
+	cb_sample->encoded_wait_event_code = proc->wait_event_info;
 }
 
 static void
@@ -544,7 +561,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	if (!yb_ash)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("TEST_yb_enable_ash gflag must be enabled")));
+				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -605,9 +622,12 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		else
 			nulls[j++] = true;
 
-		values[j++] = CStringGetTextDatum(YBCGetWaitEventComponent(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event_type(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event(sample->wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		uchar_to_uuid(sample->yql_endpoint_tserver_uuid, &yql_endpoint_tserver_uuid);
 		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);

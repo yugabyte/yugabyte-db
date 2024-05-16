@@ -680,6 +680,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	/* See if we have any unbatchable filters. */
+	Relids batched_and_inner_relids =
+		bms_union(batchedrelids, index->rel->relids);
 	List *pclauses = NIL;
 	if (!bms_is_empty(batchedrelids)) {
 		pclauses = generate_join_implied_equalities(
@@ -687,11 +689,15 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			bms_union(batchedrelids, index->rel->relids),
 			batchedrelids,
 			rel);
-		pclauses = list_concat(pclauses, rel->joininfo);
-	}
 
-	Relids batched_and_inner_relids =
-		bms_union(batchedrelids, index->rel->relids);
+		foreach(lc, rel->joininfo)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			if (join_clause_is_movable_into(rinfo, rel->relids,
+											batched_and_inner_relids))
+				pclauses = lappend(pclauses, rinfo);
+		}
+	}
 
 	foreach(lc, pclauses)
 	{
@@ -3263,6 +3269,9 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 		return NULL;
 
+	if (is_hash_column_in_lsm_index(index, indexcol))
+		return NULL;
+
 	index_relid = index->rel->relid;
 	opfamily = index->opfamily[indexcol];
 	idxcollation = index->indexcollations[indexcol];
@@ -3278,7 +3287,7 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	 * operators are matchable to the index.
 	 */
 	leftop = (Node *) linitial(clause->largs);
-	rightop = (Node *) linitial(clause->rargs);
+	rightop = (Node *) linitial(castNode(List, clause->rargs));
 	expr_op = linitial_oid(clause->opnos);
 	expr_coll = linitial_oid(clause->inputcollids);
 
@@ -3378,11 +3387,11 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 	if (var_on_left)
 	{
 		var_args = clause->largs;
-		non_var_args = clause->rargs;
+		non_var_args = castNode(List, clause->rargs);
 	}
 	else
 	{
-		var_args = clause->rargs;
+		var_args = castNode(List, clause->rargs);
 		non_var_args = clause->largs;
 	}
 
@@ -3530,7 +3539,7 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 											 matching_cols);
 			rc->largs = list_truncate(copyObject(var_args),
 									  matching_cols);
-			rc->rargs = list_truncate(copyObject(non_var_args),
+			rc->rargs = (Node *) list_truncate(copyObject(non_var_args),
 									  matching_cols);
 			iclause->indexquals = list_make1(make_simple_restrictinfo(root,
 																	  (Expr *) rc));

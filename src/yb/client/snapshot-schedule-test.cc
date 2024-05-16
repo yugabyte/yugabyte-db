@@ -11,17 +11,25 @@
 // under the License.
 //
 
+#include "yb/client/client-test-util.h"
+#include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/txn-test-base.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
 
+#include "yb/common/wire_protocol.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
@@ -39,6 +47,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_db_clone);
 DECLARE_bool(enable_fast_pitr);
 DECLARE_bool(enable_history_cutoff_propagation);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -342,6 +351,78 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_OK(table_.Reopen());
   ASSERT_EQ(old_schema, table_.schema());
   ASSERT_NO_FATALS(VerifyData());
+}
+
+class CloneFromScheduleTest : public SnapshotScheduleTest {
+  void SetUp() override {
+    SnapshotScheduleTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+  }
+
+ protected:
+  Status CloneAndWait(const master::CloneFromSnapshotScheduleRequestPB& clone_req) {
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+    master::CloneFromSnapshotScheduleResponsePB clone_resp;
+    auto backup_proxy = VERIFY_RESULT(snapshot_util_->MakeBackupServiceProxy());
+    RETURN_NOT_OK(backup_proxy.CloneFromSnapshotSchedule(clone_req, &clone_resp, &controller));
+    if (clone_resp.has_error()) {
+      return StatusFromPB(clone_resp.error().status());
+    }
+
+    // Wait until clone is done.
+    master::IsCloneDoneRequestPB done_req;
+    master::IsCloneDoneResponsePB done_resp;
+    done_req.set_seq_no(clone_resp.seq_no());
+    done_req.set_source_namespace_id(clone_resp.source_namespace_id());
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      controller.Reset();
+      RETURN_NOT_OK(backup_proxy.IsCloneDone(done_req, &done_resp, &controller));
+      if (done_resp.has_error()) {
+        return StatusFromPB(clone_resp.error().status());
+      }
+      return done_resp.is_done();
+    }, 60s, "Wait for clone to finish"));
+
+    return Status::OK();
+  }
+};
+
+TEST_F(CloneFromScheduleTest, Clone) {
+  auto schedule_id = ASSERT_RESULT(
+    snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
+                                   kTableName.namespace_name()));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
+
+  // Write two sets of rows.
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
+  auto row_count1 = CountTableRows(table_);
+  auto ht1 = cluster_->mini_master()->master()->clock()->Now();
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 1) /* transaction */);
+  auto row_count2 = CountTableRows(table_);
+  auto ht2 = cluster_->mini_master()->master()->clock()->Now();
+
+  master::CloneFromSnapshotScheduleRequestPB req;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_restore_ht(ht1.ToUint64());
+  req.set_target_namespace_name("clone1" /* target_namespace_name */);
+  ASSERT_OK(CloneAndWait(req));
+
+  req.set_restore_ht(ht2.ToUint64());
+  req.set_target_namespace_name("clone2" /* target_namespace_name */);
+  ASSERT_OK(CloneAndWait(req));
+
+  // First clone should have only the first set of rows.
+  YBTableName clone1(YQL_DATABASE_CQL, "clone1", kTableName.table_name());
+  TableHandle clone1_handle;
+  ASSERT_OK(clone1_handle.Open(clone1, client_.get()));
+  ASSERT_EQ(CountTableRows(clone1_handle), row_count1);
+
+  // Second clone should have all the rows.
+  YBTableName clone2(YQL_DATABASE_CQL, "clone2", kTableName.table_name());
+  TableHandle clone2_handle;
+  ASSERT_OK(clone2_handle.Open(clone2, client_.get()));
+  ASSERT_EQ(CountTableRows(clone2_handle), row_count2);
 }
 
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {

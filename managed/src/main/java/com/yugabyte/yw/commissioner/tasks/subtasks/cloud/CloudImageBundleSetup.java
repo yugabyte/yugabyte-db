@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class CloudImageBundleSetup extends CloudTaskBase {
@@ -131,6 +132,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
 
     ImageBundleDetails details = new ImageBundleDetails();
     details.setArch(arch);
+    boolean isCustomImage = false;
     if (cloudType.equals(CloudType.aws)) {
       Map<String, ImageBundleDetails.BundleInfo> regionsImageInfo = new HashMap<>();
       for (Region r : regions) {
@@ -144,9 +146,20 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
         if (ybImage == null || forceFetchFromMetadata) {
           ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
+        } else if (ybImage != null) {
+          isCustomImage = true;
+          // We are doing this as, once the bundle is configured with the custom image,
+          // we should get rid of the image in the region object, so that during bundle
+          // update it does not pick the image from region.
+          r.setYbImage(null);
+          r.save();
         }
         bundleInfo.setYbImage(ybImage);
-        bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
+        if (isCustomImage) {
+          bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
+        } else {
+          bundleInfo.setSshUserOverride(cloudType.getSshUser());
+        }
         regionsImageInfo.put(r.getCode(), bundleInfo);
       }
       details.setRegions(regionsImageInfo);
@@ -169,16 +182,33 @@ public class CloudImageBundleSetup extends CloudTaskBase {
 
       if (ybImage == null || forceFetchFromMetadata) {
         ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
+      } else if (ybImage != null) {
+        isCustomImage = true;
+        // We are doing this as, once the bundle is configured with the custom image,
+        // we should get rid of the image in the region object, so that during bundle
+        // update it does not pick the image from region.
+        regions.stream()
+            .forEach(
+                r -> {
+                  r.setYbImage(null);
+                  r.save();
+                });
       }
       details.setGlobalYbImage(ybImage);
     }
     // If the bundle is not specified we will create YBA default with the type
     // YBA_ACTIVE.
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
-    metadata.setType(ImageBundleType.YBA_ACTIVE);
-    metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
-    ImageBundle.create(
-        provider, getDefaultImageBundleName(provider.getCode()), details, metadata, isDefault);
+    String bundleName = "";
+    if (isCustomImage) {
+      metadata.setType(ImageBundleType.CUSTOM);
+      bundleName = provider.getName() + "_Custom_Bundle";
+    } else {
+      metadata.setType(ImageBundleType.YBA_ACTIVE);
+      metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
+      bundleName = getDefaultImageBundleName(provider.getCode());
+    }
+    ImageBundle.create(provider, bundleName, details, metadata, isDefault);
   }
 
   @Override
@@ -192,6 +222,24 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         && !taskParams().updateBundleRequest) {
       log.info("No image bundle specified for provider. Creating one...");
       Architecture arch = regions.get(0).getArchitecture();
+      if (arch == null && provider.getCloudCode() == CloudType.aws) {
+        Optional<Region> regionWithImage =
+            regions.stream().filter(r -> r.getYbImage() != null).findFirst();
+        if (regionWithImage.isPresent()) {
+          String architecture = cloudQueryHelper.getImageArchitecture(regionWithImage.get());
+          try {
+            if (StringUtils.isNotBlank(architecture)) {
+              // exlicitly overriding arch name to maintain equivalent type of architecture.
+              if (architecture.equals("arm64")) {
+                architecture = Architecture.aarch64.name();
+              }
+              arch = Architecture.valueOf(architecture);
+            }
+          } catch (IllegalArgumentException e) {
+            log.warn("{} not a valid architecture", architecture);
+          }
+        }
+      }
       generateYBADefaultImageBundle(provider, cloudQueryHelper, arch, true, false);
     } else if (imageBundles != null) {
       Map<UUID, ImageBundle> existingImageBundles =

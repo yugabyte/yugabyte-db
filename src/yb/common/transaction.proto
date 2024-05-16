@@ -138,6 +138,8 @@ message TabletLockInfoPB {
     optional fixed64 wait_start_ht = 2;
 
     repeated bytes blocking_txn_ids = 3;
+
+    optional bool has_additional_waiting_locks = 4;
   }
 
   // Lock info for a given transaction at this tablet.
@@ -147,6 +149,8 @@ message TabletLockInfoPB {
     repeated LockInfoPB granted_locks = 2;
 
     optional WaiterInfoPB waiting_locks = 3;
+
+    optional bool has_additional_granted_locks = 4;
   }
   repeated TransactionLockInfoPB transaction_locks = 3;
 

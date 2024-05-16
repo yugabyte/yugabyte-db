@@ -257,12 +257,14 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
+      GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
       requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
     }

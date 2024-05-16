@@ -107,6 +107,7 @@
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
+#include "yb/tserver/tablet_limits.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
@@ -363,10 +364,15 @@ METRIC_DEFINE_gauge_uint64(server, ts_post_split_compaction_added,
                         MetricUnit::kRequests,
                         "Number of post-split compaction requests submitted.");
 
-METRIC_DEFINE_gauge_uint32(
-    server, ts_live_tablet_peers, "Number of Live Tablet Peers", MetricUnit::kUnits,
-    "Number of live tablet peers running on this tserver. Tablet peers are live if they are "
+METRIC_DEFINE_gauge_uint32(server, ts_live_tablet_peers,
+    "Number of Live Tablet Peers", MetricUnit::kUnits,
+    "Number of live tablet peers running on this TServer. Tablet peers are live if they are "
     "bootstrapping or running.");
+
+METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
+    "Number of Tablet Peers this TServer can support", MetricUnit::kUnits,
+    "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
+    "if no tablet limit in effect.");
 
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
@@ -450,6 +456,11 @@ void TSTabletManager::VerifyTabletData() {
       }
     }
   }
+}
+
+void TSTabletManager::EmitMetrics() {
+  ts_live_tablet_peers_metric_->set_value(GetNumLiveTablets());
+  ts_supportable_tablet_peers_metric_->set_value(GetNumSupportableTabletPeers());
 }
 
 void TSTabletManager::CleanupOldMetrics() {
@@ -554,6 +565,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
   ts_live_tablet_peers_metric_ =
       METRIC_ts_live_tablet_peers.Instantiate(server_->metric_entity(), 0);
+  ts_supportable_tablet_peers_metric_ = METRIC_ts_supportable_tablet_peers.Instantiate(
+      server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
 
@@ -736,6 +749,9 @@ Status TSTabletManager::Init() {
   verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
 
+  metrics_emitter_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
+
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
@@ -804,6 +820,7 @@ Status TSTabletManager::Start() {
     LOG(INFO)
         << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
   }
+  metrics_emitter_->Start(&server_->messenger()->scheduler(), 1s);
   if (FLAGS_cleanup_metrics_interval_sec > 0) {
     metrics_cleaner_->Start(
         &server_->messenger()->scheduler(), FLAGS_cleanup_metrics_interval_sec * 1s);
@@ -2097,6 +2114,8 @@ void TSTabletManager::StartShutdown() {
 
   tablet_metadata_validator_->Shutdown();
 
+  metrics_emitter_->Shutdown();
+
   metrics_cleaner_->Shutdown();
 
   waiting_txn_registry_poller_->Shutdown();
@@ -2474,7 +2493,6 @@ int TSTabletManager::GetNumLiveTablets() const {
       count++;
     }
   }
-  ts_live_tablet_peers_metric_->set_value(count);
   return count;
 }
 

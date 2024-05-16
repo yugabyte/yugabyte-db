@@ -37,6 +37,18 @@
     {{- else if in .version "Unsupported" -}}
       {{ $path = "/" }}
     {{ end }}
-    <a class="dropdown-item" href="{{ .url }}{{ $path }}"{{- if .newTab }} target="_blank" rel="noopener"{{- end }}>{{ $versionName | safeHTML }}</a>
+
+    {{ $content_path := printf "content%s%s" .url $path }}
+    {{ $content_path = $content_path | replaceRE "/$" "" }}
+    {{ $check_file_md := printf "%s.md" $content_path }}
+    {{ $check_file_html := printf "%s.html" $content_path }}
+    {{ $check_index_md := printf "%s/_index.md" $content_path }}
+    {{ $check_index_html := printf "%s/_index.html" $content_path }}
+
+    {{ if or (fileExists $check_file_md) (fileExists $check_file_html) (fileExists $check_index_md) (fileExists $check_index_html) (in .url "https://") }}
+      <a class="dropdown-item" href="{{ .url }}{{ $path }}"{{- if .newTab }} target="_blank" rel="noopener"{{- end }}>{{ $versionName | safeHTML }}</a>
+    {{ else }}
+      <a class="dropdown-item" role="button">{{ $versionName | safeHTML }}</a>
+    {{ end }}
   {{ end }}
 </div>

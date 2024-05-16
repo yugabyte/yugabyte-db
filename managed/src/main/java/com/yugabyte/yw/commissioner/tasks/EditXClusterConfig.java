@@ -46,10 +46,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     XClusterConfigEditFormData editFormData = taskParams().getEditFormData();
 
     // Lock the source universe.
-    lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+    lockAndFreezeUniverseForUpdate(
+        sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
     try {
       // Lock the target universe.
-      lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
       try {
 
         // Check Auto flags on source and target universes while resuming xCluster.

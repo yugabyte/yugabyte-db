@@ -42,6 +42,7 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -56,7 +57,6 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/opid.h"
 #include "yb/util/random.h"
 
 DECLARE_int32(leader_lease_duration_ms);

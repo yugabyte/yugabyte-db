@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -48,7 +49,6 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
