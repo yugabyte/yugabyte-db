@@ -207,7 +207,7 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
     if (is_forward_scan_) {
       Seek(bounds.lower);
     } else {
-      PrevDocKey(bounds.upper);
+      SeekPrevDocKey(bounds.upper);
     }
   }
 

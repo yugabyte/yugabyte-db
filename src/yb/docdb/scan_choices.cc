@@ -761,16 +761,12 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) 
   }
 
   VLOG_WITH_FUNC(4) << "current_scan_target_ is "
-                    << DocKey::DebugSliceToString(current_scan_target_)
-                    << " and prev_scan_target_ is "
-                    << DocKey::DebugSliceToString(prev_scan_target_);
+                    << DocKey::DebugSliceToString(current_scan_target_);
 
   return result;
 }
 
-// Seeks the given iterator to the current target as specified by
-// current_scan_target_ and prev_scan_target_ (relevant in backwards
-// scans)
+// Seeks the given iterator to the current target as specified by current_scan_target_.
 void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
   VLOG_WITH_FUNC(2) << "pos: " << db_iter->DebugPosToString();
 
@@ -790,8 +786,8 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
     // current_scan_target_
     auto tmp = current_scan_target_;
     KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&tmp);
-    VLOG_WITH_FUNC(3) << "Going to PrevDocKey " << tmp;
-    db_iter->PrevDocKey(tmp);
+    VLOG_WITH_FUNC(3) << "Going to SeekPrevDocKey " << tmp;
+    db_iter->SeekPrevDocKey(tmp);
   }
 }
 
@@ -812,7 +808,7 @@ Result<bool> HybridScanChoices::InterestedInRow(
     if (is_forward_scan_) {
       iter->SeekOutOfSubDoc(row_key);
     } else {
-      iter->PrevDocKey(row);
+      iter->SeekPrevDocKey(row);
     }
     return false;
   }
