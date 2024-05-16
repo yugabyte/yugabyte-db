@@ -91,6 +91,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
   public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
+  public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -161,6 +162,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(bind(GetTableSchemaResponse.class).toInstance(mockSchemaResponse))
                 .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
+                .overrides(bind(ReleasesUtils.class).toInstance(mockReleasesUtils))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))

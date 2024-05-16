@@ -16,6 +16,9 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
+import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
+import io.ebean.SqlQuery;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,10 +33,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -168,11 +174,19 @@ public class ReleasesUtils {
 
           // Populate required fields from version metadata. Bad Request if required fields do not
           // exist.
+          // If the build number is "PRE_RELEASE", try to use the git hash instead. If that also is
+          // not present, we are unable to parse a valid version that is unique.
           if (node.has("version_number") && node.has("build_number")) {
+            String buildNum = String.format("b%s", node.get("build_number").asText());
+            if (buildNum.equals("PRE_RELEASE")) {
+              if (node.has("git_hash")) {
+                buildNum = node.get("git_hash").asText();
+              } else {
+                throw new MetadataParseException("unable to determine unique build number");
+              }
+            }
             metadata.version =
-                String.format(
-                    "%s-b%s",
-                    node.get("version_number").asText(), node.get("build_number").asText());
+                String.format("%s-%s", node.get("version_number").asText(), buildNum);
           } else {
             throw new MetadataParseException("no version_number or build_number found");
           }
@@ -433,6 +447,26 @@ public class ReleasesUtils {
               version, currVersion));
     }
     log.trace("version {} is valid", currVersion);
+  }
+
+  public Map<String, List<Universe>> versionUniversesMap() {
+    String sql =
+        "select (universe_details_json::json)#>>'{clusters,0,userIntent,ybSoftwareVersion}' as"
+            + " yb_software_version, string_agg(universe.universe_uuid::text, ',') as universes "
+            + " from universe group by yb_software_version;";
+    SqlQuery query = DB.sqlQuery(sql);
+    sql.split(",");
+    Map<String, List<Universe>> mapUniVersion = new HashMap<String, List<Universe>>();
+    query
+        .findList()
+        .forEach(
+            r ->
+                mapUniVersion.put(
+                    r.getString("yb_software_version"),
+                    Stream.of(r.getString("universes").split(","))
+                        .map(u -> Universe.getOrBadRequest(UUID.fromString(u)))
+                        .collect(Collectors.toList())));
+    return mapUniVersion;
   }
 
   private String getAndValidateYbaMinimumVersion(JsonNode node) {
