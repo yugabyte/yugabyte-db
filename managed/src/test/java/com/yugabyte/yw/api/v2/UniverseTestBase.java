@@ -814,7 +814,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(
         v2YsqlAuditConfig.getLogParameterMaxSize(), is(dbYsqlAuditConfig.getLogParameterMaxSize()));
     assertThat(v2YsqlAuditConfig.getLogRelation(), is(dbYsqlAuditConfig.isLogRelation()));
-    assertThat(v2YsqlAuditConfig.getLogRow(), is(dbYsqlAuditConfig.isLogRow()));
+    assertThat(v2YsqlAuditConfig.getLogRows(), is(dbYsqlAuditConfig.isLogRows()));
     assertThat(v2YsqlAuditConfig.getLogStatement(), is(dbYsqlAuditConfig.isLogStatement()));
     assertThat(v2YsqlAuditConfig.getLogStatementOnce(), is(dbYsqlAuditConfig.isLogStatementOnce()));
   }

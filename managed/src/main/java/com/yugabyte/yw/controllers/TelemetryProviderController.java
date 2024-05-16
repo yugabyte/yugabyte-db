@@ -28,12 +28,14 @@ import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
     value = "Telemetry Provider",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class TelemetryProviderController extends AuthenticatedController {
 
   @Inject private TelemetryProviderService telemetryProviderService;
@@ -126,7 +128,28 @@ public class TelemetryProviderController extends AuthenticatedController {
   })
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Check if telemetry provider exists.
+    boolean doesTelemetryProviderExist =
+        telemetryProviderService.checkIfExists(customer.getUuid(), providerUUID);
+    if (!doesTelemetryProviderExist) {
+      String errorMessage =
+          String.format("Telemetry Provider '%s' does not exist.", providerUUID.toString());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Check if telemetry provider is in use.
+    boolean isProviderInUse = telemetryProviderService.isProviderInUse(customer, providerUUID);
+    if (isProviderInUse) {
+      String errorMessage =
+          String.format(
+              "Cannot delete Telemetry Provider '%s', as it is in use.", providerUUID.toString());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
     telemetryProviderService.delete(providerUUID);
     auditService()
         .createAuditEntryWithReqBody(

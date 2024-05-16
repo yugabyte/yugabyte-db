@@ -15858,8 +15858,8 @@
           "description" : "Log relation",
           "type" : "boolean"
         },
-        "logRow" : {
-          "description" : "Log row",
+        "logRows" : {
+          "description" : "Log rows",
           "type" : "boolean"
         },
         "logStatement" : {
@@ -15871,7 +15871,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "classes", "enabled", "logCatalog", "logClient", "logLevel", "logParameter", "logParameterMaxSize", "logRelation", "logRow", "logStatement", "logStatementOnce" ],
+      "required" : [ "classes", "enabled", "logCatalog", "logClient", "logLevel", "logParameter", "logParameterMaxSize", "logRelation", "logRows", "logStatement", "logStatementOnce" ],
       "type" : "object"
     },
     "YbcThrottleParameters" : {
