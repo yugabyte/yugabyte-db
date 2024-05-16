@@ -15,63 +15,42 @@ menu:
 
 You can perform migration by taking your applications offline to perform the migration, migrate your data while your application is running (currently Oracle only), or add a fall-forward database for your live migration (currently Oracle only).
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-steps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/introduction.png" aria-hidden="true" />
-        <div class="title">Offline migration</div>
-      </div>
-      <div class="body">
-        Perform an offline migration of your database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Assess Migration"
+    body="Generate a Migration Assessment Report to ensure a successful migration."
+    href="assess-migration/"
+    icon="fa-solid fa fa-file">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="live-migrate/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
-        <div class="title">Live migration</div>
-      </div>
-      <div class="body">
-        Migrate your database while your application is running.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Offline migration"
+    body="Perform an offline migration of your database."
+    href="migrate-steps/"
+    icon="/images/section_icons/index/introduction.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="live-fall-forward/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Live migration with fall-forward</div>
-      </div>
-      <div class="body">
-       Fall forward to a source-replica database for your live migration.
-      </div>
-    </a>
-  </div>
-    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="live-fall-back/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Live migration with fall-back</div>
-      </div>
-      <div class="body">
-        Fall back to the source database for your live migration.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="bulk-data-load/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Bulk data load from files</div>
-      </div>
-      <div class="body">
-        Bulk load data from flat files stored locally or in cloud storage.
-      </div>
-    </a>
-  </div>
-</div>
+  {{<index/item
+    title="Live migration"
+    body="Migrate your database while your application is running."
+    href="live-migrate/"
+    icon="/images/section_icons/manage/pitr.png">}}
+
+  {{<index/item
+    title="Live migration with fall-forward"
+    body="Fall forward to a source-replica database for your live migration."
+    href="live-fall-forward/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+  {{<index/item
+    title="Live migration with fall-back"
+    body="Fall back to the source database for your live migration."
+    href="live-fall-back/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+  {{<index/item
+    title="Bulk data load from files"
+    body="Bulk load data from flat files stored locally or in cloud storage."
+    href="bulk-data-load/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+{{</index/block>}}
