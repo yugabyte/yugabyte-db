@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, Grid, Typography, makeStyles } from '@material-ui/core';
@@ -22,7 +22,8 @@ import {
 import {
   PROVIDER_FIELD,
   MASTER_PLACEMENT_FIELD,
-  DEVICE_INFO_FIELD
+  DEVICE_INFO_FIELD,
+  LINUX_VERSION_FIELD
 } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { CPUArchField } from '../../fields/CPUArchField/CPUArchField';
@@ -67,7 +68,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   )?.value;
 
   //form context
-  const { getValues } = useFormContext<UniverseFormData>();
+  const { getValues, setValue } = useFormContext<UniverseFormData>();
   const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
@@ -82,6 +83,13 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const masterPlacement = isPrimary
     ? useWatch({ name: MASTER_PLACEMENT_FIELD })
     : getValues(MASTER_PLACEMENT_FIELD);
+
+  // Reset Linux version field (ImgBundleUUID) when unsupported provider is selected
+  useEffect(() => {
+    if (osPatchingEnabled === 'true' && !isImgBundleSupportedByProvider(provider)) {
+      setValue(LINUX_VERSION_FIELD, null);
+    }
+  }, [provider?.uuid]);
 
   // Wrapper elements to get instance metadata and dedicated container element
   const getInstanceMetadataElement = (isDedicatedMasterField: boolean) => {
