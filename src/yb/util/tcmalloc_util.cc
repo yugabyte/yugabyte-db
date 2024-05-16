@@ -191,7 +191,7 @@ void SetTCMallocTotalThreadCacheSize(int64_t size) {
 #if YB_GOOGLE_TCMALLOC
   SET_AND_VERIFY_GOOGLE_TCMALLOC_PROPERTY(MaxTotalThreadCacheBytes, size);
 #endif
-#if YB_USE_GPERFTOOLS_TCMALLOC
+#if YB_GPERFTOOLS_TCMALLOC
   // gperftools tcmalloc
   constexpr const char* const kTcMallocMaxThreadCacheBytes =
       "tcmalloc.max_total_thread_cache_bytes";
@@ -212,7 +212,7 @@ void SetTCMallocTotalThreadCacheSize(int64_t size) {
     LOG(WARNING) << "Failed to set tcmalloc property " << kTcMallocMaxThreadCacheBytes
                  << " to " << size << ": got " << new_value << " instead";
   }
-#endif  // YB_USE_GPERFTOOLS_TCMALLOC
+#endif  // YB_GPERFTOOLS_TCMALLOC
 }
 
 void ConfigureTCMalloc(int64_t mem_limit) {
