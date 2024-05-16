@@ -104,6 +104,8 @@ class SnapshotTestUtil {
   Status WaitAllSnapshotsDeleted();
 
   Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot);
+
+  Status WaitSnapshotCleaned(const TxnSnapshotId& snapshot_id);
   Status WaitAllSnapshotsCleaned();
 
   Result<SnapshotScheduleId> CreateSchedule(
@@ -126,16 +128,10 @@ class SnapshotTestUtil {
   Result<TxnSnapshotId> PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time);
 
-  Status WaitScheduleSnapshot(
-      const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time);
+  Result<master::SnapshotInfoPB> WaitScheduleSnapshot(
+      const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time = HybridTime::kMin);
 
-  Status WaitScheduleSnapshot(
-      const SnapshotScheduleId& schedule_id, int max_snapshots = 1,
-      HybridTime min_hybrid_time = HybridTime::kMin);
-
-  Status WaitScheduleSnapshot(
-      const SnapshotScheduleId& schedule_id, int max_snapshots,
-      HybridTime min_hybrid_time, MonoDelta timeout);
+  Status RestoreSnapshotSchedule(const SnapshotScheduleId& schedule_id, HybridTime restore_at);
 
  private:
   template <class F>

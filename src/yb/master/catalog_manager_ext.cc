@@ -1355,10 +1355,9 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoFromSchedule(
       "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and export "
       "time: $1",
       snapshot_schedule_id, export_time);
-  auto suitable_snapshot = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshot(
+  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshotForRestore(
       snapshot_schedule_id, export_time, LeaderTerm(), deadline));
-  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(suitable_snapshot.id()));
-  LOG(INFO) << Format("Found suitable snapshot: $0", snapshot_id);
+  LOG(INFO) << Format("Found suitable snapshot for restore: $0", snapshot_id);
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   LOG(INFO) << Format(
       "Opening Temporary SysCatalog DocDB for : $0 , export_time: $1", snapshot_id, export_time);

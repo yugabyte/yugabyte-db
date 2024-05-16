@@ -616,5 +616,26 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
   }, 120s, "Wait for history retention to stablilize"));
 }
 
+TEST_F(SnapshotScheduleTest, RestoreUsingOldestSnapshot) {
+  // Test that we can restore using the oldest snapshot in a snapshot schedule. That is, if the
+  // oldest snapshot covers a time range [t1, t2], we should be able to restore to any time between
+  // t1 and t2.
+  const auto kInterval = 5s;
+  const auto kRetention = 10s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(), kInterval, kRetention));
+
+  auto first_snapshot = ASSERT_RESULT(snapshot_util_->WaitScheduleSnapshot(schedule_id));
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
+  auto ht = cluster_->mini_master()->master()->clock()->Now();
+
+  // Wait for the first snapshot to be deleted and check that we can clone to a time between the
+  // first and the second snapshot's hybrid times.
+  ASSERT_OK(snapshot_util_->WaitSnapshotCleaned(TryFullyDecodeTxnSnapshotId(first_snapshot.id())));
+  ASSERT_OK(snapshot_util_->RestoreSnapshotSchedule(schedule_id, ht));
+  ASSERT_NO_FATALS(VerifyData());
+}
+
 } // namespace client
 } // namespace yb

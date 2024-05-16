@@ -105,10 +105,10 @@ class SnapshotState : public StateWithTablets {
   // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
   // Pass `nullopt` to serialize all entry types.
   Status ToPB(
-      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options);
+      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const;
   Status ToEntryPB(
       SysSnapshotEntryPB* out, ForClient for_client,
-      ListSnapshotsDetailOptionsPB options);
+      ListSnapshotsDetailOptionsPB options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
@@ -122,13 +122,13 @@ class SnapshotState : public StateWithTablets {
   std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
-  TxnSnapshotId id_;
-  HybridTime snapshot_hybrid_time_;
-  HybridTime previous_snapshot_hybrid_time_;
+  const TxnSnapshotId id_;
+  const HybridTime snapshot_hybrid_time_;
+  const HybridTime previous_snapshot_hybrid_time_;
   SysRowEntries entries_;
   // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
   // schedule id. Otherwise it will be nil.
-  SnapshotScheduleId schedule_id_;
+  const SnapshotScheduleId schedule_id_;
   int64_t version_;
   bool delete_started_ = false;
   AsyncTaskTracker cleanup_tracker_;
