@@ -121,12 +121,9 @@ extern int32_t yb_follower_read_staleness_ms;
  * Iterate over databases and execute a given code snippet.
  * Should terminate with YB_FOR_EACH_DB_END.
  */
-/* YB_TODO: Remove it */
-#define YB_HACK_INVALID_OID -1
+/* YB_TODO: Remove these. */
 #define YB_HACK_INVALID_FLAG -1
-
-/* YB_TODO: Remove it */
-#define YbHeapTupleGetOid(x) YB_HACK_INVALID_OID
+#define YbHeapTupleGetOid(x) -1
 
 #define YbFirstBootstrapObjectId 10000
 
@@ -637,6 +634,12 @@ extern bool yb_test_fail_table_rewrite_after_creation;
 
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;
+
+/*
+ * If set to true, any DDLs that rewrite tables/indexes will not drop the
+ * old relfilenode/DocDB table.
+ */
+extern bool yb_test_table_rewrite_keep_old_table;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled

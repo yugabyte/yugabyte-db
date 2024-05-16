@@ -209,7 +209,8 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
 				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks);
+				double yb_estimated_num_seeks,
+				int yb_estimated_docdb_result_width);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 								   TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -220,7 +221,8 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
 								 ScanDirection indexscandir, double yb_estimated_num_nexts,
-								 double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
+								 double yb_estimated_num_seeks, int yb_estimated_docdb_result_width,
+								 YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 										 List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 										 Index scanrelid, Oid indexid,
@@ -228,7 +230,7 @@ static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 										 List *indexorderby,
 										 List *indextlist,
 										 ScanDirection indexscandir, double yb_estimated_num_nexts,
-										 double yb_estimated_num_seeks);
+										 double yb_estimated_num_seeks, int yb_estimated_docdb_result_width);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 											  List *indexqual,
 											  List *indexqualorig);
@@ -962,19 +964,20 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		RowExpr *leftop = makeNode(RowExpr);
 		RowExpr *rightop = makeNode(RowExpr);
 
-		Oid opresulttype = -1;
-		bool opretset = false;
-		Oid opcolloid = -1;
-		Oid inputcollid = -1;
+		List *inputcollids = NIL;
+		List *opnos = NIL;
+		List *opfamilies = NIL;
 
 		for (int i = 0; i < len; i++)
 		{
 			Expr *b_expr = (Expr *) exprcols[i];
 			OpExpr *opexpr = (OpExpr *) b_expr;
-			opresulttype = opexpr->opresulttype;
-			opretset = opexpr->opretset;
-			opcolloid = opexpr->opcollid;
-			inputcollid = opexpr->inputcollid;
+			inputcollids =
+				lappend_oid(inputcollids, opexpr->inputcollid);
+			opnos = lappend_oid(opnos, opexpr->opno);
+			OpBtreeInterpretation *btreeinterp =
+				linitial(get_op_btree_interpretation(opexpr->opno));
+			opfamilies = lappend_oid(opfamilies, btreeinterp->opfamily_id);
 
 			Expr *left_expr = (Expr *) get_leftop(b_expr);
 			leftop->args = lappend(leftop->args, left_expr);
@@ -996,9 +999,13 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 
 		YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
 		right_batched_expr->orig_expr = (Expr*) rightop;
-		Expr *zipped = (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
-									(Expr*) leftop, (Expr*) right_batched_expr,
-									opcolloid, inputcollid);
+		RowCompareExpr *zipped = makeNode(RowCompareExpr);
+		zipped->largs = leftop->args;
+		zipped->rargs = (Node *) right_batched_expr;
+		zipped->rctype = ROWCOMPARE_EQ;
+		zipped->opfamilies = opfamilies;
+		zipped->opnos = opnos;
+		zipped->inputcollids = inputcollids;
 		zipped_exprs = lappend(zipped_exprs, zipped);
 	}
 
@@ -3950,7 +3957,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 												remote_quals, colrefs,
 												scan_relid,
 												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_estimated_num_seeks,
+												best_path->yb_estimated_docdb_result_width);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -4008,7 +4016,7 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 static inline bool
 YbIsHashCodeFunc(FuncExpr *func)
 {
-	return func && func->funcid == YB_HASH_CODE_OID;
+	return func->funcid == YB_HASH_CODE_OID;
 }
 
 /*
@@ -4017,7 +4025,7 @@ YbIsHashCodeFunc(FuncExpr *func)
  * After the change attribute numbers will be taken from index which is used
  * for the yb_hash_code pushdown.
  */
-static bool
+static void
 YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 {
 	Assert(YbIsHashCodeFunc(hash_code_func));
@@ -4025,14 +4033,24 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 	int indexcol = 0;
 	foreach(l, hash_code_func->args)
 	{
-		Node *arg_node = (Node *)lfirst(l);
-		Var *arg_var = (Var *)(IsA(arg_node, Var) ? arg_node : NULL);
-		if (!arg_var ||
-		    indexcol >= index->nkeycolumns ||
-		    index->rel->relid != arg_var->varno ||
-		    index->indexkeys[indexcol] != arg_var->varattno ||
-		    index->opcintype[indexcol] != arg_var->vartype)
-				return false;
+		Var *arg_var = (Var *) lfirst(l);
+		/*
+		 * Sanity check. Planner should have already verified that function
+		 * arguments match the index.
+		 * Should it rather be an assertion?
+		 */
+		if (!IsA(arg_var, Var) ||
+			indexcol >= index->nkeycolumns ||
+			index->rel->relid != arg_var->varno ||
+			index->indexkeys[indexcol] != arg_var->varattno ||
+			index->opcintype[indexcol] != arg_var->vartype)
+				ereport(ERROR,
+						(errmsg("bad call of yb_hash_code"),
+						 errdetail("Function yb_hash_code is chosen as an index condition, "
+								   "but its arguments do not match hash keys of the index"),
+						 errcode(ERRCODE_INTERNAL_ERROR),
+						 hash_code_func->location != -1 ?
+							errposition(hash_code_func->location) : 0));
 		/*
 		 * Note: In spite of the fact that YSQL will use secodary index for handling
 		 * the yb_hash_code pushdown the arg_var->varno field should not be changed
@@ -4041,61 +4059,55 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 		 * function itself not its arguments will not be converted into index
 		 * columns.
 		 */
-		arg_var->varattno = indexcol + 1;
-		++indexcol;
+		arg_var->varattno = ++indexcol;
 	}
-	return true;
 }
 
 static bool
-YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo *index)
+YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo* indexinfo)
 {
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func) && !YbFixHashCodeFuncArgs(func, index))
-		elog(ERROR, "bad call of yb_hash_code");
-
-	return expression_tree_walker(
-		node, &YbFixHashCodeFuncArgsWalker, index);
-}
-
-static bool
-YbHasHashCodeFuncWalker(Node *node, bool *hash_code_func_found)
-{
-	if (*hash_code_func_found)
-		return true;
-
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func))
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr))
 	{
-		*hash_code_func_found = true;
-		return true;
+		FuncExpr *func = (FuncExpr *) node;
+		if (YbIsHashCodeFunc(func))
+		{
+			YbFixHashCodeFuncArgs(func, indexinfo);
+			return false;
+		}
 	}
-
 	return expression_tree_walker(
-		node, &YbHasHashCodeFuncWalker, hash_code_func_found);
+		node, &YbFixHashCodeFuncArgsWalker, (void *) indexinfo);
+}
+
+static bool
+YbHasHashCodeFuncWalker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr) && YbIsHashCodeFunc((FuncExpr *) node))
+		return true;
+	return expression_tree_walker(node, YbHasHashCodeFuncWalker, context);
 }
 
 /*
  * In case indexquals has at least one yb_hash_code qual function makes
  * a copy of indexquals and alters yb_hash_code function args attrributes.
- * In other cases functions returns NULL.
+ * In other cases functions returns NIL.
  */
 static List*
 YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
 {
-	bool has_hash_code_func = false;
-	expression_tree_walker(
-		(Node *)indexquals, &YbHasHashCodeFuncWalker, &has_hash_code_func);
-	if (has_hash_code_func)
+	if (expression_tree_walker(
+		(Node *) indexquals, YbHasHashCodeFuncWalker, NULL))
 	{
 		List *result = copyObject(indexquals);
 		expression_tree_walker(
-			(Node *)result, &YbFixHashCodeFuncArgsWalker, indexinfo);
+			(Node *) result, YbFixHashCodeFuncArgsWalker, indexinfo);
 		return result;
 	}
-	return NULL;
+	return NIL;
 }
 
 /*
@@ -4319,7 +4331,8 @@ create_indexscan_plan(PlannerInfo *root,
 												indexinfo->indextlist,
 												best_path->indexscandir,
 												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_estimated_num_seeks,
+												best_path->yb_estimated_docdb_result_width);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -4347,6 +4360,7 @@ create_indexscan_plan(PlannerInfo *root,
 										 best_path->indexscandir,
 										 best_path->yb_estimated_num_nexts,
 										 best_path->yb_estimated_num_seeks,
+										 best_path->yb_estimated_docdb_result_width,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -6274,6 +6288,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		/* Replace the PlaceHolderVar with a nestloop Param */
 		return (Node *) replace_nestloop_param_placeholdervar(root, phv);
 	}
+
+	/*
+	 * YB: If the expression is a RowCompareExpr that is in the form of
+	 * ROW(...) = YBBatchedExpr(ROW(...)), we need to convert it to
+	 * ROW(...) = ARRAY(ROW(...), ROW(...), ...) where the = operator
+	 * also represents a RowCompareExpr.
+	 */
+	if (IsA(node, RowCompareExpr))
+	{
+		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+		if(rcexpr->rctype == ROWCOMPARE_EQ)
+		{
+			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
+			ArrayExpr *arrexpr = makeNode(ArrayExpr);
+
+			arrexpr->array_typeid = InvalidOid;
+			arrexpr->element_typeid = RECORDOID;
+			arrexpr->multidims = false;
+			arrexpr->array_collid = InvalidOid;
+			arrexpr->location = -1;
+			arrexpr->elements =
+				(List*) replace_nestloop_params(root, rcexpr->rargs);
+			rcexpr_new->rargs = (Node *) arrexpr;
+			return (Node*) rcexpr_new;
+		}
+	}
+
+	/*
+	 * YB: If the expression is an OpExpr that is in the form of
+	 * col = YBBatchedExpr(outer_val), we need to convert it to
+	 * col IN ARRAY(outer_val1, outer_val2, ...).
+	 */
 	if (IsA(node, OpExpr))
 	{
 		OpExpr *opexpr = (OpExpr*) node;
@@ -6297,16 +6343,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
 			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
 
-			if(IsA(outer_expr, RowExpr))
-			{
-				RowExpr *rowexpr = (RowExpr *) outer_expr;
-				scalar_type = rowexpr->row_typeid;
-			}
-			else
-			{
-				scalar_type = exprType((Node*) outer_expr);
-				collid = exprCollation((Node*) outer_expr);
-			}
+			scalar_type = exprType((Node*) outer_expr);
+			collid = exprCollation((Node*) outer_expr);
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
 			Oid array_type;
@@ -7043,7 +7081,8 @@ make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
 				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks)
+				double yb_estimated_num_seeks,
+				int yb_estimated_docdb_result_width)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7055,6 +7094,7 @@ make_yb_seqscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -7098,6 +7138,7 @@ make_indexscan(List *qptlist,
 			   ScanDirection indexscandir,
 			   double yb_estimated_num_nexts,
 			   double yb_estimated_num_seeks,
+			   int yb_estimated_docdb_result_width,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -7118,6 +7159,7 @@ make_indexscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -7140,7 +7182,8 @@ make_indexonlyscan(List *qptlist,
 				   List *indextlist,
 				   ScanDirection indexscandir,
 				   double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks)
+				   double yb_estimated_num_seeks,
+				   int yb_estimated_docdb_result_width)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7160,6 +7203,7 @@ make_indexonlyscan(List *qptlist,
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
 	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_estimated_docdb_result_width = yb_estimated_docdb_result_width;
 
 	return node;
 }

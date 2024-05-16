@@ -12,9 +12,9 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -353,6 +353,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -375,6 +376,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   // Cannot use defaultUniverse.universeUUID in a class field.
   private List<JsonNode> getExpectedCreateUniverseTaskResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
         Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
         Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
@@ -393,14 +395,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   private List<Integer> getTaskPositionsToSkip(boolean skipNamespace) {
-    // 3 is WAIT_FOR_PODS of type KubernetesCheckNumPod task.
-    // 0 is CREATE_NAMESPACE of type KubernetesCommandExecutor
-    return skipNamespace ? ImmutableList.of(0, 3) : ImmutableList.of(3);
+    // 4 is WAIT_FOR_PODS of type KubernetesCheckNumPod task.
+    // 1 is CREATE_NAMESPACE of type KubernetesCommandExecutor
+    // 0 is FreezeUniverse
+    return skipNamespace ? ImmutableList.of(1, 4) : ImmutableList.of(4);
   }
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-        namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+        1, namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
   }
 
   private void assertTaskSequence(
@@ -410,17 +413,17 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       List<Integer> taskPositionsToSkip,
       List<Integer> taskCountPerPosition) {
     int position = 0;
-    for (TaskType taskType : expectedTasks) {
-      if (taskPositionsToSkip.contains(position)) {
-        position++;
+    for (int i = 0; i < expectedTasks.size(); i++) {
+      if (taskPositionsToSkip.contains(i)) {
+        // Skip subtask from the expected ones as they are not run for some cases.
         continue;
       }
-
+      TaskType taskType = expectedTasks.get(i);
+      JsonNode expectedResults = expectedTasksResult.get(i);
+      int expectedSize = taskCountPerPosition.get(i);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      JsonNode expectedResults = expectedTasksResult.get(position);
       List<JsonNode> taskDetails =
           tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
-      int expectedSize = taskCountPerPosition.get(position);
       assertEquals(expectedSize, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
       assertJsonEqual(expectedResults, taskDetails.get(0));

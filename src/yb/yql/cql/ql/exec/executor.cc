@@ -76,7 +76,7 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/util/flags.h"
 
-DECLARE_bool(TEST_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_ash);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -888,7 +888,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
   } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
 
   // If there is a table id in the statement parameter's paging state, this is a continuation of a
@@ -940,7 +940,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->MetadataToPB(req->mutable_ash_metadata());
   } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
 
   // Where clause - Hash, range, and regular columns.
@@ -1291,7 +1291,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
     wait_state->MetadataToPB(req->mutable_ash_metadata());
   } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
 
   // Set the ttl.
@@ -1366,7 +1366,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
     wait_state->MetadataToPB(req->mutable_ash_metadata());
   } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
 
   // Set the timestamp.
@@ -1793,9 +1793,9 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
 
   // Should we update the method instead?
   if (is_read) {
-    SET_WAIT_STATUS(CQL_Read);
+    SET_WAIT_STATUS(YCQL_Read);
   } else {
-    SET_WAIT_STATUS(CQL_Write);
+    SET_WAIT_STATUS(YCQL_Write);
   }
   reset_async_calls->Cancel();
   num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
@@ -1875,7 +1875,7 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
     ResetAsyncCalls reset_async_calls(&num_async_calls_);
     ProcessAsyncResults(/* rescheduled */ false, &reset_async_calls);
   } else {
-    SET_WAIT_STATUS(YBC_WaitingOnDocdb);
+    SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
   }
 }
 
@@ -2485,7 +2485,7 @@ void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->set_rpc_request_id(exec_context_->params().request_id());
   } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
   }
   tnode_context->AddOperation(op);
 

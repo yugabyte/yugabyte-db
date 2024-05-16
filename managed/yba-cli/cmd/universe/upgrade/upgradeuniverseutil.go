@@ -62,11 +62,7 @@ func upgradeValidations(universeName string) (
 	ybaclient.UniverseResp,
 	error,
 ) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	universeListRequest := authAPI.ListUniverses()
 	universeListRequest = universeListRequest.Name(universeName)

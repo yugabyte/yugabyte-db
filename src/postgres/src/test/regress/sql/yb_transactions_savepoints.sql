@@ -216,7 +216,7 @@ BEGIN
 END $$;
 
 BEGIN;
-DECLARE ok CURSOR FOR SELECT * FROM int8_tbl ORDER BY q1, q2 ASC;
+DECLARE ok CURSOR FOR SELECT q1, q2 FROM int8_tbl; -- YB: avoid ybsort column
 DECLARE ctt CURSOR FOR SELECT create_temp_tab();
 FETCH ok;
 SAVEPOINT s1;

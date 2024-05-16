@@ -397,11 +397,11 @@ SELECT * FROM inet_tbl WHERE i <> '192.168.1.0/24'::cidr ORDER BY c, i;
 EXPLAIN (COSTS OFF)
 SELECT i FROM inet_tbl WHERE i << '192.168.1.0/24'::cidr ORDER BY c, i;
                       QUERY PLAN
-------------------------------------------------------
+-------------------------------------------------------
  Sort
    Sort Key: c, i
    ->  Seq Scan on inet_tbl
-         Remote Filter: (i << '192.168.1.0/24'::inet)
+         Storage Filter: (i << '192.168.1.0/24'::inet)
 (4 rows)
 
 SELECT i FROM inet_tbl WHERE i << '192.168.1.0/24'::cidr ORDER BY c, i;
@@ -547,11 +547,11 @@ SELECT * FROM inet_tbl WHERE i <> '192.168.1.0/24'::cidr ORDER BY c, i;
 EXPLAIN (COSTS OFF)
 SELECT i FROM inet_tbl WHERE i << '192.168.1.0/24'::cidr ORDER BY c, i;
                       QUERY PLAN
-------------------------------------------------------
+-------------------------------------------------------
  Sort
    Sort Key: c, i
    ->  Seq Scan on inet_tbl
-         Remote Filter: (i << '192.168.1.0/24'::inet)
+         Storage Filter: (i << '192.168.1.0/24'::inet)
 (4 rows)
 
 SELECT i FROM inet_tbl WHERE i << '192.168.1.0/24'::cidr ORDER BY c, i;

@@ -370,7 +370,7 @@ public class NodeAgentManager {
             // Extract the version with build number e.g. 2.15.3.0-b1372.
             String version = matcher.group(1);
             // Compare the full versions. The comparison ignores non-numeric build numbers.
-            if (Util.compareYbVersions(softwareVersion, version, true) == 0) {
+            if (Util.areYbVersionsEqual(softwareVersion, version, true)) {
               return file.toPath();
             }
           }

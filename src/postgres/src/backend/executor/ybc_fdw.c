@@ -93,7 +93,8 @@ ybcGetForeignRelSize(PlannerInfo *root,
 		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	if (yb_enable_optimizer_statistics)
+	if (yb_enable_base_scans_cost_model ||
+		yb_enable_optimizer_statistics)
 	{
 		set_baserel_size_estimates(root, baserel);
 	}
@@ -300,7 +301,6 @@ ybcGetForeignPlan(PlannerInfo *root,
 
 /* ------------------------------------------------------------------------- */
 /*  Scanning functions */
-/* YB_TODO(neil) Need to review all of these scan functions. */
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -574,59 +574,6 @@ ybcIterateForeignScan(ForeignScanState *node)
 	ybFetchNext(ybc_state->handle, node->ss.ss_ScanTupleSlot, InvalidOid);
 	return node->ss.ss_ScanTupleSlot;
 }
-
-#ifdef YB_TODO
-/* Keep this code till I look at ybFetchNext() */
-{
-	/* Clear tuple slot before starting */
-	slot = node->ss.ss_ScanTupleSlot;
-	ExecClearTuple(slot);
-
-	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
-	Datum           *values = slot->tts_values;
-	bool            *isnull = slot->tts_isnull;
-	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
-	                             tupdesc->natts,
-	                             (uint64_t *) values,
-	                             isnull,
-	                             &syscols,
-	                             &has_data));
-
-	/* If we have result(s) update the tuple slot. */
-	if (has_data)
-	{
-		if (node->yb_fdw_aggs == NIL)
-		{
-			HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
-#ifdef YB_TODO
-	/* OID is now a regular column */
-			if (syscols.oid != InvalidOid)
-			{
-				HeapTupleSetOid(tuple, syscols.oid);
-			}
-#endif
-			slot = ExecStoreHeapTuple(tuple, slot, false);
-
-			/* Setup special columns in the slot */
-			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
-		}
-		else
-		{
-			/*
-			 * Aggregate results stored in virtual slot (no tuple). Set the
-			 * number of valid values and mark as non-empty.
-			 */
-			slot->tts_nvalid = tupdesc->natts;
-			slot->tts_flags &= ~TTS_FLAG_EMPTY;
-		}
-	}
-
-	return slot;
-}
-#endif
 
 static void
 ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)

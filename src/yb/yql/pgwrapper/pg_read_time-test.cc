@@ -333,6 +333,13 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
 // 6. Check "SELECT count(*) from t" is equal to 10 (as of t1).
 // 7. SET yb_read_time TO 0
 // 8. Check "SELECT count(*) from t" is equal to 6 (as of current time).
+// 9. Get the value of t1 as a HybridTime (t2)
+// 10. SET yb_read_time TO 't2 ht'
+// 11. Check "SELECT count(*) from t" is equal to 10 (as of t2=t1).
+// 12. SET yb_read_time TO '0ht'
+// 13. Check "SELECT count(*) from t" is equal to 2 (as of current time).
+// 14. Repeat steps 10 to 13 with some variations in unit syntax.
+// 15. Negative test case. Invalid unit.
 TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
@@ -354,6 +361,31 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
   count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 6);
+
+  LOG(INFO) << "Get the value of t1 as a HybridTime";
+  auto t2 = t1 << 12;
+
+  LOG(INFO) << "Setting yb_read_time to '" << t2 << " ht'";
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO '$0 ht'", t2));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 10);
+  LOG(INFO) << "Setting yb_read_time to '0ht'";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO '0ht'"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+
+  LOG(INFO) << "Testing variations in specifying the unit";
+  LOG(INFO) << "Setting yb_read_time to '  " << t2 << "   ht   '";
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO '  $0   ht   '", t2));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 10);
+  LOG(INFO) << "Setting yb_read_time to '0'";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO '0'"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+
+  LOG(INFO) <<"Negative test case. Invalid unit";
+  ASSERT_NOK(conn.ExecuteFormat("SET yb_read_time TO '$0 ms'", t2));
 }
 
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t

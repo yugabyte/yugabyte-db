@@ -10,6 +10,8 @@
 #ifndef WAIT_EVENT_H
 #define WAIT_EVENT_H
 
+#include "yb_ash.h"
+
 
 /* ----------
  * Wait Classes
@@ -300,6 +302,10 @@ pgstat_report_wait_end(void)
 static inline uint32
 yb_pgstat_report_wait_start(uint32 wait_event_info)
 {
+	/* If ASH is disabled, do nothing */
+	if (!yb_enable_ash)
+		return wait_event_info;
+
 	uint32 prev_wait_event_info = 0;
 
 	/*

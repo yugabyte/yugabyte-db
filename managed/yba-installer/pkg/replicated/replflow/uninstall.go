@@ -31,7 +31,7 @@ func Uninstall() error {
 	replCtl := replicatedctl.New(replicatedctl.Config{})
 	config, err := replCtl.AppConfigExport()
 	if err != nil {
-		logging.Fatal("failed to export replicated app config: " + err.Error())
+		return fmt.Errorf("failed to export replicated app config: %w", err)
 	}
 	rootDir, ok := config.ConfigEntries[replicatedctl.StoragePathKey]
 	if !ok {

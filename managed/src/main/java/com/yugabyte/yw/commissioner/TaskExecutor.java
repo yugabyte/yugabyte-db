@@ -12,7 +12,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
@@ -37,7 +40,6 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.inject.Inject;
@@ -65,6 +68,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import play.libs.Json;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -131,6 +135,8 @@ public class TaskExecutor {
   // Max size of the callstack for task creator thread.
   private static final int MAX_TASK_CREATOR_CALLSTACK_SIZE = 15;
 
+  private static final String TASK_EXECUTION_SKIPPED_LABEL = "skipped";
+
   // Default wait timeout for subtasks to complete since the abort call.
   private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(30);
 
@@ -171,7 +177,8 @@ public class TaskExecutor {
           "Duration of task execution",
           KnownAlertLabels.TASK_TYPE.labelName(),
           KnownAlertLabels.RESULT.labelName(),
-          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          TASK_EXECUTION_SKIPPED_LABEL);
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
@@ -193,12 +200,17 @@ public class TaskExecutor {
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
+      Map<String, String> taskLabels,
+      Instant startTime,
+      Instant endTime,
+      State state,
+      boolean isTaskSkipped) {
     COMMISSIONER_TASK_EXECUTION_SEC
         .labels(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             state.name(),
-            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()),
+            String.valueOf(isTaskSkipped))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -288,6 +300,12 @@ public class TaskExecutor {
     }
   }
 
+  private void checkHAFollowerState() {
+    if (HighAvailabilityConfig.isFollower()) {
+      throw new IllegalStateException("Can not submit task on HA follower");
+    }
+  }
+
   /**
    * Instantiates the task for the task class.
    *
@@ -344,6 +362,7 @@ public class TaskExecutor {
    */
   public UUID submit(RunnableTask runnableTask, ExecutorService taskExecutorService) {
     checkTaskExecutorState();
+    checkHAFollowerState();
     checkNotNull(runnableTask, "Task runnable must not be null");
     checkNotNull(taskExecutorService, "Task executor service must not be null");
     UUID taskUUID = runnableTask.getTaskUUID();
@@ -484,7 +503,7 @@ public class TaskExecutor {
     // Create a new task info object.
     TaskInfo taskInfo = null;
     if (taskUUID != null) {
-      taskInfo = TaskInfo.get(taskUUID);
+      taskInfo = TaskInfo.maybeGet(taskUUID).orElse(null);
     }
     if (taskInfo == null) {
       taskInfo = new TaskInfo(taskType, null);
@@ -533,11 +552,12 @@ public class TaskExecutor {
    * the task.
    */
   public class SubTaskGroup {
-    private final Set<RunnableSubTask> subTasks =
-        Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<RunnableSubTask> subTasks = ConcurrentHashMap.newKeySet();
     private final String name;
     private final boolean ignoreErrors;
     private final AtomicInteger numTasksCompleted;
+    // This predicate is invoked right before every subtask in this group.
+    private final AtomicReference<Predicate<ITask>> shouldRunPredicateRef;
 
     // Parent task runnable to which this group belongs.
     private volatile RunnableTask runnableTask;
@@ -553,13 +573,14 @@ public class TaskExecutor {
       this.subTaskGroupType = subTaskGroupType;
       this.ignoreErrors = ignoreErrors;
       this.numTasksCompleted = new AtomicInteger();
+      this.shouldRunPredicateRef = new AtomicReference<>();
     }
 
     /**
      * Adds a subtask to this SubTaskGroup. It adds the subtask in memory and is not run yet. When
      * the this SubTaskGroup is added to the RunnableTask, the subtasks are persisted.
      *
-     * @param subTask the subtask.
+     * @param subTask subTask the subtask.
      */
     public void addSubTask(ITask subTask) {
       checkNotNull(subTask, "Subtask must be non-null");
@@ -573,7 +594,7 @@ public class TaskExecutor {
       }
       TaskInfo taskInfo = createTaskInfo(subTask, null);
       taskInfo.setSubTaskGroupType(subTaskGroupType);
-      subTasks.add(new RunnableSubTask(subTask, taskInfo));
+      subTasks.add(new RunnableSubTask(this, subTask, taskInfo));
     }
 
     /**
@@ -710,16 +731,18 @@ public class TaskExecutor {
      * Sets the SubTaskGroupType for this SubTaskGroup.
      *
      * @param subTaskGroupType the SubTaskGroupType.
+     * @return the SubTaskGroup instance.
      */
-    public void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {
+    public SubTaskGroup setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {
       if (subTaskGroupType == null) {
-        return;
+        return this;
       }
       log.info("Setting subtask({}) group type to {}", name, subTaskGroupType);
       this.subTaskGroupType = subTaskGroupType;
       for (RunnableSubTask runnable : subTasks) {
         runnable.setSubTaskGroupType(subTaskGroupType);
       }
+      return this;
     }
 
     public int getSubTaskCount() {
@@ -728,6 +751,21 @@ public class TaskExecutor {
 
     public int getTasksCompletedCount() {
       return numTasksCompleted.get();
+    }
+
+    public Set<UUID> getSubTaskUuids() {
+      return subTasks.stream()
+          .map(RunnableSubTask::getTaskUUID)
+          .collect(ImmutableSet.toImmutableSet());
+    }
+
+    /**
+     * This allows subtasks to be skipped based on additional conditions after they are already
+     * added. The subtasks appear in the list of subtasks but are not run.
+     */
+    public void setShouldRunPredicate(Predicate<ITask> predicate) {
+      Preconditions.checkNotNull(predicate, "ShouldRun predicate cannot be null");
+      shouldRunPredicateRef.set(predicate);
     }
 
     private String title() {
@@ -752,6 +790,14 @@ public class TaskExecutor {
 
     public JsonNode get(String key) {
       return data.get(key);
+    }
+
+    public <T> T get(String key, Class<T> clazz) {
+      JsonNode node = get(key);
+      if (node == null || node.isNull()) {
+        return null;
+      }
+      return Json.fromJson(node, clazz);
     }
 
     public Set<String> keys() {
@@ -837,6 +883,7 @@ public class TaskExecutor {
     public void run() {
       Throwable t = null;
       taskStartTime = Instant.now();
+      boolean isTaskSkipped = false;
       Map<String, String> taskLabels = this.getTaskMetricLabels();
 
       try {
@@ -851,22 +898,24 @@ public class TaskExecutor {
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
         }
-
-        setTaskState(TaskInfo.State.Running);
-        log.debug("Invoking run() of task {}", task.getName());
-        task.setTaskUUID(getTaskUUID());
-        task.run();
+        if (shouldRun(getTask())) {
+          setTaskState(TaskInfo.State.Running);
+          log.debug("Invoking run() of task {}", task.getName());
+          task.setTaskUUID(getTaskUUID());
+          task.run();
+        } else {
+          isTaskSkipped = true;
+          log.info("Skipping task {} beause it is set to not run", getTaskInfo());
+        }
         setTaskState(TaskInfo.State.Success);
       } catch (CancellationException e) {
         t = e;
         updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-        onCancelled();
         throw e;
       } catch (Exception e) {
         if (ExceptionUtils.hasCause(e, CancellationException.class)) {
           t = new CancellationException(e.getMessage());
           updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-          onCancelled();
         } else {
           t = e;
           updateTaskDetailsOnError(TaskInfo.State.Failure, e);
@@ -880,7 +929,8 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskLabels, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(
+            taskLabels, taskStartTime, taskCompletionTime, getTaskState(), isTaskSkipped);
         task.terminate();
         publishAfterTask(t);
       }
@@ -918,6 +968,8 @@ public class TaskExecutor {
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
     protected abstract UUID getUserTaskUUID();
+
+    protected abstract boolean shouldRun(ITask task);
 
     Duration getTimeLimit() {
       return timeLimit;
@@ -1011,15 +1063,6 @@ public class TaskExecutor {
       TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
-      }
-    }
-
-    void onCancelled() {
-      try {
-        task.onCancelled(taskInfo);
-      } catch (Exception e) {
-        // Do not propagate the exception as the task is already cancelled.
-        log.warn("Error occurred in onCancelled", e);
       }
     }
   }
@@ -1144,6 +1187,11 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
+      if (subTaskGroup.getSubTaskCount() == 0) {
+        // Allowing to add this just messes up the positions.
+        log.info("Ignoring subtask SubTaskGroup {} as it is empty", subTaskGroup.name);
+        return;
+      }
       subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;
@@ -1236,14 +1284,21 @@ public class TaskExecutor {
         waiterLatch.countDown();
       }
     }
+
+    @Override
+    protected boolean shouldRun(ITask task) {
+      return true;
+    }
   }
 
   /** Runnable task for subtasks in a task. */
   public class RunnableSubTask extends AbstractRunnableTask {
+    private final SubTaskGroup subTaskGroup;
     private RunnableTask parentRunnableTask;
 
-    RunnableSubTask(ITask task, TaskInfo taskInfo) {
+    RunnableSubTask(SubTaskGroup subTaskGroup, ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
+      this.subTaskGroup = subTaskGroup;
     }
 
     private void executeWith(ExecutorService executorService) {
@@ -1288,8 +1343,12 @@ public class TaskExecutor {
     @Override
     protected Map<String, String> getTaskMetricLabels() {
       return ImmutableMap.of(
-          KnownAlertLabels.PARENT_TASK_TYPE.labelName(), parentRunnableTask.getTaskType().name(),
-          KnownAlertLabels.TASK_TYPE.labelName(), getTaskInfo().getTaskType().name());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          parentRunnableTask.getTaskType().name(),
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          getTaskInfo().getTaskType().name(),
+          TASK_EXECUTION_SKIPPED_LABEL,
+          String.valueOf(false));
     }
 
     @Override
@@ -1320,6 +1379,12 @@ public class TaskExecutor {
       getTaskInfo().setParentUuid(parentRunnableTask.getTaskUUID());
       getTaskInfo().setPosition(position);
       getTaskInfo().save();
+    }
+
+    @Override
+    protected boolean shouldRun(ITask task) {
+      Predicate<ITask> predicate = subTaskGroup.shouldRunPredicateRef.get();
+      return predicate == null ? true : predicate.test(task);
     }
   }
 }

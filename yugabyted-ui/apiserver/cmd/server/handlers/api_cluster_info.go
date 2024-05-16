@@ -811,7 +811,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         }
     }
     mastersFuture := make(chan helpers.MastersFuture)
-    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+    go c.helper.GetMastersFuture(mastersFuture)
 
     nodeList := c.helper.GetNodesList(tabletServersResponse)
     versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
@@ -1442,7 +1442,7 @@ func (c *Container) GetVersion(ctx echo.Context) error {
 // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
 func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
     mastersFuture := make(chan helpers.MastersFuture)
-    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+    go c.helper.GetMastersFuture(mastersFuture)
     masters := map[string]helpers.Master{}
     mastersResponse := <-mastersFuture
     // Build comma separated master addresses list for yb-admin

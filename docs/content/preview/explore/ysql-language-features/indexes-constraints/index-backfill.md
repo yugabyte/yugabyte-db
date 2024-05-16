@@ -1,11 +1,11 @@
 ---
 title: Online index backfilling
 linkTitle: Index backfill
-description: Understand how the create indexes without affecting ongoing queries
+description: Understand how to create indexes without affecting ongoing queries
 headerTitle: Create indexes and track the progress
+headcontent: Understand how YugabyteDB creates indexes without affecting ongoing queries
 aliases:
 - /preview/explore/query-1-performance/pg-stat-progress-create-index/
-
 menu:
   preview:
     identifier: index-backfill
@@ -27,7 +27,7 @@ The `pg_stat_progress_create_index` view can provide the following details:
 - Index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
 
 {{<note>}}
-Columns such as lockers_total, lockers_done, current_locker_pid, blocks_total, and blocks_done in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and will always have null values.
+Columns such as lockers_total, lockers_done, current_locker_pid, blocks_total, and blocks_done in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
 {{</note>}}
 
 ## Example
@@ -36,7 +36,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 {{% explore-setup-single %}}
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
+1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);

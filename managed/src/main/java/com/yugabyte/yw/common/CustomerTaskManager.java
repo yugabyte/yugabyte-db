@@ -471,6 +471,7 @@ public class CustomerTaskManager {
       case RebootNodeInUniverse:
       case StartNodeInUniverse:
       case StopNodeInUniverse:
+      case StartMasterOnNode:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
@@ -498,6 +499,12 @@ public class CustomerTaskManager {
           nodeTaskParams.setYbcSoftwareVersion(
               universe.getUniverseDetails().getYbcSoftwareVersion());
         }
+        taskParams = nodeTaskParams;
+        break;
+      case ReplaceNodeInUniverse:
+        nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
+        nodeName = oldTaskParams.get("nodeName").textValue();
+        nodeTaskParams.nodeName = nodeName;
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:

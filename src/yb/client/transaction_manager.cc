@@ -43,6 +43,10 @@ DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
                  "For testing only. If non-empty, transaction manager will try to use the status "
                  "tablet with id matching this flag, if present in the list of status tablets.");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
+
 namespace yb {
 namespace client {
 
@@ -159,6 +163,20 @@ class TransactionTableState {
   TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
 };
 
+const CloudInfoPB& GetPlacementFromGFlags() {
+  static GoogleOnceType once = GOOGLE_ONCE_INIT;
+  static CloudInfoPB cloud_info;
+  auto set_placement_from_gflags = [](CloudInfoPB* cloud_info) {
+    cloud_info->set_placement_cloud(FLAGS_placement_cloud);
+    cloud_info->set_placement_region(FLAGS_placement_region);
+    cloud_info->set_placement_zone(FLAGS_placement_zone);
+  };
+  GoogleOnceInitArg(
+      &once, static_cast<void (*)(CloudInfoPB*)>(set_placement_from_gflags), &cloud_info);
+
+  return cloud_info;
+}
+
 // Loads transaction tablets list to cache.
 class LoadStatusTabletsTask {
  public:
@@ -200,8 +218,7 @@ class LoadStatusTabletsTask {
 
  private:
   Result<TransactionStatusTablets> GetTransactionStatusTablets() {
-    CloudInfoPB this_pb = yb::server::GetPlacementFromGFlags();
-    return client_->GetTransactionStatusTablets(this_pb);
+    return client_->GetTransactionStatusTablets(GetPlacementFromGFlags());
   }
 
   YBClient* client_;

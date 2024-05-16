@@ -77,8 +77,10 @@
 #include "access/amapi.h"
 #include "access/htup_details.h"
 #include "access/tsmapi.h"
+#include "access/sysattr.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_type_d.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeHash.h"
@@ -104,6 +106,7 @@
 #include "utils/tuplesort.h"
 
 /* YB includes. */
+#include "access/table.h"
 #include "pg_yb_utils.h"
 
 #define LOG2(x)  (log(x) / 0.693147180559945)
@@ -128,12 +131,16 @@
  */
 #define HIDDEN_COLUMNS_SIZE 4
 
-/*
- * Width of YBCTID with UUID
- */
-#define YBCTID_UUID_WIDTH 33
-
 #define MEGA 1048576
+/*
+ * 1 Byte for null indicator
+ * 8 Bytes for size of YBCTID
+ * 1 Byte for value type (kUInt16Hash)
+ * 19 Bytes for binary representation of UUID
+ * 2 Bytes for double null termination
+ * 2 Bytes for group termination (kGroupEnd)
+ */
+#define UUID_YBCTID_WIDTH 33
 
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
@@ -6392,7 +6399,7 @@ compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel, Path *bitmapqual,
 
 /*
  * yb_compute_result_transfer_cost
- *	  Computes the cost of transferring result tuples to PG over network.
+ *		Computes the cost of transferring result tuples to PG over network.
  *
  * This function takes into account the paging limits enforced by
  * `yb_fetch_size_limit` and `yb_fetch_row_limit` to compute the size and
@@ -6407,10 +6414,6 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	int32		num_result_pages;
 	double		result_page_size_mb;
 	Cost 		per_result_page_cost;
-
-	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
-	// 25% larger for network cost estimation.
-	result_width *= 1.25;
 
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
@@ -6449,16 +6452,12 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 
 /*
  * yb_get_num_result_pages
- *	  Returns the number of result pages will be transferred over network.
+ *		Returns the number of result pages will be transferred over network.
  */
 static uint32_t
 yb_get_num_result_pages(double result_tuples, int result_width)
 {
 	uint32_t	num_result_pages = 0;
-
-	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
-	// 25% larger for network cost estimation.
-	result_width *= 1.25;
 
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -6482,7 +6481,7 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 
 /*
  * yb_get_relation_data_width
- *	  Returns the tuple width of the relation.
+ *		Returns the tuple width of the relation.
  */
 static int32
 yb_get_relation_data_width(RelOptInfo *relinfo, Oid reloid)
@@ -6551,12 +6550,334 @@ yb_parallel_cost(Path *path)
 }
 
 /*
+ * yb_get_baserel_primary_index
+ *		Return the primary index of the base table or NULL if no primary index
+ *		exists
+ */
+static IndexOptInfo*
+yb_get_baserel_primary_index(RelOptInfo* baserel)
+{
+	IndexOptInfo *pk_index = NULL;
+	ListCell* lc;
+
+	foreach(lc, baserel->indexlist)
+	{
+		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+		Relation	index_rel = RelationIdGetRelation(index->indexoid);
+		if (index_rel->rd_index->indisprimary)
+		{
+			pk_index = index;
+			RelationClose(index_rel);
+			break;
+		}
+		RelationClose(index_rel);
+	}
+	return pk_index;
+}
+
+
+/*
+ * yb_get_ybctid_width
+ *		Returns the width of the ybctid for the `index` of the `baserel`.
+ */
+static int32
+yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
+					IndexOptInfo *index, bool is_primary_index)
+{
+	int32		ybctid_width = 0;
+
+	if (index != NULL && index->yb_cached_ybctid_size > 0)
+	{
+		/* Aside from performance improvement, this caching has another
+		 * purpose. When a hint is used to influence the choice of an index,
+		 * pg_hint_plan extension removes the index choice available in
+		 * restrict_indexes.
+		 *
+		 * To compute the width of the secondary index ybctid, we need to find
+		 * the primary index. However, as explained above, if the user forces
+		 * using a secondary index with a hint, then the primary index of the
+		 * base table becomes invisible to the cost model, instead it seems as
+		 * if the base table does not have a primary index.
+		 *
+		 * Since all paths are explored before the hint plan is applied, by
+		 * caching the ybctid widht during this first pass, we can avoid the
+		 * above problem.
+		 */
+		ybctid_width = index->yb_cached_ybctid_size;
+	}
+	else
+	{
+		if (index == NULL)
+		{
+			/* Base table has no primary key */
+			ybctid_width = UUID_YBCTID_WIDTH;
+		}
+		else
+		{
+			/* Check if attribute widths have been cached */
+			if (baserel->attr_widths == NULL ||
+				baserel->attr_widths[1 - baserel->min_attr] == 0)
+			{
+				/* This method will refresh and cache attribute widths */
+				yb_get_relation_data_width(baserel, baserel_oid);
+			}
+
+			/* Add 1 byte for null indicator and 8 bytes for size of the ybctid. */
+			ybctid_width += 9;
+
+			/* Aggregate the width of the key columns in the index */
+			for (int i = 0; i < index->nkeycolumns; i++)
+			{
+				/*
+				* For each key column, add 1 byte for value type and estimated average
+				* width of the column.
+				*/
+				ybctid_width +=
+					baserel->attr_widths[index->indexkeys[i] - baserel->min_attr] + 1;
+
+				Relation 	baserel = table_open(baserel_oid, NoLock);
+				Form_pg_attribute att =
+					TupleDescAttr(baserel->rd_att, index->indexkeys[i] - 1);
+				if (att->attlen < 0)
+				{
+					/* attlen is -2 if the attribute is variable size null-
+					 * terminated C string. Add 1 byte because DocDB uses double
+					 * null termination. */
+					++ybctid_width;
+				}
+				table_close(baserel, NoLock);
+			}
+
+			/* Add 1 byte for the kGroupEnd(!). */
+			++ybctid_width;
+
+			if (index->nhashcolumns > 0)
+			{
+				/* If there were hash and range keys, then the key is prefixed
+				 * with a 16 bit hash value of the hash columns. Add 1 byte
+				 * for the hash value type and 2 bytes for the hash value. Also
+				 * add 1 byte for group termination between hash and range keys.
+				 */
+				ybctid_width += 4;
+			}
+
+			if (!is_primary_index)
+			{
+				/* In the secondary index, the ybctid of the base table is part of
+				* the secondary index key. It is stored in string encoded format.
+				*/
+				IndexOptInfo* base_table_primary_index =
+					yb_get_baserel_primary_index(baserel);
+				int32 base_table_ybctid_width =
+					yb_get_ybctid_width(baserel_oid,
+										baserel,
+										base_table_primary_index,
+										true /* is_primary_index */);
+				/* We need to subtract 2 from the base table ybctid length to get
+				* the length of the string encoding. The ybctid length includes 9
+				* bytes for the null indicator and size of the ybctid, which are
+				* not part of the string encoding. However, the string encoding
+				* needs 7 additional bytes, 1 for the value type, 4 bytes for
+				* separator and 2 bytes for double null termination.
+				*/
+				ybctid_width += base_table_ybctid_width - 2;
+			}
+
+			index->yb_cached_ybctid_size = ybctid_width;
+		}
+	}
+
+	return ybctid_width;
+}
+
+/*
+ * yb_get_docdb_result_width
+ *		Determines width of the result that is transferred from DocDB to pggate.
+ *
+ * DocDB sends ybctid in the cases where no columns are being projected
+ * from the table. This happens when there is no columns in the select list
+ * and no local filters. Additionally, this also happens when the select
+ * list contains count(*). In these cases, pathtarget->width is 0.
+ *
+ * One exception to the above rule is when no columns are being projected
+ * but filters are used in the query which are pushed down as index
+ * conditions for Index Scan. In this case also, the pathtarget->width is
+ * 0, but DocDB returns the index key columns that are used in the filters.
+ *
+ * When columns are being projected, either in select list or in local
+ * filters then these columns are returned from DocDB.
+ */
+static uint32_t
+yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
+						  bool is_primary_index, bool is_index_only,
+						  List *index_conditions, List *local_clauses,
+						  int table_tuple_width, RelOptInfo* baserel,
+						  Oid baserel_oid)
+{
+	ListCell* lc;
+	Bitmapset *attrs = NULL;
+	uint32_t result_width = 0;
+	IndexPath* index_path = NULL;
+
+	if (is_index_path)
+	{
+		index_path = (IndexPath*)path;
+	}
+
+	/* DocDB returns ybctid in the following cases,
+	 * * Queries where no column is projected and no local filters are present
+     *   and sequential scan is used.
+	 *   eg. `SELECT 0 FROM test` or
+	 *       `SELECT true FROM test WHERE v1 > 0` where the filter on v1 is
+	 *         pushed down to DocDB.
+	 * * Queries where no column is projected, and no local conditions are
+	 *   present but index scan is used.
+	 */
+	if (path->pathtarget->width == 0 &&
+		(!is_index_path || list_length(index_conditions) == 0) &&
+		list_length(local_clauses) == 0)
+	{
+		if (root->parse->hasAggs)
+		{
+			/* For queries with count(*), the pathtarget->width is 0.
+			 * Additionally, count(*) gets pushed down to DocDB only if there
+			 * are no local filters. We try to handle that case here. For other
+			 * aggregate functions that can be pushed down like max(), min(),
+			 * the pathtarget->width is greater than 0 and that case is handled
+			 * below.
+			 *
+			 * We may false positively identify some cases where count(*) cannot
+			 * be pushed down to DocDB here and this should be improved in
+			 * TODO(#20955).
+			 *
+			 * When count(*) is pushed down, DocDB returns 9 bytes which
+			 * includes 1 byte for null indicator and 8 bytes for number of
+			 * rows.
+			 */
+			result_width = 9;
+		}
+		else if (is_index_path && list_length(index_conditions) == 0)
+		{
+			Assert(index_path != NULL);
+			result_width = yb_get_ybctid_width(baserel_oid,
+											   baserel,
+											   index_path->indexinfo,
+											   is_primary_index);
+		}
+		else
+		{
+			/**
+			 * This happens when no columns are projected eg. `SELECT 0 FROM ...`.
+			 * In this case, DocDB returns the ybctid for each row that matches
+			 * the filter. To compute the network cost, we need to estimate the
+			 * size of the ybctid.
+			 *
+			 * If the query has local filters (to be executed on PG side), then
+			 * DocDB sends the columns needed for these filters, and does not need
+			 * to send the ybctid.
+			 */
+			IndexOptInfo* primary_index =
+				yb_get_baserel_primary_index(baserel);
+			result_width =
+				yb_get_ybctid_width(baserel_oid, baserel, primary_index,
+									true /* is_primary_index */);
+		}
+	}
+	else
+	{
+		if (is_index_path &&
+			path->pathtarget->width == 0 &&
+			list_length(local_clauses) == 0)
+		{
+			foreach(lc, index_conditions)
+			{
+				RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+				pull_varattnos_min_attr((Node*) ri->clause, baserel->relid,
+										&attrs,
+										YBFirstLowInvalidAttributeNumber + 1);
+			}
+		}
+		else
+		{
+			/* Collect the attributes used in each expression in the target
+			 * list. */
+
+			/* TODO(#20955) : pathtarget->exprs may have aggregate functions
+			 * which are pushed down to DocDB. We cannot detect aggregate
+			 * pushdown during query planning at this time. So we haven't
+			 * modeled this properly here for now.
+			 *
+			 * We assume that agg functions cannot be pushed down, and all
+			 * columns used as input to these functions will need to be
+			 * transferred. This produces inaccurate results in some cases,
+			 * documented in the test TestPgEstimatedDocdbResultWidth.java in
+			 * method testDocdbResultWidthEstimationAggregateFunctions().
+			 */
+			foreach(lc, path->pathtarget->exprs)
+			{
+				Node* expr = (Node*) lfirst(lc);
+				pull_varattnos_min_attr(expr, baserel->relid, &attrs,
+										YBFirstLowInvalidAttributeNumber + 1);
+			}
+
+			/* Collect the attributes used in each expression in the local filters. */
+			foreach(lc, local_clauses)
+			{
+				RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+				pull_varattnos_min_attr((Node*) ri->clause, baserel->relid, &attrs,
+										YBFirstLowInvalidAttributeNumber + 1);
+			}
+		}
+
+		/* TODO(#20956): Columns needed for rechecking need to be added */
+		if (bms_num_members(attrs) > 0)
+		{
+			int bms_index = -1;
+			while ((bms_index = bms_first_member(attrs)) >= 0)
+			{
+				/* Add 1 byte for null indicator */
+				result_width += 1;
+
+				/* Adjust for system attributes. */
+				AttrNumber attnum =
+					YBBmsIndexToAttnumWithMinAttr(YBFirstLowInvalidAttributeNumber, bms_index);
+
+				if (attnum < 0)
+				{
+					/* Ignore system attributes */
+					continue;
+				}
+
+				Relation 	baserel = table_open(baserel_oid, NoLock);
+				Form_pg_attribute att =
+					TupleDescAttr(baserel->rd_att, attnum);
+				if (att->attlen < 0)
+				{
+					/* attlen is negative for variable size types. DocDB 
+					 * prefixes the value with the 8 bytes length. */
+					result_width += 8;
+				}
+				table_close(baserel, NoLock);
+
+				result_width += get_attavgwidth(baserel_oid, attnum + 1);
+			}
+		}
+	}
+
+	return result_width;
+}
+
+/*
  * yb_cost_seqscan
- *	  Determines and returns the cost of scanning a relation sequentially.
- *	  This is simlar to cost_seqscan function but tailored for YB.
+ *		Determines and returns the cost of scanning a relation sequentially.
+ *		This is simlar to cost_seqscan function but tailored for YB.
  *
  * 'baserel' is the relation to be scanned
  * 'param_info' is the ParamPathInfo if this is a parameterized path, else NULL
+ *
+ * TODO(#20955) : Aggregate pushdown to DocDB is not modeled. We should detect
+ * if aggregate functions are being pushed down, in which case we need not
+ * transfer rows from DocDB to pggate.
  */
 void
 yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
@@ -6595,11 +6916,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	/* DocDB costs */
 	/* Compute tuple width */
 	tuple_width = yb_get_relation_data_width(baserel, reloid);
-
-	/* TODO: Temporary fix for #20892 to unblock internal testing */
-	docdb_result_width = path->pathtarget->width;
-	if (docdb_result_width == 0)
-		docdb_result_width = YBCTID_UUID_WIDTH;
 
 	/* Block fetch cost from disk */
 	num_blocks = ceil(baserel->tuples * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -6651,8 +6967,16 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  clauselist_selectivity(root, pushed_down_clauses,
 											 baserel->relid, JOIN_INNER, NULL));
 
+	docdb_result_width = yb_get_docdb_result_width(path, root,
+												   false, /* is_index_path*/
+												   false, /* is_primary_index */
+												   false, /* is_index_only */
+												   NIL, /* index_conditions */
+												   local_clauses, tuple_width,
+												   baserel, reloid);
+	path->yb_estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-											   docdb_result_width);
+										 	   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
@@ -6683,7 +7007,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 /*
  * yb_get_index_tuple_width
- *	  Returns the tuple width of the index.
+ *		Returns the tuple width of the index.
  *
  * In case of primary index, this function will return the width of the baserel
  * since the primary index is the same as the base table in YB. For a secondary
@@ -6741,8 +7065,8 @@ add_predicate_to_quals(IndexOptInfo *index, List *indexQuals)
 
 /*
  * yb_cost_index
- *	  Determines and returns the cost of scanning a relation using an index.
- *	  This is simlar to cost_index function but tailored for YB.
+ *		Determines and returns the cost of scanning a relation using an index.
+ *		This is simlar to cost_index function but tailored for YB.
  *
  * 'path' describes the indexscan under consideration, and is complete
  *		except for the fields to be set by this routine
@@ -6757,6 +7081,10 @@ add_predicate_to_quals(IndexOptInfo *index, List *indexQuals)
  * restrictions.  Any additional quals evaluated as qpquals may reduce the
  * number of returned tuples, but they won't reduce the number of tuples
  * we have to fetch from the table, so they don't reduce the scan cost.
+ *
+ * TODO(#20955) : Aggregate pushdown to DocDB is not modeled. We should detect
+ * if aggregate functions are being pushed down, in which case we need not
+ * transfer rows from DocDB to pggate.
  */
 void
 yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
@@ -6813,20 +7141,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	int			max_nexts_to_avoid_seek = 2;
 	int			num_result_pages;
 	int			docdb_result_width;
+	int32		baserel_tuple_width = 0;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	/* TODO: Temporary fix for #20892 to unblock internal testing */
-	docdb_result_width = path->path.pathtarget->width;
-	if (docdb_result_width == 0)
-		docdb_result_width = YBCTID_UUID_WIDTH;
-
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
+	baserel_tuple_width = yb_get_relation_data_width(baserel, baserel_oid);
 
 	if (partial_path)
 	{
@@ -6852,6 +7177,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 		path->path.parallel_aware = true;
 	}
+
+	/* Compute the width of the index tuple in disk */
+	index_tuple_width = yb_get_index_tuple_width(index,
+												 baserel_oid,
+												 is_primary_index);
 
 	/*
 	 * Mark the path with the correct row estimate, and identify which quals
@@ -7139,6 +7469,15 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 					  clauselist_selectivity(root, pushed_down_clauses,
 											 baserel->relid, JOIN_INNER, NULL));
 
+	docdb_result_width = yb_get_docdb_result_width(&path->path, root,
+												   true /* is_index_path */,
+												   is_primary_index,
+												   index_only,
+												   index_bound_quals,
+												   local_clauses,
+												   baserel_tuple_width,
+												   baserel, baserel_oid);
+	path->yb_estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
 										 	   docdb_result_width);
 
@@ -7219,9 +7558,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
-	index_tuple_width = yb_get_index_tuple_width(index,
-												 baserel_oid,
-												 is_primary_index);
 
 	index_total_pages =
 		ceil(index->rel->tuples * index_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -7244,8 +7580,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!is_primary_index && !index_only)
 	{
 		/* Baserel Lookup costs */
-		int32		baserel_tuple_width = 0;
-		Oid 		basereloid = planner_rt_fetch(baserel->relid, root)->relid;
 		Cost		baserel_per_seek_cost = 0.0;
 		/* TODO: Plug here the actual number of key-value pairs per tuple */
 		int			num_key_value_pairs_per_tuple_baserel =
@@ -7272,7 +7606,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		startup_cost += baserel_per_seek_cost;
 		run_cost += (baserel_per_seek_cost * num_baserel_seeks);
 
-		baserel_tuple_width = yb_get_relation_data_width(baserel, basereloid);
 
 		int	num_docdb_blocks_fetched =
 			ceil(remote_filtered_rows * baserel_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);

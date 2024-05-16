@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -65,6 +66,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -622,7 +624,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       NodeDetails currentNode,
       @Nullable NodeDetails stoppingNode,
-      boolean isStoppable) {
+      boolean isStoppable,
+      boolean ignoreStopError) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
 
@@ -665,7 +668,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Perform master change only after the new master is added.
       createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
-        createStopMasterTasks(Collections.singleton(stoppingNode))
+        createStopServerTasks(
+                Collections.singleton(stoppingNode), ServerType.MASTER, ignoreStopError)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -722,12 +726,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param currentNode the current node being stopped.
    * @param replacementSupplier the supplier for the replacement node.
    * @param isStoppable true if the current node can stopped.
+   * @param ignoreStopError true if any error on stopping the current node is to be ignored.
    */
   public void createMasterReplacementTasks(
       Universe universe,
       NodeDetails currentNode,
       Supplier<NodeDetails> replacementSupplier,
-      boolean isStoppable) {
+      boolean isStoppable,
+      boolean ignoreStopError) {
     if (currentNode.masterState != MasterState.ToStop) {
       log.info(
           "Current node {} is not a master to be stopped. Ignoring master replacement",
@@ -741,7 +747,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
-        createStopMasterTasks(Collections.singleton(currentNode))
+        createStopServerTasks(
+                Collections.singleton(currentNode), ServerType.MASTER, ignoreStopError)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -765,7 +772,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createSetNodeStateTask(newMasterNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
       // This method takes care of master config change.
-      createStartMasterOnNodeTasks(universe, newMasterNode, currentNode, isStoppable);
+      createStartMasterOnNodeTasks(
+          universe, newMasterNode, currentNode, isStoppable, ignoreStopError);
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
@@ -1355,6 +1363,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.placementUuid = node.placementUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
+      // Set the node UUID.
+      params.nodeUuid = node.nodeUuid;
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
       // Create the Ansible task to get the server info.
@@ -1400,20 +1410,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               .get(NODE_NAME_KEY)
               .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
             throw new IllegalArgumentException("'Name' tag value cannot be changed.");
-          }
-        }
-        if (cluster.userIntent.deviceInfo != null
-            && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.numVolumes != null) {
-          int prevSize =
-              univCluster.userIntent.deviceInfo.volumeSize
-                  * univCluster.userIntent.deviceInfo.numVolumes;
-          int curSize =
-              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
-          if (curSize < prevSize
-              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
-            throw new IllegalArgumentException(
-                "Cannot decrease volume size from " + prevSize + " to " + curSize);
           }
         }
       }
@@ -1699,7 +1695,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       tserverNodes.remove(stoppedNode);
       masterNodes.remove(stoppedNode);
     }
-    createMasterAddressUpdateTask(masterNodes, tserverNodes);
+    createMasterAddressUpdateTask(universe, masterNodes, tserverNodes);
 
     // Update the master addresses on the target universes whose source universe belongs to
     // this task.
@@ -1711,9 +1707,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * tservers and masters.
    */
   protected void createMasterAddressUpdateTask(
-      Set<NodeDetails> masterNodes, Set<NodeDetails> tserverNodes) {
+      Universe universe, Set<NodeDetails> masterNodes, Set<NodeDetails> tserverNodes) {
     // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
+    createConfigureServerTasks(
+            tserverNodes,
+            params -> {
+              params.updateMasterAddrsOnly = true;
+              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+            })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Change the master addresses in the conf file for the all masters to reflect
@@ -1723,6 +1724,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params -> {
               params.updateMasterAddrsOnly = true;
               params.isMaster = true;
+              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
@@ -2005,7 +2007,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
-              createLocaleCheckTask();
+              createLocaleCheckTask(filteredNodes)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              createCheckGlibcTask(
+                  filteredNodes,
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
             });
 
     return isNextFallThrough;
@@ -2255,6 +2261,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     params.isMaster = true;
                     params.resetMasterState = isShellMode;
                     params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                    params.masterAddrsOverride =
+                        getOrCreateExecutionContext().getMasterAddrsSupplier();
                   })
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         });
@@ -2420,6 +2428,49 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public void createValidateDiskSizeOnNodeRemovalTasks(
+      Universe universe, Cluster cluster, Set<NodeDetails> clusterNodes) {
+    if (config.getBoolean("yb.cloud.enabled")) {
+      // This is not enabled for cloud.
+      return;
+    }
+    int targetDiskUsagePercentage =
+        confGetter.getConfForScope(universe, UniverseConfKeys.targetNodeDiskUsagePercentage);
+    if (targetDiskUsagePercentage <= 0) {
+      log.info(
+          "Downsize disk size validation is disabled (usageMultiplierPercentage = {})",
+          targetDiskUsagePercentage);
+      return;
+    }
+    Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(clusterNodes);
+    if (nodesToBeRemoved.isEmpty()) {
+      log.debug("No nodes are getting removed");
+      if (cluster.userIntent.providerType != CloudType.onprem) {
+        DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
+        DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
+        if (taskDeviceInfo == null
+            || existingDeviceInfo == null
+            || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+                && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+          log.debug("No change in the volume configuration");
+          return;
+        }
+      }
+    }
+    SubTaskGroup validateSubTaskGroup =
+        createSubTaskGroup(
+            ValidateNodeDiskSize.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
+    ValidateNodeDiskSize.Params params =
+        Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
+    params.clusterUuid = cluster.uuid;
+    params.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    params.targetDiskUsagePercentage = targetDiskUsagePercentage;
+    ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
+    task.initialize(params);
+    validateSubTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(validateSubTaskGroup);
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(

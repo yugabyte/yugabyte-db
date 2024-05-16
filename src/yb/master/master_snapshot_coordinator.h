@@ -15,6 +15,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb.pb.h"
@@ -23,13 +24,13 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
+#include "yb/master/master_types.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace master {
@@ -146,6 +147,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type);
 
+  Result<std::vector<SnapshotScheduleId>> GetSnapshotSchedules(
+      SysRowEntryType type, const std::string& object_id);
+
   Result<SnapshotInfoPB> GetSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline);
@@ -166,8 +170,22 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // If snapshot_id is nil then returns true if any snapshot covers the particular tablet
   // whereas if snapshot_id is not nil then returns true if that particular snapshot
   // covers the tablet.
-  bool IsTabletCoveredBySnapshot(
-      const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil()));
+  bool TEST_IsTabletCoveredBySnapshot(
+      const TabletId& tablet_id,
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil())) const;
+
+  Status PopulateTabletDeleteRetainerInfo(
+      const TableInfo& table_info, const TabletInfos& tablets_to_check,
+      const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map,
+      TabletDeleteRetainerInfo& delete_retainer) const;
+
+  bool ShouldRetainHiddenTablet(
+      const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const;
+
+  bool ShouldRetainHiddenColocatedTable(
+      const TableInfo& table_info, const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const;
 
  private:
   class Impl;

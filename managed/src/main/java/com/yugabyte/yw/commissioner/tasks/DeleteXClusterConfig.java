@@ -45,12 +45,16 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     try {
       if (sourceUniverse != null) {
         // Lock the source universe.
-        lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       }
       try {
         if (targetUniverse != null) {
           // Lock the target universe.
-          lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+          lockAndFreezeUniverseForUpdate(
+              targetUniverse.getUniverseUUID(),
+              targetUniverse.getVersion(),
+              null /* Txn callback */);
         }
 
         createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);

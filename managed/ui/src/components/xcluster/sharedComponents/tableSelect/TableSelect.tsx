@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import {
   BootstrapTable,
-  ExpandColumnComponentProps,
   Options,
   SortOrder as ReactBSTableSortOrder,
   TableHeaderColumn
 } from 'react-bootstrap-table';
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
-import clsx from 'clsx';
-import { Box, Typography } from '@material-ui/core';
-import { useTranslation } from 'react-i18next';
+import { Box, Typography, useTheme } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
 
 import {
   fetchTablesInUniverse,
@@ -36,6 +34,7 @@ import {
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
   XClusterConfigAction,
   XCLUSTER_REPLICATION_DOCUMENTATION_URL,
+  XCLUSTER_SUPPORTED_TABLE_TYPES,
   XCLUSTER_TABLE_INELIGIBLE_STATUSES,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
@@ -53,7 +52,9 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
 import { YBTooltip } from '../../../../redesign/components';
 import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
 import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { getTableUuid, isColocatedParentTable } from '../../../../utils/tableUtils';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
+import { getTableUuid } from '../../../../utils/tableUtils';
+import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import {
   TableType,
@@ -62,9 +63,14 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterTableType } from '../../XClusterTypes';
+import { IndexTableReplicationCandidate, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
-import { EligibilityDetails, NamespaceItem, ReplicationItems, XClusterTableCandidate } from '../..';
+import {
+  EligibilityDetails,
+  NamespaceItem,
+  ReplicationItems,
+  MainTableReplicationCandidate
+} from '../..';
 
 import styles from './TableSelect.module.scss';
 
@@ -121,15 +127,14 @@ const TABLE_TYPE_SELECT_STYLES = {
 };
 
 const NOTE_CONTENT = (
-  <p>
-    <b>Note!</b>
+  <div>
     <p>
+      <b>Note! </b>
       Tables in an xCluster configuration must all be of the same type (YCQL or YSQL). Please create
       a separate xCluster configuration if you wish to replicate tables of a different type.
     </p>
     <p>
-      Index tables are not shown. Replication for these tables will automatically be set up if the
-      main table is selected.
+      Selecting or deselecting main tables will select and deselect their associated index tables.
     </p>
     <p>
       If a YSQL database contains any tables considered ineligible for replication, it will not be
@@ -144,7 +149,7 @@ const NOTE_CONTENT = (
         replication is desired.
       </b>
     </p>
-  </p>
+  </div>
 );
 
 const NOTE_EXPAND_CONTENT = (
@@ -210,6 +215,7 @@ export const TableSelect = (props: TableSelectProps) => {
   const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
   const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const theme = useTheme();
 
   const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(sourceUniverseUUID),
@@ -297,31 +303,39 @@ export const TableSelect = (props: TableSelectProps) => {
 
   const toggleTableGroup = (
     isSelected: boolean,
-    xClusterTableCandidates: XClusterTableCandidate[]
+    mainTableReplicationCandidates: MainTableReplicationCandidate[]
   ) => {
     if (isSelected) {
       const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
-      xClusterTableCandidates.forEach((xClusterTableCandidate) => {
-        currentSelectedTableUuids.add(getTableUuid(xClusterTableCandidate));
+      mainTableReplicationCandidates.forEach((mainTableReplicationCandidate) => {
+        currentSelectedTableUuids.add(getTableUuid(mainTableReplicationCandidate));
+        mainTableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+          currentSelectedTableUuids.add(indexTableId)
+        );
       });
       setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTableUuids = new Set(xClusterTableCandidates.map((row) => getTableUuid(row)));
-
+      const removedTableUuids = new Set();
+      mainTableReplicationCandidates.forEach((mainTableReplicationCandidate) => {
+        removedTableUuids.add(getTableUuid(mainTableReplicationCandidate));
+        mainTableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+          removedTableUuids.add(indexTableId)
+        );
+      });
       setSelectedTableUUIDs(
         selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
 
-  const handleTableGroupToggle = (isSelected: boolean, rows: XClusterTableCandidate[]) => {
+  const handleTableGroupToggle = (isSelected: boolean, rows: MainTableReplicationCandidate[]) => {
     toggleTableGroup(isSelected, rows);
     return true;
   };
 
   const handleTableToggle = (
-    xClusterTableCandidate: XClusterTableCandidate,
+    xClusterTableCandidate: MainTableReplicationCandidate,
     isSelected: boolean
   ) => {
     toggleTableGroup(isSelected, [xClusterTableCandidate]);
@@ -350,7 +364,7 @@ export const TableSelect = (props: TableSelectProps) => {
 
   const handleNamespaceGroupToggle = (isSelected: boolean, namespaceItems: NamespaceItem[]) => {
     const selectableTables = namespaceItems.reduce(
-      (table: XClusterTableCandidate[], namespaceItem) => {
+      (table: MainTableReplicationCandidate[], namespaceItem) => {
         return table.concat(
           namespaceItem.tables.filter((table) => isTableToggleable(table, props.configAction))
         );
@@ -400,14 +414,12 @@ export const TableSelect = (props: TableSelectProps) => {
       ? getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
           sourceUniverseTablesQuery.data,
-          targetUniverseTablesQuery.data,
           sharedXClusterConfigs,
           props.xClusterConfigUUID
         )
       : getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
           sourceUniverseTablesQuery.data,
-          targetUniverseTablesQuery.data,
           sharedXClusterConfigs
         );
   const namespaceItems = Object.entries(replicationItems[tableType].namespaces)
@@ -448,16 +460,15 @@ export const TableSelect = (props: TableSelectProps) => {
   ]);
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
-    compareYBSoftwareVersions(
-      TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-      ybSoftwareVersion,
-      true
+    compareYBSoftwareVersions({
+      versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      versionB: ybSoftwareVersion,
+      options: {
+        suppressFormatError: true
+      }
+    }
     ) < 0 &&
     !participantsHaveLinkedXClusterConfig;
-  const selectedIndexTableCount = getSelectedIndexTableCount(
-    sourceUniverseTablesQuery.data,
-    selectedTableUUIDs
-  );
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -550,7 +561,7 @@ export const TableSelect = (props: TableSelectProps) => {
           )}
           expandColumnOptions={{
             expandColumnVisible: true,
-            expandColumnComponent: expandColumnComponent,
+            expandColumnComponent: ExpandColumnComponent,
             columnWidth: 25
           }}
           selectRow={{
@@ -603,7 +614,7 @@ export const TableSelect = (props: TableSelectProps) => {
       props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
         <Typography variant="body2">
           {t('tableSelectionCount', {
-            selectedTableCount: selectedTableUUIDs.length - selectedIndexTableCount,
+            selectedTableCount: selectedTableUUIDs.length,
             availableTableCount: replicationItems[tableType].tableCount
           })}
         </Typography>
@@ -618,44 +629,39 @@ export const TableSelect = (props: TableSelectProps) => {
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
           {selectionError && (
-            <div className={clsx(styles.validation, styles.error)}>
-              <i className="fa fa-exclamation-triangle" aria-hidden="true" />
-              <div className={styles.message}>
-                <h5>{selectionError.title}</h5>
-                <p>{selectionError.body}</p>
-              </div>
-            </div>
+            <YBBanner variant={YBBannerVariant.DANGER}>
+              <Typography variant="body1">{selectionError.title}</Typography>
+              <Typography variant="body2" component="p">
+                {selectionError.body}
+              </Typography>
+            </YBBanner>
           )}
           {selectionWarning && (
-            <div className={clsx(styles.validation, styles.warning)}>
-              <i className="fa fa-exclamation-triangle" aria-hidden="true" />
-              <div className={styles.message}>
-                <h5>{selectionWarning.title}</h5>
-                <p>{selectionWarning.body}</p>
-              </div>
-            </div>
+            <YBBanner variant={YBBannerVariant.WARNING}>
+              <Typography variant="body1">{selectionWarning.title}</Typography>
+              <Typography variant="body2" component="p">
+                {selectionWarning.body}
+              </Typography>
+            </YBBanner>
           )}
         </div>
       )}
-      {!isDrInterface && (
-        <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />
-      )}
+      <Box display="flex" flexDirection="column" marginTop={2} gridGap={theme.spacing(2)}>
+        <YBBanner variant={YBBannerVariant.INFO}>
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`${TRANSLATION_KEY_PREFIX}.${
+                props.isDrInterface ? 'matchingTableNoteDr' : 'matchingTableNoteXCluster'
+              }`}
+              components={{ bold: <b /> }}
+            />
+          </Typography>
+        </YBBanner>
+        {!isDrInterface && (
+          <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />
+        )}
+      </Box>
     </>
-  );
-};
-
-const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComponentProps) => {
-  if (!isExpandableRow) {
-    return '';
-  }
-  return (
-    <div>
-      {isExpanded ? (
-        <i className="fa fa-caret-up" aria-hidden="true" />
-      ) : (
-        <i className="fa fa-caret-down" aria-hidden="true" />
-      )}
-    </div>
   );
 };
 
@@ -665,35 +671,62 @@ const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComp
 const getReplicationItemsFromTables = (
   sourceUniverseNamespaces: UniverseNamespace[],
   sourceUniverseTables: YBTable[],
-  targetUniverseTables: YBTable[],
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): ReplicationItems => {
-  const namespaceToNamespaceUuid = Object.fromEntries(
+  const namespaceNameToNamespaceUuid = Object.fromEntries(
     sourceUniverseNamespaces.map((namespace) => [namespace.name, namespace.namespaceUUID])
   );
+  const tableUuidToTable = Object.fromEntries(
+    sourceUniverseTables.map((table) => [getTableUuid(table), table])
+  );
+
   return sourceUniverseTables.reduce(
     (items: ReplicationItems, sourceTable) => {
-      const tableEligibility = getXClusterTableEligibilityDetails(
-        sourceTable,
-        targetUniverseTables,
-        sharedXClusterConfigs,
-        currentXClusterConfigUUID
-      );
-      const xClusterTable: XClusterTableCandidate = {
-        ...sourceTable,
-        eligibilityDetails: tableEligibility,
-        tableUUID: getTableUuid(sourceTable)
-      };
-      const { tableType, keySpace: namespace, sizeBytes, eligibilityDetails } = xClusterTable;
-      const namespaceUuid = namespaceToNamespaceUuid[namespace] ?? namespace;
-      // We only support `PGSQL_TABLE_TYPE` and `YQL_TABLE_TYPE` for now.
-      // We also drop index tables from selection because replication will be
-      // automatically set up if the main table is selected.
+      // Filter out index tables because we will add them as a field under the main table.
       if (
-        xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
-        (tableType === TableType.PGSQL_TABLE_TYPE || tableType === TableType.YQL_TABLE_TYPE)
+        sourceTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
+        (XCLUSTER_SUPPORTED_TABLE_TYPES as readonly TableType[]).includes(sourceTable.tableType)
       ) {
+        const mainTableReplicationEligibility = getXClusterTableEligibilityDetails(
+          sourceTable,
+          sharedXClusterConfigs,
+          currentXClusterConfigUUID
+        );
+
+        // Add information about associated index tables if applicable.
+        const indexTables = [] as IndexTableReplicationCandidate[];
+        let indexTablesTotalSize = 0;
+        sourceTable.indexTableIDs?.forEach((indexTableId) => {
+          const indexTable = tableUuidToTable[indexTableId];
+          const indexTableReplicationEligibility = getXClusterTableEligibilityDetails(
+            indexTable,
+            sharedXClusterConfigs,
+            currentXClusterConfigUUID
+          );
+          const indexTableReplicationCandidate = {
+            ...indexTable,
+            eligibilityDetails: indexTableReplicationEligibility,
+            tableUUID: getTableUuid(indexTable)
+          };
+          indexTables.push(indexTableReplicationCandidate);
+          indexTablesTotalSize += indexTable.sizeBytes;
+        });
+
+        const mainTableReplicationCandidate: MainTableReplicationCandidate = {
+          ...sourceTable,
+          eligibilityDetails: mainTableReplicationEligibility,
+          tableUUID: getTableUuid(sourceTable),
+          indexTables: indexTables
+        };
+        const {
+          tableType,
+          keySpace: namespace,
+          sizeBytes,
+          eligibilityDetails
+        } = mainTableReplicationCandidate;
+        const namespaceUuid = namespaceNameToNamespaceUuid[namespace] ?? namespace;
+
         items[tableType].namespaces[namespaceUuid] = items[tableType].namespaces[namespaceUuid] ?? {
           uuid: namespaceUuid,
           name: namespace,
@@ -704,9 +737,11 @@ const getReplicationItemsFromTables = (
           sizeBytes: 0,
           tables: []
         };
-        items[tableType].namespaces[namespaceUuid].sizeBytes += sizeBytes;
-        items[tableType].namespaces[namespaceUuid].tables.push(xClusterTable);
-        items[tableType].tableCount += 1;
+
+        // Push table and update metadata
+        items[tableType].namespaces[namespaceUuid].tables.push(mainTableReplicationCandidate);
+        items[tableType].namespaces[namespaceUuid].sizeBytes += sizeBytes + indexTablesTotalSize;
+        items[tableType].tableCount += 1 + (mainTableReplicationCandidate.indexTables?.length ?? 0);
         if (XCLUSTER_TABLE_INELIGIBLE_STATUSES.includes(eligibilityDetails.status)) {
           items[tableType].namespaces[namespaceUuid].tableEligibilityCount.ineligible += 1;
         } else if (
@@ -732,58 +767,15 @@ const getReplicationItemsFromTables = (
   );
 };
 
-const getSelectedIndexTableCount = (sourceUniverseTables: YBTable[], selectedTableUuid: string[]) =>
-  sourceUniverseTables.reduce(
-    (indexTableCount, table) =>
-      selectedTableUuid.includes(getTableUuid(table)) &&
-      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
-        ? indexTableCount + 1
-        : indexTableCount,
-    0
-  );
-
-// Colocated parent tables have table.tablename in the following format:
-//   <uuid>.colocation.parent.tablename
-// We return colocation.parent.tablename for colocated parent tables and
-// table.tablename otherwise.
-const getTableNameIdentifier = (table: YBTable) =>
-  isColocatedParentTable(table)
-    ? table.tableName.slice(table.tableName.indexOf('.') + 1) ?? 'colocation.parent.tablename'
-    : table.tableName;
-
-// Comma is not a valid identifier:
-// https://www.postgresql.org/docs/9.2/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
-// https://cassandra.apache.org/doc/latest/cassandra/cql/definitions.html
-// Hence, by joining with commas, we avoid issues where the fields are unique individually
-// but result in a string that not unique.
-const getTableIdentifier = (table: YBTable): string =>
-  `${table.keySpace},${table.pgSchemaName},${getTableNameIdentifier(table)}`;
-
 /**
- * A table is eligible for replication if all of the following holds true:
- * - There exists another table with same keyspace, table name, and schema name
- *   in target universe OR the user is selecting tables for a new xCluster config (YBA will do a backup/restore
- *   to handle it during xCluster config creation).
- * - The table is NOT part of another existing xCluster config between the same universes
- *   in the same direction.
+ * A table is eligible for replication if table is NOT part of another existing
+ * xCluster config between the same universes in the same direction.
  */
 const getXClusterTableEligibilityDetails = (
   sourceTable: YBTable,
-  targetUniverseTables: YBTable[],
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): EligibilityDetails => {
-  if (currentXClusterConfigUUID) {
-    // Adding a table to an existing xCluster config requires that there exists another table
-    // with same keyspace, table name, and schema name on the target universe.
-    const targetUniverseTableIds = new Set(
-      targetUniverseTables.map((table) => getTableIdentifier(table))
-    );
-    if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-      return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
-    }
-  }
-
   for (const xClusterConfig of sharedXClusterConfigs) {
     const xClusterConfigTables = new Set(xClusterConfig.tables);
     if (xClusterConfigTables.has(sourceTable.tableID)) {

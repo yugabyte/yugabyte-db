@@ -85,9 +85,6 @@ export const XClusterTableEligibility = {
   // Ineligible statuses:
   // Ineligible - The table in use in another xCluster config
   INELIGIBLE_IN_USE: 'ineligibleInUse',
-  // Inenligible - No table with a matching identifier (keyspace, table and schema name)
-  //               exists in the target universe
-  INELIGIBLE_NO_MATCH: 'ineligibleNoMatch',
 
   // Eligible statuses:
   // Eligible - The table is not already in the current xCluster config
@@ -98,8 +95,7 @@ export const XClusterTableEligibility = {
 export type XClusterTableEligibility = typeof XClusterTableEligibility[keyof typeof XClusterTableEligibility];
 
 export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibility[] = [
-  XClusterTableEligibility.INELIGIBLE_IN_USE,
-  XClusterTableEligibility.INELIGIBLE_NO_MATCH
+  XClusterTableEligibility.INELIGIBLE_IN_USE
 ] as const;
 
 export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
@@ -229,6 +225,7 @@ export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
   DELETE_CONFIG: 'deleteXClusterConfigModal',
   RESTART_CONFIG: 'restartXClusterConfigModal',
+  EDIT_TABLES: 'editTablesInXClusterConfigModal',
   ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
   TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',

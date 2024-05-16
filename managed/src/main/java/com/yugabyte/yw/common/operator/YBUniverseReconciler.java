@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -55,10 +57,10 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
-import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.util.Base64;
@@ -87,7 +89,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final SharedIndexInformer<YBUniverse> ybUniverseInformer;
   private final String namespace;
   private final Lister<YBUniverse> ybUniverseLister;
-  private final MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
+  // Resource here has full class name since it conflicts with
+  // ybuniversespec.kubernetesoverrides.Resource
+  private final MixedOperation<
+          YBUniverse,
+          KubernetesResourceList<YBUniverse>,
+          io.fabric8.kubernetes.client.dsl.Resource<YBUniverse>>
       ybUniverseClient;
   public static final String APP_LABEL = "app";
   private final UniverseCRUDHandler universeCRUDHandler;
@@ -184,14 +191,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private static String getResourceUidFromWorkQueueKey(String workQueueKey) {
     return workQueueKey.split("/")[2];
-  }
-
-  public static String getYbaUniverseName(YBUniverse ybUniverse) {
-    String name = ybUniverse.getMetadata().getName();
-    String namespace = ybUniverse.getMetadata().getNamespace();
-    String uid = ybUniverse.getMetadata().getUid();
-    int hashCode = name.concat(namespace).concat(uid).hashCode();
-    return name.concat("-").concat(Integer.toString(Math.abs(hashCode)));
   }
 
   @VisibleForTesting
@@ -291,7 +290,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
    */
   protected void reconcile(YBUniverse ybUniverse, OperatorWorkQueue.ResourceAction action) {
     String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = getYbaUniverseName(ybUniverse);
+    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     log.info(
@@ -402,7 +401,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   // Universe creation will be retried until successful
   private void createActionReconcile(YBUniverse ybUniverse, Customer cust) throws Exception {
     String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = getYbaUniverseName(ybUniverse);
+    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -446,7 +445,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private void updateActionReconcile(YBUniverse ybUniverse, Customer cust) {
     String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = getYbaUniverseName(ybUniverse);
+    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -484,7 +483,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private void noOpActionReconcile(YBUniverse ybUniverse, Customer cust) {
     String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = getYbaUniverseName(ybUniverse);
+    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -584,7 +583,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid());
+    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
     // Updating cluster with new userIntent info
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
@@ -680,12 +679,13 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
     } catch (Exception e) {
       kubernetesStatusUpdater.updateUniverseState(
-          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.CREATING);
+          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
       throw e;
     }
   }
 
-  private void editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+  @VisibleForTesting
+  protected void editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
       throw new RuntimeException(
@@ -693,7 +693,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid());
+    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
     // Fix non-changeable values to current.
     incomingIntent.accessKeyCode = currentUserIntent.accessKeyCode;
@@ -713,7 +713,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UUID taskUUID = null;
 
     try {
-      if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
+      if (shouldUpdateYbUniverse(currentUserIntent, incomingIntent)) {
+        log.info("Calling Edit Universe");
+        kubernetesStatusUpdater.createYBUniverseEventStatus(
+            universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
+        if (checkAndHandleUniverseLock(
+            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+          return;
+        }
+        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+        taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
+      } else if (!StringUtils.equals(
+          incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
         log.info("Updating Kubernetes Overrides");
         kubernetesStatusUpdater.createYBUniverseEventStatus(
             universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
@@ -735,16 +746,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         }
         kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
         taskUUID = updateGflagsYbUniverse(universeDetails, cust, ybUniverse);
-      } else if (shouldUpdateYbUniverse(currentUserIntent, incomingIntent)) {
-        log.info("Calling Edit Universe");
-        kubernetesStatusUpdater.createYBUniverseEventStatus(
-            universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
-        if (checkAndHandleUniverseLock(
-            ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-          return;
-        }
-        kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-        taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
       } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
         log.info("Upgrading software");
         kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -801,7 +802,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.universeOverrides = universeOverrides;
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), getYbaUniverseName(ybUniverse)).orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+            .orElse(null);
 
     log.info("Upgrade universe overrides with new overrides");
     return upgradeUniverseHandler.upgradeKubernetesOverrides(requestParams, cust, oldUniverse);
@@ -825,7 +827,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), getYbaUniverseName(ybUniverse)).orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+            .orElse(null);
 
     log.info("Upgrade universe with new GFlags");
     return upgradeUniverseHandler.upgradeGFlags(requestParams, cust, oldUniverse);
@@ -848,7 +851,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), getYbaUniverseName(ybUniverse)).orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+            .orElse(null);
 
     // requestParams.taskType = UpgradeTaskParams.UpgradeTaskType.Software;
     // requestParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
@@ -878,7 +882,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskConfigParams.currentClusterType = ClusterType.PRIMARY;
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), getYbaUniverseName(ybUniverse)).orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+            .orElse(null);
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
@@ -889,11 +894,14 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       throws Exception {
     log.info("Creating task params");
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID));
+    Cluster cluster =
+        new Cluster(ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID, true));
     taskParams.clusters.add(cluster);
     List<Users> users = Users.getAll(customerUUID);
     if (users.isEmpty()) {
       log.error("Users list is of size 0!");
+      kubernetesStatusUpdater.updateUniverseState(
+          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
       throw new Exception("Need at least one user");
     } else {
       log.info("Taking first user for customer");
@@ -905,83 +913,101 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return taskParams;
   }
 
-  private UserIntent createUserIntent(YBUniverse ybUniverse, UUID customerUUID) {
-    UserIntent userIntent = new UserIntent();
-    userIntent.universeName = getYbaUniverseName(ybUniverse);
+  @VisibleForTesting
+  protected String getKubernetesOverridesString(KubernetesOverrides kubernetesOverrides) {
     ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
     mapper.setSerializationInclusion(Include.NON_NULL);
     mapper.setSerializationInclusion(Include.NON_EMPTY);
+    SimpleModule simpleModule = new SimpleModule();
+    simpleModule.addSerializer(new KubernetesOverridesSerializer());
+    mapper.registerModule(simpleModule);
     try {
-      userIntent.universeOverrides =
-          mapper.writeValueAsString(ybUniverse.getSpec().getKubernetesOverrides());
+      return mapper.writeValueAsString(kubernetesOverrides);
     } catch (Exception e) {
       log.error("Unable to parse universe overrides", e);
     }
-    Provider provider = getProvider(customerUUID, ybUniverse);
-    userIntent.provider = provider.getUuid().toString();
-    userIntent.providerType = CloudType.kubernetes;
-    userIntent.replicationFactor =
-        ybUniverse.getSpec().getReplicationFactor() != null
-            ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
-            : 0;
-    userIntent.regionList =
-        provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
-    ;
-    if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-      K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
-      userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
-      K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
-      userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
-    }
-    userIntent.numNodes =
-        ybUniverse.getSpec().getNumNodes() != null
-            ? ((int) ybUniverse.getSpec().getNumNodes().longValue())
-            : 0;
-    userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
-    userIntent.accessKeyCode = "";
+    return null;
+  }
 
-    userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-    log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
-    log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
-
-    userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
-    userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
-    userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
-    userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
-    userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
-    if (ybUniverse.getSpec().getEnableLoadBalancer()) {
-      userIntent.enableExposingService = ExposingServiceState.EXPOSED;
-    } else {
-      userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
-    }
-
-    // Handle Passwords
-    YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
-    if (ysqlPassword != null) {
-      Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-      String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
-      if (password == null) {
-        log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
-        throw new RuntimeException(
-            "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
+  private UserIntent createUserIntent(YBUniverse ybUniverse, UUID customerUUID, boolean isCreate) {
+    try {
+      UserIntent userIntent = new UserIntent();
+      userIntent.universeName = OperatorUtils.getYbaUniverseName(ybUniverse);
+      if (ybUniverse.getSpec().getKubernetesOverrides() != null) {
+        userIntent.universeOverrides =
+            getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
       }
-      userIntent.enableYSQLAuth = true;
-      userIntent.ysqlPassword = password;
-    }
-    YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
-    if (ycqlPassword != null) {
-      Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-      String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
-      if (password == null) {
-        log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
-        throw new RuntimeException(
-            "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+      Provider provider = getProvider(customerUUID, ybUniverse);
+      userIntent.provider = provider.getUuid().toString();
+      userIntent.providerType = CloudType.kubernetes;
+      userIntent.replicationFactor =
+          ybUniverse.getSpec().getReplicationFactor() != null
+              ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
+              : 0;
+      userIntent.regionList =
+          provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
+      ;
+      if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+        K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
+        userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
+        K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
+        userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
       }
-      userIntent.enableYCQLAuth = true;
-      userIntent.ycqlPassword = password;
+      userIntent.numNodes =
+          ybUniverse.getSpec().getNumNodes() != null
+              ? ((int) ybUniverse.getSpec().getNumNodes().longValue())
+              : 0;
+      userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+      userIntent.accessKeyCode = "";
+
+      userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+      log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
+      log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+
+      userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
+      userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
+      userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
+      userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
+      userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
+      if (ybUniverse.getSpec().getEnableLoadBalancer()) {
+        userIntent.enableExposingService = ExposingServiceState.EXPOSED;
+      } else {
+        userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
+      }
+
+      // Handle Passwords
+      YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
+      if (ysqlPassword != null) {
+        Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
+        String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
+        if (password == null) {
+          log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
+          throw new RuntimeException(
+              "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
+        }
+        userIntent.enableYSQLAuth = true;
+        userIntent.ysqlPassword = password;
+      }
+      YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
+      if (ycqlPassword != null) {
+        Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
+        String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
+        if (password == null) {
+          log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
+          throw new RuntimeException(
+              "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+        }
+        userIntent.enableYCQLAuth = true;
+        userIntent.ycqlPassword = password;
+      }
+      setGFlagsForUserIntent(ybUniverse, userIntent, provider);
+      return userIntent;
+    } catch (Exception e) {
+      kubernetesStatusUpdater.updateUniverseState(
+          KubernetesResourceDetails.fromResource(ybUniverse),
+          isCreate ? UniverseState.ERROR_CREATING : UniverseState.ERROR_UPDATING);
+      throw e;
     }
-    setGFlagsForUserIntent(ybUniverse, userIntent, provider);
-    return userIntent;
   }
 
   private boolean checkIfGFlagsChanged(Universe universe, UserIntent oldIntent) {
@@ -1140,7 +1166,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     } else {
       // Case when provider name is not available in spec
-      providerName = getProviderName(getYbaUniverseName(ybUniverse));
+      providerName = getProviderName(OperatorUtils.getYbaUniverseName(ybUniverse));
       provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
       if (provider != null) {
         // If auto-provider with the same name found return it.
@@ -1215,7 +1241,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (universe.universeIsLocked()) {
       log.warn(
           "universe {} is locked, requeue update and try again later",
-          getYbaUniverseName(ybUniverse));
+          OperatorUtils.getYbaUniverseName(ybUniverse));
       workqueue.requeue(getWorkQueueKey(ybUniverse), action, false);
       log.debug("scheduled universe update for requeue");
       return true;

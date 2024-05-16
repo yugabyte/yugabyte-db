@@ -1133,6 +1133,42 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_OK(conn_->FetchFormat("SELECT * FROM $0", kTableName));
 }
 
+class PgIndexBackfillGinStress : public PgIndexBackfillTest {
+ public:
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--index_backfill_rpc_max_retries=0");
+    options->extra_master_flags.push_back("--replication_factor=1");
+    options->extra_tserver_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+  }
+};
+
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_EXCEPT_RELEASE(GinStress),
+          PgIndexBackfillGinStress) {
+  // Note: too high numbers error with issue #13825 or #21114.
+  constexpr auto kNumIndexRowsPerTableRow = 10000;
+  constexpr auto kNumRows = 1000;
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int[])", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(R"#(
+      INSERT INTO $0
+          SELECT (SELECT ARRAY(SELECT floor(random() * 100000) FROM generate_series(1, $1)))
+          FROM generate_series(1, $2)
+      )#",
+      kTableName, kNumIndexRowsPerTableRow, kNumRows));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 USING ybgin (a)", kIndexName, kTableName));
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgIndexBackfillSlow : public PgIndexBackfillTest {
  public:

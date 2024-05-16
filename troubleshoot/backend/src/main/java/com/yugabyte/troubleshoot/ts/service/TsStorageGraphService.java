@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class TsStorageGraphService implements GraphSourceIF {
-  private static final String ALIAS = "alias";
+  public static final String ALIAS = "alias";
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final Map<String, TsStorageGraphConfig> tsStorageGraphConfigs;
 
@@ -59,6 +59,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     response.setSuccessful(true);
     response.setName(query.getName());
     response.setLayout(config.getLayout());
+    response.setStepSeconds(query.getStepSeconds());
 
     // Generate SQL statement
     String sql = "SELECT ";
@@ -220,27 +221,31 @@ public class TsStorageGraphService implements GraphSourceIF {
             groupedLineEntry -> {
               LineKey key = groupedLineEntry.getKey();
               GroupedLine groupedLine = groupedLineEntry.getValue();
-              GraphResponse.GraphData graphData = new GraphResponse.GraphData();
+              GraphData graphData = new GraphData();
               graphData.setName(key.getLabels().remove(ALIAS));
               if (key.getLabels().containsKey(GraphFilter.instanceName.name())) {
                 graphData.setInstanceName(key.getLabels().remove(GraphFilter.instanceName.name()));
               }
               graphData.setLabels(key.getLabels());
               for (var valueGroup : groupedLine.values.entrySet()) {
-                graphData.x.add(valueGroup.getKey().toEpochMilli());
                 OptionalDouble average =
                     valueGroup.getValue().stream().mapToDouble(a -> a).average();
                 if (average.isEmpty()) {
                   log.warn("No values for {} at {}", key, valueGroup.getKey());
                   continue;
                 }
-                graphData.y.add(String.valueOf(average.getAsDouble()));
+                graphData
+                    .getPoints()
+                    .add(
+                        new GraphPoint()
+                            .setX(valueGroup.getKey().toEpochMilli())
+                            .setY(average.getAsDouble()));
               }
               response.getData().add(graphData);
             });
-    Comparator<GraphResponse.GraphData> graphDataComparator =
-        Comparator.comparing(GraphResponse.GraphData::getInstanceNameOrEmpty)
-            .thenComparing(GraphResponse.GraphData::getNameOrEmpty);
+    Comparator<GraphData> graphDataComparator =
+        Comparator.comparing(GraphData::getInstanceNameOrEmpty)
+            .thenComparing(GraphData::getNameOrEmpty);
     response.setData(response.getData().stream().sorted(graphDataComparator).toList());
     return response;
   }
@@ -250,7 +255,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     TsStorageGraphConfig.FilterColumn column = config.getFilterColumns().get(filterName);
     return switch (column.getType()) {
       case type_text -> stringValues;
-      case type_int -> stringValues.stream().map(Integer::valueOf).toList();
+      case type_int -> stringValues.stream().map(Long::valueOf).toList();
       case type_float -> stringValues.stream().map(Double::valueOf).toList();
       case type_bool -> stringValues.stream().map(Boolean::valueOf).toList();
       case type_uuid -> stringValues.stream().map(UUID::fromString).toList();

@@ -33,66 +33,6 @@
         }
       }
     ],
-    "supportingGraphs": [
-      {
-        "name": "query_rps",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
-          "queryId": ["3694949039461716331"],
-          "dbId": ["16384"]
-        }
-      },
-      {
-        "name": "query_rows_avg",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
-          "queryId": ["3694949039461716331"],
-          "dbId": ["16384"]
-        }
-      },
-      {
-        "name": "ysql_server_rpc_per_second",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "cpu_usage",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "disk_iops",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "disk_bytes_per_second_per_node",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "tserver_rpc_queue_size_tserver",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "lsm_rocksdb_memory_rejections",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "node_clock_skew",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      }
-    ],
     "defaultSettings": {
       "splitMode": "NONE",
       "splitType": "NONE",
@@ -105,53 +45,145 @@
         "possibleCause": "Load increase",
         "possibleCauseDescription": "RPS for this query or overall RPS increased significantly and DB is not able to process increased load",
         "troubleshootingRecommendations": [
-          "Check RPS graph for this query",
-          "Check YSQL RPS graph"
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "query_rps",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
+                  "queryId": ["3694949039461716331"],
+                  "dbId": ["16384"]
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          }
         ]
       },
       {
         "possibleCause": "Response size or queried tables sizes increased significantly",
         "possibleCauseDescription": "DB have to process more data to process each request, hence latency grows",
         "troubleshootingRecommendations": [
-          "Check Average Rows graph for the query",
-          "Check Table SST/WAL size graphs for tables, referenced in the query"
+          {
+            "recommendation": "Check Average Rows graph for the query",
+            "supportingGraphs": [
+              {
+                "name": "query_rows_avg",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
+                  "queryId": ["3694949039461716331"],
+                  "dbId": ["16384"]
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
+          }
         ]
       },
       {
         "possibleCause": "Query execution plan changed",
         "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
         "troubleshootingRecommendations": [
-          "Check query execution plan via EXPLAIN ANALYSE"
+          {
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
+          }
         ]
       },
       {
         "possibleCause": "DB internal queues contention",
         "possibleCauseDescription": "RPC queues are growing and DB is not able to process all the requests on time. Typically all queries latency will grow.",
         "troubleshootingRecommendations": [
-          "Check RPC Queue Size graph"
+          {
+            "recommendation": "Check RPC Queue Size graph",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpc_queue_size_tserver",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          }
         ]
       },
       {
         "possibleCause": "Resource contention",
         "possibleCauseDescription": "DB nodes face CPU, Memory or Disk IOPS/throughput limits. Typically all queries latency will grow.",
         "troubleshootingRecommendations": [
-          "Check CPU, Memory and Disk IOPS/throughput graphs"
+          {
+            "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
+            "supportingGraphs": [
+              {
+                "name": "cpu_usage",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              },
+              {
+                "name": "disk_iops",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              },
+              {
+                "name": "disk_bytes_per_second_per_node",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              },
+              {
+                "name": "lsm_rocksdb_memory_rejections",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          }
         ]
       },
       {
         "possibleCause": "Infra issues",
         "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
         "troubleshootingRecommendations": [
-          "Check network latency between the DB nodes",
-          "Check all DB nodes are up and running",
-          "Check Network graphs for anomaly"
+          {
+            "recommendation": "Check network latency between the DB nodes"
+          },
+          {
+            "recommendation": "Check all DB nodes are up and running"
+          },
+          {
+            "recommendation": "Check Network graphs for anomaly"
+          }
         ]
       },
       {
         "possibleCause": "Clock skew increased",
         "possibleCauseDescription": "DB nodes clock became out of sync, which slows down queries processing",
         "troubleshootingRecommendations": [
-          "Check Clock Skew graph"
+          {
+            "recommendation": "Check Clock Skew graph",
+            "supportingGraphs": [
+              {
+                "name": "node_clock_skew",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          }
         ]
       }
     ]
@@ -183,20 +215,6 @@
         }
       }
     ],
-    "supportingGraphs": [
-      {
-        "name": "ysql_server_rpc_per_second",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      },
-      {
-        "name": "tserver_rpcs_per_sec_by_universe",
-        "filters": {
-          "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
-        }
-      }
-    ],
     "defaultSettings": {
       "splitMode": "TOP",
       "splitType": "NODE",
@@ -206,25 +224,49 @@
     },
     "rcaGuidelines": [
       {
-        "possibleCause": "Uneven data distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes have significantly more data then the other nodes",
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
         "troubleshootingRecommendations": [
-          "Check Disk Usage graph across DB nodes",
-          "Check TServer read/write requests distribution across DB nodes"
+          {
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check TServer read/write requests distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpcs_per_sec_by_universe",
+                "filters": {
+                  "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"]
+                }
+              }
+            ]
+          }
         ]
       },
       {
-        "possibleCause": "Uneven query distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes process more SQL queries than the other nodes",
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
         "troubleshootingRecommendations": [
-          "Check YSQL RPC distribution across DB nodes"
+          {
+            "recommendation": "Check TServer/Master logs for evidence of background activities"
+          }
         ]
       },
       {
         "possibleCause": "3rd party processes",
-        "possibleCauseDescription": "Some process is running on the DB nodes which consumes CPU",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
         "troubleshootingRecommendations": [
-          "Check top command output on the affected DB nodes"
+          {
+            "recommendation": "Check top command output on the affected DB nodes"
+          }
         ]
       }
     ]

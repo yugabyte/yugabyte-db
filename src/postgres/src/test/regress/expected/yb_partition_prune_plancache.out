@@ -62,7 +62,7 @@ EXPLAIN EXECUTE t2(1);
  Update on np  (cost=0.00..232.80 rows=1000000 width=140)
    ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
          ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
-               Remote Filter: (a = 1)
+               Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
                ->  Append  (cost=0.00..5.27 rows=10 width=40)
                      ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=40)
@@ -75,7 +75,7 @@ EXPLAIN EXECUTE t2(1);
  Update on np  (cost=0.00..232.80 rows=1000000 width=140)
    ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
          ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
-               Remote Filter: (a = 1)
+               Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
                ->  Append  (cost=0.00..5.27 rows=10 width=40)
                      ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=40)
@@ -91,7 +91,7 @@ EXPLAIN EXECUTE t3(1);
    Delete on rp_p1
    ->  Nested Loop  (cost=0.00..1368.00 rows=100000 width=64)
          ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
-               Remote Filter: (a = 1)
+               Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..15.75 rows=100 width=36)
                ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=36)
                      Index Cond: (a = 1)
@@ -104,7 +104,7 @@ EXPLAIN EXECUTE t3(1);
    Delete on rp_p1
    ->  Nested Loop  (cost=0.00..1368.00 rows=100000 width=64)
          ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
-               Remote Filter: (a = 1)
+               Storage Filter: (a = 1)
          ->  Materialize  (cost=0.00..15.75 rows=100 width=36)
                ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=36)
                      Index Cond: (a = 1)
@@ -124,7 +124,7 @@ EXPLAIN EXECUTE t4(1);
          ->  HashAggregate  (cost=105.00..107.00 rows=200 width=4)
                Group Key: np.b
                ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=4)
-                     Remote Filter: (a < 5)
+                     Storage Filter: (a < 5)
 (10 rows)
 
 EXPLAIN EXECUTE t4(1);
@@ -139,7 +139,7 @@ EXPLAIN EXECUTE t4(1);
          ->  HashAggregate  (cost=105.00..107.00 rows=200 width=4)
                Group Key: np.b
                ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=4)
-                     Remote Filter: (a < 5)
+                     Storage Filter: (a < 5)
 (10 rows)
 
 -- Subquery test whether the inner query has a partition key as a bound parameter.
@@ -150,12 +150,12 @@ EXPLAIN EXECUTE t5(1);
  Hash Semi Join  (cost=5.45..116.14 rows=500 width=72)
    Hash Cond: (np.b = lp_p1.b)
    ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
-         Remote Filter: (a = 1)
+         Storage Filter: (a = 1)
    ->  Hash  (cost=5.33..5.33 rows=10 width=4)
          ->  Append  (cost=0.00..5.33 rows=10 width=4)
                ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
                      Index Cond: (a = 1)
-                     Remote Filter: ((c)::text = '1'::text)
+                     Storage Filter: ((c)::text = '1'::text)
 (9 rows)
 
 EXPLAIN EXECUTE t5(1);
@@ -164,12 +164,12 @@ EXPLAIN EXECUTE t5(1);
  Hash Semi Join  (cost=5.45..116.14 rows=500 width=72)
    Hash Cond: (np.b = lp_p1.b)
    ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
-         Remote Filter: (a = 1)
+         Storage Filter: (a = 1)
    ->  Hash  (cost=5.33..5.33 rows=10 width=4)
          ->  Append  (cost=0.00..5.33 rows=10 width=4)
                ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
                      Index Cond: (a = 1)
-                     Remote Filter: ((c)::text = '1'::text)
+                     Storage Filter: ((c)::text = '1'::text)
 (9 rows)
 
 -- CTE on partitioned tables.
@@ -221,7 +221,7 @@ EXPLAIN EXECUTE t7('a');
  Append  (cost=0.00..16.50 rows=100 width=72)
    ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
          Index Cond: ((a = 1) AND (b = 1))
-         Remote Filter: ((c)::bpchar = 'a'::bpchar)
+         Storage Filter: ((c)::bpchar = 'a'::bpchar)
 (4 rows)
 
 EXPLAIN EXECUTE t7('a');
@@ -230,7 +230,7 @@ EXPLAIN EXECUTE t7('a');
  Append  (cost=0.00..16.50 rows=100 width=72)
    ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
          Index Cond: ((a = 1) AND (b = 1))
-         Remote Filter: ((c)::bpchar = $1)
+         Storage Filter: ((c)::bpchar = $1)
 (4 rows)
 
 PREPARE t8(char) AS UPDATE lp SET d=3 WHERE a=1 AND b=1 AND c=$1;
@@ -241,7 +241,7 @@ EXPLAIN EXECUTE t8('a');
    Update on lp_p1
    ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.33 rows=10 width=200)
          Index Cond: (a = 1)
-         Remote Filter: ((b = 1) AND ((c)::bpchar = 'a'::bpchar))
+         Storage Filter: ((b = 1) AND ((c)::bpchar = 'a'::bpchar))
 (5 rows)
 
 EXPLAIN EXECUTE t8('a');
@@ -251,7 +251,7 @@ EXPLAIN EXECUTE t8('a');
    Update on lp_p1
    ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.33 rows=10 width=200)
          Index Cond: (a = 1)
-         Remote Filter: ((b = 1) AND ((c)::bpchar = $1))
+         Storage Filter: ((b = 1) AND ((c)::bpchar = $1))
 (5 rows)
 
 PREPARE t9(int) AS DELETE FROM np WHERE a < $1;
@@ -260,7 +260,7 @@ EXPLAIN EXECUTE t9(1);
 --------------------------------------------------------------
  Delete on np  (cost=0.00..102.50 rows=1000 width=32)
    ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=32)
-         Remote Filter: (a < 1)
+         Storage Filter: (a < 1)
 (3 rows)
 
 EXPLAIN EXECUTE t9(1);
@@ -268,5 +268,5 @@ EXPLAIN EXECUTE t9(1);
 --------------------------------------------------------------
  Delete on np  (cost=0.00..102.50 rows=1000 width=32)
    ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=32)
-         Remote Filter: (a < $1)
+         Storage Filter: (a < $1)
 (3 rows)

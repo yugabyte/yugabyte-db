@@ -1972,13 +1972,23 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // First, check tserver's catalog version.
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
-  SCOPED_WAIT_STATUS(WaitForYsqlBackendsCatalogVersion);
+  SCOPED_WAIT_STATUS(WaitForYSQLBackendsCatalogVersion);
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_ysql_enable_db_catalog_version_mode &&
-            server_->catalog_version_table_in_perdb_mode()) {
+        bool perdb_mode = false;
+        if (FLAGS_ysql_enable_db_catalog_version_mode) {
+          const std::optional<bool> catalog_version_table_in_perdb_mode =
+            server_->catalog_version_table_in_perdb_mode();
+          if (!catalog_version_table_in_perdb_mode.has_value()) {
+            // This is a temporary known case when this tserver hasn't get the answer
+            // from master yet via heartbeat response.
+            return false;
+          }
+          perdb_mode = catalog_version_table_in_perdb_mode.value();
+        }
+        if (perdb_mode) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {
@@ -3021,11 +3031,13 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
           transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
         s = tablet_peer->shared_tablet()->GetLockStatus(
-            transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us());
+            transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
+            req->max_txn_locks_per_tablet());
       } else {
         DCHECK(!limit_resp_to_txns.empty());
         s = tablet_peer->shared_tablet()->GetLockStatus(
-            limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us());
+            limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
+            req->max_txn_locks_per_tablet());
       }
       if (!s.ok()) {
         resp->Clear();

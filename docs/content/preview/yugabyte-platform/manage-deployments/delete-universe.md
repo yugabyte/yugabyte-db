@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
-    weight: 70
+    weight: 50
 type: docs
 ---
 

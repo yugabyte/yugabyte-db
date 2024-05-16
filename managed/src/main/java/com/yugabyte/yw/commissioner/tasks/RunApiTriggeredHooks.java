@@ -36,7 +36,7 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
     log.info("Started {} task", getName());
 
     try {
-      Universe universe = lockUniverseForUpdate(-1); // Check this
+      Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       Collection<NodeDetails> nodes = universe.getNodes();
 
       int countBefore = nodes.size();

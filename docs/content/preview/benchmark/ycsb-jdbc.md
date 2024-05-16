@@ -202,4 +202,4 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 | Workload E | 16,642 | 15ms scan | Not applicable |
 | Workload F | 29,500 | 2ms | 15ms read-modify-write |
 
-For an additional example, refer to [Example: YCSB workload with automatic tablet splitting example](../../architecture/docdb-sharding/tablet-splitting/#example-ycsb-workload-with-automatic-tablet-splitting).
+For an additional example, refer to [Example: YCSB workload with automatic tablet splitting example](../../architecture/docdb-sharding/tablet-splitting/#ycsb-workload-with-automatic-tablet-splitting-example).

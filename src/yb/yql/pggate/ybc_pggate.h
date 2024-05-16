@@ -30,7 +30,7 @@ typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
                    YBCPgCallbacks pg_callbacks, uint64_t *session_id,
-                   const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+                   const YBCPgAshConfig* ash_config);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -786,29 +786,21 @@ YBCStatus YBCPgListReplicationSlots(
 YBCStatus YBCPgGetReplicationSlot(
     const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active);
-
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
-YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
-                                                    const YBCPgOid database_oid,
-                                                    const YBCPgOid table_oid,
-                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
-                                                    size_t *numtablets);
+YBCStatus YBCPgInitVirtualWalForCDC(
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations);
 
-YBCStatus YBCPgSetCDCTabletCheckpoint(const char *stream_id,
-                                      const char *tablet_id,
-                                      const YBCPgCDCSDKCheckpoint *checkpoint,
-                                      uint64_t safe_time,
-                                      bool is_initial_checkpoint);
+YBCStatus YBCPgDestroyVirtualWalForCDC();
 
-YBCStatus YBCPgGetCDCChanges(const char *stream_id,
-                             const char *tablet_id,
-                             const YBCPgCDCSDKCheckpoint *checkpoint,
-                             YBCPgChangeRecordBatch **record_batch);
+YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
+                                       YBCPgChangeRecordBatch **record_batch);
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn);
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
@@ -833,7 +825,7 @@ struct PgApiContext;
 void YBCInitPgGateEx(
     const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
     PgApiContext *context, std::optional<uint64_t> session_id,
-    const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set);
+    const YBCPgAshConfig* ash_config);
 
 } // namespace pggate
 } // namespace yb

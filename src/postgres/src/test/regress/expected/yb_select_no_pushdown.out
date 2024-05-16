@@ -567,7 +567,7 @@ EXECUTE si_param(0, 0);
 (2 rows)
 
 DEALLOCATE si_param;
--- Index scan with remote filter on a system table
+-- Index scan with storage filter on a system table
 EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
                                    QUERY PLAN
 --------------------------------------------------------------------------------
@@ -585,7 +585,7 @@ SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
  pushdown_composite_pkey | i
 (4 rows)
 
--- Index scan with remote filter on a range table
+-- Index scan with storage filter on a range table
 CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
 INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);

@@ -263,6 +263,9 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
+      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+          "Failed to run CloneStateManager: ");
+
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables(l.epoch());
       }
@@ -309,11 +312,8 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->StartPgCatalogVersionsBgTaskIfStopped();
       }
 
-      // Restart CDCSDK parent tablet deletion bg task.
-      catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
-
       // Run background tasks related to XCluster & CDC Schema.
-      catalog_manager_->RunXClusterBgTasks(l.epoch());
+      catalog_manager_->RunXReplBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();

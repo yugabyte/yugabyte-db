@@ -678,6 +678,18 @@ public class CommonUtils {
     return compareReleases(thresholdRelease, actualRelease, false, false, true);
   }
 
+  /**
+   * This method compares 2 version strings. Make sure to only compare stable with stable and
+   * preview with preview if using this function. If you are not sure of either, use method {@link
+   * com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param thresholdRelease
+   * @param actualRelease
+   * @param beforeMatches
+   * @param afterMatches
+   * @param equalMatches
+   * @return
+   */
   private static boolean compareReleases(
       String thresholdRelease,
       String actualRelease,

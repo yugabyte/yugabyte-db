@@ -26,6 +26,8 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -39,8 +41,6 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/mem_tracker.h"
 
 namespace rocksdb {

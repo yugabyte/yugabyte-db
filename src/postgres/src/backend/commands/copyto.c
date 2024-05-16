@@ -657,7 +657,7 @@ BeginCopyTo(ParseState *pstate,
 
 	cstate->copy_dest = COPY_FILE;	/* default */
 
-	/* YB_REVIEW() Stat for PROGRESS_COPY_STATUS comes from
+	/* YB_TODO(review) Stat for PROGRESS_COPY_STATUS comes from
 	 *   https://phabricator.dev.yugabyte.com/D17504
 	 */
 	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);

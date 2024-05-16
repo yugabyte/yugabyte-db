@@ -250,13 +250,3 @@ Oid YBGetDatabaseOidFromEnv(const char *database_name)
 	}
 	return InvalidOid;
 }
-
-bool
-YBEnableAsh()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_enable_ash");
-
-	return cached_value;
-}

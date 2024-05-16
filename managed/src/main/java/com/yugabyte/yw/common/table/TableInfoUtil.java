@@ -20,6 +20,10 @@ public class TableInfoUtil {
     return table.getColocatedInfo().getColocated() && !isColocatedParentTable(table);
   }
 
+  public static boolean isIndexTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return table.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION;
+  }
+
   // YBA does not treat colocated parent tables as system tables, but db does.
   public static boolean isSystemTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
     return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION

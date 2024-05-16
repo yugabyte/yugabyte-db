@@ -12,12 +12,16 @@ menu:
 type: indexpage
 ---
 
-You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
+Keep YugabyteDB Anywhere (YBA) up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
+
+For information on which versions of YugabyteDB are compatible with your version of YBA, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
+
+You can upgrade YBA using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
 | [YBA&nbsp;Installer](./upgrade-yp-installer/) | yba-ctl CLI | Your installation already uses YBA Installer. |
-| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1 or later using Replicated. |
+| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated. |
 | [Kubernetes](./upgrade-yp-kubernetes/) | Helm chart | You're deploying in Kubernetes. |
 
 If you are upgrading a YBA installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
@@ -30,30 +34,18 @@ If you are running YugabyteDB Anywhere v2.20.x on a [deprecated OS](../../refere
 
 {{< /note >}}
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-installer/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Upgrade YugabyteDB Anywhere</div>
-      </div>
-      <div class="body">
-        Upgrade your YugabyteDB Anywhere installation.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Upgrade YugabyteDB Anywhere"
+    body="Upgrade your YugabyteDB Anywhere installation."
+    href="upgrade-yp-installer/"
+    icon="/images/section_icons/quick_start/install.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-xcluster-ybadmin/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
-        <div class="title">Synchronize replication after upgrade</div>
-      </div>
-      <div class="body">
-        Synchronize xCluster replication after an upgrade for universes set up using yb-admin.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Synchronize replication after upgrade"
+    body="Synchronize xCluster replication after an upgrade for universes set up using yb-admin."
+    href="upgrade-yp-xcluster-ybadmin/"
+    icon="/images/section_icons/manage/pitr.png">}}
 
-</div>
+{{</index/block>}}

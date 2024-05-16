@@ -42,7 +42,7 @@ class TestQLStatement : public QLTestBase {
   }
 
   Status ExecuteAsync(Statement *stmt, QLProcessor *processor, Callback<void(const Status&)> cb) {
-    ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled());
+    ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
     return stmt->ExecuteAsync(processor, StatementParameters(),
                               Bind(&TestQLStatement::ExecuteAsyncDone, Unretained(this), cb));
   }

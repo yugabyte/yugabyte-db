@@ -1,10 +1,11 @@
 {{ define "main" }}
 <div class="td-content">
 	<h1>{{ .Title }}</h1>
-  <div class="search-result"  >
+  <div id="search-summary"></div>
+  <div class="search-result">
     <div class="algolia-data" id="docs">
       <h2 style="display:none">Docs</h2>
-        <ul id="doc-hit" class="content-panel"></ul>
+      <ul id="doc-hit" class="content-panel"></ul>
       <div id="pagination-docs" class="pager"></div>
     </div>
   </div>

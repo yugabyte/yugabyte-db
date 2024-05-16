@@ -53,6 +53,14 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 		value_size = pos - value;
 
 		/* set common params */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+		if (name_size == 5 && !memcmp(name, "user", 5))
+			yb_kiwi_var_set(&su->user, value, value_size);
+		else if (name_size == 9 && !memcmp(name, "database", 9))
+			yb_kiwi_var_set(&su->database, value, value_size);
+		else if (name_size == 12 && !memcmp(name, "replication", 12))
+			yb_kiwi_var_set(&su->replication, value, value_size);
+#else
 		if (name_size == 5 && !memcmp(name, "user", 5))
 			kiwi_var_set(&su->user, KIWI_VAR_UNDEF, value,
 				     value_size);
@@ -62,6 +70,7 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 		else if (name_size == 12 && !memcmp(name, "replication", 12))
 			kiwi_var_set(&su->replication, KIWI_VAR_UNDEF, value,
 				     value_size);
+#endif
 		else if (name_size == 8 && !memcmp(name, "options", 8))
 			kiwi_parse_options_and_update_vars(vars, value,
 							   value_size);
@@ -76,9 +85,12 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 
 	/* database = user, if not specified */
 	if (su->database.value_len == 0)
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+		yb_kiwi_var_set(&su->database, su->user.value, su->user.value_len);
+#else
 		kiwi_var_set(&su->database, KIWI_VAR_UNDEF, su->user.value,
 			     su->user.value_len);
-
+#endif
 	return 0;
 }
 

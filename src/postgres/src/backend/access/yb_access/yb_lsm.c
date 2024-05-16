@@ -525,7 +525,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		IndexTuple tuple = ybc_getnext_indextuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
-			scan->xs_heaptid.yb_item = INDEXTUPLE_YBITEM(tuple);
 			scan->xs_itup = tuple;
 			scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
 			has_tuple = true;

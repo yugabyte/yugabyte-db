@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX pgwrapper)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
@@ -34,7 +33,6 @@ add_dependencies(
   gen_src_yb_tserver_backup_proto
   gen_src_yb_docdb_docdb_proto
   gen_src_yb_dockv_dockv_proto
-  gen_src_yb_util_opid_proto
   gen_src_yb_tablet_metadata_proto
   gen_src_yb_tablet_operations_proto
   gen_src_yb_tablet_tablet_proto
@@ -115,6 +113,7 @@ ADD_YB_TEST(colocation-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_alter_add_column_default-test)
+ADD_YB_TEST(pg_ash-test)
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_misc_conflicts-test)

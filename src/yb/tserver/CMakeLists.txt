@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tserver)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+set(YB_PCH_DEP_LIBS yb_test_util)
 
 #########################################
 # tserver_proto
@@ -232,6 +232,7 @@ set(TSERVER_SRCS
   remote_bootstrap_snapshots.cc
   remote_snapshot_transfer_client.cc
   service_util.cc
+  tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
   tablet_server_options.cc
@@ -361,6 +362,7 @@ set(YB_TEST_LINK_LIBS
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
+ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)

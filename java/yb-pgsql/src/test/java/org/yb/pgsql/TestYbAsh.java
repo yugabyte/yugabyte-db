@@ -40,9 +40,11 @@ public class TestYbAsh extends BasePgSQLTest {
   private void setAshConfigAndRestartCluster(
       int sampling_interval, int sample_size) throws Exception {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_yb_enable_ash", "true");
-    flagMap.put("ysql_pg_conf_csv", "yb_ash_sampling_interval=" + sampling_interval +
-        ",yb_ash_sample_size=" + sample_size);
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
+    flagMap.put("ysql_yb_ash_enable_infra", "true");
+    flagMap.put("ysql_yb_enable_ash", "true");
+    flagMap.put("ysql_yb_ash_sampling_interval", String.valueOf(sampling_interval));
+    flagMap.put("ysql_yb_ash_sample_size", String.valueOf(sample_size));
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
   }
 
@@ -60,7 +62,7 @@ public class TestYbAsh extends BasePgSQLTest {
     restartCluster();
     try (Statement statement = connection.createStatement()) {
       runInvalidQuery(statement, "SELECT * FROM " + ASH_VIEW,
-          "TEST_yb_enable_ash gflag must be enabled");
+          "ysql_yb_ash_enable_infra gflag must be enabled");
     }
   }
 

@@ -8,13 +8,13 @@ SET SESSION AUTHORIZATION 'regress_replicationslot_user';
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot1 |
+ testslot1 | 0/2
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot2 |
+ testslot2 | 0/2
 (1 row)
 
 -- Cannot do SELECT * since yb_stream_id changes across runs.
@@ -23,8 +23,8 @@ SELECT slot_name, plugin, slot_type, database, temporary, active,
 FROM pg_replication_slots;
  slot_name |  plugin  | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
 -----------+----------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
- testslot2 | pgoutput | logical   | yugabyte | f         | f      |            |      |              |             |
- testslot1 | pgoutput | logical   | yugabyte | f         | f      |            |      |              |             |
+ testslot2 | pgoutput | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
+ testslot1 | pgoutput | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
 (2 rows)
 
 -- drop the replication slot and create with same name again.
@@ -38,7 +38,7 @@ SELECT * FROM pg_drop_replication_slot('testslot1');
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot1 |
+ testslot1 | 0/2
 (1 row)
 
 -- unsupported cases
@@ -58,7 +58,7 @@ SET ROLE regress_replicationslot_replication_user;
 SELECT * FROM pg_create_logical_replication_slot('testslot3', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot3 |
+ testslot3 | 0/2
 (1 row)
 
 RESET ROLE;

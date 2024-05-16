@@ -32,10 +32,10 @@ void XClusterConsumerReplicationErrorCollector::RemovePoller(const XClusterPolle
 void XClusterConsumerReplicationErrorCollector::StoreError(
     const XClusterPollerId& poller_id, ReplicationErrorPb error) {
   std::lock_guard l(mutex_);
-  DCHECK(error_map_.contains(poller_id));
   if (!error_map_.contains(poller_id)) {
-    LOG(WARNING) << "xCluster Poller '" << poller_id
-                 << "' reporting error when it is not expected to";
+    // This could happen if the poller has just been shutdown,
+    YB_LOG_EVERY_N(WARNING, 30) << "xCluster Poller '" << poller_id
+                                << "' reporting error when it is not expected to" << THROTTLE_MSG;
     return;
   }
   auto& poller_entry = error_map_.at(poller_id);

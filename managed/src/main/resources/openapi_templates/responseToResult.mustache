@@ -1,12 +1,23 @@
-{{! Yugabyte modification: Only 2 space tabs indentation }}
+{{! Yugabyte modification: 2 space tabs indentation and audit logs below }}
+{{! Yugabyte modification: add audit logs }}
+{{#vendorExtensions.x-yba-api-audit}}
+{{#additionalDetails}}
+JsonNode additionalDetails = null;
+    if (UpgradeUniverseGFlags.class.isAssignableFrom({{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}}.getClass())) {
+      additionalDetails =
+          gFlagsAuditHandler.constructGFlagAuditPayload({{auditTargetId}}, (UpgradeUniverseGFlags) {{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}});
+    }
+{{/additionalDetails}}
+{{/vendorExtensions.x-yba-api-audit}}
+{{! End Yugabyte modification}}
 {{^controllerOnly}}
 {{^returnType}}
 {{#supportAsync}}
-CompletableFuture<Result> result = CompletableFuture.supplyAsync(() -> {
+    CompletableFuture<Result> result = CompletableFuture.supplyAsync(() -> {
         try {
 {{/supportAsync}}
 {{/returnType}}
-{{#returnType}}{{#supportAsync}}CompletionStage<{{>returnTypesNoVoid}}> stage = {{/supportAsync}}{{^supportAsync}}{{>returnTypesNoVoid}} obj = {{/supportAsync}}{{/returnType}}{{^returnType}}{{#supportAsync}}    {{/supportAsync}}{{/returnType}}{{^useInterfaces}}imp.{{/useInterfaces}}{{operationId}}(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}}){{#returnType}}{{#supportAsync}}.thenApply(obj -> { {{/supportAsync}}{{/returnType}}{{^supportAsync}};{{/supportAsync}}{{#supportAsync}}{{^returnType}};{{/returnType}}{{/supportAsync}}
+    {{#returnType}}{{#supportAsync}}CompletionStage<{{>returnTypesNoVoid}}> stage = {{/supportAsync}}{{^supportAsync}}{{>returnTypesNoVoid}} obj = {{/supportAsync}}{{/returnType}}{{^returnType}}{{#supportAsync}}    {{/supportAsync}}{{/returnType}}{{^useInterfaces}}imp.{{/useInterfaces}}{{operationId}}(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}}){{#returnType}}{{#supportAsync}}.thenApply(obj -> { {{/supportAsync}}{{/returnType}}{{^supportAsync}};{{/supportAsync}}{{#supportAsync}}{{^returnType}};{{/returnType}}{{/supportAsync}}
 {{#returnType}}
 {{^isResponseFile}}
 {{^returnTypeIsPrimitive}}
@@ -53,6 +64,19 @@ CompletableFuture<Result> result = CompletableFuture.supplyAsync(() -> {
 });
 {{/supportAsync}}
 {{/returnType}}
+{{! Yugabyte modification: add audit logs }}
+{{#vendorExtensions.x-yba-api-audit}}
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.{{auditTargetType}},
+            {{auditTargetId}},
+            Audit.ActionType.{{auditActionType}},
+            request.body().asJson(){{#taskUuid}},
+            {{taskUuid}}{{/taskUuid}}{{#additionalDetails}},
+            additionalDetails{{/additionalDetails}});
+{{/vendorExtensions.x-yba-api-audit}}
+{{! End Yugabyte modification}}
 {{#returnType}}
 {{#supportAsync}}
 return stage.thenApply(obj -> {

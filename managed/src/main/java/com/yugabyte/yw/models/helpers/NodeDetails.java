@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.REPLACE;
 import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
@@ -110,7 +111,7 @@ public class NodeDetails {
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
     // Setting state to Live must be towards the end as ADD cannot be an option here.
-    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT, REPLACE),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -257,7 +258,7 @@ public class NodeDetails {
   public int nodeExporterPort = 9300;
 
   @ApiModelProperty(value = "Otel collector metrics port")
-  public int otelCollectorMetricsPort = 8888;
+  public int otelCollectorMetricsPort = 8889;
 
   // True if cronjobs were properly configured for this node.
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")

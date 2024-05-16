@@ -14,7 +14,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -120,7 +120,9 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.enable_ysql = true;
     options.num_tablet_servers = 1;
     options.num_masters = 1;
-    options.extra_master_flags = {"--replication_factor=1", "--enable_load_balancing=false"};
+    options.extra_master_flags = {
+        "--replication_factor=1", "--enable_load_balancing=false",
+        "--initial_tserver_registration_duration_secs=0"};
     return options;
   }
 };

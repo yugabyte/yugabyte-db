@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX docdb)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 # docdb_proto
 
@@ -25,7 +24,7 @@ YRPC_GENERATE(
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
-        DEPS protobuf yb_common_proto opid_proto
+        DEPS protobuf yb_common_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)

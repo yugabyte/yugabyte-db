@@ -12,11 +12,13 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import javax.inject.Inject;
@@ -63,9 +65,14 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     if (cause instanceof RecoverableException) {
       NodeTaskParams params = taskParams();
-
+      // Universe UUID and node name are always set.
+      Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+      CloudType cloudType = universe.getNodeDeploymentMode(universe.getNode(params.nodeName));
+      if (!cloudType.isPublicCloud()) {
+        log.warn("Skipping reboot of {} for non-public cloud {}", params.nodeName, cloudType);
+        return false;
+      }
       log.warn("Encountered a recoverable error, hard rebooting node {}", params.nodeName);
-
       NodeTaskParams rebootParams = new NodeTaskParams();
       rebootParams.nodeName = params.nodeName;
       rebootParams.setUniverseUUID(params.getUniverseUUID());
@@ -77,7 +84,6 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
       task.run();
       return true;
     }
-
     return false;
   }
 }

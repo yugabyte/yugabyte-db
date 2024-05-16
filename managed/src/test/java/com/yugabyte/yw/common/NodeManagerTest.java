@@ -511,8 +511,10 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
+    ReleaseContainer release =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
     releaseMetadata.filePath = "/yb/release.tar.gz";
-    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
     when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfGetter.getConfForScope(
@@ -878,12 +880,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(setupParams.instanceType);
         }
 
-        if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.getYbImage();
-          if (ybImage != null && !ybImage.isEmpty()) {
-            expectedCommand.add("--machine_image");
-            expectedCommand.add(ybImage);
-          }
+        String ybImage = testData.region.getYbImage();
+        if (ybImage != null && !ybImage.isEmpty()) {
+          expectedCommand.add("--machine_image");
+          expectedCommand.add(ybImage);
         }
 
         if ((cloud.equals(Common.CloudType.aws) || cloud.equals(Common.CloudType.gcp))

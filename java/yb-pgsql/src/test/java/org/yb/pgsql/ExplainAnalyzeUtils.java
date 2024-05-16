@@ -25,6 +25,8 @@ public class ExplainAnalyzeUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgExplainAnalyze.class);
   public static final String NODE_AGGREGATE = "Aggregate";
   public static final String NODE_FUNCTION_SCAN = "Function Scan";
+  public static final String NODE_GATHER = "Gather";
+  public static final String NODE_GATHER_MERGE = "Gather Merge";
   public static final String NODE_HASH = "Hash";
   public static final String NODE_HASH_JOIN = "Hash Join";
   public static final String NODE_INDEX_ONLY_SCAN = "Index Only Scan";
@@ -107,6 +109,13 @@ public class ExplainAnalyzeUtils {
     // Seek and Next Estimation
     PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
     PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+
+    // Estimated Docdb Result Width
+    PlanCheckerBuilder estimatedDocdbResultWidth(ValueChecker<Long> checker);
+
+    // Parallel workers in Gather and Gather Merge
+    PlanCheckerBuilder workersPlanned(ValueChecker<Long> checker);
+    PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);
 
     // DocDB Metric
     PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);

@@ -3988,7 +3988,7 @@ create function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
@@ -4001,30 +4001,26 @@ create or replace function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
 $$ language plpgsql;
 
--- YB note: add ordering.  Unfortunately, cannot match upstream PG's ordering
--- exactly in this case unless we modify the definition of int8_tbl itself.
-select * from conflict_test() ORDER BY 1, 2;
+select q1, q2 from conflict_test(); -- YB: avoid ybsort column
 
 create or replace function conflict_test() returns setof int8_tbl as $$
 #variable_conflict use_column
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2 from int8_tbl loop
+  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
     return next r;
   end loop;
 end;
 $$ language plpgsql;
 
--- YB note: add ordering.  Unfortunately, cannot match upstream PG's ordering
--- exactly in this case unless we modify the definition of int8_tbl itself.
-select * from conflict_test() ORDER BY 1, 2;
+select q1, q2 from conflict_test(); -- YB: avoid ybsort column
 
 drop function conflict_test();
 

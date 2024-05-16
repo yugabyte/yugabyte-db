@@ -3028,7 +3028,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, rcexpr, RowCompareExpr);
 				MUTATE(newnode->largs, rcexpr->largs, List *);
-				MUTATE(newnode->rargs, rcexpr->rargs, List *);
+				MUTATE(newnode->rargs, rcexpr->rargs, Node *);
 				return (Node *) newnode;
 			}
 			break;

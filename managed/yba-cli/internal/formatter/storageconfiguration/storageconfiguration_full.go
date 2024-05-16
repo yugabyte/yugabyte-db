@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -22,7 +23,6 @@ const (
 	awsStorageConfig  = "table {{.S3AccessKeyID}}\t{{.S3SecretAccessKey}}\t{{.IAMInstanceProfile}}"
 	azStorageConfig   = "table {{.AzSASToken}}"
 	gcsStorageConfig1 = "table {{.UseGCPIAM}}"
-	gcsStorageConfig2 = "table {{.GcsCredentials}}"
 )
 
 // FullStorageConfigContext to render StorageConfig Details output
@@ -78,7 +78,7 @@ func (fs *FullStorageConfigContext) Write() error {
 	// Cloud Specific subSection
 	code := fs.s.GetName()
 	switch code {
-	case "S3":
+	case util.S3StorageConfigType:
 		tmpl, err = fs.startSubsection(awsStorageConfig)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -92,7 +92,7 @@ func (fs *FullStorageConfigContext) Write() error {
 		fs.PostFormat(tmpl, NewStorageConfigContext())
 		fs.Output.Write([]byte("\n"))
 
-	case "GCS":
+	case util.GCSStorageConfigType:
 		tmpl, err = fs.startSubsection(gcsStorageConfig1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -106,19 +106,7 @@ func (fs *FullStorageConfigContext) Write() error {
 		fs.PostFormat(tmpl, NewStorageConfigContext())
 		fs.Output.Write([]byte("\n"))
 
-		tmpl, err = fs.startSubsection(gcsStorageConfig2)
-		if err != nil {
-			logrus.Errorf("%s", err.Error())
-			return err
-		}
-		if err := fs.ContextFormat(tmpl, fsc.StorageConfig); err != nil {
-			logrus.Errorf("%s", err.Error())
-			return err
-		}
-		fs.PostFormat(tmpl, NewStorageConfigContext())
-		fs.Output.Write([]byte("\n"))
-
-	case "AZ":
+	case util.AzureStorageConfigType:
 		tmpl, err = fs.startSubsection(azStorageConfig)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())

@@ -20,6 +20,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/postgres-minicluster.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -214,6 +215,10 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
       const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
+  Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
+      const std::string& replication_slot_name,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      bool verify_snapshot_name = false);
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       bool verify_snapshot_name = false);

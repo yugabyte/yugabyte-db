@@ -37,7 +37,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1;
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=16)
-   Remote Filter: (h1 = 1)
+   Storage Filter: (h1 = 1)
 (2 rows)
 
 -- Filter on row with no index, expect sequential scan with 1000 rows
@@ -45,7 +45,7 @@ EXPLAIN SELECT * FROM test WHERE v1 = 1;
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=16)
-   Remote Filter: (v1 = 1)
+   Storage Filter: (v1 = 1)
 (2 rows)
 
 -- No flter, expect sequential scan with 1000 rows
@@ -103,7 +103,7 @@ EXPLAIN SELECT * FROM test WHERE h1 = 1;
                           QUERY PLAN
 --------------------------------------------------------------
  Seq Scan on test  (cost=0.00..10250.00 rows=100000 width=16)
-   Remote Filter: (h1 = 1)
+   Storage Filter: (h1 = 1)
 (2 rows)
 
 -- Filter on row with no index, expect sequential scan with 100% rows
@@ -111,7 +111,7 @@ EXPLAIN SELECT * FROM test WHERE v1 = 1;
                           QUERY PLAN
 --------------------------------------------------------------
  Seq Scan on test  (cost=0.00..10250.00 rows=100000 width=16)
-   Remote Filter: (v1 = 1)
+   Storage Filter: (v1 = 1)
 (2 rows)
 
 -- No flter, expect sequential scan with 100% rows

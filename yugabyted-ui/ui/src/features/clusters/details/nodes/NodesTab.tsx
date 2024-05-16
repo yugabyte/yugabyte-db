@@ -231,7 +231,11 @@ export const NodesTab: FC = () => {
       read_ops: true,
       write_ops: true,
       ...((isConnMgrEnabled)
-          ? {active_logical_connections: false, active_physical_connections: false}
+          ? {
+              active_logical_connections: false,
+              active_physical_connections: false,
+              active_connections_ycql: false
+            }
           : {active_connections: false}),
       number_of_tablets: true,
       peer_tablets: true,
@@ -329,7 +333,8 @@ export const NodesTab: FC = () => {
                  ? [connectionsResponse?.data?.[node.host]
                         ?.reduce((sum, pool) => sum + pool.active_logical_connections, 0) ?? 0,
                     connectionsResponse?.data?.[node.host]
-                        ?.reduce((sum, pool) => sum + pool.active_physical_connections, 0) ?? 0]
+                        ?.reduce((sum, pool) => sum + pool.active_physical_connections, 0) ?? 0,
+                    node.metrics.active_connections.ycql]
                  : [node.metrics.active_connections.ysql + node.metrics.active_connections.ycql])],
         node_status_column:
             [node.is_node_up ? node.metrics.uptime_seconds : -1,
@@ -440,7 +445,8 @@ export const NodesTab: FC = () => {
         options: {
           filter: true,
           display: columns.read_ops || columns.write_ops || columns.active_connections ||
-                   columns.active_logical_connections || columns.active_physical_connections
+                   columns.active_logical_connections || columns.active_physical_connections ||
+                   columns.active_connections_ycql
         },
         subColumns: [
           {
@@ -470,22 +476,34 @@ export const NodesTab: FC = () => {
               ? [
                     {
                         name: 'active_logical_connections',
-                        label: t('clusterDetail.nodes.activeLogicalConnections'),
+                        label: t('clusterDetail.nodes.activeLogicalConnectionsYsql'),
                         options: {
                             filter: true,
                             display: columns.active_logical_connections,
-                            setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
+                            setCellProps: () => ({ style: { width: '260px', padding: '0 32px' } }),
                             setCellHeaderProps: () => ({
-                                style: { width: '220px', padding: '8px 32px' }
+                                style: { width: '260px', padding: '8px 32px' }
                             })
                         }
                     },
                     {
                         name: 'active_physical_connections',
-                        label: t('clusterDetail.nodes.activePhysicalConnections'),
+                        label: t('clusterDetail.nodes.activePhysicalConnectionsYsql'),
                         options: {
                             filter: true,
                             display: columns.active_physical_connections,
+                            setCellProps: () => ({ style: { width: '260px', padding: '0 32px' } }),
+                            setCellHeaderProps: () => ({
+                                style: { width: '260px', padding: '8px 32px' }
+                            })
+                        }
+                    },
+                    {
+                        name: 'active_connections_ycql',
+                        label: t('clusterDetail.nodes.activeConnectionsYcql'),
+                        options: {
+                            filter: true,
+                            display: columns.active_connections_ycql,
                             setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
                             setCellHeaderProps: () => ({
                                 style: { width: '220px', padding: '8px 32px' }
@@ -765,7 +783,11 @@ export const NodesTab: FC = () => {
     read_ops: 'performance',
     write_ops: 'performance',
     ...((isConnMgrEnabled)
-        ? {active_logical_connections: 'performance', active_physical_connections: 'performance'}
+        ? {
+            active_logical_connections: 'performance',
+            active_physical_connections: 'performance',
+            active_connections_ycql: 'performance'
+          }
         : {active_connections: 'performance'}),
     ram_used: 'memory',
     ram_provisioned: 'memory',
@@ -811,11 +833,15 @@ export const NodesTab: FC = () => {
                 ? [
                     {
                         name: 'active_logical_connections',
-                        label: t('clusterDetail.nodes.activeLogicalConnections')
+                        label: t('clusterDetail.nodes.activeLogicalConnectionsYsql')
                     },
                     {
                         name: 'active_physical_connections',
-                        label: t('clusterDetail.nodes.activePhysicalConnections')
+                        label: t('clusterDetail.nodes.activePhysicalConnectionsYsql')
+                    },
+                    {
+                        name: 'active_connections_ycql',
+                        label: t('clusterDetail.nodes.activeConnectionsYcql')
                     }
                   ]
                 : [

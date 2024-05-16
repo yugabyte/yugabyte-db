@@ -155,10 +155,6 @@ message AbortSnapshotRestoreResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message ImportSnapshotMetaRequestPB {
-  optional SnapshotInfoPB snapshot = 1;
-}
-
 message ListSnapshotRestorationsRequestPB {
   optional bytes snapshot_id = 1; // 16 bytes UUID
   optional bytes restoration_id = 2; // 16 bytes UUID
@@ -175,6 +171,10 @@ message ListSnapshotRestorationsResponsePB {
 message IdPairPB {
   optional bytes old_id = 1;
   optional bytes new_id = 2;
+}
+
+message ImportSnapshotMetaRequestPB {
+  optional SnapshotInfoPB snapshot = 1;
 }
 
 message ImportSnapshotMetaResponsePB {
@@ -273,6 +273,29 @@ message RestoreSnapshotScheduleResponsePB {
   optional bytes restoration_id = 3; // 16 bytes UUID
 }
 
+message CloneFromSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+  optional fixed64 restore_ht = 2;
+  optional string target_namespace_name = 3;
+}
+
+message CloneFromSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+  // If the call returned without error, then these are the fields to pass to IsCloneDone.
+  optional string source_namespace_id = 2;
+  optional uint32 seq_no = 3;
+}
+
+message IsCloneDoneRequestPB {
+  optional string source_namespace_id = 1;
+  optional uint32 seq_no = 2;
+}
+
+message IsCloneDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_done = 2;
+}
+
 service MasterBackup {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -292,4 +315,7 @@ service MasterBackup {
   rpc EditSnapshotSchedule(EditSnapshotScheduleRequestPB) returns (EditSnapshotScheduleResponsePB);
   rpc RestoreSnapshotSchedule(RestoreSnapshotScheduleRequestPB)
       returns (RestoreSnapshotScheduleResponsePB);
+  rpc CloneFromSnapshotSchedule(CloneFromSnapshotScheduleRequestPB)
+      returns (CloneFromSnapshotScheduleResponsePB);
+  rpc IsCloneDone(IsCloneDoneRequestPB) returns (IsCloneDoneResponsePB);
 }

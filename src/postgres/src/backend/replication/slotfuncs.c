@@ -250,8 +250,18 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled())
 	{
 		values[0] = NameGetDatum(name);
-		/* Send lsn as NULL */
-		nulls[1] = true;
+
+		/*
+		 * Send "0/2" as the consistent_point. The LSN "0/1" is reserved
+		 * for the records to be streamed as part of the snapshot consumption.
+		 * The first change record is always streamed with LSN "0/2".
+		 *
+		 * This value should be kept in sync with the confirmed_flush_lsn value
+		 * being set during the creation of the CDC stream in the
+		 * PopulateCDCStateTable function of xrepl_catalog_manager.cc.
+		 */
+		XLogRecPtr consistent_point = 2;
+		values[1] = LSNGetDatum(consistent_point);
 	}
 	else
 	{
@@ -371,11 +381,16 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
 
-			/* Fill in the dummy values. */
-			slot_contents.data.xmin = InvalidXLogRecPtr;
-			slot_contents.data.catalog_xmin = InvalidXLogRecPtr;
-			slot_contents.data.restart_lsn = InvalidXLogRecPtr;
-			slot_contents.data.confirmed_flush = InvalidXLogRecPtr;
+			slot_contents.data.restart_lsn = slot->restart_lsn;
+			slot_contents.data.confirmed_flush = slot->confirmed_flush;
+			slot_contents.data.xmin = slot->xmin;
+			/*
+			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
+			 * It is not used in our implementation.
+			 */
+			slot_contents.data.catalog_xmin = slot->xmin;
+
+			/* Fill in the dummy/constant values. */
 			slot_contents.active_pid = 0;
 			slot_contents.data.persistency = RS_PERSISTENT;
 			slot_contents.data.invalidated_at = InvalidXLogRecPtr;

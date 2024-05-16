@@ -58,6 +58,8 @@ class MemTracker;
 class MetricEntity;
 using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
+static const std::string kTCMallocTrackerNamePrefix = "TCMalloc ";
+
 // Garbage collector is used by MemTracker to free memory allocated by caches when reached
 // soft memory limit.
 class GarbageCollector {
@@ -303,6 +305,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Get the memory consumption from the "root" tracker, creating it if necessary.
   static int64_t GetRootTrackerConsumption();
+
+  static uint64_t GetTrackedMemory();
+
+  static uint64_t GetUntrackedMemory();
 
   // Called when the total release memory is larger than mem_tracker_tcmalloc_gc_release_bytes.
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to

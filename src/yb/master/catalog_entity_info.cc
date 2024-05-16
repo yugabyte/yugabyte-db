@@ -1097,6 +1097,14 @@ string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
+uint32_t NamespaceInfo::FetchAndIncrementCloneSeqNo() {
+  auto lock = LockForWrite();
+  uint32_t new_clone_request_seq_no = lock->pb.clone_request_seq_no() + 1;
+  lock.mutable_data()->pb.set_clone_request_seq_no(new_clone_request_seq_no);
+  lock.Commit();
+  return new_clone_request_seq_no;
+}
+
 // ================================================================================================
 // UDTypeInfo
 // ================================================================================================

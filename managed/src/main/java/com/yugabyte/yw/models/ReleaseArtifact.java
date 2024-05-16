@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -44,6 +45,11 @@ public class ReleaseArtifact extends Model {
   @Column @Getter private String signature;
 
   @Column @Getter private UUID packageFileID;
+
+  public void setPackageFileID(UUID fileID) {
+    this.packageFileID = fileID;
+    save();
+  }
 
   @Column @Getter private String packageURL;
 
@@ -202,20 +208,45 @@ public class ReleaseArtifact extends Model {
 
   public static ReleaseArtifact get(UUID artifactUuid) {
     ReleaseArtifact artifact = find.byId(artifactUuid);
-    if (artifact == null) {
-      return artifact;
-    }
-    if (artifact.gcsFileJson != null) {
-      artifact.gcsFile = Json.fromJson(Json.parse(artifact.gcsFileJson), GCSFile.class);
-    }
-    if (artifact.s3FileJson != null) {
-      artifact.s3File = Json.fromJson(Json.parse(artifact.s3FileJson), S3File.class);
+    if (artifact != null) {
+      artifact.fillJsonText();
     }
     return artifact;
   }
 
   public static List<ReleaseArtifact> getForRelease(UUID releaseUUID) {
-    return find.query().where().eq("release", releaseUUID).findList();
+    List<ReleaseArtifact> artifacts = find.query().where().eq("release", releaseUUID).findList();
+    artifacts.forEach(a -> a.fillJsonText());
+    return artifacts;
+  }
+
+  public static ReleaseArtifact getForReleaseArchitecture(UUID releaseUUID, Architecture arch) {
+    ReleaseArtifact artifact =
+        find.query().where().eq("release", releaseUUID).eq("architecture", arch).findOne();
+    if (artifact != null) {
+      artifact.fillJsonText();
+    }
+    return artifact;
+  }
+
+  public static ReleaseArtifact getForReleaseKubernetesArtifact(UUID releaseUUID) {
+    ReleaseArtifact artifact =
+        find.query()
+            .where()
+            .eq("release", releaseUUID)
+            .eq("platform", Platform.KUBERNETES)
+            .findOne();
+    if (artifact != null) {
+      artifact.fillJsonText();
+    }
+    return artifact;
+  }
+
+  public static List<ReleaseArtifact> getForReleaseLocalFile(UUID releaseUUID) {
+    List<ReleaseArtifact> artifacts =
+        find.query().where().eq("release", releaseUUID).isNotNull("package_file_id").findList();
+    artifacts.forEach(a -> a.fillJsonText());
+    return artifacts;
   }
 
   public void setReleaseUUID(UUID releaseUuid) {
@@ -228,9 +259,22 @@ public class ReleaseArtifact extends Model {
     save();
   }
 
+  public boolean isKubernetes() {
+    return platform.equals(Platform.KUBERNETES);
+  }
+
   private static boolean validatePlatformArchitecture(
       Platform platform, PublicCloudConstants.Architecture architecture) {
     return (platform == Platform.LINUX && architecture != null)
         || (platform == Platform.KUBERNETES && architecture == null);
+  }
+
+  private void fillJsonText() {
+    if (gcsFileJson != null) {
+      gcsFile = Json.fromJson(Json.parse(gcsFileJson), GCSFile.class);
+    }
+    if (s3FileJson != null) {
+      s3File = Json.fromJson(Json.parse(s3FileJson), S3File.class);
+    }
   }
 }

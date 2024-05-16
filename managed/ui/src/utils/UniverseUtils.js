@@ -226,7 +226,13 @@ export const isYbcInstalledInUniverse = (universeDetails) => {
 
 export const isAsymmetricCluster = (cluster) =>
   isNonEmptyObject(cluster.userIntent.specificGFlags?.perAZ) ||
-  isNonEmptyObject(cluster.userIntent.userIntentOverrides?.azOverrides);
+  (isNonEmptyObject(cluster.userIntent.userIntentOverrides?.azOverrides) &&
+    hasAsymmetricOverrides(cluster.userIntent.userIntentOverrides.azOverrides));
+
+const hasAsymmetricOverrides = (azOverrides) =>
+  Object.values(azOverrides).some(
+    (azOverride) => Object.keys(azOverride).length > 1 || azOverride.proxyConfig === undefined
+  );
 
 /**
  * Returns an array of unique regions in the universe

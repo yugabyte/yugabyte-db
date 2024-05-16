@@ -63,8 +63,6 @@ DEFINE_RUNTIME_int32(rpc_slow_query_threshold_ms, 10000,
     "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 
-DECLARE_bool(TEST_yb_enable_ash);
-
 namespace yb {
 namespace rpc {
 
@@ -107,10 +105,7 @@ int64_t NextInstanceId() {
 
 InboundCall::InboundCall(
     ConnectionPtr conn, RpcMetrics* rpc_metrics, CallProcessedListener* call_processed_listener)
-    : wait_state_(
-          GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
-              ? std::make_shared<WaitStateInfoWithInboundCall>()
-              : nullptr),
+    : wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<WaitStateInfoWithInboundCall>()),
       trace_holder_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       trace_(trace_holder_.get()),
       instance_id_(NextInstanceId()),

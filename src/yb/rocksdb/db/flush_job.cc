@@ -118,7 +118,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       output_compression_(output_compression),
       stats_(stats),
       event_logger_(event_logger),
-      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled()) {
+      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()) {
   if (wait_state_) {
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush));
     wait_state_->set_rpc_request_id(job_context_->job_id);

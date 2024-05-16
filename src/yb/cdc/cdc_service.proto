@@ -38,13 +38,13 @@ option java_package = "org.yb.cdc";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
-import "yb/util/opid.proto";
 
 service CDCService {
   rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
@@ -71,6 +71,7 @@ service CDCService {
   rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
   rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
       returns (DestroyVirtualWALForCDCResponsePB);
+  rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
 }
 
 message CDCErrorPB {
@@ -181,6 +182,21 @@ message DestroyVirtualWALForCDCRequestPB {
 
 message DestroyVirtualWALForCDCResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message UpdateAndPersistLSNRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  optional uint64 confirmed_flush_lsn = 3;
+  // The hint given for the possible value of restart_lsn.
+  // The actual value which is persisted might differ from this value
+  // and is returned in the response of this RPC.
+  optional uint64 restart_lsn = 4;
+}
+
+message UpdateAndPersistLSNResponsePB {
+  optional CDCErrorPB error = 1;
+  optional uint64 restart_lsn = 2;
 }
 
 message CreateCDCStreamRequestPB {
@@ -461,6 +477,10 @@ message RowMessage {
   optional uint64 record_time = 14;
   optional uint64 pg_lsn = 15;
   optional uint32 pg_transaction_id = 16;
+
+  // The ID of the table associated with the row. Only populated for DMLs
+  // but not for other ops such as BEGIN/COMMIT/SAFEPOINT.
+  optional string table_id = 17;
 }
 
 message CDCSDKProtoRecordPB {

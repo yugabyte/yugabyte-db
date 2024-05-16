@@ -78,7 +78,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingOneAffinitizedLeader) {
   }
   LOG(INFO) << "Leader distribution: 0 2 2";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::map<string, int> from_count;
   std::unordered_set<string> tablets_moved;
@@ -137,7 +137,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingTwoAffinitizedLeaders) {
   }
   LOG(INFO) << "Leader distribution: 4 0 0";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::map<string, int> to_count;
   std::unordered_set<string> tablets_moved;
@@ -206,16 +206,15 @@ TEST_F(TestLoadBalancerPreferredLeader, TestReadOnlyLoadBalancing) {
   }
 
   LOG(INFO) << "The replica count for each read_only tserver is: ts3: 4, ts4: 0";
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   string placeholder;
 
   // First we make sure that no load balancing happens during the live iteration.
   ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
 
-  ResetState();
   cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   // Now load balance an read_only replica.
   string expected_from_ts = ts_descs_[3]->permanent_uuid();
   string expected_to_ts = ts_descs_[4]->permanent_uuid();
@@ -253,14 +252,12 @@ TEST_F(TestLoadBalancerPreferredLeader, TestLeaderBalancingWithReadOnly) {
     AddFollowerReplica(tablet.get(), ts_descs_[3]);
   }
 
-  ResetState();
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   string placeholder;
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
-  ResetState();
   cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
   cb_.ResetOptions();
 }
@@ -276,7 +273,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestAlreadyBalancedAffinitizedLeaders) {
   }
   LOG(INFO) << "Leader distribution: 4 0 0";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   string placeholder;
   // Only the affinitized zone contains tablet leaders, should be no movement.
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -293,7 +290,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestAlreadyBalancedMultiAffinitizedLeade
   }
   LOG(INFO) << "Leader distribution: 4 0 0";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   string placeholder;
   // Only the affinitized zone contains tablet leaders, should be no movement.
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -312,7 +309,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingOneMultiAffinitizedLeader) 
   }
   LOG(INFO) << "Leader distribution: 0 2 2";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::map<string, int> from_count;
   std::unordered_set<string> tablets_moved;
@@ -375,7 +372,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiPrimaryAffinitizedLead
   MoveTabletLeader(tablets_[3].get(), ts_descs_[1]);
   LOG(INFO) << "Leader distribution: 0 2 0 2";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_3;
   ts_0 = ts_descs_[0]->permanent_uuid();
@@ -392,8 +389,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiPrimaryAffinitizedLead
   MoveTabletLeader(tablets_[2].get(), ts_descs_[1]);
 
   ResumeTsHeartbeat(ts_descs_[0]);
-  ResetState();
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   TestMoveLeader(&placeholder, ts_1, ts_0);
   TestMoveLeader(&placeholder, ts_1, ts_0);
@@ -414,7 +410,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiSecondaryAffinitizedLe
     MoveTabletLeader(tablet.get(), ts_descs_[3]);
   }
   LOG(INFO) << "Leader distribution: 0 0 0 4";
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::map<string, int> to_count;
   string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3;
@@ -452,8 +448,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiSecondaryAffinitizedLe
   LOG(INFO) << "Leader distribution: 0 2 2 0";
 
   ResumeTsHeartbeat(ts_descs_[0]);
-  ResetState();
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   TestMoveLeader(&placeholder, "", ts_0);
   TestMoveLeader(&placeholder, "", ts_0);
@@ -483,7 +478,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiNodeAffinitizedLeader)
     MoveTabletLeader(tablet.get(), ts_descs_[3]);
   }
   LOG(INFO) << "Leader distribution: 0 0 0 4";
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::map<string, int> to_count;
   string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3, ts_4;
@@ -522,8 +517,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiNodeAffinitizedLeader)
   LOG(INFO) << "Leader distribution: 0 2 2 0";
 
   ResumeTsHeartbeat(ts_descs_[0]);
-  ResetState();
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   TestMoveLeader(&placeholder, "", ts_0);
   TestMoveLeader(&placeholder, "", ts_0);
@@ -556,7 +550,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingWithLeaderBlacklist) {
   AddLeaderBlacklist(ts_descs_[0]->permanent_uuid());
   LOG(INFO) << "Leader Blacklist: ts0";
 
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   string placeholder, tablet_id, expected_from_ts, expected_to_ts;
 
@@ -578,8 +572,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingWithLeaderBlacklist) {
   ClearLeaderBlacklist();
   LOG(INFO) << "Leader Blacklist cleared.";
 
-  ResetState();
-  ASSERT_OK(AnalyzeTablets());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   expected_from_ts = ts_descs_[2]->permanent_uuid();
   expected_to_ts = ts_descs_[0]->permanent_uuid();

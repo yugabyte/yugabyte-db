@@ -34,13 +34,14 @@
 #include <map>
 #include <string>
 
+#include "yb/common/opid.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 

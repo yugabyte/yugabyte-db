@@ -87,7 +87,7 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   const { t } = useTranslation();
   const classes = useStyles();
   const dispatch = useDispatch();
-  const providerUUID = providerConfig.uuid;
+  const providerUuid = providerConfig.uuid;
 
   const nodeIPs = nodeInstanceList?.data?.map((nodeInstance: any) => {
     return nodeInstance.details.ip;
@@ -120,22 +120,22 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   );
 
   useEffect(() => {
-    dispatch(getNodeInstancesForProvider(providerUUID) as any).then((response: any) => {
+    dispatch(getNodeInstancesForProvider(providerUuid) as any).then((response: any) => {
       dispatch(getNodesInstancesForProviderResponse(response.payload));
     });
-    dispatch(getInstanceTypeList(providerUUID) as any).then((response: any) => {
+    dispatch(getInstanceTypeList(providerUuid) as any).then((response: any) => {
       dispatch(getInstanceTypeListResponse(response.payload));
     });
-  }, [providerUUID, dispatch]);
+  }, [providerUuid, dispatch]);
 
   const queryClient = useQueryClient();
-  const updateCachedInstanceTypes = (providerUUID: string) => {
+  const updateCachedInstanceTypes = (providerUuid: string) => {
     queryClient.invalidateQueries(instanceTypeQueryKey.ALL, { exact: true });
-    queryClient.invalidateQueries(instanceTypeQueryKey.provider(providerUUID));
+    queryClient.invalidateQueries(instanceTypeQueryKey.provider(providerUuid));
 
     // `OnPremNodesListContainer` uses the instance types stored in the redux store rather than what
     //  is cached by react-query. Thus, we need to also update the store at this point in time.
-    dispatch(getInstanceTypeList(providerUUID) as any).then((response: any) => {
+    dispatch(getInstanceTypeList(providerUuid) as any).then((response: any) => {
       dispatch(getInstanceTypeListResponse(response.payload));
     });
   };
@@ -145,8 +145,8 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   const deleteInstanceTypeMutation = useDeleteInstanceType(queryClient, {
     onSuccess: (_response, variables) => updateCachedInstanceTypes(variables.providerUUID)
   });
-  const instanceTypeQuery = useQuery(instanceTypeQueryKey.provider(providerUUID), () =>
-    api.fetchInstanceTypes(providerUUID)
+  const instanceTypeQuery = useQuery(instanceTypeQueryKey.provider(providerUuid), () =>
+    api.fetchInstanceTypes(providerUuid)
   );
 
   if (instanceTypeQuery.isLoading || instanceTypeQuery.isIdle) {
@@ -155,7 +155,7 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   if (instanceTypeQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={`Error fetching instance types for provider: ${providerUUID}`}
+        customErrorMessage={`Error fetching instance types for provider: ${providerUuid}`}
       />
     );
   }
@@ -180,14 +180,14 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
       }
     };
     return createInstanceTypeMutation.mutate({
-      providerUUID: providerUUID,
+      providerUUID: providerUuid,
       instanceType: instanceType
     });
   };
 
   const onDeleteInstanceTypeSubmit = (currentInstanceType: InstanceType) => {
     deleteInstanceTypeMutation.mutate({
-      providerUUID: providerUUID,
+      providerUUID: providerUuid,
       instanceTypeCode: currentInstanceType.instanceTypeCode
     });
   };
@@ -262,7 +262,7 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
         Instances
       </Typography>
       <OnPremNodesListContainer
-        selectedProviderUUID={providerUUID}
+        selectedProviderUUID={providerUuid}
         isRedesignedView={true}
         currentProvider={providerConfig}
         nodeAgentStatusByIPs={nodeAgentStatusByIPs}
@@ -270,6 +270,7 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
       />
       {isInstanceTypeFormModalOpen && (
         <ConfigureInstanceTypeModal
+          providerUuid={providerUuid}
           instanceTypeOperation={InstanceTypeOperation.ADD}
           onClose={hideInstanceFormModal}
           onInstanceTypeSubmit={onInstanceTypeFormSubmit}

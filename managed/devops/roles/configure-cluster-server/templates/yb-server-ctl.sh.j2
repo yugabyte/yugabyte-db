@@ -225,8 +225,12 @@ esac
 
 if [ "$1" == "clean-instance" ]; then
   print_err_out "Cleaning instance `hostname`"
-  rm -rf "{{ yb_home_dir }}"/*
-  rm -rf "{{ yb_home_dir }}"/.yugabytedb
+  pushd "{{ yb_home_dir }}"
+  # Delete all except hidden files and folders, current directory, bin and node-agent.
+  find . -maxdepth 1 -not -path "*/\.*" -not -name "." -not -name "bin" -not -name "node-agent" -exec rm -rf {} +
+  popd
+  # Delete the bin folder last.
+  rm -rf "{{ yb_home_dir }}/.yugabytedb" "{{ yb_home_dir }}/bin"
   exit 0
 fi
 

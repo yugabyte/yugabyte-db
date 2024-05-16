@@ -14,7 +14,11 @@ import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
 import { deletePITRConfig } from '../common/PitrAPI';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+
 import './PointInTimeRecoveryDisableModal.scss';
 
 interface PointInTimeRecoveryDisableModalProps {
@@ -22,13 +26,15 @@ interface PointInTimeRecoveryDisableModalProps {
   universeUUID: string;
   onHide: () => void;
   config: any;
+  allowedTasks: AllowedTasks;
 }
 
 export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModalProps> = ({
   visible,
   onHide,
   config,
-  universeUUID
+  universeUUID,
+  allowedTasks
 }) => {
   const queryClient = useQueryClient();
 
@@ -52,11 +58,13 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
 
   const minTime = config.minRecoverTimeInMillis;
   const retentionDays = config.retentionPeriod / (24 * 60 * 60);
+  const isDeleteActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_PITR);
 
   return (
     <YBModalForm
       title="Disable Point-In-Time Recovery"
       visible={visible}
+      isButtonDisabled={isDeleteActionFrozen}
       onHide={onHide}
       submitLabel="Disable Point-In-Time Recovery"
       onFormSubmit={handleSubmit}

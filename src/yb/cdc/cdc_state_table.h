@@ -15,11 +15,10 @@
 #include <shared_mutex>
 #include <unordered_set>
 
-#include "yb/cdc/cdc_types.h"
-
 #include "yb/client/table_handle.h"
 
-#include "yb/util/opid.h"
+#include "yb/common/opid.h"
+
 #include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -83,6 +82,10 @@ struct CDCStateTableEntry {
   std::optional<uint64_t> active_time;
   std::optional<uint64_t> cdc_sdk_safe_time;
   std::optional<std::string> snapshot_key;
+  std::optional<uint64_t> confirmed_flush_lsn;
+  std::optional<uint64_t> restart_lsn;
+  std::optional<uint32_t> xmin;
+  std::optional<uint64_t> record_id_commit_time;
 
   std::string ToString() const;
 };
@@ -96,6 +99,10 @@ struct CDCStateTableEntrySelector {
   CDCStateTableEntrySelector&& IncludeActiveTime();
   CDCStateTableEntrySelector&& IncludeCDCSDKSafeTime();
   CDCStateTableEntrySelector&& IncludeSnapshotKey();
+  CDCStateTableEntrySelector&& IncludeConfirmedFlushLSN();
+  CDCStateTableEntrySelector&& IncludeRestartLSN();
+  CDCStateTableEntrySelector&& IncludeXmin();
+  CDCStateTableEntrySelector&& IncludeRecordIdCommitTime();
   std::unordered_set<std::string> columns_;
 };
 
@@ -106,7 +113,7 @@ class CDCStateTableRange;
 // uses the YBClient and YBSession to access the table.
 class CDCStateTable {
  public:
-  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init);
+  explicit CDCStateTable(std::shared_future<client::YBClient*> client_future);
   explicit CDCStateTable(client::YBClient* client);
 
   static const std::string& GetNamespaceName();
@@ -155,7 +162,7 @@ class CDCStateTable {
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
-  client::AsyncClientInitializer* async_client_init_ = nullptr;
+  std::shared_future<client::YBClient*> client_future_;
   client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);

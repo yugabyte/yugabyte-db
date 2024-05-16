@@ -16,12 +16,14 @@
 #include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
-
 #include "yb/common/schema.h"
+
+#include "yb/common/snapshot.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_client.fwd.h"
@@ -127,7 +129,6 @@ class CatalogManagerIf {
       uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
-  virtual bool catalog_version_table_in_perdb_mode() const = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
@@ -201,8 +202,25 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual Status DoImportSnapshotMeta(
+      const SnapshotInfoPB& snapshot_pb,
+      const LeaderEpoch& epoch,
+      const std::optional<std::string>& clone_target_namespace_name,
+      NamespaceMap* namespace_map,
+      UDTypeMap* type_map,
+      ExternalTableSnapshotDataMap* tables_data,
+      CoarseTimePoint deadline) = 0;
+
+  virtual Status DoCreateSnapshot(
+      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline,
+      const LeaderEpoch& epoch) = 0;
+
   virtual Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
+
+  virtual Result<SnapshotInfoPB> GenerateSnapshotInfoFromSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+      CoarseTimePoint deadline) = 0;
 
   virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
 
@@ -289,6 +307,8 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
+  virtual CloneStateManager* clone_state_manager() = 0;
+
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
   virtual XClusterManager* GetXClusterManagerImpl() = 0;
@@ -299,7 +319,7 @@ class CatalogManagerIf {
 
   virtual intptr_t tablet_locations_version() const = 0;
 
-  virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;

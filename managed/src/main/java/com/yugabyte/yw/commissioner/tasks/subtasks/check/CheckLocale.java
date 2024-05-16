@@ -19,8 +19,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 public class CheckLocale extends UniverseTaskBase {
@@ -36,7 +39,9 @@ public class CheckLocale extends UniverseTaskBase {
     this.nodeUniverseManager = nodeUniverseManager;
   }
 
-  public static class Params extends UniverseTaskParams {}
+  public static class Params extends UniverseTaskParams {
+    public Set<String> nodeNames;
+  }
 
   protected CheckLocale.Params params() {
     return (CheckLocale.Params) taskParams;
@@ -50,6 +55,10 @@ public class CheckLocale extends UniverseTaskBase {
           universe.getUniverseDetails().getPrimaryCluster();
       if (cluster.userIntent.providerType == Common.CloudType.local) {
         log.info("Skipping check for local provider");
+        return;
+      }
+      if (CollectionUtils.isEmpty(params().nodeNames)) {
+        log.info("No nodes were provided for locale validation.");
         return;
       }
       long timeout = TIMEOUT;
@@ -67,7 +76,11 @@ public class CheckLocale extends UniverseTaskBase {
       command.add("||");
       command.add("echo");
       command.add("\"Locale is not present\"");
-      for (NodeDetails node : universe.getNodes()) {
+      List<NodeDetails> filteredNodes =
+          universe.getNodes().stream()
+              .filter(node -> params().nodeNames.contains(node.nodeName))
+              .collect(Collectors.toList());
+      for (NodeDetails node : filteredNodes) {
         RetryTaskUntilCondition<String> waitForCheck =
             new RetryTaskUntilCondition<>(
                 // task

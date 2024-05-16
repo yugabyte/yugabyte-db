@@ -204,13 +204,12 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
                       int count,
                       const PgCallbacks& pg_callbacks,
                       uint64_t *session_id,
-                      const YBCAshMetadata* ash_metadata,
-                      bool* is_ash_metadata_set) {
+                      const YBCPgAshConfig* ash_config) {
   auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
   return WithMaskedYsqlSignals(
-    [data_type_table, count, &pg_callbacks, opt_session_id, ash_metadata, is_ash_metadata_set] {
+    [data_type_table, count, &pg_callbacks, opt_session_id, &ash_config] {
     YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id,
-                    ash_metadata, is_ash_metadata_set);
+                    ash_config);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -318,8 +317,15 @@ uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* clien
   return AF_INET6;
 }
 
+uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
+  DCHECK_EQ((component >> YB_ASH_COMPONENT_BITS), 0);
+  DCHECK_EQ((code >> YB_ASH_COMPONENT_POSITION), 0);
+  return (component << YB_ASH_COMPONENT_POSITION) | code;
+}
+
 void AshCopyTServerSample(
-    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t sample_time) {
+    YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
+    uint64_t sample_time) {
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
@@ -327,7 +333,8 @@ void AshCopyTServerSample(
   cb_metadata->session_id = tserver_metadata.session_id();
   cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
-  cb_sample->wait_event_code = tserver_sample.wait_status_code();
+  cb_sample->encoded_wait_event_code =
+      AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_status_code());
   cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
   cb_sample->sample_time = sample_time;
 
@@ -354,7 +361,7 @@ void AshCopyTServerSamples(
     YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
     uint64_t sample_time) {
   for (const auto& sample : samples.wait_states()) {
-    AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
+    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time);
   }
 }
 
@@ -366,7 +373,7 @@ void AshCopyTServerSamples(
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context, std::optional<uint64_t> session_id,
-                     const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set) {
+                     const YBCPgAshConfig* ash_config) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -385,11 +392,10 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   pgapi_shutdown_done.exchange(false);
   if (context) {
     pgapi = new pggate::PgApiImpl(
-      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_metadata,
-      is_ash_metadata_set);
+      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_config);
   } else {
     pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id,
-                                  ash_metadata, is_ash_metadata_set);
+                                  ash_config);
   }
 
   VLOG(1) << "PgGate open";
@@ -398,10 +404,8 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                   uint64_t *session_id, const YBCAshMetadata *ash_metadata,
-                   bool *is_ash_metadata_set) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_metadata,
-                          is_ash_metadata_set));
+                   uint64_t *session_id, const YBCPgAshConfig* ash_config) {
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_config));
 }
 
 void YBCDestroyPgGate() {
@@ -1957,6 +1961,9 @@ YBCStatus YBCPgListReplicationSlots(
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
           .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+          .confirmed_flush = info.confirmed_flush_lsn(),
+          .restart_lsn = info.restart_lsn(),
+          .xmin = info.xmin(),
       };
       ++dest;
     }
@@ -1981,20 +1988,11 @@ YBCStatus YBCPgGetReplicationSlot(
       .stream_id = YBCPAllocStdString(slot_info.stream_id()),
       .database_oid = slot_info.database_oid(),
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+      .confirmed_flush = slot_info.confirmed_flush_lsn(),
+      .restart_lsn = slot_info.restart_lsn(),
+      .xmin = slot_info.xmin()
   };
 
-  return YBCStatusOK();
-}
-
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active) {
-  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
-  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
-  if (!result.ok()) {
-    return ToYBCStatus(result.status());
-  }
-
-  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
   return YBCStatusOK();
 }
 
@@ -2025,60 +2023,26 @@ void YBCStoreTServerAshSamples(
   }
 }
 
-// TODO(#20726): This function won't be needed once the virtual wal component is ready in the CDC
-// service.
-YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
-                                                    const YBCPgOid database_oid,
-                                                    const YBCPgOid table_oid,
-                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
-                                                    size_t *numtablets) {
-  const PgObjectId pg_table_id(database_oid, table_oid);
-  const auto result = pgapi->GetTabletListToPollForCDC(std::string(stream_id), pg_table_id);
-  if (!result.ok()) {
-    return ToYBCStatus(result.status());
+YBCStatus YBCPgInitVirtualWalForCDC(
+    const char *stream_id, const YBCPgOid database_oid, YBCPgOid *relations, size_t num_relations) {
+  std::vector<PgObjectId> tables;
+  tables.reserve(num_relations);
+
+  for (size_t i = 0; i < num_relations; i++) {
+    PgObjectId table_id(database_oid, relations[i]);
+    tables.push_back(std::move(table_id));
   }
 
-  *DCHECK_NOTNULL(tablet_checkpoints) = NULL;
-
-  const auto& tablet_checkpoint_pairs = result.get().tablet_checkpoint_pairs();
-  *DCHECK_NOTNULL(numtablets) = tablet_checkpoint_pairs.size();
-  if (!tablet_checkpoint_pairs.empty()) {
-    *tablet_checkpoints = static_cast<YBCPgTabletCheckpoint *>(
-        YBCPAlloc(sizeof(YBCPgTabletCheckpoint) * tablet_checkpoint_pairs.size()));
-    YBCPgTabletCheckpoint *dest = *tablet_checkpoints;
-    for (const auto &tablet_checkpoint : tablet_checkpoint_pairs) {
-      auto location = static_cast<YBCPgTabletLocationsDescriptor *>(
-          YBCPAlloc(sizeof(YBCPgTabletLocationsDescriptor)));
-      location->tablet_id = YBCPAllocStdString(tablet_checkpoint.tablet_locations().tablet_id());
-
-      auto checkpoint_pb = tablet_checkpoint.cdc_sdk_checkpoint();
-      auto checkpoint = static_cast<YBCPgCDCSDKCheckpoint *>(
-          YBCPAlloc(sizeof(YBCPgCDCSDKCheckpoint)));
-      checkpoint->term = checkpoint_pb.term();
-      checkpoint->index = checkpoint_pb.index();
-      checkpoint->key = YBCPAllocStdString(checkpoint_pb.key());
-      checkpoint->write_id = checkpoint_pb.write_id();
-
-      new (dest) YBCPgTabletCheckpoint{
-          .location = location,
-          .checkpoint = checkpoint,
-          // Set table_oid to invalid here to please the compiler. It is later set to a valid value
-          // in the virtual wal client.
-          .table_oid = kPgInvalidOid};
-      ++dest;
-    }
+  const auto result = pgapi->InitVirtualWALForCDC(std::string(stream_id), tables);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
   }
 
   return YBCStatusOK();
 }
 
-// TODO(#20726): This function won't be needed once the virtual wal component is ready in the CDC
-// service.
-YBCStatus YBCPgSetCDCTabletCheckpoint(
-    const char *stream_id, const char *tablet_id, const YBCPgCDCSDKCheckpoint *checkpoint,
-    uint64_t safe_time, bool is_initial_checkpoint) {
-  const auto result = pgapi->SetCDCTabletCheckpoint(
-      std::string(stream_id), std::string(tablet_id), checkpoint, safe_time, is_initial_checkpoint);
+YBCStatus YBCPgDestroyVirtualWalForCDC() {
+  const auto result = pgapi->DestroyVirtualWALForCDC();
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
@@ -2098,66 +2062,116 @@ YBCPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
       return YB_PG_ROW_MESSAGE_ACTION_UPDATE;
     case cdc::RowMessage_Op_DELETE:
       return YB_PG_ROW_MESSAGE_ACTION_DELETE;
-    case cdc::RowMessage_Op_DDL:
-      return YB_PG_ROW_MESSAGE_ACTION_DDL;
     default:
+      LOG(FATAL) << Format("Received unexpected operation $0", row_message_pb.op());
       return YB_PG_ROW_MESSAGE_ACTION_UNKNOWN;
   }
 }
 
-YBCStatus YBCPgGetCDCChanges(
-    const char *stream_id, const char *tablet_id, const YBCPgCDCSDKCheckpoint *checkpoint,
-    YBCPgChangeRecordBatch **record_batch) {
-  const auto result =
-      pgapi->GetCDCChanges(std::string(stream_id), std::string(tablet_id), checkpoint);
+YBCStatus YBCPgGetCDCConsistentChanges(
+    const char *stream_id, YBCPgChangeRecordBatch **record_batch) {
+  const auto result = pgapi->GetConsistentChangesForCDC(std::string(stream_id));
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
 
   *DCHECK_NOTNULL(record_batch) = NULL;
   const auto resp = result.get();
+  VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto row_count = resp.cdc_sdk_proto_records_size();
-
-  auto resp_checkpoint_pb = resp.cdc_sdk_checkpoint();
-  auto resp_checkpoint =
-      static_cast<YBCPgCDCSDKCheckpoint *>(YBCPAlloc(sizeof(YBCPgCDCSDKCheckpoint)));
-  new (resp_checkpoint) YBCPgCDCSDKCheckpoint{
-      .term = resp_checkpoint_pb.term(),
-      .index = resp_checkpoint_pb.index(),
-      .key = YBCPAllocStdString(resp_checkpoint_pb.key()),
-      .write_id = resp_checkpoint_pb.write_id(),
-  };
 
   auto resp_rows_pb = resp.cdc_sdk_proto_records();
   auto resp_rows = static_cast<YBCPgRowMessage *>(YBCPAlloc(sizeof(YBCPgRowMessage) * row_count));
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
     auto row_message_pb = row_pb.row_message();
-    auto col_count = row_message_pb.new_tuple_size();
     auto commit_time = row_message_pb.commit_time();
 
+    static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
+
+    // column_name -> (index in old tuples, index in new tuples).
+    // OMITTED_VALUE indicates omission.
+    // For insert: all the columns will be of form (OMITTED_VALUE, <index>).
+    // For delete: all the columns will be of form (<index>, OMITTED_VALUE) or
+    // won't exist in the map depending on the record type (replica identity) of the stream.
+    // For update: both old and new tuples will be present.
+    std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
+    int new_tuple_idx = 0;
+    for (auto &new_tuple : row_message_pb.new_tuple()) {
+      if (new_tuple.has_column_name()) {
+        col_name_idx_map.emplace(
+            new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
+      }
+      new_tuple_idx++;
+    }
+    int old_tuple_idx = 0;
+    for (auto& old_tuple : row_message_pb.old_tuple()) {
+      if (old_tuple.has_column_name()) {
+        auto itr = col_name_idx_map.find(old_tuple.column_name());
+        if (itr != col_name_idx_map.end()) {
+          itr->second.first = old_tuple_idx;
+        } else {
+          col_name_idx_map.emplace(
+              old_tuple.column_name(), std::make_pair(old_tuple_idx, OMITTED_VALUE));
+        }
+      }
+      old_tuple_idx++;
+    }
+
+    auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
       cols = static_cast<YBCPgDatumMessage *>(YBCPAlloc(sizeof(YBCPgDatumMessage) * col_count));
 
-      for (int tuple_idx = 0; tuple_idx < col_count; tuple_idx++) {
-        const auto& tuple = row_message_pb.new_tuple(tuple_idx);
-
-        const auto* type_entity = pgapi->FindTypeEntity(static_cast<int>(tuple.column_type()));
+      int tuple_idx = 0;
+      for (const auto& col_idxs : col_name_idx_map) {
         YBCPgTypeAttrs type_attrs{-1 /* typmod */};
-        uint64 datum = 0;
-        bool is_null;
-        auto s = PBToDatum(type_entity, type_attrs, tuple.pg_ql_value(), &datum, &is_null);
-        if (!s.ok()) {
-          return ToYBCStatus(s);
+        const auto& column_name = col_idxs.first;
+
+        // Old value.
+        uint64 old_datum = 0;
+        bool old_is_null = true;
+        if (col_idxs.second.first != OMITTED_VALUE) {
+          const auto old_datum_pb =
+              &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
+          const auto *type_entity =
+              pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
+          auto s = PBToDatum(
+              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &old_datum, &old_is_null);
+          if (!s.ok()) {
+            return ToYBCStatus(s);
+          }
         }
 
-        auto col = &cols[tuple_idx];
-        col->column_name = YBCPAllocStdString(tuple.column_name());
-        col->column_type = tuple.column_type();
-        col->datum = datum;
-        col->is_null = is_null;
+        // New value.
+        uint64 new_datum = 0;
+        bool new_is_null = true;
+        if (col_idxs.second.second != OMITTED_VALUE) {
+          const auto new_datum_pb =
+              &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
+          const auto *type_entity =
+              pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
+          auto s = PBToDatum(
+              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &new_datum, &new_is_null);
+          if (!s.ok()) {
+            return ToYBCStatus(s);
+          }
+        }
+
+        auto col = &cols[tuple_idx++];
+        col->column_name = YBCPAllocStdString(column_name);
+        col->after_op_datum = new_datum;
+        col->after_op_is_null = new_is_null;
+        col->before_op_datum = old_datum;
+        col->before_op_is_null = old_is_null;
       }
+    }
+
+    // Only present for DML records.
+    YBCPgOid table_oid = kPgInvalidOid;
+    if (row_message_pb.has_table_id()) {
+      auto table_id = PgObjectId(row_message_pb.table_id());
+      table_oid = table_id.object_oid;
     }
 
     new (&resp_rows[row_idx]) YBCPgRowMessage{
@@ -2165,6 +2179,9 @@ YBCStatus YBCPgGetCDCChanges(
         .cols = cols,
         .commit_time = commit_time,
         .action = GetRowMessageAction(row_message_pb),
+        .table_oid = table_oid,
+        .lsn = row_message_pb.pg_lsn(),
+        .xid = row_message_pb.pg_transaction_id()
     };
     row_idx++;
   }
@@ -2173,12 +2190,21 @@ YBCStatus YBCPgGetCDCChanges(
   new (*record_batch) YBCPgChangeRecordBatch{
       .row_count = row_count,
       .rows = resp_rows,
-      .checkpoint = resp_checkpoint,
-      // table_oid is set in the virtual wal client. We initialize it here with an invalid value to
-      // please the compiler.
-      .table_oid = kPgInvalidOid,
   };
 
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn) {
+  const auto result =
+      pgapi->UpdateAndPersistLSN(std::string(stream_id), restart_lsn_hint, confirmed_flush);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(restart_lsn) = result->restart_lsn();
   return YBCStatusOK();
 }
 

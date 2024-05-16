@@ -60,7 +60,17 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
+  }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
     taskParams().azUuid = currentNode.azUuid;
     taskParams().placementUuid = currentNode.placementUuid;
     if (!instanceExists(taskParams())) {
@@ -68,10 +78,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-  }
-
-  @Override
-  protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
   }
 
@@ -135,7 +141,8 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
           saveNodeStatus(
               taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
         }
-        createStartMasterOnNodeTasks(universe, currentNode, null, false);
+        createStartMasterOnNodeTasks(
+            universe, currentNode, null, false /* stoppable */, false /* ignore stop error */);
       }
 
       if (startTserver) {

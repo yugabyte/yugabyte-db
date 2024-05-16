@@ -73,6 +73,13 @@ const char* GetDebugQueryStringStub() {
   return "GetDebugQueryString not implemented in test";
 }
 
+uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
+  return wait_event;
+}
+
+// Not defined locally in PggateTest::Init to avoid asan use-after-return error
+bool yb_enable_ash = false;
+
 } // namespace
 
 PggateTest::PggateTest()
@@ -143,11 +150,16 @@ Status PggateTest::Init(const char *test_name,
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
+  YBCPgAshConfig ash_config;
+
   auto* session_stats =
       static_cast<YBCPgExecStatsState*>(PggateTestAlloc(sizeof(YBCPgExecStatsState)));
   memset(session_stats, 0, sizeof(YBCPgExecStatsState));
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
+  callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
+
+  ash_config.yb_enable_ash = &yb_enable_ash;
 
   {
     auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
@@ -161,7 +173,7 @@ Status PggateTest::Init(const char *test_name,
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
-  YBCInitPgGate(type_table, count, callbacks, nullptr, nullptr, nullptr);
+  YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
 
   // Setup session.
   CHECK_YBC_STATUS(

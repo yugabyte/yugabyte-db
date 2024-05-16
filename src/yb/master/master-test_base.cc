@@ -63,7 +63,7 @@ using std::make_shared;
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_bool(TEST_create_table_in_running_state);
-DECLARE_int32(tablet_replicas_per_gib_limit);
+DECLARE_uint32(tablet_replicas_per_gib_limit);
 
 namespace yb {
 namespace master {

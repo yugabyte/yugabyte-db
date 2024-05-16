@@ -81,7 +81,7 @@
 using std::vector;
 using std::string;
 
-DEFINE_RUNTIME_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
+DEFINE_RUNTIME_int32(ysql_index_backfill_rpc_timeout_ms, 5 * 60 * 1000, // 5 min.
     "Timeout used by the master when attempting to backfill a YSQL tablet during index creation.");
 TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);
 

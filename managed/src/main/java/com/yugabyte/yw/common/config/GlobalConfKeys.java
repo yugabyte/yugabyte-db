@@ -810,6 +810,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipVersionChecks =
+      new ConfKeyInfo<>(
+          "yb.skip_version_checks",
+          ScopeType.GLOBAL,
+          "Skip DB / YBA version comparison checks",
+          "Whether we should skip DB / YBA version comparison checks during upgrades, etc. "
+              + "Gives more flexibilty, but user should be careful when enabling this.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> pgDumpPath =
       new ConfKeyInfo<>(
           "db.default.pg_dump_path",
@@ -1247,6 +1256,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " and returns a mock response with validation errors.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_tries",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result tries",
+          "YBC poll upgrade result tries count.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcUpgradePollResultSleepMs =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_sleep_ms",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result Sleep time",
+          "YBC poll upgrade result sleep time.",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Role> oidcDefaultRole =
       new ConfKeyInfo<>(
           "yb.security.oidc_default_role",
@@ -1255,4 +1280,28 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Which role to use incase group memberships are not found",
           ConfDataType.UserRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> enableReleasesRedesign =
+      new ConfKeyInfo<>(
+          "yb.releases.use_redesign",
+          ScopeType.GLOBAL,
+          "Use new releases",
+          "Enable the new releases design",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableTroubleshooting =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_troubleshooting",
+          ScopeType.GLOBAL,
+          "Enables Troubleshooting for the Universe",
+          "Enables Troubleshooting for the Universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableAzureProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.azure_provider_validation",
+          ScopeType.GLOBAL,
+          "Azure provider validation",
+          "Enable Azure Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -517,10 +517,10 @@ SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
 explain (costs off)
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Index Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
-   Remote Filter: (stringu1 = 'ATAAAA'::name)
+   Storage Filter: (stringu1 = 'ATAAAA'::name)
 (3 rows)
 
 select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
@@ -536,16 +536,16 @@ select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
 -----------------------------------------------------------------
  Index Scan using onek2_u2_prtl on onek2 (actual rows=1 loops=1)
    Index Cond: (unique2 = 11)
-   Remote Filter: (stringu1 = 'ATAAAA'::name)
+   Storage Filter: (stringu1 = 'ATAAAA'::name)
 (3 rows)
 
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Index Scan using onek2_u2_prtl on onek2
    Index Cond: (unique2 = 11)
-   Remote Filter: (stringu1 = 'ATAAAA'::name)
+   Storage Filter: (stringu1 = 'ATAAAA'::name)
 (3 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
@@ -586,12 +586,12 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 -- but if it's an update target, must retest anyway
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
-                  QUERY PLAN
------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  LockRows
    ->  Index Scan using onek2_u2_prtl on onek2
          Index Cond: (unique2 = 11)
-         Remote Filter: (stringu1 < 'B'::name)
+         Storage Filter: (stringu1 < 'B'::name)
 (4 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
@@ -604,9 +604,9 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
                           QUERY PLAN
---------------------------------------------------------------
+---------------------------------------------------------------
  Seq Scan on onek2
-   Remote Filter: ((stringu1 < 'C'::name) AND (unique2 = 11))
+   Storage Filter: ((stringu1 < 'C'::name) AND (unique2 = 11))
 (2 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
@@ -621,9 +621,9 @@ SET enable_indexscan TO off;
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
                           QUERY PLAN
---------------------------------------------------------------
+---------------------------------------------------------------
  Seq Scan on onek2
-   Remote Filter: ((stringu1 < 'B'::name) AND (unique2 = 11))
+   Storage Filter: ((stringu1 < 'B'::name) AND (unique2 = 11))
 (2 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
@@ -641,12 +641,12 @@ SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
 LIMIT ALL) ybview ORDER BY unique2;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
  Sort
    Sort Key: onek2.unique2
    ->  Seq Scan on onek2
-         Remote Filter: ((stringu1 < 'B'::name) AND ((unique2 = 11) OR (unique1 = 0)))
+         Storage Filter: ((stringu1 < 'B'::name) AND ((unique2 = 11) OR (unique1 = 0)))
 (4 rows)
 
 SELECT * FROM (
@@ -666,12 +666,12 @@ SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
 LIMIT ALL) ybview ORDER BY unique2;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
  Sort
    Sort Key: onek2.unique2
    ->  Seq Scan on onek2
-         Remote Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
+         Storage Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
 (4 rows)
 
 SELECT * FROM (

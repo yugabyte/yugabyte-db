@@ -43,11 +43,13 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
@@ -62,8 +64,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 
 namespace yb {
 namespace tablet {

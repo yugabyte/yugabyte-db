@@ -27,9 +27,12 @@
 
 #include "postgres.h"
 #include "storage/proc.h"
+#include "utils/guc.h"
 #include "utils/timestamp.h"
 
 /* GUC variables */
+extern bool yb_ash_enable_infra;
+extern bool yb_enable_ash;
 extern int yb_ash_circular_buffer_size;
 extern int yb_ash_sampling_interval_ms;
 extern int yb_ash_sample_size;
@@ -46,5 +49,9 @@ extern void YbAshSetSessionId(uint64 session_id);
 extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,
 							 int *samples_stored);
+
+extern bool yb_enable_ash_check_hook(bool *newval,
+									 void **extra,
+									 GucSource source);
 
 #endif							/* YB_ASH_H */

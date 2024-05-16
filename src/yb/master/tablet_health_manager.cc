@@ -313,7 +313,7 @@ Status TabletHealthManager::AreNodesSafeToTakeDown(
     const AreNodesSafeToTakeDownRequestPB* req, AreNodesSafeToTakeDownResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Processing AreNodesSafeToTakeDown call";
-  AreNodesSafeToTakeDownDriver driver(*req, resp, master_, catalog_manager_);
+  AreNodesSafeToTakeDownDriver driver(*req, master_, catalog_manager_);
   auto status = driver.StartCallAndWait(rpc->GetClientDeadline());
   if (!status.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);

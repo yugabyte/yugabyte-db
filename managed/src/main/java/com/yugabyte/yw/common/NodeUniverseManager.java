@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -21,7 +20,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -459,33 +457,10 @@ public class NodeUniverseManager extends DevopsBase {
     } else if (cloudType != Common.CloudType.unknown) {
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.getOrBadRequest(providerUUID);
-      ProviderDetails providerDetails = provider.getDetails();
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
-      String sshPort = providerDetails.sshPort.toString();
-      String sshUser = providerDetails.sshUser;
-      UUID imageBundleUUID = null;
-      if (cluster.userIntent.imageBundleUUID != null) {
-        imageBundleUUID = cluster.userIntent.imageBundleUUID;
-      } else {
-        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
-        if (bundles.size() > 0) {
-          Architecture arch = universe.getUniverseDetails().arch;
-          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-          if (defaultBundle != null) {
-            imageBundleUUID = defaultBundle.getUuid();
-          }
-        }
-      }
-      if (imageBundleUUID != null) {
-        ImageBundle.NodeProperties toOverwriteNodeProperties =
-            imageBundleUtil.getNodePropertiesOrFail(
-                imageBundleUUID, node.cloudInfo.region, cluster.userIntent.providerType.toString());
-        sshPort = toOverwriteNodeProperties.getSshPort().toString();
-        sshUser = toOverwriteNodeProperties.getSshUser();
-      }
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
@@ -494,9 +469,24 @@ public class NodeUniverseManager extends DevopsBase {
         }
         nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
+        String sshPort = provider.getDetails().sshPort.toString();
+        UUID imageBundleUUID =
+            Util.retreiveImageBundleUUID(
+                universe.getUniverseDetails().arch, cluster.userIntent, provider);
+        if (imageBundleUUID != null) {
+          ImageBundle.NodeProperties toOverwriteNodeProperties =
+              imageBundleUtil.getNodePropertiesOrFail(
+                  imageBundleUUID,
+                  node.cloudInfo.region,
+                  cluster.userIntent.providerType.toString());
+          sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        }
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+        if (StringUtils.isNotBlank(context.getSshUser())
+            && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+          // In case the custom ssh User is specified in the context, that will be
+          // prepare node stage, where the custom sshPort might not be configured yet.
           sshPort = "22";
         }
         commandArgs.add("--port");
@@ -509,14 +499,9 @@ public class NodeUniverseManager extends DevopsBase {
           commandArgs.add("--ssh2_enabled");
         }
       }
-      if (context.isCustomUser()) {
-        // It is for backward compatibility after a platform upgrade as custom user is null in prior
-        // versions.
-        String user = StringUtils.isNotBlank(sshUser) ? sshUser : cloudType.getSshUser();
-        if (StringUtils.isNotBlank(user)) {
-          commandArgs.add("--user");
-          commandArgs.add(user);
-        }
+      if (StringUtils.isNotBlank(context.getSshUser())) {
+        commandArgs.add("--user");
+        commandArgs.add(context.getSshUser());
       }
     }
   }

@@ -19,7 +19,6 @@ import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import java.util.*;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -66,15 +65,6 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     return null;
   }
 
-  public UUID getUniverseUUIDFromName(Long customerId, String universeName) {
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, universeName);
-    UUID universeUUID;
-    if (universe.isPresent()) {
-      return universe.get().getUniverseUUID();
-    }
-    return null;
-  }
-
   private void updateStatus(RestoreJob restoreJob, String taskUUID, String message) {
     RestoreJobStatus status = restoreJob.getStatus();
     if (status == null) {
@@ -95,7 +85,15 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
 
     log.info("CRSPECJSON {}", crJsonNode);
 
-    UUID universeUUID = getUniverseUUIDFromName(cust.getId(), restoreJob.getSpec().getUniverse());
+    Universe universe =
+        operatorUtils.getUniverseFromNameAndNamespace(
+            cust.getId(),
+            restoreJob.getSpec().getUniverse(),
+            restoreJob.getMetadata().getNamespace());
+    if (universe == null) {
+      throw new Exception("No universe found with name " + restoreJob.getSpec().getUniverse());
+    }
+    UUID universeUUID = universe.getUniverseUUID();
     log.info("Universe UUID {}", universeUUID);
     UUID backupUUID = getBackupUUIDFromName(restoreJob.getSpec().getBackup());
     log.info("backup UUID {}", backupUUID);

@@ -57,8 +57,7 @@ INSERT INTO INT4_TBL(f1) VALUES
   ('-2147483647');
 VACUUM INT4_TBL;
 
--- YB note: add primary key for sorting
-CREATE TABLE INT8_TBL(q1 int8, q2 int8, PRIMARY KEY (q1, q2));
+CREATE TABLE INT8_TBL(q1 int8, q2 int8, ybsort serial, PRIMARY KEY (ybsort ASC));
 
 INSERT INTO INT8_TBL VALUES
   ('  123   ','  456'),
@@ -68,7 +67,6 @@ INSERT INTO INT8_TBL VALUES
   ('+4567890123456789','-4567890123456789');
 VACUUM INT8_TBL;
 
--- YB note: add sorting column.
 CREATE TABLE POINT_TBL(f1 point, ybsort serial, PRIMARY KEY (ybsort ASC));
 
 INSERT INTO POINT_TBL(f1) VALUES

@@ -131,4 +131,3 @@ CREATE TABLE feature_tab_pg_ddl_command (feature_col PG_DDL_COMMAND);
 CREATE TABLE feature_tab_void (feature_col VOID);
 -- TODO(jason): uncomment when issue #1975 is closed.
 -- CREATE TABLE feature_tab_unknown (feature_col UNKNOWN);
-CREATE TABLE feature_tab_opaque (feature_col OPAQUE);

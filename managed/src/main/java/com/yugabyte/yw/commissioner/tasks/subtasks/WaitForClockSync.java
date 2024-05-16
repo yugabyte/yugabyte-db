@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -85,6 +86,11 @@ public class WaitForClockSync extends NodeTaskBase {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     if (cluster.userIntent.providerType == Common.CloudType.local) {
       log.info("Skipping sync for local provider");
+      return;
+    }
+
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.clockSyncCheckEnabled)) {
+      log.info("Skipping Clock Sync check as it is disabled through config.");
       return;
     }
 

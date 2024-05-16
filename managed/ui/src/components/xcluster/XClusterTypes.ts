@@ -9,7 +9,7 @@ import {
   XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
-import { Metric, MetricTrace, TableType, YBTable } from '../../redesign/helpers/dtos';
+import { MetricTrace, YBTable } from '../../redesign/helpers/dtos';
 import { XClusterTableDetails } from './dtos';
 
 /**
@@ -34,14 +34,21 @@ export type EligibilityDetails =
       status: typeof XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG;
       xClusterConfigName: string;
     }
-  | { status: typeof XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string }
-  | { status: typeof XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  | { status: typeof XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string };
 
 /**
- * YBTable with an EligibilityDetail field
+ * YBTable with an EligibilityDetail field.
  */
-export interface XClusterTableCandidate extends YBTable {
+export interface IndexTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
+}
+
+/**
+ * YBTable with an EligibilityDetail field and an array of index tables.
+ */
+export interface MainTableReplicationCandidate extends YBTable {
+  eligibilityDetails: EligibilityDetails;
+  indexTables?: IndexTableReplicationCandidate[];
 }
 
 /**
@@ -55,7 +62,7 @@ export interface NamespaceItem {
     eligibleInCurrentConfig: number;
   };
   sizeBytes: number;
-  tables: XClusterTableCandidate[];
+  tables: MainTableReplicationCandidate[];
 }
 
 /**

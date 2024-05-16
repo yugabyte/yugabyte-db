@@ -3,7 +3,10 @@ package handlers
 import (
     "apiserver/cmd/server/helpers"
     "apiserver/cmd/server/logger"
+
+    "fmt"
     "net"
+    "sync"
 
     "github.com/jackc/pgx/v4/pgxpool"
     "github.com/yugabyte/gocql"
@@ -17,6 +20,8 @@ type Container struct {
         ConnMap    map[helpers.PgClientConnectionParams]*pgxpool.Pool
         helper     helpers.HelperContainer
         serverPort string
+        gocqlLock  sync.Mutex
+        pgxLock    sync.Mutex
 }
 
 // NewContainer returns an empty or an initialized container for your handlers.
@@ -28,11 +33,14 @@ func NewContainer(
     helper       helpers.HelperContainer,
     serverPort   string,
     ) (Container, error) {
-        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper, serverPort}
+        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper, serverPort,
+            sync.Mutex{}, sync.Mutex{}}
         return c, nil
 }
 
 func (c *Container) GetSession() (*gocql.Session, error) {
+    c.gocqlLock.Lock()
+    defer c.gocqlLock.Unlock()
     if c.Session == nil {
         // If the session wasn't created yet, it could be because the initial gocql cluster config
         // couldn't get tservers from the master because it wasn't set up yet, so try again
@@ -74,7 +82,7 @@ func (c *Container) GetSession() (*gocql.Session, error) {
 }
 
 // Gets a single pgx connection to an arbitrary tserver.
-// The tserver address is determined by the cached value TserverAddressCache.
+// The tserver address list is determined by the cached value TserverAddressCache.
 // This function will update the cached value if it fails to get a pgx connection.
 func (c *Container) GetConnection(database ...string) (*pgxpool.Pool, error) {
     var dbName string
@@ -83,45 +91,68 @@ func (c *Container) GetConnection(database ...string) (*pgxpool.Pool, error) {
     } else {
         dbName = database[0]
     }
-    // Try to use cached tserver address
-    hostName := helpers.TserverAddressCache.Get()
-
-    // Use the session from the context.
-    conn, err := c.GetConnectionFromMap(hostName, dbName)
-    if err != nil {
-        c.logger.Warnf("attempt to get pgx connection from cached tserver address failed")
-        // Try to get a new tserver address, but prefer helpers.HOST if it is a tserver
-        hostName = helpers.HOST
-        // Reset tserver cache as well to favor helpers.HOST
-        helpers.TserverAddressCache.Update(hostName)
-        tserverAddresses, err := c.getNodes()
-        if err != nil {
-            c.logger.Errorf("failed to get list of tservers")
-            return nil, err
-        } else {
-            contains := false
-            for _, host := range tserverAddresses {
-                if host == hostName {
-                    contains = true
-                    break
-                }
-            }
-            if !contains {
-                hostName = tserverAddresses[0]
+    // Try to use cached tserver addresses
+    tserverAddressCache := helpers.TserverAddressCache.Get()
+    c.logger.Debugf("got cached tserver addresses %v", tserverAddressCache)
+    conn, successHost, err := c.GetConnectionFromList(dbName, tserverAddressCache)
+    if err == nil {
+        // Move failed addresses to back of cache
+        for index, host := range tserverAddressCache {
+            if successHost == host {
+                tserverAddressCache =
+                    append(tserverAddressCache[index:], tserverAddressCache[:index]...)
+                break
             }
         }
-        conn, err = c.GetConnectionFromMap(hostName, dbName)
-        if err != nil {
-            c.logger.Errorf("attempt to update cached tserver address failed")
-            return nil, err
-        }
-        // Update tserver cache if connection attempt successful
-        helpers.TserverAddressCache.Update(hostName)
+        helpers.TserverAddressCache.Update(tserverAddressCache)
+        c.logger.Debugf("updated cached tserver addresses %v", tserverAddressCache)
+        return conn, err
     }
-    return conn, nil
+    c.logger.Warnf("attempt to get pgx connection from all cached tserver addresses failed")
+    // Get tserver addresses. This triggers a cache refresh.
+    hostNames, err := c.getNodes()
+    if err != nil {
+        c.logger.Errorf("failed to get list of tservers")
+        return nil, err
+    }
+    for index, host := range hostNames {
+        if host == helpers.HOST {
+            // Swap helpers.HOST to front of slice
+            hostNames[0], hostNames[index] = hostNames[index], hostNames[0]
+            break
+        }
+    }
+    c.logger.Debugf("got new tserver addresses %v", hostNames)
+    conn, _, err = c.GetConnectionFromList(dbName, hostNames)
+    if err == nil {
+        return conn, err
+    }
+    c.logger.Errorf("attempt to get pgx connection from tserver addresses failed")
+    err = fmt.Errorf("failed to get pgx connection from tserver addresses %v", hostNames)
+    return nil, err
+}
+
+// Gets a pgx connection from the provided list, and returns the address of the returned connection
+func (c *Container) GetConnectionFromList(
+    dbName string,
+    hosts []string,
+) (*pgxpool.Pool, string, error) {
+    for _, hostName := range hosts {
+        conn, err := c.GetConnectionFromMap(hostName, dbName)
+        if err == nil {
+            return conn, hostName, nil
+        } else {
+            c.logger.Warnf("failed to get pgx connection for address %s: %s", hostName, err.Error())
+        }
+    }
+    c.logger.Errorf("attempt to get pgx connection from tserver addresses failed")
+    err := fmt.Errorf("failed to get pgx connection from tserver addresses %v", hosts)
+    return nil, "", err
 }
 
 func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxpool.Pool, error) {
+    c.pgxLock.Lock()
+    defer c.pgxLock.Unlock()
     var dbName string
     if len(database) == 0 {
         dbName = helpers.DbName
@@ -138,15 +169,9 @@ func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxp
 
     conn, exists := c.ConnMap[pgConnectionParams]
     if exists {
+        c.logger.Debugf("acquired existing pgxpool connection to %s", host)
         return conn, nil
     }
-    // pgConnectionParams := helpers.PgClientConnectionParams {
-    //     User:     helpers.DbYsqlUser,
-    //     Password: helpers.DbPassword,
-    //     Host:     host,
-    //     Port:     helpers.PORT,
-    //     Database: dbName,
-    // }
     conn, err := c.helper.CreatePgClient(c.logger, pgConnectionParams)
     if err != nil {
         c.logger.Errorf("Error initializing the pgx client for Host %s and Database %s: %s",
@@ -154,6 +179,7 @@ func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxp
         return conn, err
     }
     c.ConnMap[pgConnectionParams] = conn
+    c.logger.Debugf("created pgxpool connection to %s", host)
     return conn, nil
 }
 

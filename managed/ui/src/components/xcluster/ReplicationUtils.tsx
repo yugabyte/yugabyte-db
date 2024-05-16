@@ -31,7 +31,7 @@ import {
   MetricTimeRange,
   StandardMetricTimeRangeOption,
   XClusterTable,
-  XClusterTableCandidate
+  MainTableReplicationCandidate
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
@@ -494,7 +494,7 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
 export const isTableToggleable = (
-  table: XClusterTableCandidate,
+  table: MainTableReplicationCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
   table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||
@@ -549,9 +549,7 @@ export const getTablesForBootstrapping = async (
   sourceUniverseUuid: string,
   targetUniverseUuid: string | null,
   sourceUniverseTables: YBTable[],
-  tableUuidsInConfig: string[],
-  xClusterConfigType: XClusterConfigType,
-  isUsedForDr: boolean
+  xClusterConfigType: XClusterConfigType
 ) => {
   // Check if bootstrap is required, for each selected table
   let bootstrapTest: { [tableUUID: string]: boolean } = {};
@@ -562,17 +560,6 @@ export const getTablesForBootstrapping = async (
     selectedTableUuids.map(formatUuidForXCluster),
     xClusterConfigType
   );
-  if (isUsedForDr) {
-    // For DR, we always need to collect backup storage config for bootstrapping when the
-    // user adds a new table to the config. The need_bootstrap endpoint will not return true for this
-    // case. Thus, we need to set the test to true for these tables.
-    const tableUuidsInConfigSet = new Set(tableUuidsInConfig);
-    selectedTableUuids.forEach((tableUuid) => {
-      if (!tableUuidsInConfigSet.has(tableUuid)) {
-        bootstrapTest[tableUuid] = true;
-      }
-    });
-  }
 
   const bootstrapRequiredTableUUIDs = new Set<string>();
   if (bootstrapTest) {

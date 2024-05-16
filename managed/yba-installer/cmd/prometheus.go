@@ -26,7 +26,7 @@ import (
 type prometheusDirectories struct {
 	SystemdFileLocation string
 	ConfFileLocation    string // This is used during config generation
-	WebConfFile					string
+	WebConfFile         string
 	templateFileName    string
 	DataDir             string
 	PromDir             string
@@ -37,7 +37,7 @@ func newPrometheusDirectories() prometheusDirectories {
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
-		WebConfFile:				 common.GetSoftwareRoot() + "/prometheus/conf/web.yml",
+		WebConfFile:         common.GetSoftwareRoot() + "/prometheus/conf/web.yml",
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
@@ -387,14 +387,27 @@ func (prom Prometheus) FixBasicAuth() error {
 
 // FinishReplicatedMigrate completest the replicated migration prometheus specific tasks
 func (prom Prometheus) FinishReplicatedMigrate() error {
-	links := []string{
-		filepath.Join(prom.DataDir, "storage"),
-		filepath.Join(prom.DataDir, "swamper_targets"),
-		filepath.Join(prom.DataDir, "swamper_rules"),
+	rootDir := common.GetReplicatedBaseDir()
+	linkDirs := []struct {
+		src  string
+		dest string
+	}{
+		{
+			filepath.Join(rootDir, "prometheusv2"),
+			filepath.Join(prom.DataDir, "storage"),
+		},
+		{
+			filepath.Join(rootDir, "/yugaware/swamper_targets"),
+			filepath.Join(prom.DataDir, "swamper_targets"),
+		},
+		{
+			filepath.Join(rootDir, "yugaware/swamper_rules"),
+			filepath.Join(prom.DataDir, "swamper_rules"),
+		},
 	}
 
-	for _, link := range links {
-		if err := common.ResolveSymlink(link); err != nil {
+	for _, link := range linkDirs {
+		if err := common.ResolveSymlink(link.src, link.dest); err != nil {
 			return fmt.Errorf("could not complete prometheus migration: %w", err)
 		}
 	}

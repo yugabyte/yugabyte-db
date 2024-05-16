@@ -1,0 +1,24 @@
+title: Upgrade universe gflags request
+type: object
+properties:
+  upgrade_option:
+    description: 'Universe upgrade option to use. One of "Rolling", "Non-rolling", "Non-restart"'
+    type: string
+    enum:
+      - Rolling
+      - Non-rolling
+      - Non-restart
+  kubernetes_resource_details:
+    $ref: ./KubernetesResourceDetails.yaml
+    x-yba-api-visibility: internal
+  sleep_after_master_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between master restarts. Defaults to 180000.
+    type: integer
+  sleep_after_tserver_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between tserver restarts. Defaults to 180000.
+    type: integer
+  universe_gflags:
+    description: GFlags for the universe
+    type: object
+    additionalProperties:
+      $ref: ./ClusterGFlags.yaml

@@ -838,5 +838,6 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
     ignoreExceptions(() -> getTaskMetadata(customer, destDir));
+    ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
   }
 }

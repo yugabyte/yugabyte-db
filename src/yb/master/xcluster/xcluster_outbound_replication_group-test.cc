@@ -452,7 +452,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   ASSERT_EQ(pb.target_universe_info().universe_uuid(), kTargetUniverseUuid.ToString());
   ASSERT_EQ(
       pb.target_universe_info().state(),
-      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::CREATING_REPLICATION_GROUP);
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::CREATING_REPLICATION_GROUP);
 
   EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(IsOperationDoneResult::Done(STATUS(IllegalState, error_str))));
@@ -480,7 +480,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   ASSERT_EQ(pb.target_universe_info().universe_uuid(), kTargetUniverseUuid.ToString());
   ASSERT_EQ(
       pb.target_universe_info().state(),
-      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING);
+      SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::REPLICATING);
 }
 
 TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {

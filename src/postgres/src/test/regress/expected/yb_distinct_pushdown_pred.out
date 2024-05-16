@@ -56,7 +56,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Distinct Prefix: 2
-         Remote Filter: (r1 = r2)
+         Storage Filter: (r1 = r2)
 (4 rows)
 
 SELECT DISTINCT r2 FROM t WHERE r1 = r2;
@@ -72,7 +72,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Distinct Prefix: 2
-         Remote Filter: (r1 = r2)
+         Storage Filter: (r1 = r2)
 (4 rows)
 
 SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2;
@@ -168,7 +168,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t W
 ---------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Seq Scan on t (actual rows=6 loops=1)
-         Remote Filter: (v = 1)
+         Storage Filter: (v = 1)
 (3 rows)
 
 SELECT DISTINCT v FROM t WHERE v = 1;
@@ -183,7 +183,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, v FROM
  HashAggregate (actual rows=2 loops=1)
    Group Key: r1, v
    ->  Seq Scan on t (actual rows=6 loops=1)
-         Remote Filter: (v = 1)
+         Storage Filter: (v = 1)
 (4 rows)
 
 SELECT DISTINCT r1, v FROM t WHERE v = 1;
@@ -203,7 +203,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
          Distinct Prefix: 1
-         Remote Filter: ((r1 * r1) = 1)
+         Storage Filter: ((r1 * r1) = 1)
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1;
@@ -218,7 +218,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Distinct Prefix: 2
-         Remote Filter: ((r2 * r2) = 1)
+         Storage Filter: ((r2 * r2) = 1)
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1;
@@ -268,11 +268,11 @@ SELECT DISTINCT 0 * r1 AS r FROM t;
 -- for each tuple. Cannot use a distinct index scan in that case.
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 * RANDOM() > 1;
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
  HashAggregate
    Group Key: r1
    ->  Seq Scan on t
-         Remote Filter: (((r1)::double precision * random()) > '1'::double precision)
+         Storage Filter: (((r1)::double precision * random()) > '1'::double precision)
 (4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r FROM t;
@@ -606,7 +606,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
          Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th (actual rows=3 loops=1)
                Distinct Prefix: 3
-               Remote Filter: (h1 = 1)
+               Storage Filter: (h1 = 1)
 (7 rows)
 
 SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;
@@ -638,7 +638,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FRO
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
    Distinct Prefix: 3
-   Remote Filter: (r1 = 1)
+   Storage Filter: (r1 = 1)
 (3 rows)
 
 SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
@@ -654,7 +654,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
          Distinct Prefix: 3
-         Remote Filter: (r1 = 1)
+         Storage Filter: (r1 = 1)
 (4 rows)
 
 SELECT DISTINCT r1 FROM th WHERE r1 = 1;

@@ -123,6 +123,7 @@ class MasterServiceBase {
   XClusterManager* handler(XClusterManager*);
   TestAsyncRpcManager* handler(TestAsyncRpcManager*);
   MasterAutoFlagsManager* handler(MasterAutoFlagsManager*);
+  CloneStateManager* handler(CloneStateManager*);
 
   Master* server_;
 

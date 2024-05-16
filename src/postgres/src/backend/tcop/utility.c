@@ -418,7 +418,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_YbCreateProfileStmt:
 		case T_YbDropProfileStmt:
 			{
-				/* YB_REVIEW(mihnea & sushant) Changed code - DDL is not read-only. */
+				/* YB_TODO(review)(mihnea & sushant) Changed code - DDL is not read-only. */
 				return COMMAND_IS_NOT_READ_ONLY;
 			}
 

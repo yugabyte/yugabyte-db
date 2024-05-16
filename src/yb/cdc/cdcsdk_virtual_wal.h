@@ -14,14 +14,15 @@
 
 #include <queue>
 #include <unordered_set>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xrepl_types.h"
-#include "yb/util/monotime.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/opid.h"
 #include "yb/cdc/cdcsdk_unique_record_id.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 
@@ -44,8 +45,13 @@ class CDCSDKVirtualWAL {
       const xrepl::StreamId& stream_id, GetConsistentChangesResponsePB* resp,
       const HostPort hostport, const CoarseTimePoint deadline);
 
+  // Returns the actually persisted restart_lsn.
+  Result<uint64_t> UpdateAndPersistLSNInternal(
+      const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
+      const uint64_t restart_lsn_hint);
+
  private:
-  struct NextGetChangesRequestInfo {
+  struct GetChangesRequestInfo {
     int64_t safe_hybrid_time;
     int32_t wal_segment_index;
 
@@ -54,7 +60,20 @@ class CDCSDKVirtualWAL {
     OpId from_op_id;
     std::string key;
     int32_t write_id;
-    uint64_t snapshot_time;
+  };
+
+  // For explict checkpointing, we only require a subset of fields defined in GetChangesRequestInfo
+  // object. Hence, instead of reusing GetChangesRequestInfo object, we have defined a separate
+  // object that will only hold enough information required for explicit checkpoint.
+  struct LastSentGetChangesRequestInfo {
+    OpId from_op_id;
+    uint64_t safe_hybrid_time;
+  };
+
+  struct CommitRecordMetadata {
+    uint64_t commit_lsn;
+    uint64_t commit_txn_id;
+    std::shared_ptr<CDCSDKUniqueRecordID> commit_record_unique_id;
   };
 
   // Custom comparator to sort records in the TabletRecordPriorityQueue by comparing their unique
@@ -69,6 +88,8 @@ class CDCSDKVirtualWAL {
   Status GetTabletListAndCheckpoint(
       const xrepl::StreamId& stream_id, const TableId table_id, const HostPort hostport,
       const CoarseTimePoint deadline, const TabletId& parent_tablet_id = "");
+
+  Status RemoveParentTabletEntryOnSplit(const TabletId& parent_tablet_id);
 
   Status GetChangesInternal(
       const xrepl::StreamId& stream_id, const std::unordered_set<TabletId> tablet_to_poll_list,
@@ -96,6 +117,14 @@ class CDCSDKVirtualWAL {
 
   Result<uint32_t> GetRecordTxnID(const std::shared_ptr<CDCSDKUniqueRecordID>& record_id);
 
+  Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
+
+  Status TruncateMetaMap(const uint64_t restart_lsn);
+
+  Status UpdateSlotEntryInCDCState(
+      const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
+      const CommitRecordMetadata& record_metadata);
+
   CDCServiceImpl* cdc_service_;
 
   std::unordered_set<TableId> publication_table_list_;
@@ -106,17 +135,50 @@ class CDCSDKVirtualWAL {
 
   // The next set of fields (last_seen_lsn_, last_seen_txn_id_, last_seen_unique_record_id_) hold
   // metadata (LSN/txnID/UniqueRecordId) about the record that has been last added to a
-  // GetConsistentChanges response. (TODO): On the initialisation of VirtualWAL, all these  will be
-  // initialised to the value set in the restart_lsn field of the cdc_state entry for the slot.
+  // GetConsistentChanges response.
   uint64_t last_seen_lsn_;
   uint32_t last_seen_txn_id_;
   std::shared_ptr<CDCSDKUniqueRecordID> last_seen_unique_record_id_;
 
-  // This map stores all info for the next GetChanges call except for the explicit checkpoint on a
-  // per tablet basis. The key is the tablet id. The value is a struct used to populate the
+  // This will hold the restart_lsn value received in the UpdateAndPersistLSN RPC call. It will
+  // initialised by the restart_lsn stores in the cdc_state's entry for slot.
+  uint64_t last_received_restart_lsn;
+
+  // This map stores all information for the next GetChanges call on a per tablet basis except for
+  // the explicit checkpoint. The key is the tablet id. The value is a struct used to populate the
   // from_cdc_sdk_checkpoint field, safe_hybrid_time and wal_segment_index fields of the
   // GetChangesRequestPB of the next GetChanges RPC call.
-  std::unordered_map<TabletId, NextGetChangesRequestInfo> tablet_next_req_map_;
+  std::unordered_map<TabletId, GetChangesRequestInfo> tablet_next_req_map_;
+
+  // This map stores all relevant PB objects sent in the last GetChanges call on a per tablet basis
+  // except for the explicit checkpoint. The primary usage of this map is to populate the
+  // explicit_cdc_sdk_checkpoint field of the GetChangesRequestPB of the next GetChanges RPC
+  // call. Also refer description on the last_sent_req_for_begin_map (part of
+  // CommitMetadataAndLastSentRequest struct).
+  std::unordered_map<TabletId, LastSentGetChangesRequestInfo> tablet_last_sent_req_map_;
+
+  // Stores the commit metadata of last shipped commit
+  // record in GetConsistentChanges response.
+  CommitRecordMetadata last_shipped_commit;
+
+  struct CommitMetadataAndLastSentRequest {
+    // The metadata values for COMMIT record will be persisted in the cdc_state entry representing
+    // the replication slot on receiving feedback from Walsender via the UpdateAndPersistLSN RPC
+    // call. These persisted values will then be used to initialise LSN & txnID generators on
+    // restarts.
+    CommitRecordMetadata record_metadata;
+
+    // For each BEGIN record that is shipped, we want to store the last sent GetChanges request on
+    // each tablet so that we can re-assemble the transaction if there was a restart since the
+    // client hasnt completely acknowledged the transaction we may or may not have shipped.
+    // Therefore, we will simply store a copy of tablet_last_sent_req_map_ while shipping a BEGIN
+    // record. If the client acknowledges the entire transaction, we'll use the corresponding BEGIN
+    // record's request information to send an explicit checkpoint in the next GetChanges call.
+    std::unordered_map<TabletId, LastSentGetChangesRequestInfo> last_sent_req_for_begin_map;
+  };
+
+  // ordered map in increasing order of LSN of commit record.
+  std::map<uint64_t, CommitMetadataAndLastSentRequest> commit_meta_and_last_req_map_;
 };
 
 }  // namespace cdc

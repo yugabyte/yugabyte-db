@@ -177,6 +177,7 @@ static void pgstat_build_snapshot_fixed(PgStat_Kind kind);
 
 static inline bool pgstat_is_kind_valid(int ikind);
 
+uint64_t *yb_new_conn = NULL;
 
 /* ----------
  * GUC parameters

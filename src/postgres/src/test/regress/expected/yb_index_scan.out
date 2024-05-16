@@ -563,7 +563,7 @@ explain select * from test where col9 = 99;
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=96)
-   Remote Filter: (col9 = 99)
+   Storage Filter: (col9 = 99)
 (2 rows)
 
 select * from test where col9 = 88;
@@ -593,7 +593,7 @@ explain select * from test where lower(col7) = 'dd';
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..107.50 rows=1000 width=96)
-   Remote Filter: (lower((col7)::text) = 'dd'::text)
+   Storage Filter: (lower((col7)::text) = 'dd'::text)
 (2 rows)
 
 select * from test where col7 = 'Dd';
@@ -651,7 +651,7 @@ EXPLAIN SELECT * FROM test WHERE col4 = 222 and col5 = 223;
 -----------------------------------------------------------------------
  Index Scan using idx_col5 on test  (cost=0.00..5.28 rows=10 width=96)
    Index Cond: (col5 = 223)
-   Remote Filter: (col4 = 222)
+   Storage Filter: (col4 = 222)
 (3 rows)
 
 SELECT * FROM test WHERE col4 = 222 and col5 = 223;
@@ -693,7 +693,7 @@ EXPLAIN SELECT * FROM test WHERE col5 = 444 and col6 = 35;
 -----------------------------------------------------------------------
  Index Scan using idx_col5 on test  (cost=0.00..5.28 rows=10 width=96)
    Index Cond: (col5 = 444)
-   Remote Index Filter: (col6 = 35)
+   Storage Index Filter: (col6 = 35)
 (3 rows)
 
 SELECT * FROM test WHERE col5 = 444 and col6 = 35;
@@ -707,7 +707,7 @@ EXPLAIN SELECT * FROM test WHERE col6 = 5554;
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=96)
-   Remote Filter: (col6 = 5554)
+   Storage Filter: (col6 = 5554)
 (2 rows)
 
 SELECT * FROM test WHERE col6 = 5554;
@@ -723,7 +723,7 @@ EXPLAIN SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 -----------------------------------------------------------------------------------------------
  Index Only Scan using idx_col4_idx_col5_idx_col6 on test  (cost=0.00..16.25 rows=100 width=8)
    Index Cond: (col4 = 232)
-   Remote Filter: ((col5 % 3) = 0)
+   Storage Filter: ((col5 % 3) = 0)
 (3 rows)
 
 SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
@@ -738,7 +738,7 @@ EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 -----------------------------------------------------------------------------------------------
  Index Only Scan using idx_col4_idx_col5_idx_col6 on test  (cost=0.00..16.25 rows=100 width=4)
    Index Cond: (col4 = 232)
-   Remote Filter: ((col5 % 3) = 0)
+   Storage Filter: ((col5 % 3) = 0)
 (3 rows)
 
 SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
@@ -3803,3 +3803,83 @@ FROM
 --------
       1
 (1 row)
+
+create table sample(a int, b int, primary key(a asc, b asc));
+insert into sample values (1,1);
+insert into sample values (1,2);
+insert into sample values (2,1);
+explain (costs off) select * from sample where b < 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b >= 2 and b < 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b >= 2) AND (b < 2))
+(2 rows)
+
+select * from sample where b >= 2 and b < 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b <= 2 and b < 2 and b >= 2;
+                    QUERY PLAN
+---------------------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 2) AND (b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 2 and b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b <= 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 2 and b >= 2;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+
+explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 3) AND (b <= 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 3 and b <= 2 and b >= 2;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+
+drop table sample;

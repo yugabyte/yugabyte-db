@@ -2556,6 +2556,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_table_rewrite_keep_old_table", PGC_SUSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, DDLs that rewrite tables/indexes will"
+						 " not drop the old relfilenode/DocDB table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_table_rewrite_keep_old_table,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
@@ -2821,6 +2834,33 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_ash_enable_infra", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Allocate shared memory for ASH, start the "
+							"background worker, create instrumentation hooks "
+							"and enable querying the yb_active_session_history "
+							"view."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ash_enable_infra,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_ash", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("Starts sampling and instrumenting YSQL and YCQL queries, "
+						 "and various background activities. This does nothing if "
+						 "ysql_yb_ash_enable_infra is disabled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ash,
+		false,
+		yb_enable_ash_check_hook, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -2970,6 +3010,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
+		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
+		 NULL
+		},
+		&yb_locks_txn_locks_per_tablet,
+		200, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4506,10 +4556,9 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Size of the circular buffer that stores wait events"),
+			gettext_noop("Size (in KiBs) of ASH circular buffer that stores the samples"),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE |
-			GUC_DISALLOW_IN_FILE | GUC_UNIT_KB
+			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
 		16 * 1024, 0, INT_MAX,
@@ -4517,8 +4566,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sampling_interval", PGC_SUSET, STATS_MONITORING,
-			gettext_noop("Duration between each sample"),
+		{"yb_ash_sampling_interval", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
 			GUC_UNIT_MS
 		},
@@ -4528,8 +4577,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sample_size", PGC_SUSET, STATS_MONITORING,
-			gettext_noop("Number of wait events captured in each sample"),
+		{"yb_ash_sample_size", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("Number of samples captured from each component per sampling event"),
 			NULL
 		},
 		&yb_ash_sample_size,
@@ -7479,7 +7528,8 @@ ResetAllOptions(void)
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
 
-		if (gconf->flags & GUC_REPORT)
+		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			report_needed = true;
@@ -7895,7 +7945,9 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && (gconf->flags & GUC_REPORT))
+			if (changed &&
+				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+				(YbIsClientYsqlConnMgr()  && gconf->context > PGC_BACKEND)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -7994,7 +8046,7 @@ ReportChangedGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if ((conf->flags & GUC_REPORT) && (conf->status & GUC_NEEDS_REPORT))
+		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) && (conf->status & GUC_NEEDS_REPORT))
 			ReportGUCOption(conf);
 	}
 
@@ -9703,7 +9755,11 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal && (record->flags & GUC_REPORT))
+	if (changeVal &&
+		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() &&
+		record->context > PGC_BACKEND &&
+		!(action & GUC_ACTION_LOCAL))))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;

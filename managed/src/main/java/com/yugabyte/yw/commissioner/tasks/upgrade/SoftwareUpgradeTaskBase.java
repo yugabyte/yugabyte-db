@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -249,7 +250,12 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
       createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
-    createLocaleCheckTask().setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+    createLocaleCheckTask(new ArrayList<>(universe.getNodes()))
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
     addBasicPrecheckTasks();
   }

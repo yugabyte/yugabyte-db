@@ -162,9 +162,4 @@ extern bool YBIsTestOnlinePg11ToPg15Upgrade();
  */
 Oid YBGetDatabaseOidFromEnv(const char *database_name);
 
-/**
- * Returns true if Active Session History should be enabled.
- */
-extern bool YBEnableAsh();
-
 #endif /* PG_YB_COMMON_H */

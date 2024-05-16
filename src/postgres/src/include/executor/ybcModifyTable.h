@@ -215,6 +215,12 @@ extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
 
 extern bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo);
 
+/*
+ * Checks if the given statement is planned to be executed as a single-row
+ * modify transaction.
+ */
+extern bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate);
+
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
 extern Datum YBCGetYBTupleIdFromTuple(Relation rel,

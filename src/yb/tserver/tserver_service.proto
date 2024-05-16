@@ -151,6 +151,10 @@ message GetLockStatusRequestPB {
   // single shard waiters with start time before the specified value will be returned. All
   // tablets listed in 'transactions_by_tablet' would be scanned.
   optional fixed64 max_single_shard_waiter_start_time_us = 5 [ default = 0 ];
+
+  // Limit number of locks returned per transaction at each tablet.
+  // If the field is set to 0, the result set isn't limited and all locks are returned.
+  optional uint32 max_txn_locks_per_tablet = 6 [ default = 0 ];
 }
 
 message GetLockStatusResponsePB {

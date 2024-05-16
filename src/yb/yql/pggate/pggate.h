@@ -120,7 +120,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+            const YBCPgAshConfig* ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -751,20 +751,16 @@ class PgApiImpl {
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
 
-  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
-      const ReplicationSlotName& slot_name);
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
-  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
-      const std::string& stream_id, const PgObjectId& table_id);
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
-  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint *checkpoint,
-      uint64_t safe_time, bool is_initial_checkpoint);
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
 
-  Result<cdc::GetChangesResponsePB> GetCDCChanges(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint *checkpoint);
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,

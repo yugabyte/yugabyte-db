@@ -45,7 +45,7 @@
 #include "yb/rocksdb/util/rate_limiter.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
@@ -137,8 +137,8 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
   rpc::MessengerBuilder messenger_builder("xcluster-consumer");
 
   if (FLAGS_use_node_to_node_encryption) {
-    local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
-        "", "", server::SecureContextType::kInternal, &messenger_builder));
+    local_client->secure_context = VERIFY_RESULT(rpc::SetupSecureContext(
+        /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal, &messenger_builder));
   }
   local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
 
@@ -529,8 +529,9 @@ void XClusterConsumer::TriggerPollForNewTablets() {
                   xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
             }
 
-            auto secure_context_result = server::SetupSecureContext(
-                dir, "", "", server::SecureContextType::kInternal, &messenger_builder);
+            auto secure_context_result = rpc::SetupSecureContext(
+                dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
+                &messenger_builder);
             if (!secure_context_result.ok()) {
               LOG(WARNING) << "Could not create secure context for " << replication_group_id << ": "
                            << secure_context_result.status().ToString();
@@ -734,9 +735,9 @@ int32_t XClusterConsumer::cluster_config_version() const {
 
 Status XClusterConsumer::ReloadCertificates() {
   if (local_client_->secure_context) {
-    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
         local_client_->secure_context.get(), "" /* node_name */, "" /* root_dir*/,
-        server::SecureContextType::kInternal));
+        rpc::SecureContextType::kInternal));
   }
 
   SharedLock read_lock(pollers_map_mutex_);
@@ -751,7 +752,7 @@ Status XClusterConsumer::ReloadCertificates() {
           FLAGS_certs_for_cdc_dir,
           xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
-    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));
   }
 

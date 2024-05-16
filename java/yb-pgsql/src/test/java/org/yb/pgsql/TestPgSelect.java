@@ -513,7 +513,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue("Expect pushdown for t1 pkey",
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
-                 explainOutput.contains("Index Cond: (t2.b = a)"));
+                 explainOutput.contains("Index Cond: (a = t2.b)"));
       assertFalse("Expect DocDB to filter fully",
                   explainOutput.contains("Rows Removed by"));
 
@@ -560,7 +560,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertTrue("Expect SeqScan on t1 when colOrder is HASH",
                   explainOutput.contains("Seq Scan on t1"));
         assertTrue("Expect filter pushdown to DocDB",
-                  explainOutput.contains("Remote Filter: (b IS NOT NULL)"));
+                  explainOutput.contains("Storage Filter: (b IS NOT NULL)"));
       }
       else {
         assertTrue("Expect pushdown for IS NOT NULL when colOrder is ASC or DESC",
@@ -590,7 +590,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       assertTrue("Expect expression pushdown for NOT IN condition",
-                 explainOutput.contains("Remote Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
+                 explainOutput.contains("Storage Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
 
       // Test BETWEEN.
       query = "select * from t1 where b between 1 and 3";
@@ -605,7 +605,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertTrue("Expect SeqScan on t1 when colOrder is HASH",
                   explainOutput.contains("Seq Scan on t1"));
         assertTrue("Expect filter pushdown to DocDB",
-                  explainOutput.contains("Remote Filter: ((b >= 1) AND (b <= 3))"));
+                  explainOutput.contains("Storage Filter: ((b >= 1) AND (b <= 3))"));
       } else {
         assertTrue("Expect pushdown for BETWEEN condition on ASC/DESC",
                    explainOutput.contains("Index Cond: ((b >= 1) AND (b <= 3))"));
@@ -644,7 +644,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertTrue("Expect pushdown for t1 pkey",
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
-                 explainOutput.contains("Index Cond: (t2.b = b)"));
+                 explainOutput.contains("Index Cond: (b = t2.b)"));
       assertFalse("Expect not to filter any rows by Index Recheck",
                  explainOutput.contains("Rows Removed by Index Recheck"));
 
@@ -744,7 +744,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       assertTrue("Expect pushdown for IS NULL" + explainOutput,
-                 explainOutput.contains("Remote Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
+                 explainOutput.contains("Storage Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
                                                 "AND (vr2 IS NULL))"));
 
       // Test hash key + partly set range key (should push down).

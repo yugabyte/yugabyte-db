@@ -404,8 +404,6 @@ def main() -> None:
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target_dir))
     release_util.create_distribution(build_target_dir)
 
-    release_util.set_glibc_version(build_target_dir)
-
     # This will set rpath for executables and libraries when using Linuxbrew.
     library_packager.postprocess_distribution(build_target_dir)
 

@@ -31,7 +31,7 @@ This is the C++ code and the unit tests that comprise the core of YugabyteDB. Yo
 
 ### Docs
 
-[YugabyteDB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements, and adding or modifying content. You can [follow the steps outlined here](docs/) to get set up and make a contribution.
+YugabyteDB documentation uses the Hugo framework. There are two types of docs issues - infrastructure enhancements, and adding or modifying content. You can [follow the steps outlined here](docs/) to get set up and make a contribution.
 
 ## Find an issue
 

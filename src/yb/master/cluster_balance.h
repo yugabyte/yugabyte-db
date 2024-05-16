@@ -125,9 +125,6 @@ class ClusterLoadBalancer {
 
   void InitializeTSDescriptors();
 
-  // Get the list of all live TSDescriptors which reported their tablets.
-  virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
-
   // Get the list of all TSDescriptors.
   virtual void GetAllDescriptors(TSDescriptorVector* ts_descs) const;
 

@@ -413,7 +413,8 @@
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
-        "showRetired": "Show retired recommendations"
+        "showRetired": "Show retired recommendations",
+        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -919,8 +920,7 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Confirm Full Copy",
-                "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
+                "nextButton": "Next: Confirm Full Copy"
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
@@ -967,6 +967,8 @@
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
           "databaseSelectionCount": "{{selectedDatabaseCount}} out of {{availableDatabaseCount}} database(s) selected",
+          "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
+          "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
@@ -1098,7 +1100,16 @@
     "cdc": {
       "emptyContainerTitle": "Replication Slots",
       "emptyContainerSubtitle": "Use Change Data Capture (CDC) replication slots to capture and emit database change events.",
-      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots"
+      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots",
+      "name": "Name",
+      "status": "Status",
+      "database": "Database",
+      "currentLag": "Current Lag",
+      "replicationSlots": "Replication Slots",
+      "timeToExpiry": "Time to expiry",
+      "replicationStatus": "Replication slot status",
+      "replicationSlot": "Replication Slot",
+      "autoRefresh": "Auto Refresh"
     },
     "metric": {
       "tooltip": {
@@ -1596,7 +1607,9 @@
         "validationMsg": {
           "nameRequired": "Name is required",
           "globalYBImagenameRequired": "Machine Image ID is required",
-          "amiRequired": "Ami ID is Required"
+          "amiRequired": "Ami ID is Required",
+          "linuxVersionAlreadyExists": "Image bundle with same name exists",
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles"
         }
       },
       "upgradeModal": {
@@ -1608,7 +1621,8 @@
         "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
-        "successMsg": "Success. Click <0>here</0> for task details"
+        "successMsg": "Success. Click <0>here</0> for task details",
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
       },
       "deleteModal": {
         "title": "Delete Linux Version",

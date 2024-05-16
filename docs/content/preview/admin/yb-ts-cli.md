@@ -106,7 +106,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
 
 ##### count_intents
 
-Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records)). Useful for debugging transactional workloads.
+Print the count of uncommitted intents (or [provisional records](../../architecture/transactions/distributed-txns/#provisional-records)). Helpful for debugging transactional workloads.
 
 **Syntax**
 
@@ -118,7 +118,7 @@ yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 
 ##### current_hybrid_time
 
-Prints the value of the current [hybrid time](../../../architecture/transactions/single-row-transactions/#hybrid-time-as-an-mvcc-timestamp).
+Prints the value of the current [hybrid time](../../architecture/transactions/transactions-overview/#mvcc-using-hybrid-time).
 
 **Syntax**
 
@@ -140,7 +140,7 @@ yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * *tablet_id*: The identifier (ID) for the tablet.
-* *reason-string*: Text string providing useful information on why the tablet was deleted.
+* *reason-string*: Text string providing information on why the tablet was deleted.
 
 ##### dump_tablet
 
@@ -232,14 +232,14 @@ yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * `--force`: Flag to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
-* *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-flags)
+* *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/)
 * *value*: The value to be applied.
 
 {{< note title="Important" >}}
 
 The `set_flag` command changes the in-memory value of the specified flag, atomically, for a running server and can alter its behavior.  **The change does NOT persist across restarts.**
 
-In practice, there are some flags that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, since the server binds just once at startup. While most of the flags are probably runtime-settable, you need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
+In practice, there are some flags that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, because the server binds just once at startup. While most of the flags are probably runtime-settable, you need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
 
 One typical operational flow is that you can use this to modify runtime flags in memory and then out of band also modify the configuration file that the server uses to start. This allows for flags to be changed on running servers, without executing a restart of the server.
 
@@ -261,7 +261,7 @@ For an example, see [Return the status of a tablet server](#return-the-status-of
 
 ##### refresh_flags
 
-Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed. 
+Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
 
 Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
 
@@ -300,7 +300,6 @@ Default: `60000` (1000 ms = 1 sec)
 To connect to a cluster with TLS enabled, you must include the `--certs_dir_name` flag with the directory location where the root certificate is located.
 
 Default: `""`
-
 
 ## Examples
 

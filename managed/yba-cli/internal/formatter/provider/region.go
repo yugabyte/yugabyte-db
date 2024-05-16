@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/aws"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/azu"
@@ -100,7 +101,7 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 	r.PostFormat(tmpl, NewRegionContext())
 
 	switch providerCode {
-	case "aws":
+	case util.AWSProviderType:
 		tmpl, err = r.startSubsection(aws.Region)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -112,7 +113,7 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 			return err
 		}
 		r.PostFormat(tmpl, aws.NewRegionContext())
-	case "gcp":
+	case util.GCPProviderType:
 		tmpl, err = r.startSubsection(gcp.Region)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -124,7 +125,7 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 			return err
 		}
 		r.PostFormat(tmpl, gcp.NewRegionContext())
-	case "azu":
+	case util.AzureProviderType:
 		tmpl, err = r.startSubsection(azu.Region)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -136,7 +137,7 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 			return err
 		}
 		r.PostFormat(tmpl, azu.NewRegionContext())
-	case "kubernetes":
+	case util.K8sProviderType:
 		tmpl, err = r.startSubsection(kubernetes.Region1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -187,6 +188,17 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 		r.Output.Write([]byte("\n"))
 
 		tmpl, err = r.startSubsection(kubernetes.Region5)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := r.ContextFormat(tmpl, rc.KubeRegion); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		r.PostFormat(tmpl, kubernetes.NewRegionContext())
+
+		tmpl, err = r.startSubsection(kubernetes.Region6)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err

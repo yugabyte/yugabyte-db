@@ -1302,7 +1302,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       old_status_tablet = old_status_tablet_;
     }
     SendAbortToOldStatusTabletIfNeeded(deadline, transaction, old_status_tablet);
-    DoAbort(deadline, transaction, status_tablet);
+    // This path could also be executed when the transaction fails amidst promotion. status_tablet_
+    // could be null if we haven't yet managed to successfully look up a status tablet at all
+    // (neither local nor global).
+    if (status_tablet) {
+      DoAbort(deadline, transaction, status_tablet);
+    }
   }
 
   void SendAbortToOldStatusTabletIfNeeded(
@@ -1703,7 +1708,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (!status.ok()) {
       auto state = state_.load(std::memory_order_acquire);
-      if (state == TransactionState::kRunning) {
+      auto is_active = state == TransactionState::kPromoting ||
+                       (state == TransactionState::kRunning && ready_);
+      if (is_active && !child_) {
         trigger_abort = true;
       }
       SetErrorUnlocked(status, operation);
@@ -1720,7 +1727,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     if (trigger_abort) {
-      Abort(TransactionRpcDeadline());
+      DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
     }
   }
 
@@ -2119,7 +2126,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto handle = GetTransactionStatusMoveHandle(tablet_id);
     manager_->rpcs().Unregister(handle);
 
+    auto status_tablet = status_tablet_;
+    auto trigger_abort = false;
     if (!status.ok()) {
+      if (state_.load(std::memory_order_acquire) == TransactionState::kRunning) {
+        trigger_abort = true;
+      }
       SetErrorUnlocked(status, "Move transaction status");
     }
 
@@ -2148,6 +2160,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
               TransactionRpcDeadline(), transaction, old_status_tablet);
         }
       }
+    }
+    // Early abort the transaction if any UpdateTransactionStatusLocation rpc(s) failed.
+    if (trigger_abort) {
+      DoAbort(TransactionRpcDeadline(), transaction, status_tablet);
     }
   }
 

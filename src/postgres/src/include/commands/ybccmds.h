@@ -122,25 +122,18 @@ extern void
 YBCGetReplicationSlot(const char *slot_name,
 					  YBCReplicationSlotDescriptor **replication_slot);
 
-extern void 
-YBCGetReplicationSlotStatus(const char *slot_name, 
-							bool *active);
-
 extern void YBCDropReplicationSlot(const char *slot_name);
 
-extern void
-YBCGetTabletListToPollForStreamAndTable(const char *stream_id,
-										Oid relation_id,
-										YBCPgTabletCheckpoint **tablet_checkpoints,
-										size_t *numtablets);
+extern void YBCInitVirtualWalForCDC(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
 
-extern void YBCSetCDCTabletCheckpoint(const char *stream_id,
-									  const char *tablet_id,
-									  const YBCPgCDCSDKCheckpoint *checkpoint,
-									  uint64_t safe_time,
-									  bool is_initial_checkpoint);
+extern void YBCDestroyVirtualWalForCDC();
 
-extern void YBCGetCDCChanges(const char *stream_id,
-							 const char *tablet_id,
-							 const YBCPgCDCSDKCheckpoint *checkpoint,
-							 YBCPgChangeRecordBatch **record_batch);
+extern void YBCGetCDCConsistentChanges(const char *stream_id,
+									   YBCPgChangeRecordBatch **record_batch);
+
+extern void YBCUpdateAndPersistLSN(const char *stream_id,
+								   XLogRecPtr restart_lsn_hint,
+								   XLogRecPtr confirmed_flush,
+								   YBCPgXLogRecPtr *restart_lsn);

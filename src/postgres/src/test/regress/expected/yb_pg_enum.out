@@ -92,7 +92,7 @@ ORDER BY enumlabel::planets;
 ALTER TYPE planets ADD VALUE
   'plutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutopluto';
 ERROR:  invalid enum label "plutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutoplutopluto"
-DETAIL:  Labels must be 63 characters or less.
+DETAIL:  Labels must be 63 bytes or less.
 ALTER TYPE planets ADD VALUE 'pluto' AFTER 'zeus';
 ERROR:  "zeus" is not an existing enum label
 -- if not exists tests
@@ -118,7 +118,7 @@ SELECT enum_last(NULL::planets);
 (1 row)
 
 --
--- Test inserting so many values that we have to renumber.
+-- Test inserting so many values that we have to renumber
 -- This is not supported by YB.
 --
 create type insenum as enum ('L1', 'L2');
@@ -167,33 +167,33 @@ SELECT enumlabel,
 FROM pg_enum
 WHERE enumtypid = 'insenum'::regtype
 ORDER BY enumsortorder;
- enumlabel |        so
------------+------------------
- L1        |                1
- i1        |              1.5
- i2        |             1.75
- i3        |            1.875
- i4        |           1.9375
- i5        |          1.96875
- i6        |         1.984375
- i7        |        1.9921875
- i8        |       1.99609375
- i9        |      1.998046875
- i10       |     1.9990234375
- i11       |    1.99951171875
- i12       |   1.999755859375
- i13       |  1.9998779296875
- i14       | 1.99993896484375
- i15       | 1.99996948242188
- i16       | 1.99998474121094
- i17       | 1.99999237060547
- i18       | 1.99999618530273
- i19       | 1.99999809265137
- i20       | 1.99999904632568
- i21       | 1.99999952316284
- i22       | 1.99999976158142
- i23       | 1.99999988079071
- L2        |                2
+ enumlabel |         so
+-----------+--------------------
+ L1        |                  1
+ i1        |                1.5
+ i2        |               1.75
+ i3        |              1.875
+ i4        |             1.9375
+ i5        |            1.96875
+ i6        |           1.984375
+ i7        |          1.9921875
+ i8        |         1.99609375
+ i9        |        1.998046875
+ i10       |       1.9990234375
+ i11       |      1.99951171875
+ i12       |     1.999755859375
+ i13       |    1.9998779296875
+ i14       |   1.99993896484375
+ i15       |  1.999969482421875
+ i16       | 1.9999847412109375
+ i17       | 1.9999923706054688
+ i18       | 1.9999961853027344
+ i19       | 1.9999980926513672
+ i20       | 1.9999990463256836
+ i21       | 1.9999995231628418
+ i22       |  1.999999761581421
+ i23       | 1.9999998807907104
+ L2        |                  2
 (25 rows)
 
 --
@@ -309,9 +309,10 @@ SELECT max(col) FROM enumtest WHERE col < 'green';
 SET enable_seqscan = off;
 SET enable_bitmapscan = off;
 --
--- LSM index / opclass with the various operators
+-- Btree index / opclass with the various operators
 --
-CREATE UNIQUE INDEX enumtest_lsm ON enumtest USING lsm (col);
+CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT * FROM enumtest WHERE col = 'orange';
   col
 --------
@@ -380,7 +381,7 @@ SELECT max(col) FROM enumtest WHERE col < 'green';
  yellow
 (1 row)
 
-DROP INDEX enumtest_lsm;
+DROP INDEX enumtest_btree;
 --
 -- Hash index / opclass with the = operator
 --
@@ -697,6 +698,6 @@ SELECT COUNT(*) FROM pg_type WHERE typname = 'rainbow';
 
 SELECT * FROM pg_enum WHERE NOT EXISTS
   (SELECT 1 FROM pg_type WHERE pg_type.oid = enumtypid);
- enumtypid | enumsortorder | enumlabel
------------+---------------+-----------
+ oid | enumtypid | enumsortorder | enumlabel 
+-----+-----------+---------------+-----------
 (0 rows)

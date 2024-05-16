@@ -23,6 +23,7 @@ PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 VERSION_TXT:=$(CURDIR)/version.txt
+GO_SOURCE_FILES := $(shell find . -name \*.go -type f -print)
 
 
 all: yba package
@@ -31,7 +32,7 @@ echo:
 	@echo $(CURDIR)
 
 yba: test ${BIN_DIR}/${BIN_NAME}
-${BIN_DIR}/${BIN_NAME}:
+${BIN_DIR}/${BIN_NAME}: ${GO_SOURCE_FILES}
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-cli/pkg/components/yba.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-cli/pkg/components/yba.BuildID=${BUILD_ID}'"
@@ -39,9 +40,14 @@ ${BIN_DIR}/${BIN_NAME}:
 
 package: ${PACKAGE_NAME}
 ${PACKAGE_NAME}: yba
-	mkdir $(PACKAGE_DIR)
+	@mkdir -p $(PACKAGE_DIR)
+ifneq ("$(shell cmp -s ${BIN_DIR}/${BIN_NAME} ${PACKAGE_DIR}/${BIN_NAME}; echo $$?)", "0")
+	@echo "Packaging ${BIN_NAME} into ${PACKAGE_DIR}"
 	cp -RL ${BIN_DIR}/${BIN_NAME} ${VERSION_METADATA_JSON} ${VERSION_TXT} ${PACKAGE_DIR}
 	tar -czvf ${PACKAGE_NAME} ${PACKAGE_DIR}
+else
+	@echo "Nothing to do for package"
+endif
 	@echo "List of files in ${PACKAGE_DIR}:"
 	@find ${PACKAGE_DIR} -type f -exec readlink -f {} \;
 
@@ -70,3 +76,7 @@ build:
 .PHONY: doc
 doc:
 	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
+
+.PHONY: license
+license:
+	./licenses/generate-license-file.sh

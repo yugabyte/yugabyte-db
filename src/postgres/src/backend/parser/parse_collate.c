@@ -367,7 +367,7 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 				ListCell   *l;
 				ListCell   *r;
 
-				forboth(l, expr->largs, r, expr->rargs)
+				forboth(l, expr->largs, r, castNode(List, expr->rargs))
 				{
 					Node	   *le = (Node *) lfirst(l);
 					Node	   *re = (Node *) lfirst(r);

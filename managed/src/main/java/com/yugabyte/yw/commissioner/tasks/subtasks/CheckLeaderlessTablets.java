@@ -106,7 +106,7 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
     }
     List<String> result = new ArrayList<>();
     for (JsonNode leaderlessTabletInfo : leaderlessTablets) {
-      result.add(leaderlessTabletInfo.get("table_uuid").asText());
+      result.add(leaderlessTabletInfo.get("tablet_uuid").asText());
     }
     return result;
   }

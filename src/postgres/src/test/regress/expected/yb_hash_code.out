@@ -358,7 +358,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 512)
-   Remote Filter: (x < 90)
+   Storage Filter: (x < 90)
 (3 rows)
 
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
@@ -537,6 +537,29 @@ SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
  6785
  5659
 (9 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Only Scan using textidx on text_table (actual rows=10 loops=1)
+   Index Cond: (yb_hash_code(tj) <= 63)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+  tj
+------
+ 4999
+ 8300
+ 6918
+ 912
+ 8646
+ 4946
+ 6920
+ 6785
+ 5659
+ 1363
+(10 rows)
 
 DROP TABLE text_table;
 -- testing on a table with multiple hash key columns on

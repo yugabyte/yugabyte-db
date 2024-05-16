@@ -35,6 +35,7 @@ public class MetricGraphService implements GraphSourceIF {
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
+  public static final String NODE_PREFIX = "node_prefix";
 
   private static final Set<String> DATA_DISK_USAGE_METRICS =
       ImmutableSet.of(
@@ -117,7 +118,8 @@ public class MetricGraphService implements GraphSourceIF {
 
       Map<String, String> queries = getQueries(settings, context);
       result.setLayout(config.getLayout());
-      List<GraphResponse.GraphData> data = new ArrayList<>();
+      result.setStepSeconds(query.getStepSeconds());
+      List<GraphData> data = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();
@@ -425,12 +427,12 @@ public class MetricGraphService implements GraphSourceIF {
     };
   }
 
-  private List<GraphResponse.GraphData> getGraphData(
+  private List<GraphData> getGraphData(
       MetricResponse response,
       String metricName,
       MetricsGraphConfig config,
       GraphSettings settings) {
-    List<GraphResponse.GraphData> metricGraphDataList = new ArrayList<>();
+    List<GraphData> metricGraphDataList = new ArrayList<>();
 
     GraphLayout layout = config.getLayout();
     // We should use instance name for aggregated graph in case it's grouped by instance.
@@ -439,38 +441,37 @@ public class MetricGraphService implements GraphSourceIF {
             && config.getGroupBy().equals(GraphFilter.instanceName.getMetricLabel())
             && settings.getSplitMode() == GraphSettings.SplitMode.NONE;
     for (final MetricResponse.Result result : response.getData().getResult()) {
-      GraphResponse.GraphData metricGraphData = new GraphResponse.GraphData();
+      GraphData metricGraphData = new GraphData();
       Map<String, String> metricInfo = result.getMetric();
 
-      metricGraphData.instanceName = metricInfo.remove(GraphFilter.instanceName.getMetricLabel());
-      metricGraphData.tableId = metricInfo.remove(TABLE_ID);
-      metricGraphData.tableName = metricInfo.remove(TABLE_NAME);
-      metricGraphData.namespaceName = metricInfo.remove(NAMESPACE_NAME);
-      metricGraphData.namespaceId = metricInfo.remove(NAMESPACE_ID);
-      if (metricInfo.containsKey("node_prefix")) {
-        metricGraphData.name = metricInfo.get("node_prefix");
-      } else if (metricInfo.size() == 1) {
+      metricGraphData.setInstanceName(metricInfo.remove(GraphFilter.instanceName.getMetricLabel()));
+      metricGraphData.setTableId(metricInfo.remove(TABLE_ID));
+      metricGraphData.setTableName(metricInfo.remove(TABLE_NAME));
+      metricGraphData.setNamespaceName(metricInfo.remove(NAMESPACE_NAME));
+      metricGraphData.setNamespaceId(metricInfo.remove(NAMESPACE_ID));
+      metricGraphData.setNodePrefix(metricInfo.remove(NODE_PREFIX));
+      if (metricInfo.size() == 1) {
         // If we have a group_by clause, the group by name would be the only
         // key in the metrics data, fetch that and use that as the name
         String key = metricInfo.keySet().iterator().next();
-        metricGraphData.name = metricInfo.get(key);
+        metricGraphData.setName(metricInfo.get(key));
       } else if (metricInfo.isEmpty()) {
-        if (useInstanceName && StringUtils.isNotBlank(metricGraphData.instanceName)) {
+        if (useInstanceName && StringUtils.isNotBlank(metricGraphData.getInstanceName())) {
           // In case of aggregated metric query need to set name == instanceName for graphs,
           // which are grouped by instance name by default
-          metricGraphData.name = metricGraphData.instanceName;
+          metricGraphData.setName(metricGraphData.getInstanceName());
         } else {
-          metricGraphData.name = metricName;
+          metricGraphData.setName(metricName);
         }
       }
 
       if (metricInfo.size() <= 1) {
         if (layout.getYaxis() != null
-            && layout.getYaxis().getAlias().containsKey(metricGraphData.name)) {
-          metricGraphData.name = layout.getYaxis().getAlias().get(metricGraphData.name);
+            && layout.getYaxis().getAlias().containsKey(metricGraphData.getName())) {
+          metricGraphData.setName(layout.getYaxis().getAlias().get(metricGraphData.getName()));
         }
       } else {
-        metricGraphData.labels = new HashMap<>();
+        metricGraphData.setLabels(new HashMap<>());
         // In case we want to use instance name - it's already set above
         // Otherwise - replace metric name with alias.
         if (layout.getYaxis() != null && !useInstanceName) {
@@ -489,30 +490,35 @@ public class MetricGraphService implements GraphSourceIF {
               }
             }
             if (validLabels) {
-              metricGraphData.name = entry.getValue();
+              metricGraphData.setName(entry.getValue());
             }
           }
         } else {
-          metricGraphData.labels.putAll(metricInfo);
+          metricGraphData.getLabels().putAll(metricInfo);
         }
       }
       if (result.getValues() != null) {
         for (final Pair<Double, Double> value : result.getValues()) {
-          metricGraphData.x.add((long) (value.getKey() * 1000));
-          metricGraphData.y.add(String.valueOf(value.getValue()));
+          metricGraphData
+              .getPoints()
+              .add(new GraphPoint().setX((long) (value.getKey() * 1000)).setY(value.getValue()));
         }
       } else if (result.getValue() != null) {
-        metricGraphData.x.add((long) (result.getValue().getKey() * 1000));
-        metricGraphData.y.add(String.valueOf(result.getValue().getValue()));
+        metricGraphData
+            .getPoints()
+            .add(
+                new GraphPoint()
+                    .setX((long) (result.getValue().getKey() * 1000))
+                    .setY(result.getValue().getValue()));
       }
-      metricGraphData.type = "scatter";
+      metricGraphData.setType("scatter");
       metricGraphDataList.add(metricGraphData);
     }
     return sortGraphData(metricGraphDataList, config);
   }
 
-  private List<GraphResponse.GraphData> sortGraphData(
-      List<GraphResponse.GraphData> graphData, MetricsGraphConfig configDefinition) {
+  private List<GraphData> sortGraphData(
+      List<GraphData> graphData, MetricsGraphConfig configDefinition) {
     Map<String, Integer> nameOrderMap = new HashMap<>();
     if (configDefinition.getLayout().getYaxis() != null
         && configDefinition.getLayout().getYaxis().getAlias() != null) {
@@ -525,14 +531,14 @@ public class MetricGraphService implements GraphSourceIF {
         .sorted(
             Comparator.comparing(
                 data -> {
-                  if (StringUtils.isEmpty(data.name)) {
+                  if (StringUtils.isEmpty(data.getName())) {
                     return Integer.MAX_VALUE;
                   }
-                  if (StringUtils.isEmpty(data.instanceName)
-                      && StringUtils.isEmpty(data.namespaceName)) {
+                  if (StringUtils.isEmpty(data.getInstanceName())
+                      && StringUtils.isEmpty(data.getNamespaceName())) {
                     return Integer.MAX_VALUE;
                   }
-                  Integer position = nameOrderMap.get(data.name);
+                  Integer position = nameOrderMap.get(data.getName());
                   if (position != null) {
                     return position;
                   }

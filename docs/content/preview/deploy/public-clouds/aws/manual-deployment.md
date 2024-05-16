@@ -576,7 +576,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 And confirm that the output looks similar to what is shown below with `min_num_replicas` set to 1 for each AZ.
 
-```json
+```yaml
 replication_info {
   live_replicas {
     num_replicas: 3

@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
-#include <queue>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
@@ -41,10 +40,9 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -54,25 +52,22 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
 
 #include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/util/rate_limiter.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/async_client_initializer.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/debug-util.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -84,13 +79,11 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 using std::max;
 using std::min;
@@ -756,7 +749,8 @@ CDCServiceImpl::CDCServiceImpl(
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
           GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)) {
-  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_.get());
+  cdc_state_table_ =
+      std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_->get_client_future());
 
   CHECK_OK(Thread::Create(
       "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
@@ -2430,6 +2424,12 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const auto& tablet_id = entry.key.tablet_id;
     const auto& checkpoint = *entry.checkpoint;
     count++;
+
+    // kCDCSDKSlotEntryTabletId represent cdc_state entry for a replication slot. Ignore it while
+    // moving retention barriers.
+    if (tablet_id == kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
 
     // Find the minimum checkpoint op_id per tablet. This minimum op_id
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
@@ -4277,7 +4277,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     return;
   }
 
-  VLOG(1) << "Received InitVirtualWALForCDC request: " << req->DebugString();
+  LOG(INFO) << "Received InitVirtualWALForCDC request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4339,7 +4339,7 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
+  VLOG(4) << "Received GetConsistentChanges request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4372,7 +4372,7 @@ void CDCServiceImpl::GetConsistentChanges(
     LOG(WARNING) << msg;
   }
 
-  VLOG(1) << "Sending GetConsistentChanges response with num_records: "
+  VLOG(4) << "Sending GetConsistentChanges response with num_records: "
           << resp->cdc_sdk_proto_records_size();
 
   context.RespondSuccess();
@@ -4385,7 +4385,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
     return;
   }
 
-  VLOG(1) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+  LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4410,6 +4410,68 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   }
 
   LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::UpdateAndPersistLSN(
+    const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  VLOG(4) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_session_id(),
+      STATUS(InvalidArgument, "Session ID is required for UpdateAndPersistLSN RPC"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_stream_id(),
+      STATUS(InvalidArgument, "Stream ID is required for UpdateAndPersistLSN RPC"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_restart_lsn(),
+      STATUS(InvalidArgument, "Restart LSN is required for UpdateAndPersistLSN RPC"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_confirmed_flush_lsn(),
+      STATUS(InvalidArgument, "Confirmed Flush LSN is required for UpdateAndPersistLSN RPC"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto session_id = req->session_id();
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    SharedLock l(mutex_);
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.contains(session_id),
+        STATUS_FORMAT(
+            NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    virtual_wal = session_virtual_wal_[session_id];
+  }
+
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  auto confirmed_flush_lsn = req->confirmed_flush_lsn();
+  auto restart_lsn = req->restart_lsn();
+  auto res = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
+  if (!res.ok()) {
+    std::string error_msg = Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id);
+    LOG(WARNING) << error_msg;
+    RPC_STATUS_RETURN_ERROR(
+        res.status().CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+        context);
+  }
+
+  resp->set_restart_lsn(*res);
+
+  VLOG(4) << "Succesfully persisted LSN values for stream_id: " << stream_id
+          << ", confirmed_flush_lsn = " << confirmed_flush_lsn
+          << ", restart_lsn = " << *res;
   context.RespondSuccess();
 }
 

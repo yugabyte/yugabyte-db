@@ -50,6 +50,7 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
@@ -91,7 +92,6 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/oid_generator.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"

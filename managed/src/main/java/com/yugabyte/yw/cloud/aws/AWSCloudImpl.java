@@ -95,7 +95,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
@@ -994,15 +993,6 @@ public class AWSCloudImpl implements CloudAPI {
       LOG.error("AWS Provider authorizeSecurityGroupIngress dry run validation failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Dry run of AWS AuthorizeSecurityGroupIngress failed: " + e.getMessage());
-    }
-  }
-
-  public String getPrivateKeyAlgoOrBadRequest(String privateKeyString) {
-    try {
-      return CertificateHelper.getPrivateKey(privateKeyString).getAlgorithm();
-    } catch (RuntimeException e) {
-      LOG.error("Private key Algorithm extraction failed: ", e);
-      throw new PlatformServiceException(BAD_REQUEST, "Could not fetch private key algorithm");
     }
   }
 

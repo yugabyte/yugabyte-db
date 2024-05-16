@@ -17,7 +17,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
@@ -50,7 +49,6 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 import org.jboss.logging.MDC;
 import org.junit.Before;
@@ -177,25 +175,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
-      List<String> command = new ArrayList<>();
-      command.add("locale");
-      command.add("-a");
-      command.add("|");
-      command.add("grep");
-      command.add("-E");
-      command.add("-q");
-      command.add("\"en_US.utf8|en_US.UTF-8\"");
-      command.add("&&");
-      command.add("echo");
-      command.add("\"Locale is present\"");
-      command.add("||");
-      command.add("echo");
-      command.add("\"Locale is not present\"");
-      when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "Locale is present"));
+      mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
           .executeQueryInNodeShell(any(), any(), any(), anyBoolean());

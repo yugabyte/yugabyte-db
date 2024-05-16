@@ -499,14 +499,14 @@ retry:
 						 LWTRANCHE_REPLICATION_SLOT_IO);
 		ConditionVariableInit(&s->active_cv);
 
+		s->data.confirmed_flush = yb_replication_slot->confirmed_flush;
+		s->data.xmin = yb_replication_slot->xmin;
 		/*
-		 * Dummy values to always stream from the start.
-		 * TODO(#20726): This has to be updated to support restarts.
+		 * Set catalog_xmin as xmin to make the PG Debezium connector work.
+		 * It is not used in our implementation.
 		 */
-		s->data.catalog_xmin = 0;
-		s->data.confirmed_flush = 0;
-		s->data.xmin = 0;
-		s->data.restart_lsn = 0;
+		s->data.catalog_xmin = yb_replication_slot->xmin;
+		s->data.restart_lsn = yb_replication_slot->restart_lsn;
 
 		MyReplicationSlot = s;
 		return;
@@ -713,10 +713,10 @@ ReplicationSlotDrop(const char *name, bool nowait)
 	 */
 	if (IsYugaByteEnabled())
 	{
-		bool		stream_active;
+		YBCReplicationSlotDescriptor *yb_replication_slot;
+		YBCGetReplicationSlot(name, &yb_replication_slot);
 
-		YBCGetReplicationSlotStatus(name, &stream_active);
-		if (stream_active)
+		if (yb_replication_slot->active)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("replication slot \"%s\" is active", name)));

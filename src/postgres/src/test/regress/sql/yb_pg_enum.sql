@@ -71,7 +71,7 @@ ALTER TYPE planets ADD VALUE IF NOT EXISTS 'pluto';
 SELECT enum_last(NULL::planets);
 
 --
--- Test inserting so many values that we have to renumber.
+-- Test inserting so many values that we have to renumber
 -- This is not supported by YB.
 --
 
@@ -160,9 +160,9 @@ SET enable_seqscan = off;
 SET enable_bitmapscan = off;
 
 --
--- LSM index / opclass with the various operators
+-- Btree index / opclass with the various operators
 --
-CREATE UNIQUE INDEX enumtest_lsm ON enumtest USING lsm (col);
+CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
 SELECT * FROM enumtest WHERE col = 'orange';
 SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
 SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
@@ -172,7 +172,7 @@ SELECT * FROM enumtest WHERE col <= 'green' ORDER BY col;
 SELECT min(col) FROM enumtest;
 SELECT max(col) FROM enumtest;
 SELECT max(col) FROM enumtest WHERE col < 'green';
-DROP INDEX enumtest_lsm;
+DROP INDEX enumtest_btree;
 
 --
 -- Hash index / opclass with the = operator

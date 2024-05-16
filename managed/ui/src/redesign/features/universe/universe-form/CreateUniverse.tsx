@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useUpdateEffect, useEffectOnce } from 'react-use';
+import { set } from 'lodash';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { YBLoading } from '../../../../components/common/indicators';
@@ -153,6 +154,11 @@ export const CreateUniverse: FC = () => {
           ]
         }
       });
+      // the getPrimaryInheritedValues overrides the async clusters imageBundleUUID.
+      // we are manually overriding it
+      const asyncIndex = configurePayload.clusters!.length -1;
+      set(configurePayload, `clusters.[${asyncIndex}].userIntent.imageBundleUUID`, asyncData.instanceConfig.imageBundleUUID);
+
     }
 
     if (

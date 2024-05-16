@@ -141,6 +141,9 @@
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
+[[redirects]]
+  from = "/stable/explore/indexes-constraints/*"
+  to = "/stable/explore/ysql-language-features/indexes-constraints/:splat"
 
 [[redirects]]
   from = "/preview/explore/json-support/jsonb-ysql/"
@@ -540,7 +543,11 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/"
+  to = "/preview/releases/ybdb-release/"
+
+[[redirects]]
+  from = "/preview/releases/release-notes/*"
+  to = "/preview/releases/ybdb-release/:splat"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -637,6 +644,13 @@
   from = "/:version/reference/connectors/*"
   to = "/preview/integrations/apache-kafka/"
 
+# Redirect for troubleshoot
+
+[[redirects]]
+  from = "/:version/troubleshoot/*"
+  to = "/preview/troubleshoot/:splat"
+  force = true
+
 # A few redirects to head off issues with version_menu_pagelinks
 
 [[redirects]]
@@ -655,6 +669,19 @@
 [[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.16/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.18/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.14/explore/indexes-constraints/"
   force = true
 
 [[redirects]]

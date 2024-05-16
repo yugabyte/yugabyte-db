@@ -118,6 +118,8 @@ message CreateTableRequestPB {
 
   // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
   optional bytes old_rewrite_table_id = 29;
+
+  optional bool is_clone = 30;
 }
 
 message CreateTableResponsePB {
@@ -174,6 +176,7 @@ message ListTablesResponsePB {
     optional string pgschema_name = 7;
     optional ColocatedInfo colocated_info = 8;
     optional bool hidden = 9;
+    optional string indexed_table_id = 10;
   }
 
   repeated TableInfo tables = 2;

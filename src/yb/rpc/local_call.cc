@@ -25,8 +25,6 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(TEST_yb_enable_ash);
-
 namespace yb {
 namespace rpc {
 
