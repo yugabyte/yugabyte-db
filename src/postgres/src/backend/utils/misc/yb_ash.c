@@ -79,8 +79,7 @@ typedef struct YbAsh
 static YbAsh *yb_ash = NULL;
 
 static int yb_ash_cb_max_entries(void);
-static void yb_set_ash_metadata(uint64 query_id);
-static void yb_unset_ash_metadata();
+static void YbAshSetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location);
 static void YbAshAcquireBufferLock(bool exclusive);
@@ -225,7 +224,7 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
 						? query->queryId
 						: yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
 													query->stmt_location);
-		yb_set_ash_metadata(query_id);
+		YbAshSetQueryId(query_id);
 	}
 }
 
@@ -244,7 +243,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 						  : yb_ash_utility_query_id(queryDesc->sourceText,
 					   								queryDesc->plannedstmt->stmt_len,
 													queryDesc->plannedstmt->stmt_location);
-		yb_set_ash_metadata(query_id);
+		YbAshSetQueryId(query_id);
 	}
 
 	if (prev_ExecutorStart)
@@ -266,7 +265,7 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 	 * code path.
 	 */
 	if (yb_enable_ash)
-		yb_unset_ash_metadata();
+		YbAshSetQueryId(YBCGetQueryIdForCatalogRequests());
 }
 
 static void
@@ -289,29 +288,29 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * might recurse, and we only want to unset in the last step.
 	 */
 	if (yb_enable_ash && YBGetDdlNestingLevel() == 0)
-		yb_unset_ash_metadata();
+		YbAshSetQueryId(YBCGetQueryIdForCatalogRequests());
 }
 
-static void
-yb_set_ash_metadata(uint64 query_id)
+void
+YbAshSetQueryId(uint64 query_id)
 {
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MyProc->yb_ash_metadata.query_id = query_id;
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+void
+YbAshSetMetadata()
+{
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
-static void
-yb_unset_ash_metadata()
+void
+YbAshUnsetMetadata()
 {
-	/*
-	 * TODO(asaha): add an assert
-	 * Assert(MyProc->yb_ash_metadata.query_id != YBCGetQueryIdForCatalogRequests());
-	 * after fixing GH#21031
-	 */
-
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-	MyProc->yb_ash_metadata.query_id = YBCGetQueryIdForCatalogRequests();
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		sizeof(MyProc->yb_ash_metadata.root_request_id));
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);

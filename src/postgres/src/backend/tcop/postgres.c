@@ -190,6 +190,9 @@ static bool yb_need_cache_refresh = false;
 /* whether or not we are executing a multi-statement query received via simple query protocol */
 static bool yb_is_multi_statement_query = false;
 
+/* whether ASH metadata is set or not */
+static bool yb_is_ash_metadata_set = false;
+
 /*
  * String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
@@ -5355,6 +5358,18 @@ PostgresMain(int argc, char *argv[],
 					yb_pgstat_set_has_catalog_version(false);
 			}
 
+			/*
+			 * YB: The server must respond with a ReadyForQuery message when it's
+			 * ready to accept new queries. This is a good place to unset
+			 * ASH metadata because here we are sure that the previous request
+			 * has been completely processed by the server.
+			 */
+			if (IsYugaByteEnabled() && yb_enable_ash && yb_is_ash_metadata_set)
+			{
+				YbAshUnsetMetadata();
+				yb_is_ash_metadata_set = false;
+			}
+
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 		}
@@ -5383,6 +5398,17 @@ PostgresMain(int argc, char *argv[],
 		 */
 		CHECK_FOR_INTERRUPTS();
 		DoingCommandRead = false;
+
+		/*
+		 * YB: A single TCP packet from the client might contain a series of messages -
+		 * parse, bind, describe, execute and sync. We only want to set the metadata
+		 * once during this process.
+		 */
+		if (IsYugaByteEnabled() && yb_enable_ash && !yb_is_ash_metadata_set)
+		{
+			YbAshSetMetadata();
+			yb_is_ash_metadata_set = true;
+		}
 
 		/*
 		 * (5) turn off the idle-in-transaction timeout
