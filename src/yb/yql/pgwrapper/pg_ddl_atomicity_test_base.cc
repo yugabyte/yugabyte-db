@@ -90,6 +90,15 @@ Status PgDdlAtomicityTestBase::RunAllDdlsWithErrorInjection(PGConn* conn) {
   return Status::OK();
 }
 
+Status PgDdlAtomicityTestBase::RunOneDdlWithErrorInjection(PGConn* conn) {
+  const auto& ddls = GetAllDDLs();
+  const auto selected = RandomUniformInt(0UL, ddls.size() - 1);
+  const auto& ddl = ddls[selected];
+  LOG(INFO) << "selected ddl to fail: " << ddl;
+  RETURN_NOT_OK(conn->TestFailDdl(ddl));
+  return Status::OK();
+}
+
 Status PgDdlAtomicityTestBase::VerifyAllSuccessfulDdls(PGConn *conn,
                                                        client::YBClient* client,
                                                        const string& database) {
