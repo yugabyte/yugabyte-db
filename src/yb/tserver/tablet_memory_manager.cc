@@ -48,19 +48,19 @@ DEFINE_UNKNOWN_bool(log_cache_gc_evict_only_over_allocated, true,
             "allocated over limit for log cache. Otherwise it will try to evict requested number "
             "of bytes.");
 DEFINE_UNKNOWN_int64(global_memstore_size_percentage, 10,
-             "Percentage of total available memory to use for the global memstore. "
+             "Percentage of process' hard memory limit to use for the global memstore. "
              "Default is 10. See also memstore_size_mb and "
              "global_memstore_size_mb_max.");
 DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
-             "Global memstore size is determined as a percentage of the available "
-             "memory. However, this flag limits it in absolute size. Value of 0 "
+             "Global memstore size is determined as a percentage of the process' hard "
+             "memory limit. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
 
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_int32(tablet_overhead_size_percentage, 0,
-    "Percentage of total available memory to use for tablet-related overheads. A value of 0 means "
-    "no limit. Must be between 0 and 100 inclusive. Exception: "
+    "Percentage of process' hard memory limit to use for tablet-related overheads. A value of 0 "
+    "means no limit. Must be between 0 and 100 inclusive. Exception: "
     BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE) " specifies to instead use a "
     "recommended value determined in part by the amount of RAM available.");
 

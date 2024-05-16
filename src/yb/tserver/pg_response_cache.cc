@@ -81,7 +81,7 @@ DEFINE_NON_RUNTIME_uint64(pg_response_cache_size_bytes, 0,
 
 DEFINE_NON_RUNTIME_uint32(
     pg_response_cache_size_percentage, 5,
-    "Percentage of total available memory to use by the PgClientService response cache. "
+    "Percentage of process' hard memory limit to use by the PgClientService response cache. "
     "Default value is 5, max is 100, min is 0 means that cache size is not limited by this flag.");
 
 
