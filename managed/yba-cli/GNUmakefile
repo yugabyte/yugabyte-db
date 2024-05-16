@@ -54,7 +54,7 @@ doc:
 	sed -i 's/\x1B\[0m//g' docs/*
 
 package: ${PACKAGE_NAME}
-${PACKAGE_NAME}: yba doc
+${PACKAGE_NAME}: yba
 	@mkdir -p $(PACKAGE_DIR)
 ifneq ("$(shell cmp -s ${BIN_DIR}/${OS_ARCH}/${BIN_NAME} ${PACKAGE_DIR}/${BIN_NAME}; echo $$?)", "0")
 	@echo "Packaging ${BIN_NAME} into ${PACKAGE_DIR}"
