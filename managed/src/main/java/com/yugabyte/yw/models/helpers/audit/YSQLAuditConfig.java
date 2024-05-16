@@ -46,8 +46,8 @@ public class YSQLAuditConfig {
   private boolean logRelation;
 
   @NotNull
-  @ApiModelProperty(value = "Log row", accessMode = READ_WRITE)
-  private boolean logRow;
+  @ApiModelProperty(value = "Log rows", accessMode = READ_WRITE)
+  private boolean logRows;
 
   @NotNull
   @ApiModelProperty(value = "Log statement", accessMode = READ_WRITE)

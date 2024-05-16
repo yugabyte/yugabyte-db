@@ -9,7 +9,7 @@ required:
   - log_parameter
   - log_parameter_max_size
   - log_relation
-  - log_row
+  - log_rows
   - log_statement
   - log_statement_once
 description: YSQL Audit Logging Configuration
@@ -61,7 +61,7 @@ properties:
   log_relation:
     description: Log relation
     type: boolean
-  log_row:
+  log_rows:
     description: Log row
     type: boolean
   log_statement:
