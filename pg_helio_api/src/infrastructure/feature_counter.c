@@ -161,6 +161,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_SINH] = "agg_operator_sinh",
 	[FEATURE_AGG_OPERATOR_SIZE] = "agg_operator_size",
 	[FEATURE_AGG_OPERATOR_SLICE] = "agg_operator_slice",
+	[FEATURE_AGG_OPERATOR_SORTARRAY] = "agg_operator_sortarray",
 	[FEATURE_AGG_OPERATOR_SPLIT] = "agg_operator_split",
 	[FEATURE_AGG_OPERATOR_SQRT] = "agg_operator_sqrt",
 	[FEATURE_AGG_OPERATOR_STDDEVPOP] = "agg_operator_stddevpop",

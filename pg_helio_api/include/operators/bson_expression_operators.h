@@ -461,6 +461,8 @@ void HandlePreParsedDollarReverseArray(pgbson *doc, void *arguments,
 									   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
+									ExpressionResult *expressionResult);
 void HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
@@ -515,6 +517,7 @@ void ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionDa
 void ParseDollarReverseArray(const bson_value_t *argument,
 							 AggregationExpressionData *data);
 void ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarSubstr(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarSubstrBytes(const bson_value_t *argument,
 							AggregationExpressionData *data);

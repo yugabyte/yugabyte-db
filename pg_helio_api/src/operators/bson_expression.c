@@ -311,6 +311,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$sinh", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_SINH },
 	{ "$size", &HandleDollarSize, NULL, NULL, FEATURE_AGG_OPERATOR_SIZE },
 	{ "$slice", &HandleDollarSlice, NULL, NULL, FEATURE_AGG_OPERATOR_SLICE },
+	{ "$sortArray", NULL, &ParseDollarSortArray, &HandlePreParsedDollarSortArray,
+	  FEATURE_AGG_OPERATOR_SORTARRAY },
 	{ "$split", &HandleDollarSplit, NULL, NULL, FEATURE_AGG_OPERATOR_SPLIT },
 	{ "$sqrt", &HandleDollarSqrt, NULL, NULL, FEATURE_AGG_OPERATOR_SQRT },
 	{ "$stdDevPop", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_STDDEVPOP },

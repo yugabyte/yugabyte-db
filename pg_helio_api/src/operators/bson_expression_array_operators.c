@@ -21,6 +21,7 @@
 #include "types/decimal128.h"
 #include "utils/hashset_utils.h"
 #include "commands/commands_common.h"
+#include "utils/sort_utils.h"
 #include "utils/heap_utils.h"
 
 #include "planner/helio_planner.h"
@@ -101,6 +102,16 @@ typedef struct DollarMapArguments
 	/* Optional: A name for the variable that represents each individual element of the input array. */
 	AggregationExpressionData as;
 } DollarMapArguments;
+
+/* Struct that represents the parsed arguments to a $sortArray expression. */
+typedef struct DollarSortArrayArguments
+{
+	/* The array input to the $sortArray expression. */
+	AggregationExpressionData input;
+
+	/* document specifies a sort ordering. */
+	SortContext sortContext;
+} DollarSortArrayArguments;
 
 /* Struct that represents the parsed arguments to a $maxN / $minN expression. */
 typedef struct DollarMaxMinNArguments
@@ -229,6 +240,8 @@ static void ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t
 static void SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedInputs,
 									   bson_value_t *defaultsElements,
 									   bson_value_t *resultPtr);
+static void ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
+								   bson_value_t *result);
 
 /*
  * validate second and third argument of dollar slice operator
@@ -3128,6 +3141,171 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data)
 	ParseAggregationExpressionData(&arguments->initialValue, &initialValue);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $sortArray expression.
+ * $sortArray is expressed as:
+ * { $sortArray: { input: <array>, sortBy: <sort spec> } }
+ */
+void
+HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	DollarSortArrayArguments *sortArrayArguments = arguments;
+	bool isNullOnEmpty = false;
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&sortArrayArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	bson_value_t result;
+	ProcessDollarSortArray(&evaluatedInputArg, &sortArrayArguments->sortContext, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/**
+ * Parses the $sortArray expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation2942500), errmsg(
+							"$sortArray requires an object as an argument, found: %s",
+							BsonTypeName(argument->value_type)),
+						errhint(
+							"$sortArray requires an object as an argument, found: %s",
+							BsonTypeName(argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t sortby = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "sortBy") == 0)
+		{
+			sortby = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation2942501), errmsg(
+								"$sortArray found an unknown argument: %s", key),
+							errhint(
+								"$sortArray found an unknown argument: %s", key)));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation2942502), errmsg(
+							"$sortArray requires 'input' to be specified")));
+	}
+
+	if (sortby.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation2942503), errmsg(
+							"$sortArray requires 'sortBy' to be specified")));
+	}
+
+	DollarSortArrayArguments *arguments = palloc0(sizeof(DollarSortArrayArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input);
+
+	/* Validate $sort spec, and all nested values if value is object */
+	SortContext sortContext;
+	ValidateSortSpecAndSetSortContext(sortby, &sortContext);
+	arguments->sortContext = sortContext;
+
+	if (IsAggregationExpressionConstant(&arguments->input))
+	{
+		ProcessDollarSortArray(&arguments->input.value, &arguments->sortContext,
+							   &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+static
+void
+ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
+					   bson_value_t *result)
+{
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(inputValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	if (inputValue->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation2942504), errmsg(
+							"The input argument to $sortArray must be an array, but was of type: %s",
+							BsonTypeName(inputValue->value_type)),
+						errhint(
+							"The input argument to $sortArray must be an array, but was of type: %s",
+							BsonTypeName(inputValue->value_type))));
+	}
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(inputValue, &arrayIter);
+
+	int64_t nElementsInArray = BsonDocumentValueCountKeys(inputValue);
+
+	/* this is temp array to clone the input array */
+	ElementWithIndex *elementsArr = palloc(nElementsInArray * sizeof(ElementWithIndex));
+
+	uint64_t iteration = 0;
+
+	while (bson_iter_next(&arrayIter))
+	{
+		UpdateElementWithIndex(bson_iter_value(&arrayIter), iteration,
+							   &elementsArr[iteration]);
+		iteration++;
+	}
+
+	qsort_arg(elementsArr, nElementsInArray, sizeof(ElementWithIndex),
+			  CompareBsonValuesForSort, sortContext);
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	/* Write the elements in elementsArr into result */
+	for (int64_t i = 0; i < nElementsInArray; i++)
+	{
+		PgbsonArrayWriterWriteValue(&arrayWriter, &elementsArr[i].bsonValue);
+	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+
+	*result = PgbsonArrayWriterGetValue(&arrayWriter);
+
+	/* All done with temp resources, release*/
+	pfree(elementsArr);
 }
 
 
