@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/server/pprof-path-handler_util-test.h"
+#include "yb/util/tcmalloc_profile-test.h"
 
 #include <chrono>
 #include <memory>
@@ -21,8 +21,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/server/pprof-path-handlers_util.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -99,23 +97,12 @@ vector<Sample> SamplingProfilerTest::GetTestAllocs(const vector<Sample>& samples
   return test_samples;
 }
 
-Result<vector<Sample>> GetSamplesFromHeapSnapshot(HeapSnapshotType snapshot_type) {
-#if YB_GPERFTOOLS_TCMALLOC
-  SCHECK_EQ(snapshot_type, HeapSnapshotType::kCurrentHeap, InvalidArgument,
-      "snapshot_type must be kCurrentHeap for gperftools tcmalloc");
-  return GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount);
-#else
-  auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(
-      current_profile, false /* only_growth */, SampleOrder::kSampledCount);
-#endif
-}
-
 TEST_F(SamplingProfilerTest, DisableSampling) {
   SetProfileSamplingRate(0);
   auto v = TestAllocArrayOfSize(10_KB);
 
-  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
+  auto samples = ASSERT_RESULT(
+      GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kCurrentHeap));
   ASSERT_EQ(GetTestAllocs(samples).size(), 0);
 }
 
@@ -128,11 +115,11 @@ TEST_F(SamplingProfilerTest, HeapSnapshot) {
     // Make a large allocation. We expect to find it in the heap snapshot.
     std::unique_ptr<char[]> big_alloc = TestAllocArrayOfSize(kAllocSize);
 
-    auto samples = GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount);
+    auto samples = ASSERT_RESULT(GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount));
     ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   }
   // After the deallocation, the stack should no longer be found in the heap snapshot.
-  auto samples = GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount);
+  auto samples = ASSERT_RESULT(GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount));
   ASSERT_EQ(GetTestAllocs(samples).size(), 0);
 }
 #endif
@@ -149,18 +136,22 @@ TEST_F(SamplingProfilerTest, HeapSnapshot) {
     // Make a large allocation. We expect to find it in the current and peak heap snapshots.
     std::unique_ptr<char[]> big_alloc = TestAllocArrayOfSize(kAllocSize);
 
-    auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
+    auto samples = ASSERT_RESULT(GetAggregateAndSortHeapSnapshot(
+        SampleOrder::kSampledCount, HeapSnapshotType::kCurrentHeap));
     ASSERT_EQ(GetTestAllocs(samples).size(), 1);
 
-    samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap));
+    samples = ASSERT_RESULT(
+        GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kPeakHeap));
     ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   }
   // After the deallocation, the stack should no longer be found in the current heap snapshot,
   // but should be in the peak heap snapshot.
-  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
+  auto samples = ASSERT_RESULT(
+      GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kCurrentHeap));
   ASSERT_EQ(GetTestAllocs(samples).size(), 0);
 
-  samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kPeakHeap));
+  samples = ASSERT_RESULT(
+      GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kPeakHeap));
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
 }
 
@@ -191,12 +182,12 @@ TEST_F(SamplingProfilerTest, HeapProfile) {
 
   // The stack for the allocations is the same so they are aggregated into one.
   auto samples = AggregateAndSortProfile(
-      profile, false /* only_growth */, SampleOrder::kSampledBytes);
+      profile, SampleFilter::kAllSamples, SampleOrder::kSampledBytes);
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   ASSERT_EQ(samples[0].second.sampled_allocated_bytes, kAllocSizeAllocated + kAllocSizeDeallocated);
 
   // We only expect to find the non-deallocated allocation here.
-  samples = AggregateAndSortProfile(profile, true /* only_growth */, SampleOrder::kSampledBytes);
+  samples = AggregateAndSortProfile(profile, SampleFilter::kGrowthOnly, SampleOrder::kSampledBytes);
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   ASSERT_EQ(samples[0].second.sampled_allocated_bytes, kAllocSizeAllocated);
 }
@@ -240,7 +231,8 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
     v.push_back(TestAllocArrayOfSize(kAllocSize));
   }
 
-  auto samples = ASSERT_RESULT(GetSamplesFromHeapSnapshot(HeapSnapshotType::kCurrentHeap));
+  auto samples = ASSERT_RESULT(
+      GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kCurrentHeap));
 
   // Allocations should get aggregated into one sample.
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
