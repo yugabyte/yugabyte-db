@@ -100,11 +100,11 @@ Referenced by:
 Policies:
     POLICY "p" FOR SELECT
       TO user1
-      USING ((username = (CURRENT_USER)::text))
+      USING ((username = CURRENT_USER))
 Statistics objects:
-    "public"."s1" (dependencies) ON a, b FROM table_rewrite_test1
+    "public.s1" (dependencies) ON a, b FROM table_rewrite_test1
 Triggers:
-    dummy_trigger AFTER INSERT ON table_rewrite_test1 FOR EACH ROW EXECUTE PROCEDURE dummy()
+    dummy_trigger AFTER INSERT ON table_rewrite_test1 FOR EACH ROW EXECUTE FUNCTION dummy()
 Tablespace: "test_tablespace"
 
 \d test_index;
@@ -478,7 +478,7 @@ ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
 ALTER TABLE nopk ALTER COLUMN id DROP NOT NULL;
 INSERT INTO nopk VALUES (null);
 ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
-ERROR:  column "id" contains null values
+ERROR:  column "id" of relation "nopk" contains null values
 DROP TABLE nopk;
 -- test complex pks.
 CREATE TABLE complex_pk (v1 int, v2 text, v3 char, v4 boolean);
@@ -741,15 +741,15 @@ SELECT * from varchar_table;
 
 ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
 SELECT * from varchar_table;
- id |        c1        
-----+------------------
-  1 |  1.4142135623731
-  2 |                1
-  3 |                1
-  4 | 1.73205080756888
-  5 |                1
-  6 |  1.4142135623731
-  7 | 1.73205080756888
+ id |         c1
+----+--------------------
+  1 | 1.4142135623730951
+  2 |                  1
+  3 |                  1
+  4 | 1.7320508075688772
+  5 |                  1
+  6 | 1.4142135623730951
+  7 | 1.7320508075688772
 (7 rows)
 
 ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, ALTER c1 TYPE varchar;
@@ -765,7 +765,7 @@ SELECT * from int4_table;
 
 CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
 ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
-ERROR:  cannot alter type of column named in partition key
+ERROR:  cannot alter column "c1" because it is part of the partition key of relation "int4_table2"
 CREATE TABLE pk_table(c1 int primary key);
 INSERT INTO pk_table VALUES (1), (2);
 ALTER TABLE pk_table ALTER c1 TYPE varchar;

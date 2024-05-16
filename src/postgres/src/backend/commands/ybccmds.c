@@ -1189,9 +1189,20 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				}
 			}
 
-			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
-			typeOid = ((Form_pg_type) GETSTRUCT(typeTuple))->oid;
-			ReleaseSysCache(typeTuple);
+			/*
+			 * The typeOid for serial types is filled in during parse analysis
+			 * for the ALTER TABLE ... ADD COLUMN operation, which is
+			 * done at a later stage by PG (specifically, in ATExecAddColumn).
+			 * So in case this is a serial type, we will have to do the
+			 * conversion to the appropriate type ourselves.
+			 */
+			typeOid = YbGetSerialTypeOidFromColumnDef(colDef);
+			if (typeOid == InvalidOid)
+			{
+				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
+				typeOid = ((Form_pg_type) GETSTRUCT(typeTuple))->oid;
+				ReleaseSysCache(typeTuple);
+			}
 
 			order = RelationGetNumberOfAttributes(rel) + *col;
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);

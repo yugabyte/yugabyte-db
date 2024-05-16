@@ -5069,3 +5069,32 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 	}
 	*datum_count = idx;
 }
+
+/*
+ * Utility function for YB to retrieve the appropriate type oid for a serial
+ * type in a column definition. This function is adapted from
+ * transformColumnDefinition and is used for ALTER TABLE ... ADD COLUMN
+ * operations. It should be kept in sync with transformColumnDefinition to
+ * correctly convert serial types.
+ */
+Oid
+YbGetSerialTypeOidFromColumnDef(ColumnDef *column)
+{
+	if (column->typeName
+		&& list_length(column->typeName->names) == 1
+		&& !column->typeName->pct_type)
+	{
+		char	   *typname = strVal(linitial(column->typeName->names));
+
+		if (strcmp(typname, "smallserial") == 0 ||
+			strcmp(typname, "serial2") == 0)
+			return INT2OID;
+		if (strcmp(typname, "serial") == 0 ||
+			strcmp(typname, "serial4") == 0)
+			return INT4OID;
+		if (strcmp(typname, "bigserial") == 0 ||
+			strcmp(typname, "serial8") == 0)
+			return INT8OID;
+	}
+	return InvalidOid;
+}
