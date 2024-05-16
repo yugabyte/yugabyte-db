@@ -22,6 +22,7 @@
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_db_clone);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 namespace yb {
 namespace client {
@@ -128,7 +129,6 @@ TEST_F(CloneNamespaceTest, CloneAfterDrop) {
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
-  auto row_count = CountTableRows(table_);
   auto ht = cluster_->mini_master()->master()->clock()->Now();
 
   ASSERT_OK(client_->DeleteTable(kTableName));
@@ -139,7 +139,7 @@ TEST_F(CloneNamespaceTest, CloneAfterDrop) {
   YBTableName clone(YQL_DATABASE_CQL, kTargetNamespaceName, kTableName.table_name());
   TableHandle clone_handle;
   ASSERT_OK(clone_handle.Open(clone, client_.get()));
-  ASSERT_EQ(CountTableRows(clone_handle), row_count);
+  ASSERT_EQ(CountTableRows(clone_handle), kNumRows);
 }
 
 TEST_F(CloneNamespaceTest, DropClonedNamespace) {
@@ -158,6 +158,32 @@ TEST_F(CloneNamespaceTest, DropClonedNamespace) {
 
   ASSERT_OK(client_->DeleteTable(clone));
   ASSERT_OK(client_->DeleteNamespace(kTargetNamespaceName));
+}
+
+TEST_F(CloneNamespaceTest, CloneFromOldestSnapshot) {
+  // Check that we can use the oldest snapshot in a schedule to clone.
+  const auto kInterval = 5s;
+  const auto kRetention = 10s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(), kInterval, kRetention));
+
+  auto first_snapshot = ASSERT_RESULT(snapshot_util_->WaitScheduleSnapshot(schedule_id));
+  ASSERT_NO_FATALS(WriteData(WriteOpType::INSERT, 0 /* transaction */));
+  auto ht = cluster_->mini_master()->master()->clock()->Now();
+
+  // Wait for the first snapshot to be deleted and check that we can clone to a time between the
+  // first and the second snapshot's hybrid times.
+  ASSERT_OK(snapshot_util_->WaitSnapshotCleaned(TryFullyDecodeTxnSnapshotId(first_snapshot.id())));
+
+  ASSERT_OK(CloneAndWait(
+      kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_CQL, ht, kTargetNamespaceName));
+
+  YBTableName clone(YQL_DATABASE_CQL, kTargetNamespaceName, kTableName.table_name());
+  TableHandle clone_handle;
+  ASSERT_OK(clone_handle.Open(clone, client_.get()));
+  ASSERT_EQ(CountTableRows(clone_handle), kNumRows);
 }
 
 } // namespace client
