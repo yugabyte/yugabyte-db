@@ -151,6 +151,48 @@ class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<client::YBClient> client_;
 };
 
+Result<SnapshotScheduleInfoPB> GetSnapshotSchedule(
+    MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
+  rpc::RpcController controller;
+  ListSnapshotSchedulesRequestPB req;
+  ListSnapshotSchedulesResponsePB resp;
+  req.set_snapshot_schedule_id(id.data(), id.size());
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy->ListSnapshotSchedules(req, &resp, &controller));
+  SCHECK_EQ(resp.schedules_size(), 1, NotFound, "Wrong number of schedules");
+  return resp.schedules().Get(0);
+}
+
+Result<SnapshotInfoPB> WaitScheduleSnapshot(
+    MasterBackupProxy* proxy, const SnapshotScheduleId& id, MonoDelta duration,
+    uint32_t num_snapshots = 1) {
+  SnapshotInfoPB snapshot;
+  RETURN_NOT_OK(WaitFor(
+      [proxy, id, num_snapshots, &snapshot]() -> Result<bool> {
+        // If there's a master leader failover then we should wait for the next cycle.
+        auto schedule = VERIFY_RESULT(GetSnapshotSchedule(proxy, id));
+        if ((uint32_t)schedule.snapshots_size() < num_snapshots) {
+          return false;
+        }
+        snapshot = schedule.snapshots()[schedule.snapshots_size() - 1];
+        return true;
+      },
+      duration, Format("Wait for schedule to have $0 snapshots", num_snapshots)));
+
+  // Wait for the present time to become at-least the time chosen by the snapshot.
+  auto snapshot_time_string = snapshot.entry().snapshot_hybrid_time();
+  HybridTime snapshot_ht = HybridTime::FromPB(snapshot_time_string);
+
+  RETURN_NOT_OK(WaitFor(
+      [&snapshot_ht]() -> Result<bool> {
+        Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
+        HybridTime current_ht = HybridTime::FromMicros(current_time.ToInt64());
+        return snapshot_ht <= current_ht;
+      },
+      duration, "Wait Snapshot Time Elapses"));
+  return snapshot;
+}
+
 TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
   auto proxy_cache = rpc::ProxyCache(messenger.get());
@@ -165,6 +207,7 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
       table_name.namespace_name(), table_name.namespace_type()));
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
       &proxy, table_name, MonoDelta::FromSeconds(60), MonoDelta::FromSeconds(600), timeout));
+  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
 
   auto table_creator = client_->NewTableCreator();
   client::YBSchemaBuilder b;

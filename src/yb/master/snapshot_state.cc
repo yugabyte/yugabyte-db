@@ -113,14 +113,14 @@ std::string SnapshotState::ToString() const {
 }
 
 Status SnapshotState::ToPB(
-    SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) {
+    SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const {
   out->set_id(id_.data(), id_.size());
   return ToEntryPB(out->mutable_entry(), ForClient::kTrue, options);
 }
 
 Status SnapshotState::ToEntryPB(
     SysSnapshotEntryPB* out, ForClient for_client,
-    ListSnapshotsDetailOptionsPB options) {
+    ListSnapshotsDetailOptionsPB options) const {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   if (previous_snapshot_hybrid_time_) {

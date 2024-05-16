@@ -98,7 +98,7 @@ class StateWithTablets {
   }
 
   template <class PB>
-  void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
+  void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) const {
     out->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       auto* tablet_state = out->Add();
