@@ -72,6 +72,7 @@ typedef enum DateTruncUnit
 	DateTruncUnit_Second = 6,
 	DateTruncUnit_Week = 7,
 	DateTruncUnit_Year = 8,
+	DateTruncUnit_Millisecond = 9,
 } DateTruncUnit;
 
 typedef enum WeekDay
@@ -205,8 +206,8 @@ static const char *monthNamesLowerCase[12] = {
 	"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
 };
 
-static const char *unitSizeForDateTrunc[8] = {
-	"day", "hour", "minute", "month", "quarter", "second", "week", "year"
+static const char *unitSizeForDateTrunc[9] = {
+	"day", "hour", "minute", "month", "quarter", "second", "week", "year", "millisecond"
 };
 
 static const char *weekDaysFullName[7] = {
@@ -447,9 +448,22 @@ pg_attribute_noreturn() ThrowLocation5439013Error(bson_type_t foundType, char * 
 {
 	ereport(ERROR, (errcode(MongoLocation5439013), errmsg(
 						"%s requires 'unit' to be a string, but got %s",
-						BsonTypeName(foundType), opName),
+						opName, BsonTypeName(foundType)),
 					errhint("%s requires 'unit' to be a string, but got %s",
-							BsonTypeName(foundType), opName)));
+							opName, BsonTypeName(foundType))));
+}
+
+/*
+ * This is a helper method to throw error when startOfWeek does not matches the type of utf8 for date
+ */
+static inline void
+pg_attribute_noreturn() ThrowLocation5439015Error(bson_type_t foundType, char * opName)
+{
+	ereport(ERROR, (errcode(MongoLocation5439015), errmsg(
+						"%s requires 'startOfWeek' to be a string, but got %s",
+						opName, BsonTypeName(foundType)),
+					errhint("%s requires 'startOfWeek' to be a string, but got %s",
+							opName, BsonTypeName(foundType))));
 }
 
 /* Helper that validates a date value is in the valid range 0-9999. */
@@ -2899,13 +2913,19 @@ AddIntervalToTimestampWithPgTry(Datum timestamp, Datum interval, bool *isResultO
 static Datum
 GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit)
 {
-	int64 year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0;
-	float second = 0;
+	int64 year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0, second = 0,
+		  millisecond = 0;
 	switch (dateTruncUnit)
 	{
+		case DateTruncUnit_Millisecond:
+		{
+			millisecond = binSize;
+			break;
+		}
+
 		case DateTruncUnit_Second:
 		{
-			second = binSize * 1.0;
+			second = binSize;
 			break;
 		}
 
@@ -2956,7 +2976,8 @@ GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit)
 								"Invalid unit specified. Cannot make interval")));
 	}
 
-	return GetIntervalFromDatePart(year, month, week, day, hour, minute, second, 0);
+	return GetIntervalFromDatePart(year, month, week, day, hour, minute, second,
+								   millisecond);
 }
 
 
@@ -2996,7 +3017,11 @@ GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone timezoneToAp
 static inline int64_t
 GetUnixEpochFromPgTimestamp(Datum timestamp)
 {
-	return timestamptz_to_time_t(timestamp) * MILLISECONDS_IN_SECOND;
+	float8 resultSeconds = DatumGetFloat8(OidFunctionCall2(
+											  PostgresDatePartFunctionId(),
+											  CStringGetTextDatum(EPOCH),
+											  timestamp));
+	return resultSeconds * MILLISECONDS_IN_SECOND;
 }
 
 
@@ -3088,6 +3113,19 @@ isArgumentForDateTruncNull(bson_value_t *date, bson_value_t *unit, bson_value_t 
 {
 	/* if unit is week then check startOfWeek else ignore */
 	bool isUnitNull = IsExpressionResultNullOrUndefined(unit);
+
+	/* Since unit is null we don't need to evaluate others*/
+	if (isUnitNull)
+	{
+		return true;
+	}
+
+	/* If unit is not of type UTF8 then throw error as we cannot process for unit week and startOfWeek*/
+	if (unit->value_type != BSON_TYPE_UTF8)
+	{
+		ThrowLocation5439013Error(unit->value_type, "$dateTrunc");
+	}
+
 	bool isUnitWeek = !isUnitNull && strcasecmp(unit->value.v_utf8.str, "week") == 0;
 	if (isUnitNull ||
 		(isUnitWeek && IsExpressionResultNullOrUndefined(startOfWeek)) ||
@@ -3135,7 +3173,8 @@ isDateTruncArgumentConstant(DollarDateTruncArgumentState *
 static inline bool
 isValidUnitForDateBinOid(DateTruncUnit dateTruncUnit)
 {
-	if (dateTruncUnit == DateTruncUnit_Second || dateTruncUnit == DateTruncUnit_Minute ||
+	if (dateTruncUnit == DateTruncUnit_Millisecond || dateTruncUnit ==
+		DateTruncUnit_Second || dateTruncUnit == DateTruncUnit_Minute ||
 		dateTruncUnit == DateTruncUnit_Hour)
 	{
 		return true;
@@ -3196,13 +3235,17 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit: %s",
 							unit->value.v_utf8.str),
 						errhint(
-							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit: %s",
-							unit->value.v_utf8.str)));
+							"$dateTrunc parameter 'unit' value cannot be recognized as a time unit")));
 	}
 
 	/* Validate startOfWeekValue only if unit is week. Index 6 in the list if 'week' */
 	if (*dateTruncUnitEnum == DateTruncUnit_Week)
 	{
+		if (startOfWeek->value_type != BSON_TYPE_UTF8)
+		{
+			ThrowLocation5439015Error(startOfWeek->value_type, "$dateTrunc");
+		}
+
 		/* Typed loop check as days can never be increased. */
 		for (int index = 0; index < 7; index++)
 		{
@@ -3221,8 +3264,7 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
 								startOfWeek->value.v_utf8.str),
 							errhint(
-								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: %s",
-								startOfWeek->value.v_utf8.str)));
+								"$dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week")));
 		}
 	}
 
@@ -3242,7 +3284,7 @@ ValidateArgumentsForDateTrunc(bson_value_t *binSize, bson_value_t *date,
 	int64_t binSizeVal = BsonValueAsInt64(binSize);
 	if (binSizeVal <= 0)
 	{
-		ereport(ERROR, (errcode(MongoLocation5439017), errmsg(
+		ereport(ERROR, (errcode(MongoLocation5439018), errmsg(
 							"$dateTrunc requires 'binSize' to be greater than 0, but got value %ld",
 							binSizeVal),
 						errhint(
@@ -3285,7 +3327,6 @@ SetResultValueForDateTruncFromDateBin(Datum pgTimestamp, Datum referenceTimestam
 	Datum timestampDateBinResult = OidFunctionCall3(PostgresDateBinFunctionId(),
 													interval, pgTimestamp,
 													referenceTimestamp);
-
 	result->value.v_datetime = GetUnixEpochFromPgTimestamp(timestampDateBinResult);
 }
 
@@ -3477,7 +3518,8 @@ SetResultValueForMonthUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
 
 
 /* This function calculates the date bin for unit type week.
- * Firstly, this calculates interval difference between start and end timestamp.
+ * First adjust the given timestamp to fit the startOfWeek.
+ * Then calculates interval difference between start and end timestamp.
  * Converts, that difference interval to number of seconds.
  * Adds interval in days to adjust for startOfWeek.
  * As per the reference date 2000 1st Jan which is Saturday. Default value is Sunday if not specified.
@@ -3495,9 +3537,21 @@ SetResultValueForWeekUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
 	Datum defaultReferenceTimestamp = GetPgTimestampFromUnixEpoch(
 		DATE_TRUNC_TIMESTAMP_MS);
 
+	/* default dow in postgres resolves to sunday and goes like sunday , monday, tuesday, .. */
+	int dayOfWeek = GetDatePartFromPgTimestamp(pgTimestamp, DatePart_DayOfWeek);
+	int diffBwStartOfWeekAndCurrent = GetDifferenceInDaysForStartOfWeek(dayOfWeek,
+																		startOfWeek);
+	Datum daysIntervalToAdjust = GetIntervalFromDatePart(0, 0, 0,
+														 diffBwStartOfWeekAndCurrent, 0,
+														 0, 0, 0);
+	Datum timestampAdjustedToStartOfWeek = DirectFunctionCall2(timestamp_mi_interval,
+															   pgTimestamp,
+															   daysIntervalToAdjust);
+
 	/* Calls Age function to determine the interval between 2 timestamps. */
 	Datum intervalDifference = OidFunctionCall2(PostgresAgeBetweenTimestamp(),
-												pgTimestamp, defaultReferenceTimestamp);
+												timestampAdjustedToStartOfWeek,
+												defaultReferenceTimestamp);
 
 	/* calculates the total number of seconds between the target date and the reference date */
 	Datum datePartFromInverval = OidFunctionCall2(PostgresDatePartFromInterval(),
@@ -3506,15 +3560,9 @@ SetResultValueForWeekUnitDateTrunc(Datum pgTimestamp, ExtensionTimezone
 
 	float8 epochMsFromDatePart = DatumGetFloat8(datePartFromInverval);
 
-	/* elog(NOTICE, "seconds interval from date part is %f", epochMsFromDatePart); */
-	/* elog(NOTICE, "seconds interval from binsize  %ld", binSize); */
 	int64 elapsedBinSeconds = (int64) SECONDS_IN_DAY * (int64) 7 * binSize;
 
-	/* elog(NOTICE, "seconds elapsed   %ld", elapsedBinSeconds); */
 	int64 secondsInterval = floor(epochMsFromDatePart / (elapsedBinSeconds));
-
-	/* Make intervals from int64 */
-	/* elog(NOTICE, "seconds interval is %ld", secondsInterval); */
 
 	/* takes care of negative number while modulo. Positive mod: (a % b + b) % b; */
 	int64 daysIntervalForWeekStart = ((((int) startOfWeek - 6) % 7) + 7) % 7;
@@ -4882,12 +4930,7 @@ ValidateInputArgumentForDateDiff(bson_value_t *startDate, bson_value_t *endDate,
 	{
 		if (startOfWeek->value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation5439015), errmsg(
-								"$dateDiff requires 'startOfWeek' to be a string, but got %s",
-								BsonTypeName(startOfWeek->value_type)),
-							errhint(
-								"$dateDiff requires 'startOfWeek' to be a string, but got %s",
-								BsonTypeName(startOfWeek->value_type))));
+			ThrowLocation5439015Error(startOfWeek->value_type, "$dateDiff");
 		}
 
 		/* Typed loop check as days can never be increased. */
