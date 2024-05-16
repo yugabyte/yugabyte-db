@@ -6156,9 +6156,9 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
-            if args.enable_pg_parity_tech_preview:
+            if args.enable_pg_parity_early_access:
                 self.configs.temp_data["enable_pg_parity"] = \
-                                args.enable_pg_parity_tech_preview
+                                args.enable_pg_parity_early_access
 
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
@@ -6614,7 +6614,7 @@ class ControlScript(object):
             "--config", help="{} user configuration file path".format(
                               SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--enable_pg_parity_tech_preview", help="Enable PostgreSQL compatibility features."
+                "--enable_pg_parity_early_access", help="Enable PostgreSQL compatibility features."
                 " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
