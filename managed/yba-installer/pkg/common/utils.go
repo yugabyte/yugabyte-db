@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -828,6 +829,52 @@ func Bool2Int(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// StatusSince takes a timestamp in UTC and returns the time since then in a human readable format
+func StatusSince(timestamp string) string {
+	// Define the layout of the input string
+	layout := "Mon 2006-01-02 15:04:05 MST"
+
+	// Parse the input string into a time.Time object
+	parsedTime, err := time.Parse(layout, timestamp)
+	if err != nil {
+		log.Warn("Error parsing time: " + err.Error())
+		return ""
+	}
+
+	// Get the current time
+	currentTime := time.Now()
+
+	// Calculate the duration difference
+	duration := currentTime.Sub(parsedTime)
+	return formatDuration(duration)
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second) // Round to the nearest second
+
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // AbsoluteBundlePath returns the absolute path to the given file, assuming that file is a relative

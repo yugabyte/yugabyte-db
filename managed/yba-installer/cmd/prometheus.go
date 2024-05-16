@@ -309,15 +309,18 @@ func (prom Prometheus) Status() (common.Status, error) {
 	// Get the service status
 	if common.HasSudoAccess() {
 		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
+			"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
 		if props["LoadState"] == "not-found" {
 			status.Status = common.StatusNotInstalled
 		} else if props["SubState"] == "running" {
 			status.Status = common.StatusRunning
+			status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
 		} else if props["ActiveState"] == "inactive" {
 			status.Status = common.StatusStopped
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		} else {
 			status.Status = common.StatusErrored
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		}
 	} else {
 		out := shell.Run("pgrep", "prometheus")

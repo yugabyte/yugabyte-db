@@ -36,7 +36,8 @@ func PrintStatus(statuses ...Status) {
 			port = strconv.Itoa(status.Port)
 		}
 		outString := status.Service + " \t" + status.Version + " \t" + port +
-			" \t" + status.LogFileLoc + " \t" + string(status.Status) + " \t"
+			" \t" + status.LogFileLoc + " \t" + status.BinaryLoc + " \t" + string(status.Status) +
+			" \t" + status.Since + " \t"
 		fmt.Fprintln(StatusOutput, outString)
 	}
 	StatusOutput.Flush()
@@ -52,7 +53,7 @@ var StatusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
 // status command.
 func statusHeader() {
 	outString := "Systemd service" + " \t" + "Version" + " \t" + "Port" + " \t" +
-		"Log File Locations" + " \t" + "Running Status" + " \t"
+		"Log Files" + " \t" + "Binary Directory" + " \t" + "Running Status" + " \t" + "Since" + " \t"
 	fmt.Fprintln(StatusOutput, outString)
 }
 
@@ -81,6 +82,8 @@ type Status struct {
 	ServiceFileLoc string
 	Status         StatusType
 	LogFileLoc     string
+	Since					 string
+	BinaryLoc			 string
 }
 
 type StatusType string
