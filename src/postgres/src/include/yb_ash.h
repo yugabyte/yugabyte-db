@@ -58,4 +58,7 @@ extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
 
+extern void YbAshSetMetadata();
+extern void YbAshUnsetMetadata();
+
 #endif							/* YB_ASH_H */
