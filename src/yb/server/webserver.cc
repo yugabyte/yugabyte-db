@@ -254,6 +254,9 @@ class Webserver::Impl {
   // Mutex guarding against concurrenct calls to Stop().
   std::mutex stop_mutex_;
 
+  // Variable to notify handlers to stop serving requests.
+  std::atomic<bool> stop_initiated = false;
+
   mutable std::mutex auto_flags_mutex_;
   // The AutoFlags that are associated with this particular server. In LTO builds we use the same
   // process for both yb-master and yb-tserver, so the process may have more AutoFlags than this
@@ -448,11 +451,19 @@ Status Webserver::Impl::Start() {
 }
 
 void Webserver::Impl::Stop() {
-  std::lock_guard<std::mutex> lock_(stop_mutex_);
+  // Indicate to the handlers that they can now stop serving requests. If any further signals are
+  // received to terminate the webserver, the handlers will no longer access non-static variables
+  // and will return immediately.
+  stop_initiated = true;
+
+  std::lock_guard lock_(stop_mutex_);
   if (context_ != nullptr) {
+    LOG(INFO) << "Stopping webserver on " << http_address_;
     sq_stop(context_);
     context_ = nullptr;
   }
+
+  LOG(INFO) << "Webserver stopped";
 }
 
 Status Webserver::Impl::GetInputHostPort(HostPort* hp) const {
@@ -583,6 +594,13 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
 sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
                                                      struct sq_connection* connection,
                                                      struct sq_request_info* request_info) {
+  constexpr auto SERVICE_UNAVAILABLE_MSG = "HTTP/1.1 503 Service Unavailable\r\n";
+  // If we're in the process of stopping, do not parse or route the request. Just return.
+  if (PREDICT_FALSE(stop_initiated)) {
+    sq_printf(connection, SERVICE_UNAVAILABLE_MSG);
+    return SQ_HANDLED_CLOSE_CONNECTION;
+  }
+
   // Should we render with css styles?
   bool use_style = true;
 
@@ -647,7 +665,7 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
   for (const PathHandlerCallback& callback_ : handler.callbacks()) {
     callback_(req, resp_ptr);
     if (resp_ptr->code == 503) {
-      sq_printf(connection, "HTTP/1.1 503 Service Unavailable\r\n");
+      sq_printf(connection, SERVICE_UNAVAILABLE_MSG);
       return SQ_HANDLED_CLOSE_CONNECTION;
     }
   }

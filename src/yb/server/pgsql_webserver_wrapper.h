@@ -99,6 +99,7 @@ typedef struct {
 } YbConnectionMetrics;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
+void DestroyWebserver(struct WebserverWrapper *webserver);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
