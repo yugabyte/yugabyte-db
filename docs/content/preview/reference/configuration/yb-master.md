@@ -360,6 +360,32 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
 
+## Tablet limit flags
+
+#### enforce_tablet_replica_limits
+
+Enables/disables the feature. No limits at all will be enforced if this is false.
+
+Default: false
+
+#### split_respects_tablet_replica_limits
+
+If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
+
+Default: false
+
+#### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support. This is used by both YB-Masters and YB-TServers.
+
+Default:
+
+#### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServer for tablet overheads can support. This is used by both YB-Masters and YB-TServers.
+
+Default:
+
 
 ## Raft flags
 
