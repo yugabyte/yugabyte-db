@@ -63,6 +63,8 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -656,8 +658,12 @@ public class HealthChecker {
     if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
+    boolean isUniverseTxnXClusterTarget =
+        XClusterConfig.getByTargetUniverseUUID(params.universe.getUniverseUUID()).stream()
+            .anyMatch(x -> (x.getType() == ConfigType.Txn));
     boolean testReadWrite =
-        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest)
+            && !isUniverseTxnXClusterTarget;
     boolean testYsqlshConnectivity =
         confGetter.getConfForScope(params.universe, UniverseConfKeys.ysqlshConnectivityTest);
     boolean testCqlshConnectivity =
