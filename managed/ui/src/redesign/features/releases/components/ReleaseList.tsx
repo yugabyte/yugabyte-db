@@ -1,9 +1,9 @@
 import { ChangeEvent, useState } from 'react';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { TableHeaderColumn, SortOrder } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem, Dropdown } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { Box, Divider, Tooltip, makeStyles } from '@material-ui/core';
+import { Box, Divider, makeStyles } from '@material-ui/core';
 import { Add, Refresh } from '@material-ui/icons';
 import clsx from 'clsx';
 import { ReleaseDetails } from './ReleaseDetails';
@@ -15,10 +15,11 @@ import { ModifyReleaseStateModal } from './ReleaseDialogs/ModifyReleaseStateModa
 import { DeleteReleaseModal } from './ReleaseDialogs/DeleteReleaseModal';
 import { YBButton, YBCheckbox } from '../../../components';
 import { YBPanelItem } from '../../../../components/panels';
+import { YBTable } from '../../../../components/common/YBTable';
 import { YBSearchInput } from '../../../../components/common/forms/fields/YBSearchInput';
+import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
-import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import {
   ModalTitle,
   ReleaseArtifacts,
@@ -28,15 +29,22 @@ import {
   Releases
 } from './dtos';
 import { QUERY_KEY, ReleasesAPI } from '../api';
-import { getImportedArchitectures } from '../helpers/utils';
+import {
+  getImportedArchitectures,
+  MAX_RELEASE_TAG_CHAR,
+  MAX_RELEASE_VERSION_CHAR
+} from '../helpers/utils';
 import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
 import Checked from '../../../../redesign/assets/checkbox/Checked.svg';
-import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+import AddIcon from '../../../../redesign/assets/Add.svg';
 
 const useStyles = makeStyles((theme) => ({
+  releaseListBox: {
+    overflow: 'unset'
+  },
   biggerReleaseText: {
     fontWeight: 400,
     fontFamily: 'Inter',
@@ -50,6 +58,9 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900],
     alignSelf: 'center'
   },
+  verticalText: {
+    verticalAlign: 'super'
+  },
   versionText: {
     alignSelf: 'center',
     overflow: 'visible !important'
@@ -59,6 +70,7 @@ const useStyles = makeStyles((theme) => ({
   },
   releaseTagBox: {
     border: '1px',
+    height: '24px',
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
     backgroundColor: theme.palette.grey[200],
@@ -66,7 +78,8 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(0.5)
   },
   releaseTagText: {
-    color: theme.palette.grey[700]
+    color: theme.palette.grey[700],
+    cursor: 'pointer'
   },
   flexRow: {
     display: 'flex',
@@ -93,8 +106,9 @@ const useStyles = makeStyles((theme) => ({
     padding: '4px 6px 4px 6px',
     gap: '4px',
     marginRight: theme.spacing(0.5),
-    height: '28px',
+    height: '24px',
     borderStyle: 'solid',
+    backgroundColor: theme.palette.common.white,
     borderColor: theme.palette.grey[300]
   },
   dropdownValueBox: {
@@ -135,13 +149,36 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   overrideMuiStartIcon: {
-    height: '28px',
-    '& .MuiButton-startIcon': {
-      marginLeft: 0,
-      marginRight: 0
+    padding: '0px',
+    height: theme.spacing(3)
+  },
+  addButtonBox: {
+    height: theme.spacing(3),
+    width: '26px',
+    border: '1px',
+    borderRadius: '6px',
+    borderColor: theme.palette.grey[200]
+  },
+  releaseRow: {
+    cursor: 'pointer'
+  },
+  releaseActionsDropdown: {
+    width: '24px',
+    height: '24px',
+    border: '0px',
+    padding: '0px',
+    fontWeight: 'bold'
+  },
+  rowHover: {
+    '&:hover': {
+      cursor: 'pointer',
+      backgroundColor: '#F3F3F3'
     }
   }
 }));
+
+const DEFAULT_SORT_COLUMN = 'version';
+const DEFAULT_SORT_DIRECTION = 'DESC';
 
 const MAIN_ACTION = {
   ADD_ARCHITECTURE: 'Add Architecture'
@@ -155,12 +192,10 @@ const EDIT_ACTIONS = {
 
 const OTHER_ACTONS = {
   EDIT_RELEASE_TAG: 'Edit Release Tag',
-  DISABLE_RELEASE: 'Disable',
-  ENABLE_RELEASE: 'Enable',
+  DISABLE_RELEASE: 'Disallow',
+  ENABLE_RELEASE: 'Allow',
   DELETE_RELEASE: 'Delete'
 } as const;
-
-const MAX_RELEASE_TAG_CHAR = 10;
 
 export const NewReleaseList = () => {
   const helperClasses = useStyles();
@@ -211,28 +246,32 @@ export const NewReleaseList = () => {
   const formatVersion = (cell: any, row: any) => {
     return (
       <Box className={clsx(helperClasses.flexRow, helperClasses.alignText)}>
-        <span data-testid={'ReleaseList-VersionText'} className={helperClasses.versionText}>
-          {row.version}
+        <span
+          title={row.version}
+          data-testid={'ReleaseList-VersionText'}
+          className={helperClasses.versionText}
+        >
+          {row.version.length > MAX_RELEASE_VERSION_CHAR
+            ? `${row.version.substring(0, MAX_RELEASE_VERSION_CHAR)}...`
+            : row.version}
         </span>
         {isNonEmptyString(row.release_tag) && (
           <>
             <Box className={helperClasses.releaseTagBox}>
               <span
+                title={row.release_tag}
                 data-testid={'ReleaseList-ReleaseTag'}
-                className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
+                className={clsx(
+                  helperClasses.releaseTagText,
+                  helperClasses.smallerReleaseText,
+                  helperClasses.verticalText
+                )}
               >
                 {row.release_tag.length > MAX_RELEASE_TAG_CHAR
                   ? `${row.release_tag.substring(0, MAX_RELEASE_TAG_CHAR)}...`
                   : row.release_tag}
               </span>
             </Box>
-            <span>
-              {row.release_tag.length > MAX_RELEASE_TAG_CHAR && (
-                <Tooltip title={row.release_tag} arrow placement="top">
-                  <img src={InfoMessageIcon} alt="info" />
-                </Tooltip>
-              )}
-            </span>
           </>
         )}
       </Box>
@@ -244,7 +283,7 @@ export const NewReleaseList = () => {
       <Box className={helperClasses.biggerReleaseText}>
         {row.release_date_msecs
           ? ybFormatDate(row.release_date_msecs, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
-          : ''}
+          : '--'}
       </Box>
     );
   };
@@ -280,25 +319,30 @@ export const NewReleaseList = () => {
           architectures.map((architecture: string) => {
             return (
               <Box className={helperClasses.importedArchitectureBox}>
-                <span className={helperClasses.smallerReleaseText}>
+                <span
+                  className={clsx(helperClasses.smallerReleaseText, helperClasses.verticalText)}
+                >
                   {t(`releases.tags.${architecture === null ? 'kubernetes' : architecture}`)}
                 </span>
               </Box>
             );
           })}
         {row.artifacts.length < 3 && (
-          <YBButton
-            className={helperClasses.overrideMuiStartIcon}
-            onClick={(e: any) => {
-              setSelectedReleaseDetails(row);
-              onNewReleaseButtonClick();
-              onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
-              e.stopPropagation();
-            }}
-            data-testid="ReleaseList-AddArchitectureButton"
-            startIcon={<Add />}
-            variant="secondary"
-          ></YBButton>
+          <Box className={helperClasses.addButtonBox}>
+            <YBButton
+              className={helperClasses.overrideMuiStartIcon}
+              onClick={(e: any) => {
+                setSelectedReleaseDetails(row);
+                onNewReleaseButtonClick();
+                onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+                e.stopPropagation();
+              }}
+              data-testid="ReleaseList-AddArchitectureButton"
+              variant="secondary"
+            >
+              <img src={AddIcon} alt="add" />
+            </YBButton>
+          </Box>
         )}
       </Box>
     );
@@ -445,8 +489,10 @@ export const NewReleaseList = () => {
   const formatActionButtons = (cell: any, row: any) => {
     return (
       <DropdownButton
+        noCaret
         key={`release-list-actions-${row.release_uuid}`}
-        title="Actions"
+        title="..."
+        className={helperClasses.releaseActionsDropdown}
         id="release-list-actions"
         pullRight={false}
         onClick={(e) => e.stopPropagation()}
@@ -551,7 +597,7 @@ export const NewReleaseList = () => {
   };
 
   return (
-    <Box ml={3} mr={3}>
+    <Box ml={3} mr={3} className={helperClasses.releaseListBox}>
       <YBPanelItem
         header={
           <Box mt={2}>
@@ -646,12 +692,15 @@ export const NewReleaseList = () => {
         }
         body={
           <Box>
-            <BootstrapTable
+            <YBTable
               data={filteredReleaseList}
               pagination={true}
               options={{
+                defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
+                defaultSortName: DEFAULT_SORT_COLUMN,
                 onRowClick: onRowClick
               }}
+              trClassName={helperClasses.rowHover}
             >
               <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -667,7 +716,7 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatDateMilliSecs}
-                // dataField={'release_date_msecs'}
+                dataField={'release_date_msecs'}
                 dataSort
               >
                 {t('releases.releaseDate')}
@@ -675,7 +724,9 @@ export const NewReleaseList = () => {
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
+                dataField={'release_type'}
                 dataFormat={formatReleaseSupport}
+                dataSort
               >
                 {t('releases.releaseSupport')}
               </TableHeaderColumn>
@@ -710,7 +761,7 @@ export const NewReleaseList = () => {
               >
                 Actions
               </TableHeaderColumn>
-            </BootstrapTable>
+            </YBTable>
           </Box>
         }
       />
