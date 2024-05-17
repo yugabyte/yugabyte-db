@@ -323,6 +323,14 @@ Status MiniCluster::StartMasters() {
   }
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_master_addrs) = master_addresses;
+
+  // Trigger an election to avoid an unnecessary 3s wait on every minicluster startup.
+  if (!mini_masters_.empty()) {
+    auto consensus = VERIFY_RESULT(RandomElement(mini_masters_)->tablet_peer()->GetConsensus());
+    consensus::LeaderElectionData data { .must_be_committed_opid = OpId() };
+    RETURN_NOT_OK(consensus->StartElection(data));
+  }
+
   started = true;
   return Status::OK();
 }
