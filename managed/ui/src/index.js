@@ -12,7 +12,6 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
 import en from './translations/en.json';
-// import '@yugabytedb/ui-components';
 import 'intl';
 import 'intl/locale-data/jsonp/en.js';
 

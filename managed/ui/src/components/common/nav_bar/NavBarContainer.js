@@ -3,7 +3,13 @@
 import { connect } from 'react-redux';
 
 import NavBar from './NavBar';
-import { logout, logoutSuccess, logoutFailure } from '../../../actions/customers';
+import {
+  logout,
+  logoutSuccess,
+  logoutFailure,
+  fetchCustomerRunTimeConfigs,
+  fetchCustomerRunTimeConfigsResponse
+} from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -15,6 +21,11 @@ const mapDispatchToProps = (dispatch) => {
           localStorage.removeItem('authToken');
           dispatch(logoutSuccess());
         }
+      });
+    },
+    fetchCustomerRunTimeConfigs: () => {
+      dispatch(fetchCustomerRunTimeConfigs(true)).then((response) => {
+        dispatch(fetchCustomerRunTimeConfigsResponse(response.payload));
       });
     }
   };

@@ -248,3 +248,23 @@ export interface ProviderNode {
 export interface TaskResponse {
   taskUUID: string;
 }
+
+// Fields to be displayed in the metadata table when 
+// registering a universe to troubleshoot service
+export interface MetadataFields {
+	id: string;
+	name?: string;
+	customerId: string;
+	apiToken: string;
+	platformUrl: string;
+	metricsUrl: string;
+	metricsScrapePeriodSec: number;
+	dataMountPoints: string[];
+	otherMountPoints: string[];
+	lastSyncError?: string | null;
+}
+
+export interface UpdateMetadataFormFields {
+	apiToken: string;
+	metricsScrapePeriodSec: number;
+}

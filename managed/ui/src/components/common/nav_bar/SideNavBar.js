@@ -3,10 +3,12 @@
 import { Component } from 'react';
 import { Link, IndexLink, withRouter } from 'react-router';
 import { NavDropdown } from 'react-bootstrap';
-import slackIcon from './images/slack-monochrome-black.svg';
-import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
+
+import slackIcon from './images/slack-monochrome-black.svg';
+
+import './stylesheets/SideNavBar.scss';
 
 class NavLink extends Component {
   render() {
@@ -115,6 +117,19 @@ export default class SideNavBar extends Component {
                       text="Configs"
                       display={getFeatureState(currentCustomer.data.features, 'menu.config')}
                     />
+
+                    {this.props.isTroubleshootingEnabled && (
+                      <NavLink
+                        to="/troubleshoot"
+                        icon="fa fa-cloud-upload"
+                        text="Troubleshoot"
+                        display={getFeatureState(
+                          currentCustomer.data.features,
+                          'menu.troubleshoot'
+                        )}
+                      />
+                    )}
+
                     <NavLink
                       to="/admin"
                       icon="fa fa-gear"

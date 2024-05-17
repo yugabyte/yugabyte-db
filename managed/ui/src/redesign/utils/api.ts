@@ -34,7 +34,8 @@ export enum QUERY_KEY {
   updateTLS = 'updateTLS',
   getCertificates = 'getCertificates',
   getFinalizeInfo = 'getFinalizeInfo',
-  getReplicationSlots = 'getReplicationSlots'
+  getReplicationSlots = 'getReplicationSlots',
+  getSessionInfo = 'getSessionInfo'
 }
 
 class ApiService {
@@ -133,6 +134,10 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/cdc_replication_slots`;
     return axios.get<ReplicationSlotResponse>(requestUrl).then((resp) => resp.data);
   };
+  getSessionInfo = () => {
+    const requestUrl = `${ROOT_URL}/session_info`;
+    return axios.get<any>(requestUrl).then((resp) => resp.data);
+  }
 }
 
 export const api = new ApiService();
