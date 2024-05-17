@@ -376,7 +376,7 @@ Default: false
 
 The number of tablet replicas that each core on a YB-TServer can support. This is used by both YB-Masters and YB-TServers.
 
-Default: 0, for no limit.
+Default: `0` for no limit.
 
 ##### tablet_replicas_per_gib_limit
 
