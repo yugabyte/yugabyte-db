@@ -45,7 +45,8 @@ export const RuntimeConfigKey = {
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
-  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled'
+  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
+  ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting'
 } as const;
 
 /**

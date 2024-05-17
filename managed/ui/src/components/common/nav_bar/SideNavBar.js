@@ -115,6 +115,17 @@ export default class SideNavBar extends Component {
                       text="Configs"
                       display={getFeatureState(currentCustomer.data.features, 'menu.config')}
                     />
+                    {this.props.isTroubleshootingEnabled && (
+                      <NavLink
+                        to="/troubleshoot"
+                        icon="fa fa-cloud-upload"
+                        text="Troubleshoot"
+                        display={getFeatureState(
+                          currentCustomer.data.features,
+                          'menu.troubleshoot'
+                        )}
+                      />
+                    )}
                     <NavLink
                       to="/admin"
                       icon="fa fa-gear"

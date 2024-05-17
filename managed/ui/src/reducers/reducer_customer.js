@@ -48,6 +48,8 @@ import {
   FETCH_RUNTIME_CONFIGS_RESPONSE,
   FETCH_RUNTIME_CONFIGS_KEY_INFO,
   FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+  FETCH_CUSTOMER_RUNTIME_CONFIGS,
+  FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE,
   SET_RUNTIME_CONFIG,
   SET_RUNTIME_CONFIG_RESPONSE,
   DELETE_RUNTIME_CONFIG,
@@ -166,7 +168,8 @@ const INITIAL_STATE = {
   createAlertDestination: getInitialState({}),
   createAlertConfig: getInitialState({}),
   updateAlertDestination: getInitialState({}),
-  updateAlertConfig: getInitialState({})
+  updateAlertConfig: getInitialState({}),
+  customerRuntimeConfigs: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -410,6 +413,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'runtimeConfigsKeyMetadata', []);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigsKeyMetadata', action);
+    case FETCH_CUSTOMER_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'customerRuntimeConfigs', []);
+    case FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, 'customerRuntimeConfigs', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

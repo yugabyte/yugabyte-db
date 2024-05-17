@@ -32,7 +32,8 @@ export enum QUERY_KEY {
   rotateDBPassword = 'rotateDBPassword',
   updateTLS = 'updateTLS',
   getCertificates = 'getCertificates',
-  getFinalizeInfo = 'getFinalizeInfo'
+  getFinalizeInfo = 'getFinalizeInfo',
+  getSessionInfo = 'getSessionInfo'
 }
 
 class ApiService {
@@ -126,6 +127,11 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUUID}`;
     return axios.post<AxiosResponse>(requestUrl).then((resp) => resp);
   };
+
+  getSessionInfo = () => {
+    const requestUrl = `${ROOT_URL}/session_info`;
+    return axios.get<any>(requestUrl).then((resp) => resp.data);
+  }
 }
 
 export const api = new ApiService();

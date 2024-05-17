@@ -14,6 +14,11 @@ export const ROOT_URL =
 // Allow requests made to endpoints in ‘routes’ file.
 export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
 
+export const REACT_TROUBLESHOOT_API_DEV_URL =
+  process.env.REACT_TROUBLESHOOT_API_DEV_URL ?? `http://localhost:8080`;
+export const REACT_TROUBLESHOOT_API_PROD_URL =
+  process.env.REACT_TROUBLESHOOT_API_PROD_URL ?? `https://10.9.15.156:8443/api`;
+
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
   ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
   : '/static/map';

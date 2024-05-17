@@ -37,7 +37,13 @@ import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
-import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
+import { SecondaryDashboard } from './pages/SecondaryDashboard';
+import { Troubleshoot } from './pages/Troubleshoot';
+import {
+  clearRbacCreds,
+  getRbacEnabledVal,
+  isRbacEnabled
+} from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -124,7 +130,7 @@ axios.interceptors.response.use(
   (error) => {
     // skip 401 response for "/login" and "/register" endpoints
     //rbac is not loaded yet or it is enabled
-    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+    if (getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
 
     const isAllowedUrl = /.+\/(login|register|reset_password)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
@@ -244,6 +250,10 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
+          <Route
+            path="/universes/:uuid/troubleshoot/:troubleshootUUID"
+            component={SecondaryDashboard}
+          />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
@@ -271,6 +281,9 @@ export default (store) => {
           <Route path=":tab" component={DataCenterConfiguration} />
           <Route path=":tab/:section" component={DataCenterConfiguration} />
           <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
+        </Route>
+        <Route path="/troubleshoot" component={Troubleshoot}>
+          <Route path=":tab" component={Troubleshoot} />
         </Route>
         <Route path="/nodeagent" component={NodeAgent} />
         <Route path="/alerts" component={Alerts} />

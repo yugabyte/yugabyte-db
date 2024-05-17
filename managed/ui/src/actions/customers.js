@@ -121,6 +121,9 @@ export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO = 'FETCH_RUNTIME_CONFIGS_KEY_INFO';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE = 'FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE';
 
+export const FETCH_CUSTOMER_RUNTIME_CONFIGS = 'FETCH_CUSTOMER_RUNTIME_CONFIGS';
+export const FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE';
+
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
@@ -381,10 +384,7 @@ export function updatePassword(_user, values) {
   const data = {
     ...values
   };
-  return axios.put(
-    `${ROOT_URL}/customers/${cUUID}/reset_password`,
-    data
-  );
+  return axios.put(`${ROOT_URL}/customers/${cUUID}/reset_password`, data);
 }
 
 export function updateUserProfile(user, values) {
@@ -933,6 +933,24 @@ export function fetchRunTimeConfigsKeyInfo() {
 export function fetchRunTimeConfigsKeyInfoResponse(response) {
   return {
     type: FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchCustomerRunTimeConfigs(includeInherited = false) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(
+    `${ROOT_URL}/customers/${cUUID}/runtime_config/${cUUID}?includeInherited=${includeInherited}`
+  );
+  return {
+    type: FETCH_CUSTOMER_RUNTIME_CONFIGS,
+    payload: request
+  };
+}
+
+export function fetchCustomerRunTimeConfigsResponse(response) {
+  return {
+    type: FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE,
     payload: response
   };
 }

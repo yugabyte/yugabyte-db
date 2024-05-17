@@ -32,7 +32,9 @@
       "note": "Note :",
       "reload": "Reload",
       "default": "Default",
-      "seconds": "Seconds"
+      "seconds": "Seconds",
+      "startDate": "Start Date",
+      "endDate": "End Date"
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -501,6 +503,20 @@
       }
     },
     "clusterDetail": {
+      "troubleshoot": {
+        "Troubleshoot": "Troubleshoot",
+        "resolved": "Resolved",
+        "Details": "Refer to details",
+        "startTimeError": "Start Date is greater than end date",
+        "advisor": {
+          "typeTag": {
+            "AppIssue": "APPLICATION ISSUE",
+            "NodeIssue": "NODE ISSUE",
+            "InfraIssue": "INFRASTRUCTURE ISSUE",
+            "SQLIssue ": "SQL ISSUE"
+          }
+        }
+      },
       "performance": {
         "advisor": {
           "Recommendation": "Recommendation",
