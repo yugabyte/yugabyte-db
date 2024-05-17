@@ -154,7 +154,7 @@ cpu_usage:
   range: true
   operator: "* 100"
   filters:
-    mode: "user|system"
+    mode: "user|system|total"
   group_by: "mode"
   panel_group: "Node Metrics"
   layout:
@@ -165,6 +165,7 @@ cpu_usage:
       alias:
         "user": "User"
         "system": "System"
+        "total": "Total"
       ticksuffix: "&nbsp;%"
 
 disk_iops:
