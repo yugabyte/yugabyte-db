@@ -1700,18 +1700,18 @@
       }
     },
     "releases": {
-      "headerTitle": "Releases",
+      "headerTitle": "YugabyteDB Releases",
       "tag": "Tag",
       "tags": {
-        "LINUX": "Linux",
+        "LINUX": "VMs",
         "KUBERNETES": "Kubernetes",
         "x86_64": "VM x86",
         "aarch64": "VM ARM",
         "kubernetes": "Kubernetes"
       },
       "state": {
-        "active": "Active",
-        "disabled": "Disabled",
+        "active": "Allowed",
+        "disabled": "Not Allowed",
         "Incomplete": "Incomplete"
       },
       "type": {
@@ -1720,6 +1720,8 @@
         "PREVIEW (DEFAULT)": "PREVIEW",
         "PREVIEW": "PREVIEW"
       },
+      "fileUploadLabel": "File Upload",
+      "urlLabel": "URL",
       "fetchMetadata": "Fetch Metadata",
       "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
       "genericError": "Failed to fetch list of releases",
@@ -1733,10 +1735,10 @@
       "releaseDate": "Release Date",
       "releaseDetails": "Release Details",
       "releaseNote": "Release Note",
-      "releaseSupport": "Release Support",
+      "releaseSupport": "Release Type",
       "releaseUsage": "Usage",
-      "enableDeployment": "Enable Deployment",
-      "disableDeployment": "Disable Deployment",
+      "enableDeployment": "Allow Deployment",
+      "disableDeployment": "Disallow Deployment",
       "importArchitecture": "Imported Architecture",
       "releaseDeployment": "Deployment",
       "deploymentType": "Deployment Type",
@@ -1752,6 +1754,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
+      "disableActionsTooltipMessage": "This action is disabled as this release is currently used by one or multiple universes",
       "incompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
@@ -1760,13 +1763,13 @@
       "inUseUniverses": "In-Use Universes",
       "notInUse": "Not in Use",
       "reviewReleaseMetadataSection": {
-        "viewReleaseDetails": "View Release Details",
+        "viewReleaseDetails": "Review Release Details",
         "version": "VERSION",
         "deploymentType": "DEPLOYMENT TYPE",
         "architecture": "ARCHITECTURE",
-        "releaseSupport": "RELEASE SUPPORT",
+        "releaseSupport": "RELEASE TYPE",
         "releaseDate": "RELEASE DATE",
-        "unableFetchRelease": "Unable to fetch release details.Provide the following information"
+        "unableFetchRelease": "Unable to fetch release details. Provide the following information"
       },
       "editArchitectureModal": {
         "uploadDBInstaller": "Upload Database Installer(Linux) or helm chart (Kubernetes)",
@@ -1787,7 +1790,8 @@
         "updateArtifactsFailure": "Failed to update release artifacts",
         "extractMetadataFileSuccess": "Extracted metadata from file successfully",
         "extractMetadataFileFailure": "Failed to extract metadata from the file",
-        "extractMetadataUrlFailure": "Failed to extract metadata from URL"
+        "extractMetadataUrlFailure": "Failed to extract metadata from URL",
+        "urlTooltipText": "Choose the URL option if the installation package is hosted on either an internal server or a public S3 bucket."
       },
       "disableReleaseModal": {
         "disableMessage": "Are you sure you want to {{release_status}} the release {{release_version}}?",
