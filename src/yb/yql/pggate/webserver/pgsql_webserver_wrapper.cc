@@ -552,6 +552,11 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
 }
 
+void DestroyWebserver(struct WebserverWrapper *webserver) {
+  Webserver *webserver_impl = reinterpret_cast<Webserver *>(webserver);
+  delete webserver_impl;
+}
+
 void SetWebserverConfig(
     WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
     int webserver_profiler_sample_freq_bytes) {
