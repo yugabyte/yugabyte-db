@@ -380,6 +380,7 @@ class OnPremNodesList extends Component {
       const precheckDisabled = row.inUse || isActive(row.precheckTask);
       const isNodeDecommissioned = row.state === OnPremNodeState.DECOMMISSIONED;
       const isNodeInUse = row.state === OnPremNodeState.USED;
+
       return (
         <>
           <DropdownButton
@@ -389,7 +390,11 @@ class OnPremNodesList extends Component {
             pullRight
           >
             <MenuItem
-              onClick={!precheckDisabled ? self.showConfirmPrecheckModal.bind(self, row) : null}
+              onClick={
+                precheckDisabled || isNodeDecommissioned
+                  ? null
+                  : self.showConfirmPrecheckModal.bind(self, row)
+              }
               disabled={precheckDisabled || isNodeDecommissioned}
             >
               <i className="fa fa-play-circle-o" />
