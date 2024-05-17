@@ -615,24 +615,17 @@ public class HealthChecker {
       return null;
     }
 
-    String disabledUntilStr = u.getConfig().getOrDefault(Universe.DISABLE_ALERTS_UNTIL, "0");
-    long disabledUntilSecs = 0;
-    try {
-      disabledUntilSecs = Long.parseLong(disabledUntilStr);
-    } catch (NumberFormatException ne) {
-      log.warn("invalid universe config for disabled alerts: [ " + disabledUntilStr + " ]");
-    }
-
-    boolean silenceEmails = ((System.currentTimeMillis() / 1000) <= disabledUntilSecs);
+    // Earlier we used to use "Universe.DISABLE_ALERTS_UNTIL" to check whether or not to silence
+    // health check notifications via the "configureUniverseAlerts" API.
+    // But now we unsnoozed all those notifications and instead recommend to use the maintenance
+    // window APIs to manage health check notifications along with normal alerts.
 
     // Check if there is an active maintenance window for this universe which is supposed to
     // suppress health check alerts.
     boolean maintenanceWindowActiveForUniverse =
         maintenanceService.isHealthCheckNotificationSuppressedForUniverse(u);
 
-    return (silenceEmails || maintenanceWindowActiveForUniverse)
-        ? null
-        : String.join(",", destinations);
+    return (maintenanceWindowActiveForUniverse) ? null : String.join(",", destinations);
   }
 
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
