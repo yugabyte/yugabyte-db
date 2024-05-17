@@ -16,6 +16,12 @@ groups:
         labels:
           saved_name: node_cpu_usage
 
+      - record: node_cpu_usage_avg
+        expr: "sum without (mode) (avg without (cpu) (irate(node_cpu_seconds_total{mode!~'idle|iowait'}[{{ range }}])))"
+        labels:
+          saved_name: node_cpu_usage_avg
+          mode: total
+
       - record: node_disk_reads_irate
         expr: "sum without (device) (irate(node_disk_reads_completed_total[{{ range }}]))"
         labels:

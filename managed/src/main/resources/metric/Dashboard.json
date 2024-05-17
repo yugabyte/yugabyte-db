@@ -6322,14 +6322,19 @@
     "id" : 10,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"total\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "System",
       "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "User",
       "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
-      "refId" : "B"
+      "refId" : "C"
     } ],
     "gridPos" : {
       "w" : 12,
