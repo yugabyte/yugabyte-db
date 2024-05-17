@@ -34,8 +34,9 @@ CATALOG(pg_yb_role_profile,8054,YbRoleProfileRelationId) BKI_SHARED_RELATION BKI
 												   categories below */
 	int32			rolprffailedloginattempts;	/* Number of failed attempts */
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
-	timestamptz		rolprflockeduntil;			/* Lock timeout expiration
-												   time, if any */
+	/* Lock timeout expiration time, if any */
+	timestamptz		rolprflockeduntil BKI_FORCE_NULL BKI_DEFAULT(_null_);
+
 #endif
 } FormData_pg_yb_role_profile;
 
