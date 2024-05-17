@@ -24,6 +24,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tcmalloc_util.h"
@@ -31,6 +32,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+DECLARE_int32(dump_heap_snapshot_min_interval_sec);
 DECLARE_int32(v);
 DECLARE_string(vmodule);
 
@@ -245,6 +247,61 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
   auto actual_bytes = kAllocSize * kNumAllocations;
   margin = actual_bytes * 0.2;
   ASSERT_NEAR(actual_bytes, estimated_bytes, margin);
+}
+
+TEST(ThrottledHeapSnapshotDumperTest, DoNotDumpIfBelowSoftLimit) {
+  // Create a fake root tracker that does not use a consumption_functor as its source of truth.
+  auto hard_limit = 100000;
+  auto root_tracker = std::make_shared<MemTracker>(
+      hard_limit, "root", ConsumptionFunctor(), nullptr /* parent */, AddToParent::kFalse,
+      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
+
+  // Should not dump in SoftLimitExceeded because we have not exceeded the soft limit.
+  root_tracker->Consume(root_tracker->soft_limit());
+  ASSERT_FALSE(root_tracker->AnySoftLimitExceeded(/*score=*/ 1.0).exceeded);
+
+  // Should dump because we did not dump during the SoftLimitExceeded call.
+  ASSERT_TRUE(DumpHeapSnapshotUnlessThrottled());
+}
+
+TEST(ThrottledHeapSnapshotDumperTest, DumpIfSoftLimitExceeded) {
+  // Create a fake root tracker that does not use a consumption_functor as its source of truth.
+  auto hard_limit = 100000;
+  auto root_tracker = std::make_shared<MemTracker>(
+      hard_limit, "root", ConsumptionFunctor(), nullptr /* parent */, AddToParent::kFalse,
+      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
+
+  // Exceed the soft memory limit.
+  root_tracker->Consume(root_tracker->soft_limit() + 1);
+
+  // Deterministically choose to reject this request.
+  ASSERT_TRUE(root_tracker->AnySoftLimitExceeded(/*score=*/ 1.0).exceeded);
+
+  // The heap snapshot should not dump, because it just did during the SoftLimitExceeded call.
+  ASSERT_FALSE(DumpHeapSnapshotUnlessThrottled());
+}
+
+TEST(ThrottledHeapSnapshotDumperTest, OnlyDumpOnRootRejection) {
+  // Check that only a child tracker hitting its soft memory limit does not cause a dump.
+  auto root_hard_limit = 100000;
+  auto child_hard_limit = 1000;
+
+  auto root_tracker = std::make_shared<MemTracker>(
+      root_hard_limit, "root", ConsumptionFunctor(), nullptr /* parent */, AddToParent::kTrue,
+      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
+  auto child_tracker = MemTracker::CreateTracker(
+      child_hard_limit, "child", ConsumptionFunctor(), root_tracker);
+
+  // Exceed the soft memory limit.
+  child_tracker->Consume(child_tracker->soft_limit() + 1);
+
+  // Deterministically choose to reject this request.
+  auto result = child_tracker->AnySoftLimitExceeded(1.0);
+  ASSERT_TRUE(result.exceeded);
+  ASSERT_STR_CONTAINS(result.tracker_path, "child");
+
+  // The heap snapshot should dump, because it did not dump SoftLimitExceeded call.
+  ASSERT_TRUE(DumpHeapSnapshotUnlessThrottled());
 }
 
 #endif // YB_GOOGLE_TCMALLOC
