@@ -706,7 +706,7 @@ public class GFlagsUtil {
         ysqlPgConfCsvEntries.add(
             encodeBooleanPgAuditFlag("pgaudit.log_relation", ysqlAuditConfig.isLogRelation()));
         ysqlPgConfCsvEntries.add(
-            encodeBooleanPgAuditFlag("pgaudit.log_row", ysqlAuditConfig.isLogRow()));
+            encodeBooleanPgAuditFlag("pgaudit.log_rows", ysqlAuditConfig.isLogRows()));
         ysqlPgConfCsvEntries.add(
             encodeBooleanPgAuditFlag("pgaudit.log_statement", ysqlAuditConfig.isLogStatement()));
         ysqlPgConfCsvEntries.add(

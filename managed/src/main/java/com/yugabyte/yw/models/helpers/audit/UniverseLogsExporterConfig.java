@@ -5,6 +5,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import javax.validation.constraints.NotNull;
@@ -20,5 +21,5 @@ public class UniverseLogsExporterConfig {
 
   @NotNull
   @ApiModelProperty(value = "Additional tags", accessMode = READ_WRITE)
-  private Map<String, String> additionalTags;
+  private Map<String, String> additionalTags = new HashMap<>();
 }

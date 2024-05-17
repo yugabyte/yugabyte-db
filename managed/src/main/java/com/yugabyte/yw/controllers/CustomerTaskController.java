@@ -129,6 +129,11 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.details = taskProgress.get("details");
       } else {
         ObjectNode details = Json.newObject();
+        // Add auditLogConfig from the task details if it is present.
+        // This info is useful to render the UI properly while task is in progress.
+        if (taskInfo.getDetails().has("auditLogConfig")) {
+          details.set("auditLogConfig", taskInfo.getDetails().get("auditLogConfig"));
+        }
         ObjectNode versionNumbers = commissioner.getVersionInfo(task, taskInfo);
         if (versionNumbers != null && !versionNumbers.isEmpty()) {
           details.set("versionNumbers", versionNumbers);
