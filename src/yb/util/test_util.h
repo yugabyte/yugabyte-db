@@ -211,6 +211,8 @@ TODO: Re-enable the tests once GH#21689 is done.
 */
 bool DisableMiniClusterBackupTests();
 
+void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest);
+
 int CalcNumTablets(size_t num_tablet_servers);
 
 template<uint32_t limit>

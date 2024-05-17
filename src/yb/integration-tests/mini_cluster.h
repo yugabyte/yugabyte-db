@@ -160,6 +160,12 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   Status AddTabletServer();
 
+  // Start YB Controller servers for all the existing TSs.
+  Status StartYbControllerServers();
+
+  // Add a new YB Controller server for the given tablet server
+  Status AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>);
+
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
@@ -224,7 +230,7 @@ class MiniCluster : public MiniClusterBase {
 
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
-    return yb_controllers_;
+    return yb_controller_servers_;
   }
 
   tserver::TSTabletManager* GetTabletManager(size_t idx);
@@ -287,7 +293,7 @@ class MiniCluster : public MiniClusterBase {
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;
 
-  std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
   PortPicker port_picker_;
 };

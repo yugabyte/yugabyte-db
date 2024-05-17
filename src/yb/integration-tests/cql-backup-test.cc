@@ -15,6 +15,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -40,6 +41,11 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
     // Provide correct '--fs_data_dirs' via TS Web UI.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_mode) = true;
     CqlTestBase<MiniCluster>::SetUp();
+
+    // Start Yb Controllers for backup/restore.
+    if (UseYbController()) {
+      CHECK_OK(cluster_->StartYbControllerServers());
+    }
 
     backup_dir_ = GetTempDir("backup");
     session_ = make_unique<CassandraSession>(
