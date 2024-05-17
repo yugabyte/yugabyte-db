@@ -169,6 +169,9 @@ static bool check_wal_consistency_checking(char **newval, void **extra,
 							   GucSource source);
 static void assign_wal_consistency_checking(const char *newval, void *extra);
 
+static bool check_default_replica_identity(char **newval, void **extra,
+							   GucSource source);
+
 #ifdef HAVE_SYSLOG
 static int	syslog_facility = LOG_LOCAL0;
 #else
@@ -5114,6 +5117,18 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_default_replica_identity", PGC_SUSET, REPLICATION,
+			gettext_noop("Default replica identity at the time of table creation"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_default_replica_identity,
+		"CHANGE",
+		check_default_replica_identity, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
@@ -12187,6 +12202,21 @@ check_wal_consistency_checking(char **newval, void **extra, GucSource source)
 	*extra = guc_malloc(ERROR, (RM_MAX_ID + 1) * sizeof(bool));
 	memcpy(*extra, newwalconsistency, (RM_MAX_ID + 1) * sizeof(bool));
 	return true;
+}
+
+static bool check_default_replica_identity(char **newval, void **extra, GucSource source)
+{
+	char* rawstring;
+	bool is_valid;
+
+	rawstring = pstrdup(*newval);
+	is_valid = strcmp(rawstring, "FULL") == 0 ||
+			strcmp(rawstring, "DEFAULT") == 0 ||
+			strcmp(rawstring, "NOTHING") == 0 ||
+			strcmp(rawstring, "CHANGE") == 0;
+
+	pfree(rawstring);
+	return is_valid;
 }
 
 static void

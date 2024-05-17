@@ -139,6 +139,11 @@ extern bool yb_enable_alter_table_rewrite;
 extern bool yb_enable_replica_identity;
 
 /*
+ * GUC variable that specifies default replica identity for tables at the time of creation.
+ */
+extern char* yb_default_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
