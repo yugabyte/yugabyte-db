@@ -11,7 +11,7 @@ import { YBPanelItem } from '../../../panels';
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
-import { isDisabled, isNotHidden } from '../../../../utils/LayoutUtils';
+import { isNotHidden } from '../../../../utils/LayoutUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import Wrench from '../../../../redesign/assets/wrench.svg';
 
@@ -60,7 +60,6 @@ export const UniverseHealthCheckList = (props) => {
     ));
   }
 
-  const actions_disabled = isDisabled(currentCustomer.data.features, 'universes.actions');
 
   return (
     <YBPanelItem
@@ -78,8 +77,6 @@ export const UniverseHealthCheckList = (props) => {
                     className="table-action"
                     universe={currentUniverse.data}
                     actionType="alert-config"
-                    btnClass={'btn-orange'}
-                    disabled={actions_disabled}
                   />
                 </div>
               </div>
