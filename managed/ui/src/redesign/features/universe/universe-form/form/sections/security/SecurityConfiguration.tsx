@@ -103,7 +103,11 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               </Typography>
 
               <Box className={helperClasses.settingsContainerBorder}>
-                <AssignPublicIPField disabled={!isCreatePrimary} />
+                <AssignPublicIPField
+                  disabled={!isCreatePrimary || provider?.code === CloudType.azu}
+                  providerCode={provider?.code}
+                  isCreateMode={isCreateMode}
+                />
               </Box>
             </Box>
 
