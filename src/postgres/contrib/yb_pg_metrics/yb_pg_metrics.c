@@ -437,6 +437,12 @@ webserver_worker_main(Datum unused)
     MemoryContextSwitchTo(oldcontext);
   }
 
+	if (webserver)
+	{
+		DestroyWebserver(webserver);
+		webserver = NULL;
+	}
+
   if (rc & WL_POSTMASTER_DEATH)
       proc_exit(1);
 
