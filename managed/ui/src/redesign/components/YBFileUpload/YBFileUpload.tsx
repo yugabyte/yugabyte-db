@@ -8,6 +8,7 @@ import { getMemorySizeUnits } from '../../helpers/utils';
 import { YBProgress } from '../YBProgress/YBProgress';
 
 import { ReactComponent as UploadIcon } from '../../assets/upload.svg';
+import { ReactComponent as UploadDisabledIcon } from '../../assets/upload-disabled.svg';
 import { ReactComponent as CloseIcon } from '../../assets/close-large.svg';
 import Checked from '../../assets/check-new.svg';
 
@@ -31,12 +32,17 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
     backgroundColor: theme.palette.success[100],
-    marginRight: theme.spacing(1)
+    marginRight: theme.spacing(1),
+    height: theme.spacing(3)
   },
   statusText: {
     fontFamily: 'Inter',
     fontWeight: 400,
-    fontSize: '11.5px'
+    fontSize: '11.5px',
+    color: theme.palette.success[700]
+  },
+  verticalAlignText: {
+    verticalAlign: 'top'
   },
   closeIcon: {
     cursor: 'pointer'
@@ -48,15 +54,6 @@ const useStyles = makeStyles((theme) => ({
   },
   overirdeMuiButton: {
     border: '1px solid #2B59C3'
-  },
-  overirdeMuiButtonUploaded: {
-    border: '1px solid #D7DEE4',
-    backgroundColor: '#D7DEE4'
-  },
-  overirdeMuiButtonLabelUploaded: {
-    color: '#97A5B0',
-    fontWeight: 600,
-    fontSize: '13px'
   },
   overirdeMuiButtonLabel: {
     color: '#2B59C3',
@@ -136,21 +133,18 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
         <YBButton
           variant="secondary"
           component={('label' as unknown) as React.ComponentType}
-          startIcon={<UploadIcon />}
+          startIcon={isFileUploaded || files.length > 0 ? <UploadDisabledIcon /> : <UploadIcon />}
+          disabled={isFileUploaded || files.length > 0}
           className={clsx({
             [classes.overirdeMuiButton]: files.length === 0 && !isFileUploaded,
-            [classes.overirdeMuiButtonUploaded]: files.length > 0 || isFileUploaded,
             [classes.error]: props.error
           })}
-          // className={clsx(props.error && classes.error, classes.overirdeMuiButton)}
           data-testid={dataTestId}
         >
           <span
             className={clsx({
-              [classes.overirdeMuiButtonLabel]: files.length === 0 && !isFileUploaded,
-              [classes.overirdeMuiButtonLabelUploaded]: files.length > 0 || isFileUploaded
+              [classes.overirdeMuiButtonLabel]: files.length === 0 && !isFileUploaded
             })}
-            // className={classes.overirdeMuiButtonLabel}
           >
             {label}
           </span>
@@ -180,8 +174,10 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
               <Box>{displayUploadedFileName}</Box>
               <Box className={clsx(classes.actions)}>
                 <Box className={classes.statusBox}>
-                  <span className={classes.statusText}>{'Completed'}</span>
-                  <img src={Checked} alt="status" />
+                  <span className={clsx(classes.statusText, classes.verticalAlignText)}>
+                    {'Completed'}
+                  </span>
+                  <img src={Checked} className={classes.verticalAlignText} alt="status" />
                 </Box>
                 <CloseIcon
                   className={classes.closeIcon}
@@ -212,8 +208,10 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
                     {isUploaded && (
                       <Box className={classes.statusBox}>
                         <>
-                          <span className={classes.statusText}>{'Completed'}</span>
-                          <img src={Checked} alt="status" />
+                          <span className={clsx(classes.statusText, classes.verticalAlignText)}>
+                            {'Completed'}
+                          </span>
+                          <img src={Checked} className={classes.verticalAlignText} alt="status" />
                         </>
                       </Box>
                     )}

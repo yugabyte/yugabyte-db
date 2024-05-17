@@ -1,12 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Box, makeStyles, Tooltip } from '@material-ui/core';
+import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 import { getDeploymentStatus } from '../helpers/utils';
 import { Releases, ReleaseState } from './dtos';
 
 import Check from '../../../assets/check-new.svg';
 import Revoke from '../../../assets/revoke.svg';
-import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
 
 interface ReleaseDeploymentStatusProps {
   data: Releases | null;
@@ -23,9 +22,11 @@ const useStyles = makeStyles((theme) => ({
   deploymentBox: {
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
-    gap: '2px',
     maxWidth: 'fit-content',
-    height: '28px'
+    height: '24px'
+  },
+  verticalAlignText: {
+    verticalAlign: 'super'
   },
   deploymentBoxGreen: {
     backgroundColor: theme.palette.success[100]
@@ -34,7 +35,7 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: theme.palette.grey[100]
   },
   deploymentGreenTag: {
-    color: theme.palette.success[700]
+    color: theme.palette.ybacolors.pillReadyIcon
   },
   deploymentGreyTag: {
     color: theme.palette.grey[700]
@@ -43,9 +44,8 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'row'
   },
-  tooltip: {
-    alignSelf: 'center',
-    marginLeft: theme.spacing(0.5)
+  icon: {
+    verticalAlign: 'top'
   }
 }));
 
@@ -70,8 +70,10 @@ export const DeploymentStatus = ({ data }: ReleaseDeploymentStatusProps) => {
         })}
       >
         <span
+          title={t('releases.incompleteTooltipMessage')}
           data-testid={`DeploymentStatus-${deploymentStatus}`}
           className={clsx({
+            [helperClasses.verticalAlignText]: true,
             [helperClasses.smallerReleaseText]: true,
             [helperClasses.deploymentGreenTag]: data.state === ReleaseState.ACTIVE,
             [helperClasses.deploymentGreyTag]:
@@ -80,14 +82,7 @@ export const DeploymentStatus = ({ data }: ReleaseDeploymentStatusProps) => {
         >
           {t(`releases.state.${deploymentStatus}`)}
         </span>
-        <img src={imgSrc} alt="status" />
-      </Box>
-      <Box className={helperClasses.tooltip}>
-        {data.state === ReleaseState.INCOMPLETE && (
-          <Tooltip title={t('releases.incompleteTooltipMessage')} arrow placement="top">
-            <img src={InfoMessageIcon} alt="info" />
-          </Tooltip>
-        )}
+        <img src={imgSrc} alt="status" className={helperClasses.icon} />
       </Box>
     </Box>
   );
