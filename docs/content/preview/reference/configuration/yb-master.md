@@ -376,13 +376,13 @@ Default: false
 
 The number of tablet replicas that each core on a YB-TServer can support. This is used by both YB-Masters and YB-TServers.
 
-Default:
+Default: 0, for no limit.
 
 ##### tablet_replicas_per_gib_limit
 
 The number of tablet replicas that each GiB reserved by YB-TServer for tablet overheads can support. This is used by both YB-Masters and YB-TServers.
 
-Default:
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
 
 ## Raft flags
 
