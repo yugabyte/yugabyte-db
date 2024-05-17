@@ -35,6 +35,7 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -43,7 +44,6 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/yb_inheritscache.h"
@@ -997,6 +998,65 @@ DefineIndex(Oid relationId,
 			YbGetTableProperties(rel)->tablegroup_oid :
 			InvalidOid;
 
+		bool is_colocated_via_database = is_colocated && MyDatabaseColocated;
+		bool is_colocated_tables_with_tablespace_enabled =
+			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+		/*
+		 * For colocated index tables in a colocation database, the implicit
+		 * tablegroup of the index depends on tablespace specified. If no tablespace
+		 * is specified we use the default implicit tablegroup.
+		 */
+		if (is_colocated_tables_with_tablespace_enabled &&
+			is_colocated_via_database && !MyColocatedDatabaseLegacy)
+		{
+			char *tablegroup_name = NULL;
+		
+			if (OidIsValid(tablespaceId)) 
+		{
+				/*
+				 * We look in pg_shdepend rather than directly use the derived name,
+				 * as later we might need to associate an existing implicit tablegroup to a tablespace
+				 */
+				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+
+				/*
+				 * If we do not find a tablegroup corresponding to the given tablespace, we 
+				 * would have to create one. We derive the name from tablespace OID.
+				 */
+				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) : 
+					get_implicit_tablegroup_name(tablespaceId);
+
+			} 
+		else 
+		{
+				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
+
+			char *tablespace_name = OidIsValid(tablespaceId) ? get_tablespace_name(tablespaceId) :
+				NULL;
+
+			/* Tablegroup doesn't exist, so create it. */
+			if (!OidIsValid(tablegroupId))
+			{
+				/*
+				 * Regardless of the current user, let postgres be the owner of the
+				 * implicit tablegroup in a colocated database.
+				 */
+				RoleSpec *spec = makeNode(RoleSpec);
+				spec->roletype = ROLESPEC_CSTRING;
+				spec->rolename = pstrdup("postgres");
+				
+				CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+				tablegroup_stmt->tablegroupname = tablegroup_name;
+				tablegroup_stmt->tablespacename = tablespace_name;
+				tablegroup_stmt->implicit = true;
+				tablegroup_stmt->owner = spec;
+				tablegroupId = CreateTableGroup(tablegroup_stmt);
+			}
+		}
+
 		if (stmt->split_options)
 		{
 			if (MyDatabaseColocated && is_colocated)
@@ -1017,13 +1077,13 @@ DefineIndex(Oid relationId,
 					 errmsg("cannot set colocation_id for non-colocated index")));
 
 		/*
-		 * Fail if the index is colocated and tablespace
+		 * Fail if the index is colocated via tablegroup and tablespace
 		 * is specified while creation.
 		 */
-		if (OidIsValid(tablespaceId) && is_colocated)
+		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
+					errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 		/*
 		 * Skip the check in a colocated database because any user can create tables

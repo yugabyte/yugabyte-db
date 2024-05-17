@@ -893,12 +893,10 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.code,
           details: {
+            ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.AZU]: {
                 ...(regionFormValues.securityGroupId && {
@@ -920,10 +918,7 @@ const constructProviderPayload = async (
                 azFormValues.code
               );
               return {
-                ...(existingZone && {
-                  active: existingZone.active,
-                  uuid: existingZone.uuid
-                }),
+                ...existingZone,
                 code: azFormValues.code,
                 name: azFormValues.code,
                 subnet: azFormValues.subnet

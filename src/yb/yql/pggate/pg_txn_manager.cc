@@ -540,6 +540,7 @@ void PgTxnManager::IncTxnSerialNo() {
 void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
   txn_serial_no_ = session_data->txn_serial_no;
   read_time_serial_no_ = session_data->read_time_serial_no;
+  active_sub_transaction_id_ = session_data->active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
 

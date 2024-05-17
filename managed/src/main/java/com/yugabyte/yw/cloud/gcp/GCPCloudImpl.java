@@ -4,6 +4,7 @@ package com.yugabyte.yw.cloud.gcp;
 
 import static com.google.common.collect.MoreCollectors.onlyElement;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,6 +20,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -75,6 +77,15 @@ public class GCPCloudImpl implements CloudAPI {
   public boolean isValidCreds(Provider provider) {
     try {
       GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+      // Check if the creds have the required permission(s) to fetch instances
+      List<String> reqPermission = new ArrayList<>();
+      reqPermission.add(GCPUtil.INSTANCE_LIST_PERMISSION);
+      if (apiClient.testIam(reqPermission).size() > 0) {
+        String errorMsg =
+            "SA validation failed. The SA doesn't have the required permission(s): "
+                + reqPermission.stream().collect(Collectors.joining(", "));
+        throw new PlatformServiceException(FORBIDDEN, errorMsg);
+      }
       apiClient.checkInstanceFetching();
     } catch (GeneralSecurityException | IOException e) {
       log.error("Error in validating GCP credentials", e);

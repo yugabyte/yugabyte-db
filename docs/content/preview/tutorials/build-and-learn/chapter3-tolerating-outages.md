@@ -28,7 +28,7 @@ You need to complete [Chapter 2](../chapter2-scaling-with-yugabytedb) of the tut
 
 ## Simulate an outage
 
-Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](../../../architecture/docdb-replication/replication/#concepts) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
+Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](../../../architecture/key-concepts/#replication-factor-rf) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
 
 To see how this works, let's simulate an outage by stopping the first database node (`yugabytedb-node1`):
 

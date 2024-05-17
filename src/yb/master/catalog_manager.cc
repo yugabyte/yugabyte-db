@@ -609,6 +609,8 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
+DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+
 DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
     "Whether to enable the use of heartbeat catalog versions cache for the "
     "pg_yb_catalog_version table which can help to reduce the number of reads "
@@ -3865,11 +3867,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
-  // Check if index is colocated and has a Tablespace specified.
+  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
+  // specified for indexes on colocated tables.
   SCHECK(
-      !colocated || !IsIndex(req) || !req.has_tablespace_id(),
-      InvalidArgument,
-      "TABLESPACE is not supported for indexes on colocated tables.");
+      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
+          !req.has_tablespace_id(),
+      InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
   // range partition columns.
@@ -6719,7 +6722,9 @@ Status CatalogManager::DeleteTableInMemory(
 
   if (!hide_only) {
     // If table is being hidden we should not abort snapshot related tasks.
-    table->AbortTasks();
+    // Always ignore Table schema verification tasks since it may be the one that is initiating the
+    // deletes.
+    table->AbortTasks(/*tasks_to_ignore=*/{server::MonitoredTaskType::TableSchemaVerification});
   }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
@@ -8053,12 +8058,12 @@ void CatalogManager::NotifyTabletDeleteFinished(
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
-  } else if (!ts_desc->IsTabletDeletePending(tablet_id)) {
-    LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
-                 << " doesn't exist";
   } else {
-    LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
-    ts_desc->ClearPendingTabletDelete(tablet_id);
+    auto num_removed = ts_desc->ClearPendingTabletDelete(tablet_id);
+    if (num_removed == 0) {
+      LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
+                   << " doesn't exist";
+    }
   }
   if (task_state == server::MonitoredTaskState::kComplete) {
     CheckTableDeleted(table, epoch);
@@ -13567,7 +13572,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
 
-  xcluster_manager_->SysCatalogLoaded();
+  xcluster_manager_->SysCatalogLoaded(state.epoch);
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
 }
 

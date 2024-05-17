@@ -198,5 +198,10 @@ Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStat
   return Status::OK();
 }
 
+Result<std::vector<tablet::TabletStatusPB>> MasterTabletServer::GetLocalTabletsMetadata() const {
+  LOG(DFATAL) << "Unexpected call of GetLocalTabletsMetadata()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetLocalTabletsMetadata()");
+}
+
 } // namespace master
 } // namespace yb

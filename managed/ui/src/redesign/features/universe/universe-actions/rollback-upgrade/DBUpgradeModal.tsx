@@ -47,20 +47,85 @@ import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
 import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
 import WarningIcon from '../../../../assets/warning-triangle.svg';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
+import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { Tooltip } from '@material-ui/core';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
 interface DBUpgradeModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
+  isReleasesEnabled: boolean;
 }
 
+const MAX_RELEASE_TAG_CHAR = 20;
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
 const MINIMUM_SUPPORTED_VERSION = '2.20.2';
-export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, universeData }) => {
+
+const renderOption = (option: Record<string, any>) => {
+  return (
+    <Box
+      style={{
+        display: 'flex',
+        flexDirection: 'row'
+      }}
+    >
+      {option.version}
+      {isNonEmptyString(option.info.release_tag) && (
+        <>
+          <Box
+            style={{
+              border: '1px',
+              borderRadius: '6px',
+              padding: '3px 3px 3px 3px',
+              backgroundColor: '#E9EEF2',
+              maxWidth: 'fit-content',
+              marginLeft: '4px',
+              marginTop: '-4px'
+            }}
+          >
+            <span
+              data-testid={'DBVersionField-ReleaseTag'}
+              style={{
+                fontWeight: 400,
+                fontFamily: 'Inter',
+                fontSize: '11.5px',
+                color: '#0B1117',
+                alignSelf: 'center'
+              }}
+            >
+              {option.info.release_tag.length > MAX_RELEASE_TAG_CHAR
+                ? `${option.info.release_tag.substring(0, 10)}...`
+                : option.info.release_tag}
+            </span>
+          </Box>
+          <span>
+            {option.info.release_tag.length > MAX_RELEASE_TAG_CHAR && (
+              <Tooltip title={option.info.release_tag} arrow placement="top">
+                <img src={InfoMessageIcon} alt="info" />
+              </Tooltip>
+            )}
+          </span>
+        </>
+      )}
+    </Box>
+  );
+};
+
+export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
+  open,
+  onClose,
+  universeData,
+  isReleasesEnabled
+}) => {
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const [needPrefinalize, setPrefinalize] = useState(false);
-  const releases = useSelector((state: any) => state.customer.softwareVersionswithMetaData);
+  const releases = useSelector((state: any) =>
+    isReleasesEnabled
+      ? state.customer.dbVersionsWithMetadata
+      : state.customer.softwareVersionswithMetaData
+  );
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
@@ -116,6 +181,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         }
       })
     );
+
   const previewSortedVersions = Object.keys(releases)
     .filter((release) => !isVersionStable(release))
     .sort((versionA, versionB) =>
@@ -128,6 +194,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         }
       })
     );
+
   let currentReleaseIndex: number = 0;
   let versionsAboveCurrent: string[] = [];
   if (!skipVersionChecks) {
@@ -275,6 +342,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
               getOptionDisabled={(option: Record<string, string>): boolean =>
                 option.version === currentRelease
               }
+              renderOption={renderOption}
               onChange={handleVersionChange}
               ybInputProps={{
                 error: !!fieldState.error,

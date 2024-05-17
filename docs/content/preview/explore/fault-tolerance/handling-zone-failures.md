@@ -85,7 +85,7 @@ In the illustration, you can see that one of the followers of the tablet B leade
 
 ## Cluster is fully functional
 
-Once new leaders have been elected, there are no leader-less tablets and the cluster becomes fully functional. There is no data loss as the follower that was elected as the leader has the latest data (guaranteed by RAFT replication). The recovery time is about 3s. But note that the cluster is now under-replicated because some of the followers are currently offline.
+Once new leaders have been elected, there are no leader-less tablets and the cluster becomes fully functional. There is no data loss as the follower that was elected as the leader has the latest data (guaranteed by Raft replication). The recovery time is about 3s. But note that the cluster is now under-replicated because some of the followers are currently offline.
 
 ![Back to normal](/images/explore/fault-tolerance/zone-failure-fully-functional.png)
 

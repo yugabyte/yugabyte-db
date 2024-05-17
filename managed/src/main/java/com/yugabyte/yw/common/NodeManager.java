@@ -1019,6 +1019,11 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--ybc_dir");
           subcommand.add(ybcDir);
         }
+        if (!node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
+          // For RR we don't setup master
+          subcommand.add("--yb_process_type");
+          subcommand.add("tserver");
+        }
         subcommand.add("--num_releases_to_keep");
         if (config.getBoolean("yb.cloud.enabled")) {
           subcommand.add(
@@ -2016,11 +2021,13 @@ public class NodeManager extends DevopsBase {
                   ServerType.TSERVER,
                   cluster,
                   universe.getUniverseDetails().clusters);
+
+          // Add audit log config
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              userIntent.auditLogConfig,
+              taskParam.auditLogConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
@@ -2030,6 +2037,11 @@ public class NodeManager extends DevopsBase {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+          }
+          if (StringUtils.isNotBlank(taskParam.machineImage)) {
+            // YBM use case - in case machineImage is used for deploying the universe we should
+            // fallback to sshUser configured in the provider.
+            taskParam.sshUserOverride = provider.getDetails().getSshUser();
           }
           String ybImage =
               Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);

@@ -6,15 +6,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.troubleshoot.ts.CommonUtils;
-import com.yugabyte.troubleshoot.ts.models.Anomaly;
-import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
-import com.yugabyte.troubleshoot.ts.models.GraphQuery;
-import com.yugabyte.troubleshoot.ts.models.GraphResponse;
+import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.BeanValidator;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
+import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import com.yugabyte.troubleshoot.ts.service.TroubleshootingService;
-import com.yugabyte.troubleshoot.ts.service.anomaly.AnomalyMetadataProvider;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -32,6 +30,7 @@ public class TroubleshootingController {
 
   private final TroubleshootingService troubleshootingService;
   private final GraphService graphService;
+  private final PgStatStatementsQueryService pgStatStatementsQueryService;
   private final ObjectMapper objectMapper;
   private final BeanValidator beanValidator;
 
@@ -42,11 +41,12 @@ public class TroubleshootingController {
       GraphService graphService,
       ObjectMapper objectMapper,
       BeanValidator beanValidator,
-      AnomalyMetadataProvider anomalyMetadataProvider) {
+      PgStatStatementsQueryService pgStatStatementsQueryService) {
     this.troubleshootingService = troubleshootingService;
     this.graphService = graphService;
     this.objectMapper = objectMapper;
     this.beanValidator = beanValidator;
+    this.pgStatStatementsQueryService = pgStatStatementsQueryService;
   }
 
   @GetMapping("/anomalies_metadata")
@@ -78,7 +78,7 @@ public class TroubleshootingController {
         startTime = now.minus(14, ChronoUnit.DAYS);
       }
       if (endTime.isBefore(startTime)) {
-        beanValidator.error().global("startTime should be before endTime");
+        beanValidator.error().global("startTime should be before endTime").throwError();
       }
       result = troubleshootingService.findAnomalies(universeUuid, startTime, endTime);
     }
@@ -122,5 +122,27 @@ public class TroubleshootingController {
       }
     }
     return graphService.getGraphs(universeUuid, queries);
+  }
+
+  @PostMapping("/queries")
+  public List<PgStatStatementsQuery> listQueries(
+      @RequestParam("universe_uuid") UUID universeUuid,
+      @RequestParam(name = "db_id", required = false) String databaseId,
+      @RequestParam(name = "query_id", required = false) Long queryId) {
+    if (databaseId == null && queryId == null) {
+      return pgStatStatementsQueryService.listByUniverseId(universeUuid);
+    } else if (queryId == null) {
+      return pgStatStatementsQueryService.listByDatabaseId(universeUuid, databaseId);
+    } else if (databaseId == null) {
+      // Ideally should never be the case, but we have that as ASH data has no dbId yet.
+      return pgStatStatementsQueryService.listByQueryId(universeUuid, queryId);
+    } else {
+      return pgStatStatementsQueryService.listByIds(
+          ImmutableList.of(
+              new PgStatStatementsQueryId()
+                  .setUniverseId(universeUuid)
+                  .setDbId(databaseId)
+                  .setQueryId(queryId)));
+    }
   }
 }

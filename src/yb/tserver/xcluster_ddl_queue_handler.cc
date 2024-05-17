@@ -13,16 +13,26 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
+#include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/json_util.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
+
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_log_queries, false,
+    "Whether to log queries run by the XClusterDDLQueueHandler. "
+    "Note that this could include sensitive information.");
+
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
+    "Whether the ddl_queue handler should fail at the end of processing (this will cause it "
+    "to reprocess the current batch in a loop).");
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
@@ -34,6 +44,9 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
 
 #define HAS_MEMBER_OF_TYPE(doc, member_name, is_type) \
   (doc.HasMember(member_name) && doc[member_name].is_type())
+
+#define LOG_QUERY(query) \
+  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) << "Running query: " << query;
 
 namespace yb::tserver {
 
@@ -52,6 +65,11 @@ const int kDDLQueueJsonVersion = 1;
 const char* kDDLJsonCommandTag = "command_tag";
 const char* kDDLJsonQuery = "query";
 const char* kDDLJsonVersion = "version";
+const char* kDDLJsonSchema = "schema";
+const char* kDDLJsonUser = "user";
+const char* kDDLJsonManualReplication = "manual_replication";
+const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
+const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
 const std::unordered_set<std::string> kSupportedCommandTags{"CREATE TABLE", "DROP TABLE"};
 
@@ -122,28 +140,80 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
     VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
     const std::string& command_tag = doc[kDDLJsonCommandTag].GetString();
     const std::string& query = doc[kDDLJsonQuery].GetString();
+
+    // Need to reverify replicated_ddls if this DDL has already been processed.
+    if (VERIFY_RESULT(CheckIfAlreadyProcessed(start_time, query_id))) {
+      continue;
+    }
+
+    if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonManualReplication, IsBool)) {
+      // Just add to the replicated_ddls table.
+      RETURN_NOT_OK(ProcessManualExecutionQuery({query, start_time, query_id}));
+      continue;
+    }
+
+    const std::string& schema =
+        HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
+    const std::string& user =
+        HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
     VLOG(1) << "ProcessDDLQueueTable: Processing entry "
-            << YB_STRUCT_TO_STRING(start_time, query_id, command_tag, query);
+            << YB_STRUCT_TO_STRING(start_time, query_id, command_tag, query, schema, user);
 
     SCHECK(
         kSupportedCommandTags.contains(command_tag), InvalidArgument,
         "Found unsupported command tag $0", command_tag);
 
-    RETURN_NOT_OK(ProcessDDLQuery(start_time, query_id, query));
+    RETURN_NOT_OK(ProcessDDLQuery({query, start_time, query_id, schema, user}));
   }
 
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) {
+    return STATUS(InternalError, "Failing due to xcluster_ddl_queue_handler_fail_at_end");
+  }
   applied_new_records_ = false;
   return Status::OK();
 }
 
-Status XClusterDDLQueueHandler::ProcessDDLQuery(
-    int64 start_time, int64 query_id, const std::string& query) {
+Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) {
+  std::stringstream setup_query;
+  if (!query_info.schema.empty()) {
+    setup_query << Format("SET SCHEMA '$0';", query_info.schema);
+  }
+  if (!query_info.user.empty()) {
+    setup_query << Format("SET ROLE $0;", query_info.user);
+  }
+
   // Set session variables in order to pass the key to the replicated_ddls table.
-  RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET $0 TO $1; SET $2 TO $3", kLocalVariableStartTime, start_time, kLocalVariableQueryId,
-      query_id));
-  RETURN_NOT_OK(pg_conn_->Execute(query));
+  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
+  setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
+
+  RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
+  RETURN_NOT_OK(RunAndLogQuery(query_info.query));
   return Status::OK();
+}
+
+Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& query_info) {
+  rapidjson::Document doc;
+  doc.SetObject();
+  doc.AddMember(
+      rapidjson::StringRef(kDDLJsonQuery),
+      rapidjson::Value(query_info.query.c_str(), doc.GetAllocator()), doc.GetAllocator());
+  doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+
+  RETURN_NOT_OK(RunAndLogQuery(Format(
+      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.start_time,
+      query_info.query_id, common::WriteRapidJsonToString(doc))));
+  return Status::OK();
+}
+
+Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
+  LOG_IF(INFO, FLAGS_TEST_xcluster_ddl_queue_handler_log_queries)
+      << "XClusterDDLQueueHandler: Running query: " << query;
+  return pg_conn_->Execute(query);
+}
+
+Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(int64 start_time, int64 query_id) {
+  return pg_conn_->FetchRow<bool>(
+      Format("EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, start_time, query_id));
 }
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
@@ -156,8 +226,21 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   pg_conn_ = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
 
+  std::stringstream query;
   // Read with tablet level consistency so that we see all the latest records.
-  RETURN_NOT_OK(pg_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
+  query << "SET yb_xcluster_consistency_level = tablet;";
+  // Allow writes on target (read-only) cluster.
+  query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
+  // Prepare replicated_ddls insert for manually replicated ddls.
+  query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
+        << "INSERT INTO " << xcluster::kDDLQueuePgSchemaName << "."
+        << xcluster::kDDLReplicatedTableName << " VALUES ($1, $2, $3::jsonb);";
+  // Prepare replicated_ddls select query.
+  query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
+        << "SELECT EXISTS(SELECT 1 FROM " << xcluster::kDDLQueuePgSchemaName << "."
+        << xcluster::kDDLReplicatedTableName << " WHERE " << xcluster::kDDLQueueStartTimeColumn
+        << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn << " = $2);";
+  RETURN_NOT_OK(pg_conn_->Execute(query.str()));
 
   return Status::OK();
 }
@@ -173,6 +256,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   RETURN_NOT_OK(
       pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
+  // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
+  // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "

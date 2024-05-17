@@ -407,6 +407,7 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgOid index_relfilenode_oid,
                             bool if_exist,
+                            bool ddl_rollback_enabled,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
@@ -432,8 +433,6 @@ YBCStatus YBCPgBackfillIndex(
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
-
-YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets);
 
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
@@ -868,6 +867,8 @@ YBCStatus YBCYcqlStatementStats(YCQLStatementStats** stats, size_t* num_stats);
 void YBCStoreTServerAshSamples(
     YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
     uint64_t sample_time);
+
+YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
 
 #ifdef __cplusplus
 }  // extern "C"

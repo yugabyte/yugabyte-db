@@ -15,8 +15,10 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+#include "yb/util/backoff_waiter.h"
 
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);
 
 using namespace std::chrono_literals;
@@ -32,7 +34,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   virtual void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
   }
 };
 
@@ -117,6 +119,8 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
 }
 
 TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
+  // Drop bg task timer to speed up test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   // Setup replication with two tables
   SetupParams params;
   params.num_consumer_tablets = params.num_producer_tablets = {3, 3};
@@ -128,8 +132,12 @@ TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {
   // Perform the drop on producer cluster.
   ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
 
-  // Perform the drop on consumer cluster.
+  // Perform the drop on consumer cluster. This will also delete the replication stream.
   ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return IsTableDeleted(&producer_cluster_, producer_table_->name()); },
+      kTimeout, "Wait for table to move from hidden to deleted."));
 
   auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
   std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;

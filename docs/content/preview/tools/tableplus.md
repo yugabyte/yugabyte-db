@@ -2,7 +2,7 @@
 title: Use TablePlus with YugabyteDB YSQL and YCQL
 headerTitle: TablePlus
 linkTitle: TablePlus
-description: Learn how to connect TablePlus to YugabyteDB and query using YSQL, YCQL, and YEDIS.
+description: Learn how to connect TablePlus to YugabyteDB and query using YSQL, YCQL.
 aliases:
   - /develop/tools/tableplus/
   - /preview/develop/tools/tableplus/
@@ -52,18 +52,7 @@ Connections are saved in the application, and displayed every time you start Tab
 
 ![YB ALL](/images/develop/tools/tableplus/yb-all-connection.png)
 
-<!--## Connect with Redis-compatible YEDIS
-
-Repeat the above steps for the Redis type as shown below.
-
-![YEDIS](/images/develop/tools/tableplus/yedis-connection.png)
--->
 ## What's next
 
 To get started with TablePlus, follow the instructions in [Getting Started with TablePlus](https://tableplus.io/blog/2018/04/getting-started-with-tableplus.html).
 
-<!--## Known issue
-
-Following is a known issue that we hope to address soon. You can track the issue directly on GitHub.
-
-[tableplus integration: redis metadata commands should gracefully error for redis compatible yedis](https://github.com/yugabyte/yugabyte-db/issues/503) -->

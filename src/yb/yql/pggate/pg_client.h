@@ -249,6 +249,8 @@ class PgClient {
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
 
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
   Status EnumerateActiveTransactions(

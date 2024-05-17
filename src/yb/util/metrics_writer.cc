@@ -41,13 +41,24 @@ Status PrometheusWriter::FlushAggregatedValues() {
       continue;
     }
     remaining_allowed_entries_ -= entity.size();
-    auto it = metric_help_and_type_.find(metric_name);
+
+    MetricHelpAndType* help_and_type = nullptr;
+    if (export_help_and_type_) {
+      auto help_and_type_iter = metric_help_and_type_.find(metric_name);
+      DCHECK(help_and_type_iter != metric_help_and_type_.end());
+      help_and_type = &help_and_type_iter->second;
+    }
+
+    auto attributes_iter =
+        aggregated_attributes_by_metric_type_.find(metric_name_to_entity_type_[metric_name]);
+    DCHECK(attributes_iter != aggregated_attributes_by_metric_type_.end());
+    auto attributes = attributes_iter->second;
+
     for (const auto& [aggregation_id, value] : entity) {
-      if (it != metric_help_and_type_.end()) {
-        FlushHelpAndType(metric_name, it->second.type, it->second.help);
+      if (help_and_type) {
+        FlushHelpAndTypeIfRequested(metric_name, help_and_type->type, help_and_type->help);
       }
-      RETURN_NOT_OK(FlushSingleEntry(
-          aggregated_id_to_attributes_[aggregation_id], metric_name, value));
+      RETURN_NOT_OK(FlushSingleEntry(attributes[aggregation_id], metric_name, value));
     }
   }
   return Status::OK();
@@ -55,10 +66,8 @@ Status PrometheusWriter::FlushAggregatedValues() {
 
 Status PrometheusWriter::FlushNumberOfEntriesCutOff() {
   // We expose this metric regardless of remaining_allowed_entries_.
-  if (export_help_and_type_) {
-    FlushHelpAndType(kNumberOfEntriesCutOffMetricName, "counter",
-        "Number of metric entries truncated due to exceeding the maximum metric entry limit");
-  }
+  FlushHelpAndTypeIfRequested(kNumberOfEntriesCutOffMetricName, "counter",
+      "Number of metric entries truncated due to exceeding the maximum metric entry limit");
   MetricEntity::AttributeMap attr;
   attr["exported_instance"] = FLAGS_metric_node_name;
   RETURN_NOT_OK(FlushSingleEntry(attr, kNumberOfEntriesCutOffMetricName,
@@ -67,10 +76,12 @@ Status PrometheusWriter::FlushNumberOfEntriesCutOff() {
 }
 
 
-void PrometheusWriter::FlushHelpAndType(
+void PrometheusWriter::FlushHelpAndTypeIfRequested(
     const std::string& name, const char* type, const char* description) {
-  *output_ << "# HELP " << name << " " << description << std::endl;
-  *output_ << "# TYPE " << name << " " << type << std::endl;
+  if (export_help_and_type_) {
+    *output_ << "# HELP " << name << " " << description << std::endl;
+    *output_ << "# TYPE " << name << " " << type << std::endl;
+  }
 }
 
 Status PrometheusWriter::FlushSingleEntry(
@@ -99,23 +110,27 @@ void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregatio
 }
 
 void PrometheusWriter::AddAggregatedEntry(
-    const std::string& aggregation_id, const MetricEntity::AttributeMap& attr,
-    const std::string& metric_name, int64_t value, AggregationFunction aggregation_function,
-    const char* type, const char* description) {
+    const std::string& aggregation_id, const char* type, const char* description,
+    const MetricEntity::AttributeMap& attr, const std::string& metric_name, int64_t value,
+    AggregationFunction aggregation_function, const std::string& metric_entity_type) {
   // For #TYPE and #HELP.
   if (export_help_and_type_) {
     metric_help_and_type_.try_emplace(metric_name, MetricHelpAndType{type, description});
   }
-  aggregated_id_to_attributes_.try_emplace(aggregation_id, attr);
+
+  metric_name_to_entity_type_.try_emplace(metric_name, metric_entity_type);
+
+  auto [stored_attr_it, _] =
+      aggregated_attributes_by_metric_type_[metric_entity_type].try_emplace(aggregation_id, attr);
+  DCHECK(stored_attr_it->second == attr);
+
   auto& stored_value = aggregated_values_[metric_name][aggregation_id];
   switch (aggregation_function) {
     case kSum:
       stored_value += value;
       break;
     case kMax:
-      // If we have a new max, also update the metadata so that it matches correctly.
       if (value > stored_value) {
-        aggregated_id_to_attributes_[aggregation_id] = attr;
         stored_value = value;
       }
       break;
@@ -136,16 +151,17 @@ Status PrometheusWriter::WriteSingleEntry(
   AggregationLevels aggregation_levels =
       prometheus_metric_filter_->GetAggregationLevels(name, default_levels);
 
-  auto metric_type_it = attr.find("metric_type");
-  DCHECK(metric_type_it != attr.end());
-  auto metric_type = metric_type_it->second;
+  auto metric_entity_type_it = attr.find("metric_type");
+  DCHECK(metric_entity_type_it != attr.end());
+  auto metric_entity_type = metric_entity_type_it->second;
 
   if (aggregation_levels & kStreamLevel) {
-    DCHECK(metric_type == kXClusterMetricEntityName || metric_type == kCdcsdkMetricEntityName);
+    DCHECK(metric_entity_type == kXClusterMetricEntityName ||
+           metric_entity_type == kCdcsdkMetricEntityName);
     auto stream_id_it = attr.find("stream_id");
     DCHECK(stream_id_it != attr.end());
-    AddAggregatedEntry(stream_id_it->second, attr, name, value, aggregation_function,
-        type, description);
+    AddAggregatedEntry(stream_id_it->second, type, description, attr, name, value,
+        aggregation_function, metric_entity_type);
     // Metrics from xcluster or cdcsdk entity should only be exposed on stream level.
     DCHECK(aggregation_levels == kStreamLevel);
   }
@@ -154,8 +170,8 @@ Status PrometheusWriter::WriteSingleEntry(
 
   if (aggregation_levels & kTableLevel) {
     DCHECK(table_id_it != attr.end());
-    AddAggregatedEntry(table_id_it->second, attr, name, value, aggregation_function,
-        type, description);
+    AddAggregatedEntry(table_id_it->second, type, description, attr, name, value,
+        aggregation_function, metric_entity_type);
   }
 
   if (aggregation_levels & kServerLevel) {
@@ -166,9 +182,7 @@ Status PrometheusWriter::WriteSingleEntry(
       }
       // Metric doesn't have table id, so no need to aggregate.
       remaining_allowed_entries_--;
-      if (export_help_and_type_) {
-        FlushHelpAndType(name, type, description);
-      }
+      FlushHelpAndTypeIfRequested(name, type, description);
       return FlushSingleEntry(attr, name, value);
     }
     MetricEntity::AttributeMap new_attr = attr;
@@ -176,8 +190,8 @@ Status PrometheusWriter::WriteSingleEntry(
     new_attr.erase("table_name");
     new_attr.erase("table_type");
     new_attr.erase("namespace_name");
-    AddAggregatedEntry(metric_type, new_attr, name, value, aggregation_function,
-        type, description);
+    AddAggregatedEntry(metric_entity_type, type, description, new_attr, name, value,
+        aggregation_function, metric_entity_type);
   }
 
   return Status::OK();

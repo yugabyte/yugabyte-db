@@ -286,16 +286,16 @@ public class GraphAnomalyDetectionService {
     }
     Map<String, String> additionalLabels = new HashMap<>();
     if (graphData.getInstanceName() != null) {
-      additionalLabels.put(GraphFilter.instanceName.name(), graphData.getInstanceName());
+      additionalLabels.put(GraphLabel.instanceName.name(), graphData.getInstanceName());
     }
     if (graphData.getNamespaceName() != null) {
-      additionalLabels.put(GraphFilter.dbName.name(), graphData.getNamespaceName());
+      additionalLabels.put(GraphLabel.dbName.name(), graphData.getNamespaceName());
     }
     if (graphData.getTableName() != null) {
-      additionalLabels.put(GraphFilter.tableName.name(), graphData.getTableName());
+      additionalLabels.put(GraphLabel.tableName.name(), graphData.getTableName());
     }
     if (graphData.getTableId() != null) {
-      additionalLabels.put(GraphFilter.tableId.name(), graphData.getTableId());
+      additionalLabels.put(GraphLabel.tableId.name(), graphData.getTableId());
     }
     if (graphData.getName() != null) {
       additionalLabels.put(LINE_NAME, graphData.getName());

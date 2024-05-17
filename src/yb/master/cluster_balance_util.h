@@ -285,7 +285,7 @@ class GlobalLoadState {
   std::set<TabletServerId> leader_blacklisted_servers_;
 
   // List of tablet server ids that have pending deletes.
-  std::set<TabletServerId> servers_with_pending_deletes_;
+  std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.

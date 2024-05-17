@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
-    weight: 1150
+    weight: 300
 type: docs
 ---
 
@@ -283,8 +283,6 @@ A number of interactions across features are supported.
 - Source and target universes can have different numbers of tablets.
 - Tablet splitting is supported on both source and target universes.
 
-{{< note title="Note" >}}
-
+{{< tip title="Explore" >}}
 To better understand how xCluster replication works in practice, see [xCluster deployment](../../../deploy/multi-dc/async-replication/) and [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication-transactional/) in Launch and Manage.
-
-{{< /note >}}
+{{< /tip >}}

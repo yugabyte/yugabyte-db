@@ -32,6 +32,10 @@ CREATE VIEW yb_active_session_history AS
     SELECT *
     FROM yb_active_session_history();
 
+CREATE VIEW yb_local_tablets AS
+    SELECT *
+    FROM yb_local_tablets();
+
 CREATE OR REPLACE FUNCTION
   yb_is_database_colocated(check_legacy boolean DEFAULT false)
 RETURNS boolean

@@ -45,7 +45,7 @@ And you are moving to the following configuration:
 
 To ensure you don't inadvertently cause any further under replication on top of ongoing failures, verify the following:
 
-- All YB-Master servers are running and able to talk to each other. This can be verified by checking the master UI (at *http://`node1`:7000/*) and ensure the `Masters` tab shows all three with one in the `LEADER` for `RAFT Role`.
+- All YB-Master servers are running and able to talk to each other. This can be verified by checking the master UI (at *http://`node1`:7000/*) and ensure the `Masters` tab shows all three with one in the `LEADER` for `Raft Role`.
 - All the YB-TServer servers are running and heartbeating to the master leader. This can be verified by checking the master UI (at *http://`node1`:7000/tablet-servers*), which lists all the tablet servers in an `ALIVE` state.
 
 ### Ensure new machines are ready

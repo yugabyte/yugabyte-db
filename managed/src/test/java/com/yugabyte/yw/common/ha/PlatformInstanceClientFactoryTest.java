@@ -11,7 +11,6 @@
 package com.yugabyte.yw.common.ha;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static play.test.Helpers.fakeRequest;
@@ -86,7 +85,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
   @Test
   public void getDefaultClient() {
     final PlatformInstanceClient platformInstanceClient =
-        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG);
+        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG, null);
     assertNotEquals(
         "Expect custom wsClient differnt from default",
         app.injector().instanceOf(WSClient.class),
@@ -97,7 +96,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
   public void getCustomClient() {
     setWsConfig(GOOD_CA_CERT_KEY);
     final PlatformInstanceClient platformInstanceClient =
-        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG);
+        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG, null);
     assertNotEquals(
         "Expect custom wsClient differnt from default",
         app.injector().instanceOf(WSClient.class),
@@ -105,17 +104,12 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
 
     // get client with same config
     final PlatformInstanceClient platformInstanceClient2 =
-        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG);
-
-    assertEquals(
-        "Expect reuse the underlying wsClient",
-        platformInstanceClient.getApiHelper().getWsClient(),
-        platformInstanceClient2.getApiHelper().getWsClient());
+        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG, null);
 
     // set new config
     setWsConfig(GOOD_CA_CERT_KEY);
     final PlatformInstanceClient platformInstanceClient3 =
-        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG);
+        platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG, null);
     // This should NOT reuse the underlying apiHelper
     assertNotEquals(platformInstanceClient, platformInstanceClient2);
     assertNotEquals(

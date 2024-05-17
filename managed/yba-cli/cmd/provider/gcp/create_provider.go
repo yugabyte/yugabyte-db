@@ -22,6 +22,11 @@ var createGCPProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a GCP YugabyteDB Anywhere provider",
 	Long:  "Create a GCP provider in YugabyteDB Anywhere",
+	Example: `yba provider gcp create -n dkumar-cli \
+	--network yugabyte-network \
+	--region region-name=us-west1,shared-subnet=<subnet> \
+	--region region-name=us-west2,shared-subnet=<subnet> \
+	--credentials <path-to-credentials-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -263,7 +268,7 @@ func init() {
 			"Each region can be added using separate --region flags. "+
 			"Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>")
 
-	createGCPProviderCmd.Flags().String("ssh-user", "",
+	createGCPProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")

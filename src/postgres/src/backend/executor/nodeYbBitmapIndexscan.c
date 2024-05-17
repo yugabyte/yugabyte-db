@@ -339,8 +339,16 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	indexstate->biss_ScanDesc->yb_exec_params = &estate->yb_exec_params;
 	indexstate->biss_ScanDesc->fetch_ybctids_only = true;
 
-	indexstate->biss_ScanDesc->yb_idx_pushdown =
-		YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
+	const bool is_colocated = YbGetTableProperties(indexstate->ss.ss_currentRelation)->is_colocated;
+	const bool is_primary = indexstate->ss.ss_currentRelation->rd_index == NULL;
+
+	/* primary keys on colocated indexes don't have a secondary index in their request */
+	if (is_colocated && is_primary)
+		indexstate->biss_ScanDesc->yb_rel_pushdown =
+			YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
+	else
+		indexstate->biss_ScanDesc->yb_idx_pushdown =
+			YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
 
 	/*
 	 * If no run-time keys to calculate, go ahead and pass the scankeys to the

@@ -1201,6 +1201,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata() {
+    tserver::PgTabletsMetadataRequestPB req;
+    tserver::PgTabletsMetadataResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->TabletsMetadata(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1514,6 +1523,10 @@ Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC
 Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
     const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
+}
+
+Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
+  return impl_->TabletsMetadata();
 }
 
 void PerformExchangeFuture::wait() const {

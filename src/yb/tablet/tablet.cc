@@ -2000,8 +2000,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
-  HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
   // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
@@ -2010,10 +2008,9 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ApplyIntentsContext context(
       data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get());
+      &key_bounds_, metadata_.get(), intents_db_.get());
   docdb::IntentsWriter intents_writer(
-      data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
-      intents_db_.get(), &context);
+      data.apply_state ? data.apply_state->key : Slice(), intents_db_.get(), &context);
   rocksdb::WriteBatch regular_write_batch;
   regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
@@ -2032,14 +2029,12 @@ Status Tablet::RemoveIntentsImpl(
   RETURN_NOT_OK(scoped_read_operation);
 
   rocksdb::WriteBatch intents_write_batch;
-  HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), min_running_ht,
-          intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       auto frontiers_ptr = InitFrontiers(data, &frontiers);
@@ -4489,7 +4484,9 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   if (!metadata_->colocated()) {
     // For colocated table, we don't populate table_id field of TabletLockInfoPB message. Instead,
     // it is populated in LockInfoPB by downstream code.
-    tablet_lock_info->set_table_id(metadata_->table_id());
+    auto pg_table_id = metadata_->primary_table_info()->pg_table_id.empty() ?
+        metadata_->table_id() : metadata_->primary_table_info()->pg_table_id;
+    tablet_lock_info->set_pg_table_id(pg_table_id);
   }
   tablet_lock_info->set_tablet_id(tablet_id());
 

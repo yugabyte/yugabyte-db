@@ -820,11 +820,11 @@ public class TestPgTransactions extends BasePgSQLTest {
 
       // Expect begin transaction to always succeed.
       if (i % 2 == 0) {
-        statement1.execute("BEGIN");
-        statement2.execute("BEGIN");
+        statement1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+        statement2.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       } else {
-        statement2.execute("BEGIN");
-        statement1.execute("BEGIN");
+        statement2.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+        statement1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       }
 
       boolean txn1_success;

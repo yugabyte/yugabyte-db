@@ -25,14 +25,14 @@ TserverAutoFlagsManager::TserverAutoFlagsManager(
     : AutoFlagsManagerBase(kYbTserverProcessName, clock, fs_manager) {}
 
 Status TserverAutoFlagsManager::Init(
-    const std::string& local_hosts, const server::MasterAddresses& master_addresses) {
-  RETURN_NOT_OK(AutoFlagsManagerBase::Init(local_hosts));
+    rpc::Messenger* messenger, const server::MasterAddresses& master_addresses) {
+  RETURN_NOT_OK(AutoFlagsManagerBase::Init(messenger));
 
   if (VERIFY_RESULT(LoadFromFile())) {
     return Status::OK();
   }
 
-  return LoadFromMasterLeader(local_hosts, master_addresses);
+  return LoadFromMasterLeader(master_addresses);
 }
 
 Status TserverAutoFlagsManager::ProcessAutoFlagsConfigOperation(

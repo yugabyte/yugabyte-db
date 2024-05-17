@@ -66,15 +66,12 @@ import algoliasearch from 'algoliasearch';
    * Show Message when Search is empty.
    */
   function emptySearch() {
-    setTimeout(() => {
-      if (document.querySelector('body').classList.contains('td-searchpage--')) {
-        document.querySelector('#search-summary').innerHTML = 'Search data related to <b>YugabyteDB</b> in our Documentation.';
-        document.querySelector('#pagination-docs').style.display = 'none';
-      } else {
-        document.querySelector('#search-summary').innerHTML = '';
-        document.querySelector('.search-result').style.display = 'none';
-      }
-    }, 800);
+    const searchSummary = document.querySelector('#search-summary');
+    if (searchSummary) {
+      searchSummary.innerHTML = '';
+    }
+
+    document.querySelector('.search-result').style.display = 'none';
   }
 
   /**
@@ -281,6 +278,7 @@ import algoliasearch from 'algoliasearch';
       }, 800);
     } else {
       emptySearch();
+      setTimeout(emptySearch, 800);
       return;
     }
 

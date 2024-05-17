@@ -13,7 +13,9 @@ public class GraphQuery {
   private Instant end;
   private Long stepSeconds;
   private String name;
-  private Map<GraphFilter, List<String>> filters;
+  private Map<GraphLabel, List<String>> filters;
+  private GraphLabel groupBy;
   private GraphSettings settings;
   private boolean replaceNaN = true;
+  private boolean fillMissingPoints = true;
 }

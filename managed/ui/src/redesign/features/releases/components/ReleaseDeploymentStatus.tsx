@@ -84,7 +84,7 @@ export const DeploymentStatus = ({ data }: ReleaseDeploymentStatusProps) => {
       </Box>
       <Box className={helperClasses.tooltip}>
         {data.state === ReleaseState.INCOMPLETE && (
-          <Tooltip title={t('releases.inCompleteTooltipMessage')} arrow placement="top">
+          <Tooltip title={t('releases.incompleteTooltipMessage')} arrow placement="top">
             <img src={InfoMessageIcon} alt="info" />
           </Tooltip>
         )}

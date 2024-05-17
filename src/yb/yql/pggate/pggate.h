@@ -407,6 +407,7 @@ class PgApiImpl {
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,
+                      bool ddl_rollback_enabled,
                       PgStatement **handle);
 
   Status ExecPostponedDdlStmt(PgStatement *handle);
@@ -431,8 +432,6 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
-
-  Result<bool> DmlHasRegularTargets(PgStatement *handle);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
@@ -750,6 +749,8 @@ class PgApiImpl {
 
   uint64_t GetTxnSerialNo();
 
+  SubTransactionId GetActiveSubTransactionId();
+
   void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
   //------------------------------------------------------------------------------------------------
@@ -789,6 +790,8 @@ class PgApiImpl {
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
   class Interrupter;

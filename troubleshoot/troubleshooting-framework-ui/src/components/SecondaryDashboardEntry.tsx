@@ -3,9 +3,8 @@ import { useQuery } from 'react-query';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import _ from 'lodash';
 import clsx from 'clsx';
-import { YBButton } from '@yugabytedb/ui-components';
-import { YBErrorIndicator } from '../common/YBErrorIndicator';
-import { YBBreadcrumb } from '../common/YBBreadcrumb';
+import { Link } from 'react-router';
+import { YBButton, YBErrorIndicator } from '@yugabytedb/ui-components';
 import { SecondaryDashboardData } from './SecondaryDashboardData';
 import { QUERY_KEY, TroubleshootAPI } from '../api';
 import { Anomaly, AppName, GraphQuery, Universe } from '../helpers/dtos';
@@ -38,6 +37,7 @@ export interface SecondaryDashboardEntryProps {
   universeData: Universe | any;
   appName: AppName;
   timezone?: string;
+  hostUrl?: string;
   onSelectedIssue?: (troubleshootUuid: string | null) => void;
 }
 
@@ -48,6 +48,7 @@ export const SecondaryDashboardEntry = ({
   appName,
   timezone,
   hideHeader = false,
+  hostUrl,
   onSelectedIssue
 }: SecondaryDashboardEntryProps) => {
   const classes = useStyles();
@@ -58,7 +59,7 @@ export const SecondaryDashboardEntry = ({
 
   const { isLoading, isError, isIdle } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid),
+    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid, hostUrl),
     {
       onSuccess: (anomalyData: Anomaly) => {
         setUserSelectedAnomaly(anomalyData);
@@ -92,9 +93,9 @@ export const SecondaryDashboardEntry = ({
       {!hideHeader && (
         <Typography variant="h2" className="content-title">
           {appName === AppName.YBA ? (
-            <YBBreadcrumb to={`/universes/${universeUuid}/troubleshoot`}>
-              {'Troubleshoot'}
-            </YBBreadcrumb>
+            <Link to={`/universes/${universeUuid}/troubleshoot`}>
+              <Typography variant="h3">{'Troubleshoot'}</Typography>
+            </Link>
           ) : (
             <Box>
               <YBButton variant="pill" data-testid="BtnAddIPList" onClick={() => routeToPrimary()}>
@@ -106,6 +107,7 @@ export const SecondaryDashboardEntry = ({
       )}
       {userSelectedAnomaly && (
         <SecondaryDashboardData
+          hostUrl={hostUrl}
           anomalyData={userSelectedAnomaly}
           universeData={universeData}
           universeUuid={universeUuid}

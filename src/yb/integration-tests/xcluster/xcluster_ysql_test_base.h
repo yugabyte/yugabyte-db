@@ -76,13 +76,15 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
+  Result<bool> IsTableDeleted(Cluster* cluster, const client::YBTableName& table_name);
+
   Status DropYsqlTable(
       Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
       const std::string& table_name, bool is_index = false);
 
   Status DropYsqlTable(Cluster& cluster, const client::YBTable& table);
 
-  static void WriteWorkload(
+  static Status WriteWorkload(
       const client::YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster);
 
   static Result<pgwrapper::PGResultPtr> ScanToStrings(

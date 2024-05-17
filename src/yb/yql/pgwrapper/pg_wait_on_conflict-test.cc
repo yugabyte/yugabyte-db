@@ -59,6 +59,7 @@ DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
+DECLARE_bool(TEST_skip_waiter_resumption_on_blocking_subtxn_rollback);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(wait_for_relock_unblocked_txn_keys_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
@@ -74,11 +75,7 @@ namespace pgwrapper {
 
 class PgWaitQueuesTest : public PgMiniTestBase {
  protected:
-  static constexpr int kClientStatementTimeoutSeconds = 60;
-
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
@@ -88,7 +85,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
   }
 
   CoarseTimePoint GetDeadlockDetectedDeadline() const {
-    return CoarseMonoClock::Now() + (kClientStatementTimeoutSeconds * 1s) / 2;
+    return CoarseMonoClock::Now() + 5s;
   }
 
   Result<std::future<Status>> ExpectBlockedAsync(
@@ -862,7 +859,9 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForSha
     auto value = conn2.FetchRow<int32_t>("select v from t1 where k=1 for share");
     // Should detect the conflict and raise serializable error.
     ASSERT_NOK(value);
-    ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
+    ASSERT_TRUE(value.status().message().Contains(
+        "could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 "
+        "are exhausted)"));
   });
 
   SleepFor(1s);
@@ -902,11 +901,8 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 }
 
 class PgWaitQueueContentionStressTest : public PgMiniTestBase {
-  static constexpr int kClientStatementTimeoutSeconds = 60;
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;
@@ -1483,6 +1479,90 @@ TEST_F(PgWaitQueueRF1Test, TestResumingWaitersDoesntBlockTabletShutdown) {
   ASSERT_NOK(status_future.get());
 }
 #endif // NDEBUG
+
+// The below test asserts that the deadlock detector doesn't overwrite dependency information
+// when multiple wait-for dependencies of the the same transaction are forwarded from different
+// tablets (or from different rpc requests at the same tablet), and validates that the detector
+// detects deadlocks without the need for waiter requests to re-enter the wait-queue.
+TEST_F(PgWaitQueueRF1Test, YB_DISABLE_TEST_IN_TSAN(TestDeadlockAcrossMultipleTablets)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 30000;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 20), 0"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::READ_COMMITTED));
+  // Decrease the batch size so as to simulate multiple requests at the same tablet. Helps
+  // assert the logic being tested better.
+  ASSERT_OK(conn1.Execute("SET ysql_session_max_batch_size=1"));
+  ASSERT_OK(conn1.Execute("SET ysql_max_in_flight_ops=20"));
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v=1 WHERE k=1"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn2.Execute("SET ysql_session_max_batch_size=1"));
+  ASSERT_OK(conn2.Execute("SET ysql_max_in_flight_ops=20"));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=2 WHERE k=2"));
+
+  auto conn3 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn3.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn3.Fetch("SELECT * FROM foo WHERE k>=3 FOR UPDATE"));
+
+  // Try creating a deadlock, but the might not be detected just yet, due to presence of conn3.
+  auto future_1 = ASSERT_RESULT(ExpectBlockedAsync(&conn1, "UPDATE foo SET v=1 WHERE k!=1"));
+  auto future_2 = ASSERT_RESULT(ExpectBlockedAsync(&conn2, "UPDATE foo SET v=2 WHERE k!=2"));
+  SleepFor(4s * kTimeMultiplier);
+  // End conn3. The deadlock should be detected at this point, without the need for explicit
+  // waiter request re-entries due to timeout.
+  ASSERT_OK(conn3.CommitTransaction());
+  // Since we abort the youngest txn in the deadlock cycle, future_2 should return a bad status.
+  // But since we are testing just detection of deadlock alone, don't rely on the abort logic.
+  ASSERT_TRUE(future_2.wait_for(2s * kTimeMultiplier) == std::future_status::ready ||
+              future_1.wait_for(2s * kTimeMultiplier) == std::future_status::ready);
+  // At least one amoung the following statements should return false.
+  ASSERT_FALSE(future_1.get().ok() &&
+               future_2.get().ok() &&
+               conn1.CommitTransaction().ok() &&
+               conn2.CommitTransaction().ok());
+}
+
+TEST_F(PgWaitQueueRF1Test, YB_DISABLE_TEST_IN_TSAN(TestDetectorPreservesBlockerSubtxnInfo)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 30000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_waiter_resumption_on_blocking_subtxn_rollback) = true;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 20), 0"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("SET ysql_session_max_batch_size=1"));
+  ASSERT_OK(conn1.Execute("SET ysql_max_in_flight_ops=20"));
+  ASSERT_OK(conn1.Execute("UPDATE foo SET v=1 WHERE k=1"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=2 WHERE k=2"));
+  ASSERT_OK(conn2.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn2.Execute("UPDATE foo SET v=2 WHERE k=3"));
+
+  auto future_1 = ASSERT_RESULT(ExpectBlockedAsync(&conn1, "UPDATE foo SET v=1 WHERE k>=1"));
+  // Sleep for the wait-for probes launched by the partial update to complete forwarding.
+  SleepFor(5s * kTimeMultiplier);
+
+  ASSERT_OK(conn2.Execute("ROLLBACK TO b"));
+  // conn1 isn't unblocked yet since flag skip_waiter_resumption_on_blocking_subtxn_rollback is set.
+  ASSERT_TRUE(future_1.wait_for(1s * kTimeMultiplier) == std::future_status::timeout);
+  auto future_2 = ASSERT_RESULT(ExpectBlockedAsync(&conn2, "UPDATE foo SET v=2 WHERE k=1"));
+  // The deadlock should be detected even before refresh_waiter_timeout_ms since the detector
+  // already has all dependency information.
+  ASSERT_TRUE(future_2.wait_for(3s * kTimeMultiplier) == std::future_status::ready ||
+              future_1.wait_for(3s * kTimeMultiplier) == std::future_status::ready);
+  ASSERT_FALSE(future_1.get().ok() &&
+               future_2.get().ok() &&
+               conn1.CommitTransaction().ok() &&
+               conn2.CommitTransaction().ok());
+}
 
 class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
  protected:

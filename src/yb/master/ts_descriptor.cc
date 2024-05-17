@@ -349,9 +349,14 @@ bool TSDescriptor::HasTabletDeletePending() const {
   return !tablets_pending_delete_.empty();
 }
 
-bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablets_pending_delete_.count(tablet_id);
+void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard l(lock_);
+  tablets_pending_delete_.insert(tablet_id);
+}
+
+size_t TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard l(lock_);
+  return tablets_pending_delete_.erase(tablet_id);
 }
 
 std::string TSDescriptor::PendingTabletDeleteToString() const {
@@ -359,14 +364,9 @@ std::string TSDescriptor::PendingTabletDeleteToString() const {
   return yb::ToString(tablets_pending_delete_);
 }
 
-void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
-  tablets_pending_delete_.insert(tablet_id);
-}
-
-void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
-  tablets_pending_delete_.erase(tablet_id);
+std::set<std::string> TSDescriptor::TabletsPendingDeletion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return tablets_pending_delete_;
 }
 
 std::size_t TSDescriptor::NumTasks() const {

@@ -138,6 +138,13 @@ std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& regi
   return public_http_hp;
 }
 
+std::optional<HostPortPB> GetRpcBindAddress(const ServerRegistrationPB& reg) {
+  if (reg.private_rpc_addresses().empty()) {
+    return {};
+  }
+  return reg.private_rpc_addresses(0);
+}
+
 std::string BoolToString(bool val) { return val ? "true" : "false"; }
 
 class AutoFieldsetScope {
@@ -2920,10 +2927,6 @@ void MasterPathHandlers::HandleXCluster(
   }
 
   output << "<br><h3>Inbound ReplicationGroups</h3>\n";
-  output << "<pre class=\"prettyprint\">"
-         << "XClusterRole: " << xcluster_status.role
-         << "\ntransactional: " << BoolToString(xcluster_status.transactional) << "</pre>";
-  output << "</pre>";
 
   uint32 inbound_group_table_id = 0;
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
@@ -3334,15 +3337,22 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
 
 string MasterPathHandlers::RegistrationToHtml(
     const ServerRegistrationPB& reg, const std::string& link_text) const {
-  string link_html = EscapeForHtmlToString(link_text);
+  stringstream link_html;
   auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
-    link_html = Format("<a href=\"$0://$1/\">$2</a>",
+    link_html << Format("<a href=\"$0://$1/\">$2</a>",
                            GetProtocol(),
                            EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
-                           link_html);
+                           EscapeForHtmlToString(link_text));
   }
-  return link_html;
+  auto rpc_bind_addr = GetRpcBindAddress(reg);
+  if (rpc_bind_addr && public_http_hp &&
+      rpc_bind_addr->host() != public_http_hp->host()) {
+    link_html << Format("<br/>$0",
+      EscapeForHtmlToString(rpc_bind_addr->host()));
+  }
+
+  return link_html.str();
 }
 
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {

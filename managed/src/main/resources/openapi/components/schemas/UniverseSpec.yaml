@@ -1,0 +1,36 @@
+title: User provided Universe Spec
+type: object
+required:
+  - name
+  - communication_ports
+  - clusters
+properties:
+  name:
+    description: Name of the Universe
+    type: string
+    example: my-yb-universe
+    readOnly: false
+  communication_ports:
+    $ref: ./CommunicationPortsSpec.yaml
+  encryption_at_rest_spec:
+    $ref: ./EncryptionAtRestSpec.yaml
+  encryption_in_transit_spec:
+    $ref: ./EncryptionInTransitSpec.yaml
+  ysql:
+    $ref: ./YsqlSpec.yaml
+  ycql:
+    $ref: ./YcqlSpec.yaml
+  remote_package_path:
+    description: Path to download thirdparty packages for itest. Only for AWS/onprem.
+    type: string
+    x-yba-api-visibility: internal
+  override_prebuilt_ami_db_version:
+    description: Override the default DB present in pre-built Ami. YBM usage.
+    type: boolean
+    x-yba-api-visibility: internal
+  clusters:
+    type: array
+    items:
+      $ref: ./ClusterSpec.yaml
+    maxItems: 16
+    minItems: 1

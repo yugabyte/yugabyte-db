@@ -204,6 +204,10 @@ int od_auth_query(od_client_t *client, char *peer)
 	/* detach and unroute */
 	od_router_detach(router, auth_client);
 	od_router_unroute(router, auth_client);
+	if (auth_client->io.io) {
+		machine_close(auth_client->io.io);
+		machine_io_free(auth_client->io.io);
+	}
 	od_client_free(auth_client);
 	return OK_RESPONSE;
 }

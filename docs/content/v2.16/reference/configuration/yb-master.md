@@ -538,7 +538,7 @@ Default: `0`
 
 Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
-Default: `1`
+Default: `0`
 
 ##### --outstanding_tablet_split_limit_per_tserver
 

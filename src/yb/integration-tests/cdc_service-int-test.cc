@@ -87,6 +87,7 @@ DECLARE_double(cdc_read_safe_deadline_ratio);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(TEST_xcluster_skip_meta_ops);
 DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
+DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 DECLARE_double(cdc_get_changes_free_rpc_ratio);
@@ -742,6 +743,28 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   ASSERT_NOK(metrics_result) << metrics_result;
 }
 
+TEST_F(CDCServiceTest, TestWALPrematureGCErrorCode) {
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
+  std::string tablet_id = GetTablet();
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 0;
+
+  int num_gced;
+  ASSERT_OK(tablet_peer->log()->GC(std::numeric_limits<int64_t>::max(), &num_gced));
+  ASSERT_EQ(1,  num_gced);
+
+  bool has_error;
+  ::yb::cdc::CDCErrorPB_Code code;
+  GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 1, &has_error, &code);
+  ASSERT_TRUE(has_error);
+  ASSERT_EQ(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD, code);
+}
 
 TEST_F(CDCServiceTest, TestGetChanges) {
   docdb::DisableYcqlPackedRow();

@@ -6,6 +6,7 @@ description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 image: fa-sharp fa-thin fa-arrows-to-circle
 aliases:
+  - /preview/architecture/concepts
   - /preview/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
 menu:
@@ -16,6 +17,17 @@ menu:
 type: docs
 ---
 
+## ACID
+
+ACID stands for Atomicity, Consistency, Isolation, and Durability. These are a set of properties that guarantee that database transactions are processed reliably.
+
+- Atomicity: All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
+- Consistency: A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
+- Isolation: This property determines how and when changes made by one transaction become visible to the other. For example, a serializable isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion).
+- Durability: The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
+
+YugabyteDB provides ACID guarantees for all [transactions](#transaction).
+
 ## CDC - Change data capture
 
 CDC is a software design pattern used in database systems to capture and propagate data changes from one database to another in real-time or near real-time. YugabyteDB supports transactional CDC guaranteeing changes across tables are captured together. This enables use cases like real-time analytics, data warehousing, operational data replication, and event-driven architectures. {{<link "../docdb-replication/change-data-capture/">}}
@@ -24,9 +36,9 @@ CDC is a software design pattern used in database systems to capture and propaga
 
 A cluster is a group of [nodes](#node) on which YugabyteDB is deployed. The table data is distributed across the various [nodes](#node) in the cluster. Typically used as [*Primary cluster*](#primary-cluster) and [*Read replica cluster*](#read-replica-cluster).
 
-{{<note>}}
+{{<tip>}}
 Sometimes the term *cluster* is used interchangeably with the term *universe*. However, the two are not always equivalent, as described in [Universe](#universe).
-{{</note>}}
+{{</tip>}}
 
 ## DocDB
 
@@ -36,9 +48,25 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
 
+## Hybrid time
+
+Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link "../transactions/transactions-overview#hybrid-logical-clocks">}}
+
+## Isolation levels
+
+[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link "../../explore/transactions/isolation-levels/">}}
+
+{{<tip>}}
+YugabyteDB offers 3 isolation levels, [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) in the {{<product "ysql">}} API and one isolation level, [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) in the {{<product "ycql">}} API.
+{{</tip>}}
+
 ## Leader balancing
 
 YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+
+## Leader election
+
+Amongst the [tablet](#tablet) replicas, one tablet is elected [leader](#tablet-leader) as per the [Raft](../docdb-replication/raft) protocol. {{<link "../docdb-replication/raft/#leader-election">}}
 
 ## Master server
 
@@ -50,7 +78,7 @@ The master server is also typically referred as just **master**.
 
 ## MVCC
 
-MVCC stands for Multiversion Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../transactions/transactions-overview/#mvcc-using-hybrid-time">}}
+MVCC stands for Multi-version Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../transactions/transactions-overview/#hybrid-logical-clocks">}}
 
 ## Namespace
 
@@ -63,6 +91,16 @@ A namespace in YSQL is referred to as a database and is logically identical to a
 ## Node
 
 A node is a virtual machine, physical machine, or container on which YugabyteDB is deployed.
+
+## OID
+
+Object Identifier (OID) is a unique identifier assigned to each database object, such as tables, indexes, views, functions, and other system objects. They are assigned automatically and sequentially by the system when new objects are created.
+
+While OIDs are an integral part of PostgreSQL's internal architecture, they are not always visible or exposed to users. In most cases, users interact with database objects using their names rather than their OIDs. However, there are cases where OIDs become relevant, such as when querying system catalogs or when dealing with low-level database operations.
+
+{{<note>}}
+OIDs are unique only within the context of a specific universe and are not guaranteed to be unique across different universes.
+{{</note>}}
 
 ## Primary cluster
 
@@ -104,9 +142,17 @@ YugabyteDB splits a table into multiple small pieces called tablets for data dis
 Tablets are also referred as shards.
 {{</tip>}}
 
+## Tablet leader
+
+In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas as termed followers.
+
 ## Tablet splitting
 
 When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet). This is a very quick operation. {{<link "../docdb-sharding/tablet-splitting">}}
+
+## Transaction
+
+A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](#acid) guarantees for transactions. {{<link "/:version/explore/transactions">}}
 
 ## TServer
 

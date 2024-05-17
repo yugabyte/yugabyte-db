@@ -41,6 +41,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/cdc/cdc_error.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
@@ -767,7 +769,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
       Format("The logs from index $0 have been garbage collected and cannot be read ($1)",
              after_op_index, result.status());
     LOG_WITH_PREFIX(INFO) << premature_gc_warning;
-    return STATUS(NotFound, premature_gc_warning);
+    return STATUS(NotFound, premature_gc_warning,
+                  cdc::CDCError(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD));
   }
   if (result.ok()) {
     result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||

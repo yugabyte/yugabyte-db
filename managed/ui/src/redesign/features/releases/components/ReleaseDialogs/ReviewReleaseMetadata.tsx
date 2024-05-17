@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { AlertVariant, YBAlert, YBButtonGroup, YBInput, YBLabel } from '../../../../components';
 import { ReleasePlatform, ReleasePlatformArchitecture } from '../dtos';
+import { ybFormatDate, YBTimeFormats } from '../../../../helpers/DateUtils';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -199,7 +200,9 @@ export const ReviewReleaseMetadata = ({
                 {t('releases.reviewReleaseMetadataSection.releaseDate')}
               </YBLabel>
               <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                {urlMetadata?.releaseDate}
+                {urlMetadata?.releaseDate
+                  ? ybFormatDate(urlMetadata?.releaseDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+                  : ''}
               </YBLabel>
             </Box>
           </Box>

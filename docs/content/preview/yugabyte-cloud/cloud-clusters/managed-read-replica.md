@@ -21,9 +21,9 @@ Read Replicas are a read-only extension to the primary cluster. With read replic
 For more information on read replicas and follower reads in YugabyteDB, see the following:
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
-- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/)
 
-Each read replica cluster can have its own [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The replication factor determines how many copies of your primary data the read replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
+Each read replica cluster can have its own [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The replication factor determines how many copies of your primary data the read replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [Raft](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
 
 You can delete, modify, and scale read replicas. Adding or removing nodes incurs a load on the replica. Perform scaling operations when the replica isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
 
@@ -40,6 +40,7 @@ Read replicas require the following:
 
 - Partition-by-region clusters do not support read replicas.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Some scaling operations require a rolling restart or, in the case of read replicas with a replication factor of 1, downtime.
 
 ## Add or edit read replicas
 
@@ -57,7 +58,9 @@ To add or edit read-replicas:
 
     **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-    **Replication Factor** - Enter the number of copies of your data. Replication factor refers to the number of copies of your data in your read replica. This ensures the availability of your read replica in case of node outages. This is independent of the of the fault tolerance of the primary cluster, and does not contribute to failover.
+    **Replication Factor** - Enter the number of copies of your data. Replication factor refers to the number of copies of your data in your read replica. This is independent of the of the fault tolerance of the primary cluster, and does not contribute to failover.
+
+    To ensure the availability of your read replica in case of node outages, set the replication factor greater than 1. Read replicas with a replication factor of 1 are subject to downtime if there is a node outage, and during [infrastructure operations](../#locking-operations) that require a restart.
 
     **Nodes** - Choose the number of nodes to deploy in the region. The number of nodes can't be less than the replication factor.
 

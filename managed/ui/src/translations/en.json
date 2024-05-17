@@ -842,7 +842,7 @@
               },
               "confirmAlert": {
                 "instruction": "Confirm alert threshold for acceptable replication lag",
-                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Learn More",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>",
                 "currentLowestReplicationLagLabel": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):",
                 "setUpReplicationLagAlertPrompt": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
                 "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
@@ -964,6 +964,7 @@
           "createXClusterConfig": {
             "label": "Configure Replication",
             "tooltip": {
+              "universeUnavailable": "This universe is currently unavailable for setting up further xCluster replication configs.",
               "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
             }
           },
@@ -1699,7 +1700,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
-      "inCompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
+      "incompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",

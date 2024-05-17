@@ -1,7 +1,7 @@
 import { GCPProviderCreateFormFieldValues } from "./GCPProviderCreateForm";
 
 export const GCPCreateFormErrFields : Record<string , keyof GCPProviderCreateFormFieldValues>  = {
-    "$.details.cloudInfo.gcp.useHostCredentials" :  "dbNodePublicInternetAccess",
+    "$.details.cloudInfo.gcp.useHostCredentials" :  "providerCredentialType",
     "$.details.cloudInfo.gcp.destVpcId": "destVpcId",
     "$.details.sshPort": "sshPort",
     "$.details.cloudInfo.gcp.ybFirewallTags" : "ybFirewallTags",

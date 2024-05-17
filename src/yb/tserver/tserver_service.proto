@@ -337,6 +337,7 @@ message UpdateTransactionWaitingForStatusRequestPB {
     optional bytes transaction_id = 1;
     repeated BlockingTransaction blocking_transaction = 2;
     optional fixed64 wait_start_time = 3;
+    optional int64 request_id = 4;
   }
 
   optional fixed64 propagated_hybrid_time = 1;

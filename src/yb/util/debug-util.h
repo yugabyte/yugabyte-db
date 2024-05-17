@@ -39,7 +39,6 @@
 
 #include "yb/gutil/strings/fastmem.h"
 
-#include "yb/util/debug.h"
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
@@ -103,6 +102,14 @@ std::string GetLogFormatStackTraceHex();
 // This function is not async-safe, since it uses the libc backtrace() function which
 // may invoke the dynamic loader.
 void HexStackTraceToString(char* buf, size_t size);
+
+constexpr bool IsDebug() {
+#ifdef NDEBUG
+  return false;
+#else
+  return true;
+#endif
+}
 
 class NODISCARD_CLASS ScopeLogger {
  public:

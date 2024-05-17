@@ -208,6 +208,7 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 bool YBCIsTxnAbortedError(uint16_t txn_errcode);
+const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();
@@ -294,6 +295,7 @@ void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
 const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
+const char* YBCGetWaitEventType(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"

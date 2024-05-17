@@ -2106,6 +2106,8 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 			 server, "Got a packet of type: %s",
 			 kiwi_be_type_to_string(type));
 
+		machine_msg_free(msg);
+
 		if (type == KIWI_BE_READY_FOR_QUERY) {
 			return 0;
 		} else if (type == KIWI_BE_ERROR_RESPONSE) {
@@ -2473,6 +2475,11 @@ int yb_execute_on_control_connection(od_client_t *client,
 			control_conn_client, NULL,
 			"failed to route internal client for control connection: %s",
 			od_router_status_to_str(status));
+
+		if (control_conn_client->io.io) {
+			machine_close(control_conn_client->io.io);
+			machine_io_free(control_conn_client->io.io);
+		}
 		od_client_free(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
@@ -2486,6 +2493,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to attach internal client for control connection to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
+		if (control_conn_client->io.io) {
+			machine_close(control_conn_client->io.io);
+			machine_io_free(control_conn_client->io.io);
+		}
 		od_client_free(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
@@ -2509,6 +2520,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 				 od_io_error(&server->io));
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
+			if (control_conn_client->io.io) {
+				machine_close(control_conn_client->io.io);
+				machine_io_free(control_conn_client->io.io);
+			}
 			od_client_free(control_conn_client);
 			goto failed_to_acquire_control_connection;
 		}
@@ -2519,6 +2534,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 	/* detach and unroute */
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
+	if (control_conn_client->io.io) {
+		machine_close(control_conn_client->io.io);
+		machine_io_free(control_conn_client->io.io);
+	}
 	od_client_free(control_conn_client);
 
 	if (rc == -1)

@@ -216,6 +216,30 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
+  CLOCK_SYNC_CHECK_FAILED:
+    name: Clock Sync Check Failure
+    description: Clock Sync check failed on DB node(s)
+    queryTemplate: count by (universe_uuid) (last_over_time(yb_node_clock_skew_check{universe_uuid="__universeUuid__"}[1m]) < 1)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "last_over_time(yb_node_clock_skew_check{universe_uuid='{{
+        $labels.universe_uuid }}'}[1m]) < 1" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Clock sync check failed on {{ $value | printf "%.0f" }}
+        nodes(s) for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
   CLIENT_TO_NODE_CERT_EXPIRY:
     name: Client to node cert expiry
     description: Client to node certificate expires soon

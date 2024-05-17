@@ -28,7 +28,7 @@
 [[start_now]]
   name = "YugabyteDB Managed"
   weight = 1
-  url = "https://devcloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
+  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [start_now.params]
     buttonText = "Sign up"
     classes = "primary-btn sm-btn"

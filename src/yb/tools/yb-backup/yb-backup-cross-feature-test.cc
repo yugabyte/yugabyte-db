@@ -66,6 +66,21 @@ class YBBackupTestNumTablets : public YBBackupTest {
   string default_db_ = "yugabyte";
 };
 
+class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_master_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+
+    options->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+};
 // Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
 // creating the table, the default is 3; when restoring, the default is 2. Restore should restore
 // the unique constraint index as 3 tablets since the tablet snapshot files are already split into 3
@@ -903,6 +918,169 @@ TEST_F_EX(YBBackupTest,
             post_restore_split_points);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore on a colocated database which has colocated tables with tablespaces.
+// (Colocated tables support tablespaces only if preview flag
+// ysql_enable_colocated_tables_with_tablespaces is enabled.)
+// Backup/Restore on such a database performed with --use_tablespaces option specified, will restore
+// the tables to the corresponding tablespaces.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithTablespaces)) {
+  const string& backup_db_name = "backup_db";
+  const string& restore_db_name = "restore_db";
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+      "CREATE TABLESPACE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t2 VALUES ($0)", i)));
+  }
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", backup_keyspace,
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand(" \\d t1",
+  R"#(
+                    Table "public.t1"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+    Tablespace: "tsp1"
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t2",
+  R"#(
+                    Table "public.t2"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+    Tablespace: "tsp1"
+    Colocation: true
+  )#");
+}
+
+// Test backup/restore on a colocated database which has colocated tables with tablespaces.
+// If Backup & Restore is performed on a database with ysql_enable_colocated_tables_with_tablespaces
+// enabled without the --use-tablespaces flag then we restore the tables to the pg_default
+// tablespace.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithoutTablespaces)) {
+  const string& backup_db_name = "backup_db";
+  const string& restore_db_name = "restore_db";
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE TABLESPACE tsp1 WITH (replica_placement=" + placement_info_1 + ")",
+      "CREATE TABLESPACE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY) TABLESPACE tsp1"));
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 VALUES ($0)", i)));
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t2 VALUES ($0)", i)));
+  }
+
+  const string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  // Backup without using the --use_tablespaces flag must succeed
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", backup_keyspace,
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  RunPsqlCommand("SELECT * FROM t1 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand("SELECT * FROM t2 ORDER BY a;", "a\n---\n 0\n 1\n 2\n(3 rows)");
+  RunPsqlCommand(" \\d t1",
+  R"#(
+                    Table "public.t1"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t1_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
+  RunPsqlCommand(" \\d t2",
+  R"#(
+                    Table "public.t2"
+     Column |  Type   | Collation | Nullable | Default
+    --------+---------+-----------+----------+---------
+     a      | integer |           | not null |
+    Indexes:
+        "t2_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+    Colocation: true
+  )#");
 }
 
 class YBBackupPartitioningVersionTest : public YBBackupTest {

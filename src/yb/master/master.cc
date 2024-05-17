@@ -222,19 +222,19 @@ Status Master::Init() {
   return Status::OK();
 }
 
-Status Master::InitAutoFlags() {
+Status Master::InitAutoFlags(rpc::Messenger* messenger) {
   // Will we be in shell mode if we dont have a sys catalog yet?
   bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts().AreMasterAddressesProvided();
 
   RETURN_NOT_OK(auto_flags_manager_->Init(
-      options_.HostsString(),
+      messenger,
       [this]() {
         return fs_manager_->LookupTablet(kSysCatalogTabletId);
       } /* has_sys_catalog_func */,
       is_shell_mode_if_new));
 
-  return RpcAndWebServerBase::InitAutoFlags();
+  return RpcAndWebServerBase::InitAutoFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
@@ -246,7 +246,7 @@ Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
       opts().IsShellMode(), IllegalState,
       "Cannot load AutoFlags from another master when not in shell mode.");
 
-  return auto_flags_manager_->LoadFromMasterLeader(options_.HostsString(), {{leader_address}});
+  return auto_flags_manager_->LoadFromMasterLeader({{leader_address}});
 }
 
 MonoDelta Master::default_client_timeout() {

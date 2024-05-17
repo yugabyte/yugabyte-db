@@ -98,7 +98,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onAdd(Release release) {
-    log.info("Adding release {} ", release);
+    log.info("Adding release {} ", release.getMetadata().getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
 

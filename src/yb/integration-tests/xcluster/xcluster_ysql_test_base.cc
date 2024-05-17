@@ -383,6 +383,36 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
+Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTableName& table_name) {
+  master::ListTablesRequestPB req;
+  master::ListTablesResponsePB resp;
+
+  req.set_name_filter(table_name.table_name());
+  req.mutable_namespace_()->set_name(table_name.namespace_name());
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.set_include_not_running(true);
+
+  master::MasterDdlProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  for (const auto& table : resp.tables()) {
+    if (table.pgschema_name() == table_name.pgschema_name() &&
+        table.state() != master::SysTablesEntryPB::DELETED) {
+      LOG(INFO) << "Found table in incorrect state: " << table.ShortDebugString();
+      return false;
+    }
+  }
+  return true;
+}
+
 Status XClusterYsqlTestBase::DropYsqlTable(
     Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
     const std::string& table_name, bool is_index) {
@@ -401,9 +431,9 @@ Status XClusterYsqlTestBase::DropYsqlTable(Cluster& cluster, const client::YBTab
       table_name.relation_type() == master::INDEX_TABLE_RELATION);
 }
 
-void XClusterYsqlTestBase::WriteWorkload(
+Status XClusterYsqlTestBase::WriteWorkload(
     const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
-  auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
 
   LOG(INFO) << "Writing " << end - start << " inserts";
@@ -411,17 +441,19 @@ void XClusterYsqlTestBase::WriteWorkload(
   // Use a transaction if more than 1 row is to be inserted.
   const bool use_tran = end - start > 1;
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
   }
 
   for (uint32_t i = start; i < end; i++) {
-    EXPECT_OK(
+    RETURN_NOT_OK(
         conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
   }
 
   if (use_tran) {
-    EXPECT_OK(conn.ExecuteFormat("COMMIT"));
+    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
   }
+
+  return Status::OK();
 }
 
 Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
@@ -541,7 +573,7 @@ Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
       &cluster->client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster->mini_cluster_->mini_tablet_server(0)->bound_rpc_addr()));
   RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
-  CHECK(!resp.has_error());
+  CHECK(!resp.has_error()) << resp.error().DebugString();
 
   CHECK_EQ(resp.cdc_bootstrap_ids().size(), tables.size());
 

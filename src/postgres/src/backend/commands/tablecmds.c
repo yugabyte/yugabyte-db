@@ -433,7 +433,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 							  AlterTableUtilityContext *context,
 							  List **rollbackHandles,
-							  List **handles);
+							  List *volatile *handles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 					  AlterTableCmd *cmd, LOCKMODE lockmode, int cur_pass,
 					  AlterTableUtilityContext *context);
@@ -4727,7 +4727,7 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Phase 2: update system catalogs */
 	List *rollbackHandles = NIL;
-	List *handles = NIL;
+	List *volatile handles = NIL;
 	PG_TRY();
 	{
 		/*
@@ -5170,7 +5170,7 @@ static void
 ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 				  AlterTableUtilityContext *context,
 				  List **rollbackHandles,
-				  List **handles)
+				  List *volatile *handles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -15072,7 +15072,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename &&
+	if (IsYugaByteEnabled() && tablespacename && 
 		rel->rd_index &&
 		rel->rd_index->indisprimary) {
 		/*
@@ -15474,7 +15474,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.",
+			(errmsg("Data movement for table %s is successfully initiated.", 
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "
@@ -20750,7 +20750,7 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 				errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
 						"16980. React with thumbs up to raise its priority")));
 
-	if (rel->rd_rel->relhasrules)
+	if (rel->rd_rules != NULL && rel->rd_rules->numLocks > 0)
 		ereport(ERROR,
 			   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("changing primary key of a table with rules is not yet "
@@ -22287,7 +22287,7 @@ YbATValidateAlterColumnType(Relation rel)
 				errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
 						"16980. React with thumbs up to raise its priority")));
 
-	if (rel->rd_rel->relhasrules)
+	if (rel->rd_rules != NULL && rel->rd_rules->numLocks > 0)
 		ereport(ERROR,
 			   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("changing column type of a table with rules is not yet "
@@ -22499,7 +22499,7 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
  */
 static void YbATInvalidateTableCacheAfterAlter(List *handles)
 {
-	if (YbDdlRollbackEnabled())
+	if (YbDdlRollbackEnabled() && handles)
 	{
 		/*
 		 * As part of DDL transaction verification, we may have incremented

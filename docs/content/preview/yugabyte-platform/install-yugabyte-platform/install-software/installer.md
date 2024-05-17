@@ -225,17 +225,18 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
 
 If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated.
 
-Review the [prerequisites](../../prerequisites/installer/). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
+### Before you begin
+
+1. Review the [prerequisites](../../prerequisites/installer/).
+1. YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
+1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.3 or later.
+1. If you haven't already, [download and extract YBA Installer](#download-yba-installer). It is recommended that you migrate using the same version of YBA Installer as the version of YugabyteDB you are running in Replicated. For example, if you have updated to v2.20.2.1 in Replicated, use v2.20.2.1 of YBA Installer to do the migration.
 
 If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
 
 ### Migrate a YBA installation
 
 To migrate your installation from Replicated, do the following:
-
-1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
-
-1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
 
 1. Optionally, configure the migration as follows:
 

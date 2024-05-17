@@ -66,7 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/debug.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -86,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -1075,9 +1075,16 @@ class PgClientServiceImpl::Impl {
               .IncludeLastPubRefreshTime(),
           &iteration_status));
 
+      int cdc_state_table_result_count = 0;
       for (auto entry_result : range_result) {
+        cdc_state_table_result_count++;
         RETURN_NOT_OK(entry_result);
         const auto& entry = *entry_result;
+
+        VLOG_WITH_FUNC(4) << "Received entry from CDC state table for stream_id: "
+                          << entry.key.stream_id << ", tablet_id: " << entry.key.tablet_id
+                          << ", active_time: "
+                          << (entry.active_time.has_value() ? *entry.active_time : 0);
 
         auto stream_id = entry.key.stream_id;
         auto active_time = entry.active_time;
@@ -1114,6 +1121,9 @@ class PgClientServiceImpl::Impl {
       SCHECK(
           iteration_status.ok(), InternalError, "Unable to read the CDC state table",
           iteration_status);
+
+      VLOG_WITH_FUNC(4) << "Received a total of " << cdc_state_table_result_count
+                        << " entries from the CDC state table";
     }
 
     auto current_time = GetCurrentTimeMicros();
@@ -1131,12 +1141,19 @@ class PgClientServiceImpl::Impl {
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
-      auto slot_metadata = stream_to_metadata[*stream_id];
-      replication_slot->set_confirmed_flush_lsn(slot_metadata.first.first);
-      replication_slot->set_restart_lsn(slot_metadata.first.second);
-      replication_slot->set_xmin(slot_metadata.second.first);
-      replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
-      replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+      if (stream_to_metadata.contains(*stream_id)) {
+        auto slot_metadata = stream_to_metadata[*stream_id];
+        replication_slot->set_confirmed_flush_lsn(slot_metadata.first.first);
+        replication_slot->set_restart_lsn(slot_metadata.first.second);
+        replication_slot->set_xmin(slot_metadata.second.first);
+        replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
+        replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+      } else {
+        // TODO(#21780): This should never happen, so make this a DCHECK. We can do that after every
+        // unit test that uses replication slots is updated to consistent snapshot stream.
+        LOG(WARNING) << "The CDC state table metadata entry was not found for stream_id: "
+                     << *stream_id << ", slot_name: " << replication_slot->slot_name();
+      }
     }
     return Status::OK();
   }
@@ -1448,6 +1465,8 @@ class PgClientServiceImpl::Impl {
       rpc::RpcContext* context) {
     if (req.fetch_tserver_states()) {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
+      AddWaitStatesToResponse(
+          ash::SharedMemoryPgPerformTracker(), resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
@@ -1650,6 +1669,14 @@ class PgClientServiceImpl::Impl {
       PgYCQLStatementStatsResponsePB* resp,
       rpc::RpcContext* context) {
     RETURN_NOT_OK(tablet_server_.YCQLStatementStats(req, resp));
+    return Status::OK();
+  }
+
+  Status TabletsMetadata(
+      const PgTabletsMetadataRequestPB& req, PgTabletsMetadataResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
+    *resp->mutable_tablets() = {result.begin(), result.end()};
     return Status::OK();
   }
 

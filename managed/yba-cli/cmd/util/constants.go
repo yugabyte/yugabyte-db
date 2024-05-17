@@ -4,6 +4,8 @@
 
 package util
 
+import "strings"
+
 // Environment variable fields
 const (
 	// GCPCredentialsEnv env variable name for gcp provider/storage config/releases
@@ -220,4 +222,17 @@ func YBARestrictBackupVersions() []string {
 // version for of fetching failed subtask lists that would not support the operation
 func YBARestrictFailedSubtasksVersions() []string {
 	return []string{"2.19.0.0"}
+}
+
+var awsInstanceWithEphemeralStorageOnly = []string{"i3.", "c5d.", "c6gd."}
+
+// AwsInstanceTypesWithEphemeralStorageOnly returns true if the instance
+// type has only ephemeral storage
+func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
+	for _, prefix := range awsInstanceWithEphemeralStorageOnly {
+		if strings.HasPrefix(instanceType, prefix) {
+			return true
+		}
+	}
+	return false
 }

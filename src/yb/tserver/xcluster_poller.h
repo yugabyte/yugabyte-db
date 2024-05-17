@@ -52,6 +52,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   XClusterPoller(
       const xcluster::ProducerTabletInfo& producer_tablet_info,
       const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+      const NamespaceId& consumer_namespace_id,
       std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
       rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
@@ -62,8 +63,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
-      const NamespaceName& namespace_name, const NamespaceId& namespace_id,
-      ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceName& namespace_name, ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -91,6 +91,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   const xcluster::ConsumerTabletInfo& GetConsumerTabletInfo() const {
     return consumer_tablet_info_;
   }
+  const NamespaceId& GetConsumerNamespaceId() const { return consumer_namespace_id_; }
   const xcluster::ProducerTabletInfo& GetProducerTabletInfo() const {
     return producer_tablet_info_;
   }
@@ -135,6 +136,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   const xcluster::ProducerTabletInfo producer_tablet_info_;
   const xcluster::ConsumerTabletInfo consumer_tablet_info_;
+  const NamespaceId consumer_namespace_id_;
   const XClusterPollerId poller_id_;
   const std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version_;
 

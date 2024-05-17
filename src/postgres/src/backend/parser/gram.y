@@ -1094,6 +1094,7 @@ stmt:
 			| RevokeRoleStmt
 			| RevokeStmt
 			| RuleStmt
+			| SecLabelStmt
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
@@ -1150,7 +1151,6 @@ stmt:
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
-			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 
 			/* Deprecated statements */
@@ -7635,7 +7635,6 @@ SecLabelStmt:
 			SECURITY LABEL opt_provider ON object_type_any_name any_name
 			IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7658,7 +7657,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON object_type_name name
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7670,7 +7668,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON TYPE_P Typename
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7682,7 +7679,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON DOMAIN_P Typename
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7694,7 +7690,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON AGGREGATE aggregate_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7706,7 +7701,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON FUNCTION function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7718,7 +7712,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON LARGE_P OBJECT_P NumericOnly
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7730,7 +7723,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON PROCEDURE function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7742,7 +7734,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON ROUTINE function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;

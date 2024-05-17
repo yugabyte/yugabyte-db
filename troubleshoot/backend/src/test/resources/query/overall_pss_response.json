@@ -1,39 +1,9 @@
 [
   {
-    "name": "query_latency",
-    "successful": true,
-    "errorMessage": null,
-    "layout": {
-      "title": "Query Latency",
-      "xaxis": {
-        "type": "date",
-        "alias": {},
-        "ticksuffix": null,
-        "tickformat": null
-      },
-      "yaxis": {
-        "type": null,
-        "alias": {},
-        "ticksuffix": "&nbsp;ms",
-        "tickformat": null
-      }
-    },
-    "stepSeconds": 1200,
     "data": [
       {
+        "labels": {},
         "name": "Average",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -62,19 +32,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "Max",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -103,19 +62,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "Mean",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -144,19 +92,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "P90",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -185,19 +122,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "P99",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -225,6 +151,21 @@
           "21"
         ]
       }
-    ]
+    ],
+    "layout": {
+      "title": "Query Latency",
+      "type": "COMMON",
+      "xaxis": {
+        "alias": {},
+        "type": "date"
+      },
+      "yaxis": {
+        "alias": {},
+        "ticksuffix": "&nbsp;ms"
+      }
+    },
+    "name": "query_latency",
+    "stepSeconds": 1200,
+    "successful": true
   }
 ]

@@ -27,6 +27,7 @@ var LoginCmd = &cobra.Command{
 	Long: "Connect to YugabyteDB Anywhere host machine using email and password." +
 		" If non-interactive mode is set, provide the host, email and password using flags. " +
 		"Default for host is \"http://localhost:9000\"",
+	Example: "yba login -f -e <email> -p <password> -H <host>",
 	Run: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
@@ -162,11 +163,12 @@ func init() {
 	LoginCmd.Flags().SortFlags = false
 	LoginCmd.Flags().StringP("email", "e", "",
 		fmt.Sprintf(
-			"[Optional] Email or username for the user. %s",
+			"[Optional] Email or username for the user. %s.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().StringP("password", "p", "",
 		fmt.Sprintf(
-			"[Optional] Password for the user. %s",
+			"[Optional] Password for the user. %s. Use single quotes ('') to provide "+
+				"values with special characters.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")

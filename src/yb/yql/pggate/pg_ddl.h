@@ -229,13 +229,16 @@ class PgTruncateTable : public PgDdl {
 
 class PgDropIndex : public PgDropTable {
  public:
-  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist);
+  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist,
+              bool ddl_rollback_enabled);
   virtual ~PgDropIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
 
   // Execute.
   Status Exec();
+ private:
+  bool ddl_rollback_enabled_;
 };
 
 //--------------------------------------------------------------------------------------------------

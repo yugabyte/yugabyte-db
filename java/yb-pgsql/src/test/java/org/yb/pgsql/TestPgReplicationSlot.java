@@ -77,7 +77,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
-    flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4");
+    flagMap.put(
+        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     flagMap.put("ysql_log_min_messages", "DEBUG1");
     flagMap.put("cdcsdk_publication_list_refresh_interval_micros",

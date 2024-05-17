@@ -1580,6 +1580,7 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     *add_table.mutable_schema() = l->pb.schema();
     *add_table.mutable_partition_schema() = l->pb.partition_schema();
   }
+  add_table.set_pg_table_id(table_->pg_table_id());
 }
 
 string AsyncAddTableToTablet::description() const {

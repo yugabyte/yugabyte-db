@@ -86,6 +86,10 @@ var createUniverseCmd = &cobra.Command{
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
 					certUUID = c.GetUuid()
+					logrus.Info("Using certificate: ",
+						fmt.Sprintf("%s %s",
+							clientRootCA,
+							formatter.Colorize(certUUID, formatter.GreenColor)), "\n")
 				}
 			}
 		}
@@ -118,6 +122,10 @@ var createUniverseCmd = &cobra.Command{
 						configUUID := metadata["configUUID"]
 						if configUUID != nil {
 							kmsConfigUUID = configUUID.(string)
+							logrus.Info("Using kms config: ",
+								fmt.Sprintf("%s %s",
+									kmsConfigName,
+									formatter.Colorize(kmsConfigUUID, formatter.GreenColor)), "\n")
 						}
 					}
 				}
@@ -228,7 +236,7 @@ func init() {
 		"[Optional] Number of nodes in the cluster. Provide no of nodes for each cluster "+
 			"as a separate flag. \"--num-nodes 3 --num-nodes 5\" "+
 			"OR \"--num-nodes 3,5\" "+
-			"refers to 3 nodes in the Primary cluster and 3 nodes in the Read Replica cluster"+
+			"refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster"+
 			". First flag always corresponds to"+
 			" the primry cluster.")
 	createUniverseCmd.Flags().StringArray("regions", []string{},
@@ -347,11 +355,13 @@ func init() {
 	createUniverseCmd.Flags().Bool("enable-ysql", true,
 		"[Optional] Enable YSQL endpoint.")
 	createUniverseCmd.Flags().String("ysql-password", "",
-		"[Optional] YSQL authentication password.")
+		"[Optional] YSQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-ycql", true,
 		"[Optional] Enable YCQL endpoint.")
 	createUniverseCmd.Flags().String("ycql-password", "",
-		"[Optional] YCQL authentication password.")
+		"[Optional] YCQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-yedis", false,
 		"[Optional] Enable YEDIS endpoint. (default false)")
 
@@ -430,16 +440,4 @@ func init() {
 		"[Optional] YSQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
 		"[Optional] YSQL Server RPC Port.")
-
-	setDefaults()
-}
-
-func setDefaults() {
-	viper.SetDefault("dedicated-nodes", false)
-	viper.SetDefault("use-systemd", true)
-	viper.SetDefault("enable-ysql", true)
-	viper.SetDefault("enable-ycql", true)
-	viper.SetDefault("enable-volume-encryption", false)
-	viper.SetDefault("enable-node-to-node-encrypt", true)
-	viper.SetDefault("enable-client-to-node-encrypt", true)
 }

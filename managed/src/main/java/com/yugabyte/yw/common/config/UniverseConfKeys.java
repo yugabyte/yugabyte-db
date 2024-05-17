@@ -80,15 +80,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The maximum time (in milliseconds) that we allow a tserver to be behind its peers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(naorem): Add correct metadata
-  public static final ConfKeyInfo<Boolean> ybUpgradeVmImage =
-      new ConfKeyInfo<>(
-          "yb.upgrade.vmImage",
-          ScopeType.UNIVERSE,
-          "Upgrade VM Image",
-          "TODO - Leave this for feature owners to fill in",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> allowDowngrades =
       new ConfKeyInfo<>(
@@ -1004,6 +995,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> clusterMembershipCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.cluster_membership.timeout",
+          ScopeType.UNIVERSE,
+          "Cluster membership check timeout",
+          "Controls the max time to check that there are no tablets assigned to the node",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
       new ConfKeyInfo<>(
           "yb.backup.skip_config_based_preflight_validation",

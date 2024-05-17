@@ -13,6 +13,8 @@ import { QUERY_KEY, api } from './utils/api';
 import {
   createUniverse,
   filterFormDataByClusterType,
+  getAsyncCluster,
+  getPrimaryCluster,
   getPrimaryInheritedValues,
   getUserIntent
 } from './utils/helpers';
@@ -103,6 +105,12 @@ export const CreateUniverse: FC = () => {
   const onCancel = () => browserHistory.push('/universes');
 
   const onSubmit = (primaryData: UniverseFormData, asyncData: UniverseFormData) => {
+    const primaryCluster = getPrimaryCluster(universeConfigureTemplate);
+    const primaryUserIntent = {
+      ...primaryCluster?.userIntent,
+      ...getUserIntent({ formData: primaryData }, ClusterType.PRIMARY, featureFlags)
+    };
+
     const configurePayload: UniverseConfigure = {
       clusterOperation: ClusterModes.CREATE,
       currentClusterType: contextState.clusterType,
@@ -119,7 +127,7 @@ export const CreateUniverse: FC = () => {
       clusters: [
         {
           clusterType: ClusterType.PRIMARY,
-          userIntent: getUserIntent({ formData: primaryData }, ClusterType.PRIMARY, featureFlags),
+          userIntent: primaryUserIntent,
           placementInfo: {
             cloudList: [
               {
@@ -134,16 +142,20 @@ export const CreateUniverse: FC = () => {
       ]
     };
     if (asyncData) {
-      configurePayload.clusters?.push({
-        clusterType: ClusterType.ASYNC,
-
-        userIntent: getUserIntent(
+      const asyncCluster = getAsyncCluster(universeConfigureTemplate);
+      const asyncUserIntent = {
+        ...asyncCluster?.userIntent,
+        ...getUserIntent(
           {
             formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
           },
           ClusterType.ASYNC,
           featureFlags
-        ),
+        )
+      };
+      configurePayload.clusters?.push({
+        clusterType: ClusterType.ASYNC,
+        userIntent: asyncUserIntent,
         placementInfo: {
           cloudList: [
             {
@@ -156,9 +168,12 @@ export const CreateUniverse: FC = () => {
       });
       // the getPrimaryInheritedValues overrides the async clusters imageBundleUUID.
       // we are manually overriding it
-      const asyncIndex = configurePayload.clusters!.length -1;
-      set(configurePayload, `clusters.[${asyncIndex}].userIntent.imageBundleUUID`, asyncData.instanceConfig.imageBundleUUID);
-
+      const asyncIndex = configurePayload.clusters!.length - 1;
+      set(
+        configurePayload,
+        `clusters.[${asyncIndex}].userIntent.imageBundleUUID`,
+        asyncData.instanceConfig.imageBundleUUID
+      );
     }
 
     if (
@@ -169,7 +184,7 @@ export const CreateUniverse: FC = () => {
       configurePayload.encryptionAtRestConfig.configUUID = primaryData.instanceConfig.kmsConfig;
     }
     createUniverse({ configurePayload, universeContextData: contextState });
-    setTimeout(()=>{
+    setTimeout(() => {
       queryClient.invalidateQueries('user_permissions');
     }, 2000);
   };

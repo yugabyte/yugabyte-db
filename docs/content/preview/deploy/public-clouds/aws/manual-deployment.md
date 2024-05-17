@@ -118,7 +118,7 @@ The following steps are a guide to help use the additional volumes (install a fi
 
 #### Locate drives
 
-On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, and so on).
+On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as Raft/txn logs, SSTable files, logs, and so on).
 
 ```sh
 $ lsblk
@@ -427,7 +427,6 @@ done
       echo --fs_data_dirs=$DATA_DIRS                          >> $CONFIG_FILE
       echo --rpc_bind_addresses=$ip:9100                      >> $CONFIG_FILE
       echo --cql_proxy_bind_address=$ip:9042                  >> $CONFIG_FILE
-      echo --redis_proxy_bind_address=$ip:6379                >> $CONFIG_FILE
       echo --webserver_interface=$ip                          >> $CONFIG_FILE
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
@@ -449,7 +448,6 @@ done
       echo --fs_data_dirs=$DATA_DIRS                          >> $CONFIG_FILE
       echo --rpc_bind_addresses=$ip:9100                      >> $CONFIG_FILE
       echo --cql_proxy_bind_address=$ip:9042                  >> $CONFIG_FILE
-      echo --redis_proxy_bind_address=$ip:6379                >> $CONFIG_FILE
       echo --webserver_interface=$ip                          >> $CONFIG_FILE
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
@@ -471,7 +469,6 @@ done
       echo --fs_data_dirs=$DATA_DIRS                          >> $CONFIG_FILE
       echo --rpc_bind_addresses=$ip:9100                      >> $CONFIG_FILE
       echo --cql_proxy_bind_address=$ip:9042                  >> $CONFIG_FILE
-      echo --redis_proxy_bind_address=$ip:6379                >> $CONFIG_FILE
       echo --webserver_interface=$ip                          >> $CONFIG_FILE
       echo --placement_cloud=$CLOUD                           >> $CONFIG_FILE
       echo --placement_region=$REGION                         >> $CONFIG_FILE
@@ -777,43 +774,10 @@ When workload is running, verify activity across various tablet-servers in the M
 http://<master-ip>:7000/tablet-servers
 ```
 
-When workload is running, verify active YCQL or YEDIS RPC calls from the following link on the `utilz` page.
+When workload is running, verify active YCQL RPC calls from the following link on the `utilz` page.
 
 ```sh
 http://<any-tserver-ip>:9000/utilz
-```
-
-### Redis-compatible YEDIS API
-
-Create the YugabyteDB `system_redis.redis` (which is the default Redis database `0`) table using `yb-admin` or using `redis-cli`.
-
-- Using `yb-admin`
-
-    ```sh
-    $ cd ~/tserver
-    $ ./bin/yb-admin --master_addresses $MASTER_RPC_ADDRS setup_redis_table
-    ```
-
-- Using `redis-cli` (which comes pre-bundled in the `bin` directory)
-
-    ```sh
-    $ cd ~/tserver
-    $ ./bin/redis-cli -h <any-node-ip>
-    ```
-
-    ```sql
-    > CREATEDB 0
-    ```
-
-#### Test API
-
-```sh
-$ ./bin/redis-cli -h <any-node-ip>
-```
-
-```sql
-> SET key1 hello_world
-> GET key1
 ```
 
 ## 9. Stop cluster and delete data

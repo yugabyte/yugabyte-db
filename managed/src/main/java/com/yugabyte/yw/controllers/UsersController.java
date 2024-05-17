@@ -19,12 +19,14 @@ import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UserPasswordChangeFormData;
 import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
@@ -44,6 +46,7 @@ import io.swagger.annotations.Authorization;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +58,7 @@ import play.mvc.Result;
 @Api(
     value = "User management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
@@ -420,9 +424,8 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether role change was successful or not.
    */
   @ApiOperation(
-      value = "Change a user's password",
-      nickname = "updateUserPassword",
-      response = YBPSuccess.class)
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.1.0.0.</b></p>",
+      value = "Change password - deprecated")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Users",
@@ -438,36 +441,64 @@ public class UsersController extends AuthenticatedController {
                   resourceType = ResourceType.USER,
                   action = Action.UPDATE_PROFILE),
           resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.1.0.0")
+  @Deprecated
   public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
-    Users user = Users.getOrBadRequest(customerUUID, userUUID);
-    if (UserType.ldap == user.getUserType()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-    }
+    throw new PlatformServiceException(
+        MOVED_PERMANENTLY, String.format("Moved to /customers/%s/reset_password", customerUUID));
+  }
 
-    if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
+  /**
+   * PUT endpoint for changing the password of an existing user.
+   *
+   * @return JSON response on whether role change was successful or not.
+   */
+  @ApiOperation(
+      value = "Reset the user's password",
+      nickname = "resetUserPassword",
+      response = YBPSuccess.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Users",
+        value = "User data containing the current, new password",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UserPasswordChangeFormData",
+        paramType = "body")
+  })
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.REQUEST_CONTEXT)))
+  public Result resetPassword(UUID customerUUID, Http.Request request) {
+    Users user = getLoggedInUser(request);
+    Form<UserPasswordChangeFormData> form =
+        formFactory.getFormDataOrBadRequest(request, UserPasswordChangeFormData.class);
+    UserPasswordChangeFormData formData = form.get();
+
+    if (user.getUserType() == UserType.ldap || user.getUserType() == UserType.oidc) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Only the User can change his/her own password.");
+          BAD_REQUEST, "Reset password not supported for LDAP/OIDC users");
     }
 
-    Form<UserRegisterFormData> form =
-        formFactory.getFormDataOrBadRequest(request, UserRegisterFormData.class);
-
-    UserRegisterFormData formData = form.get();
-    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (formData.getEmail().equals(user.getEmail())) {
-      if (formData.getPassword().equals(formData.getConfirmPassword())) {
-        user.setPassword(formData.getPassword());
-        user.save();
-        auditService()
-            .createAuditEntry(
-                request,
-                Audit.TargetType.User,
-                userUUID.toString(),
-                Audit.ActionType.ChangeUserPassword);
-        return YBPSuccess.empty();
-      }
+    user = Users.authWithPassword(user.getEmail(), formData.getCurrentPassword());
+    if (user == null) {
+      throw new PlatformServiceException(UNAUTHORIZED, "Incorrect current password provided");
     }
-    throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
+
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getNewPassword());
+    user.setPassword(formData.getNewPassword());
+    user.save();
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.User,
+            user.getUuid().toString(),
+            Audit.ActionType.ChangeUserPassword,
+            Json.toJson(formData));
+    return YBPSuccess.empty();
   }
 
   private Users getLoggedInUser(Http.Request request) {
@@ -521,21 +552,11 @@ public class UsersController extends AuthenticatedController {
 
     // Password validation for both old RBAC and new RBAC is same.
     if (StringUtils.isNotEmpty(formData.getPassword())) {
-      if (UserType.ldap == user.getUserType()) {
-        throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-      }
-
-      if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Only the User can change his/her own password.");
-      }
-
-      passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-      if (!formData.getPassword().equals(formData.getConfirmPassword())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Password and confirm password do not match.");
-      }
-      user.setPassword(formData.getPassword());
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "API does not support password change. Use /customers/%s/reset_password",
+              customerUUID));
     }
 
     if (useNewAuthz) {
@@ -583,6 +604,11 @@ public class UsersController extends AuthenticatedController {
         if (formData.getRole() == Users.Role.SuperAdmin) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Can't Assign the role of SuperAdmin to another user.");
+        }
+
+        if (loggedInUser.getUuid().equals(user.getUuid())) {
+          throw new PlatformServiceException(
+              FORBIDDEN, "User cannot modify their own role privileges");
         }
 
         if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {

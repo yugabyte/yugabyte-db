@@ -76,3 +76,7 @@ The block cache and memstores represent some of the larger memory-consuming comp
 ## Distributing tablet load uniformly across data disks
 
 On multi-SSD machines, the data (SSTable) and WAL (Raft write-ahead log) for various tablets of tables are evenly distributed across the attached disks on a per-table basis. This load distribution (also known as striping), ensures that each disk handles an even amount of load for each table.
+
+## High availability
+
+The failure of a YB-TServer hosting follower tablets has no impact on the write path. If there are any leader tablets present in a failed YB-TServer, the raft group for that tablet [elects](../docdb-replication/raft#leader-election) a new leader on a different YB-TServer. The unavailability window is approximately 3 seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet peer leader.

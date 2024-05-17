@@ -23,6 +23,11 @@ var createAWSProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create an AWS YugabyteDB Anywhere provider",
 	Long:  "Create an AWS provider in YugabyteDB Anywhere",
+	Example: `yba provider aws create -n <provider-name> \
+	--region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> \
+	--zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet> \
+	--zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet> \
+	--access-key-id <aws-access-key-id> --secret-access-key <aws-secret-access-key>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -235,7 +240,7 @@ func init() {
 			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
 			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
 
-	createAWSProviderCmd.Flags().String("ssh-user", "",
+	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")

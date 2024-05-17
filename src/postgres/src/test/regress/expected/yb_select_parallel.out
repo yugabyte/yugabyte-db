@@ -21,14 +21,12 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-                     QUERY PLAN
------------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Append
-               ->  Seq Scan on part_pa_test_p1 pa2
-               ->  Seq Scan on part_pa_test_p2 pa2_1
+   ->  Append
+         ->  Seq Scan on part_pa_test_p1 pa2
+         ->  Seq Scan on part_pa_test_p2 pa2_1
    SubPlan 2
      ->  Result
    SubPlan 1
@@ -37,7 +35,7 @@ explain (costs off)
                  Storage Filter: (a = pa2.a)
            ->  Seq Scan on part_pa_test_p2 pa1_1
                  Storage Filter: (a = pa2.a)
-(14 rows)
+(12 rows)
 
 drop table part_pa_test;
 -- test with leader participation disabled
@@ -311,7 +309,7 @@ explain (costs off)
  Aggregate
    ->  YB Batched Nested Loop Join
          Join Filter: (tenk1.unique1 = tenk2.unique1)
-         ->  Seq Scan on tenk2
+         ->  Index Only Scan using tenk2_unique1 on tenk2
          ->  Index Only Scan using tenk1_unique1 on tenk1
                Index Cond: (unique1 = ANY (ARRAY[tenk2.unique1, $1, $2, ..., $1023]))
 (6 rows)
@@ -715,16 +713,14 @@ EXPLAIN (COSTS OFF)
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1
 UNION ALL
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1;
-                         QUERY PLAN
-------------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Append
-         ->  Seq Scan on tenk1
-               Storage Filter: (fivethous = (tenthous + 1))
-         ->  Seq Scan on tenk1 tenk1_1
-               Storage Filter: (fivethous = (tenthous + 1))
-(7 rows)
+                      QUERY PLAN
+------------------------------------------------------
+ Append
+   ->  Seq Scan on tenk1
+         Storage Filter: (fivethous = (tenthous + 1))
+   ->  Seq Scan on tenk1 tenk1_1
+         Storage Filter: (fivethous = (tenthous + 1))
+(5 rows)
 
 ROLLBACK TO SAVEPOINT settings;
 -- can't use multiple subqueries under a single Gather node due to initPlans
@@ -834,12 +830,8 @@ WHERE
          Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
          Rows Removed by Join Filter: 23
          ->  Seq Scan on d table2 (actual rows=100 loops=1)
-         ->  Gather (actual rows=1 loops=100)
-               Workers Planned: 1
-               Workers Launched: 1
-               Single Copy: true
-               ->  Parallel Append (actual rows=2 loops=100)
-                     ->  Seq Scan on dummy (actual rows=1 loops=100)
-                     ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=100)
+         ->  Append (actual rows=1 loops=100)
+               ->  Seq Scan on dummy (actual rows=1 loops=100)
+               ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=12)
    ->  Seq Scan on c table3 (actual rows=20 loops=89)
-(15 rows)
+(11 rows)

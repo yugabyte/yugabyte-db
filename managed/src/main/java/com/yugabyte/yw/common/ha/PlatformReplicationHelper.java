@@ -239,18 +239,16 @@ public class PlatformReplicationHelper {
   }
 
   boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
-    try {
+    HighAvailabilityConfig config = remoteInstance.getConfig();
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstance.getAddress(),
+            config.getAcceptAnyCertificateOverrides())) {
       if (remoteInstance.getIsLocal()) {
         LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
         return false;
       }
-
-      HighAvailabilityConfig config = remoteInstance.getConfig();
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(
-              config.getClusterKey(),
-              remoteInstance.getAddress(),
-              config.getAcceptAnyCertificateOverrides());
 
       // Ensure all local records for remote instances are set to follower state.
       remoteInstance.demote();
@@ -274,19 +272,21 @@ public class PlatformReplicationHelper {
   }
 
   public void clearMetrics(HighAvailabilityConfig config, String remoteInstanceAddr) {
-    this.remoteClientFactory
-        .getClient(
-            config.getClusterKey(), remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())
-        .clearMetrics();
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
+      client.clearMetrics();
+    }
   }
 
   boolean exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
-    try {
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(
-              config.getClusterKey(),
-              remoteInstanceAddr,
-              config.getAcceptAnyCertificateOverrides());
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
 
       // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
@@ -385,14 +385,16 @@ public class PlatformReplicationHelper {
       File backupFile) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     Optional<PlatformInstance> leaderInstance = config.getLeader();
-    return localInstance.isPresent()
-        && leaderInstance.isPresent()
-        && remoteClientFactory
-            .getClient(clusterKey, remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())
-            .syncBackups(
-                leaderInstance.get().getAddress(),
-                localInstance.get().getAddress(), // sender is same as leader for now.
-                backupFile);
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(
+            clusterKey, remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())) {
+      return localInstance.isPresent()
+          && leaderInstance.isPresent()
+          && client.syncBackups(
+              leaderInstance.get().getAddress(),
+              localInstance.get().getAddress(), // sender is same as leader for now.
+              backupFile);
+    }
   }
 
   boolean testConnection(
@@ -415,11 +417,10 @@ public class PlatformReplicationHelper {
         WS_TIMEOUT_CONNECTION_KEY,
         ConfigValueFactory.fromAnyRef(
             String.format("%d seconds", getTestConnectionConnectionTimeout().getSeconds())));
-    return localInstance.isPresent()
-        && leaderInstance.isPresent()
-        && remoteClientFactory
-            .getClient(clusterKey, remoteInstanceAddr, ybWsOverrides)
-            .testConnection();
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(clusterKey, remoteInstanceAddr, ybWsOverrides)) {
+      return localInstance.isPresent() && leaderInstance.isPresent() && client.testConnection();
+    }
   }
 
   void cleanupBackups(List<File> backups, int numToRetain) {

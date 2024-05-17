@@ -30,7 +30,7 @@ DECLARE_string(vmodule);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_bool(TEST_fail_universe_replication_merge);
 
 using std::string;
@@ -81,7 +81,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
     if (IsTransactional()) {
-      ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
       ASSERT_OK(WaitForValidSafeTimeOnAllTServers(namespace_id_));
     }
 
@@ -477,14 +476,9 @@ class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& producer_table_ids,
       const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    return Status::OK();
-  }
-
-  Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) override {
-    // No-op for Db scoped repl groups.
     return Status::OK();
   }
 };
@@ -525,7 +519,7 @@ class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {
     google::SetVLOGLevel("multi_step*", 4);
     google::SetVLOGLevel("catalog*", 4);
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;

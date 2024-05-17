@@ -887,6 +887,11 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
+  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
+    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
+    return Status::OK();
+  }
+
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
@@ -1032,6 +1037,10 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistor
 
 const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
+}
+
+Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
+  return pg_client_.TabletsMetadata();
 }
 
 }  // namespace yb::pggate

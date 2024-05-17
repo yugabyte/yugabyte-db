@@ -3044,7 +3044,6 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_.empty()) {
-      LOG(WARNING) << "No active snapshot: " << current_snapshot_id_;
       return;
     }
 

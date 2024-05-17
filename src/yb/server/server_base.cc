@@ -131,6 +131,8 @@ METRIC_DEFINE_gauge_uint64(server, untracked_memory,
     "Untracked memory", yb::MetricUnit::kBytes,
     "The amount of memory not tracked by MemTracker");
 
+DECLARE_bool(TEST_running_test);
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -291,7 +293,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-Status RpcServerBase::InitAutoFlags() { return Status::OK(); }
+Status RpcServerBase::InitAutoFlags(rpc::Messenger* messenger) { return Status::OK(); }
 
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
@@ -311,14 +313,21 @@ Status RpcServerBase::Init() {
     RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
   }
 
-  RETURN_NOT_OK(InitAutoFlags());
-
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
+    std::vector<HostPort> host_ports;
+    RETURN_NOT_OK(
+        HostPort::ParseStrings(options_.HostsString(), 0 /* default_port */, &host_ports));
+    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host_ports[0].host())));
+  }
+
+  RETURN_NOT_OK(InitAutoFlags(messenger_.get()));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_.get()));
   RETURN_NOT_OK(rpc_server_->Bind());
@@ -538,7 +547,7 @@ Status RpcAndWebServerBase::Init() {
   return Status::OK();
 }
 
-Status RpcAndWebServerBase::InitAutoFlags() {
+Status RpcAndWebServerBase::InitAutoFlags(rpc::Messenger* messenger) {
   auto process_auto_flags_result = GetAvailableAutoFlagsForServer();
   if (!process_auto_flags_result) {
     LOG(WARNING) << "Unable to get the AutoFlags for this process: "
@@ -547,7 +556,7 @@ Status RpcAndWebServerBase::InitAutoFlags() {
     web_server_->SetAutoFlags(std::move(*process_auto_flags_result));
   }
 
-  return RpcServerBase::InitAutoFlags();
+  return RpcServerBase::InitAutoFlags(messenger);
 }
 
 void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -767,8 +776,6 @@ void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index) {
   CHECK_GE(index, kMinServerIdx);
   CHECK_LE(index, kMaxServers);
 
-  messenger->TEST_SetOutboundIpBase(
-      CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
   auto server_group = ServerGroupNum(index);
   for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     // We group servers by 2. When servers belongs to the same group, they should use

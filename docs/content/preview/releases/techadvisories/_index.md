@@ -19,18 +19,41 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------------- | :------- | :-----: | :---------------: | :--- |
-
 | {{<ta 21297>}}
-| Missing writes during Batch Execution in a transaction
+|Missing writes during Batch Execution in a transaction
 | {{<product "ysql">}}
 | {{<release "All">}}
+| {{<nobreak "26 Mar 2024">}}
+|
+| {{<ta 21491>}}
+|Failure of upgrades to release versions 2.18 and 2.20
+| {{<product "ybdb,yba">}}
+| {{<release "2.18, 2.20">}}
+| {{<nobreak "19 Mar 2024">}}
+|
+| {{<ta 21218>}}
+|DML and DDL operations fail on a colocated table with Packed Rows
+| {{<product "ysql">}}
+| {{<release "2.20.x">}}
 | {{<nobreak "12 Mar 2024">}}
+|
+| {{<ta 20864>}}
+|Failure of foreign key checks
+| {{<product "ysql">}}
+| {{<release "All">}}
+| {{<nobreak "27 Feb 2024">}}
 |
 | {{<ta 20827>}}
 |Correctness issue for queries using SELECT DISTINCT
 | {{<product "ysql">}}
 | {{<release "2.20.1.x">}}
-| {{<nobreak "02 Feb 2024">}}
+| {{<nobreak "06 Feb 2024">}}
+|
+| {{<ta 20398>}}
+|Slow execution of copy command and multi-row inserts
+| {{<product "ysql">}}
+| {{<release "2.20.0.x, 2.19.1.x">}}
+| {{<nobreak "23 Jan 2024">}}
 |
 | {{<ta 20648>}}
 |Index update can be wrongly applied on batch writes

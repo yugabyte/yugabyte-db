@@ -46,6 +46,7 @@
 #include "commands/event_trigger.h"
 #include "commands/tablegroup.h"
 #include "commands/tablecmds.h"
+#include "commands/tablespace.h"
 #include "commands/ybccmds.h"
 
 #include "access/heapam.h"
@@ -586,6 +587,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
 	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
 	bool           is_matview         = relkind == RELKIND_MATVIEW;
+	bool			is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	char *db_name = get_database_name(databaseId);
 	char *schema_name = stmt->relation->schemaname;
@@ -707,11 +710,6 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		}
 	}
 
-	if (is_colocated_via_database && stmt->tablespacename)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot create colocated table with a tablespace")));
-
 	if (OidIsValid(colocationId) && !is_colocated_via_database && !OidIsValid(tablegroupId))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -723,8 +721,36 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	if (is_colocated_via_database && !MyColocatedDatabaseLegacy
 		&& !is_internal_rewrite)
 	{
-		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
-		/* Default tablegroup doesn't exist, so create it. */
+		char *tablegroup_name = NULL;
+
+		if (is_colocated_tables_with_tablespace_enabled &&
+			OidIsValid(tablespaceId))
+		{
+			/*
+			 * We look in pg_shdepend rather than directly use the derived name,
+			 * as later we might need to associate an existing implicit tablegroup to a tablespace
+			 */
+
+			shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+
+			/*
+			 * If we do not find a tablegroup corresponding to the given tablespace, we
+			 * would have to create one . We derive the name from tablespace OID.
+			 */
+			tablegroup_name = OidIsValid(tablegroupId) ?
+								  get_tablegroup_name(tablegroupId) :
+								  get_implicit_tablegroup_name(tablespaceId);
+		}
+		else
+		{
+			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+		}
+
+		char *tablespace_name = OidIsValid(tablespaceId) ? get_tablespace_name(tablespaceId) :
+			NULL;
+
+		/* Tablegroup doesn't exist, so create it. */
 		if (!OidIsValid(tablegroupId))
 		{
 			/*
@@ -736,23 +762,25 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			spec->rolename = pstrdup("postgres");
 
 			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
-			tablegroup_stmt->tablegroupname = DEFAULT_TABLEGROUP_NAME;
+			tablegroup_stmt->tablegroupname = tablegroup_name;
+			tablegroup_stmt->tablespacename = tablespace_name;
 			tablegroup_stmt->implicit = true;
 			tablegroup_stmt->owner = spec;
 			tablegroupId = CreateTableGroup(tablegroup_stmt);
-			stmt->tablegroupname = pstrdup(DEFAULT_TABLEGROUP_NAME);
+			stmt->tablegroupname = pstrdup(tablegroup_name);
 		}
-		/* Record dependency between the table and default tablegroup. */
-		ObjectAddress myself, default_tablegroup;
+
+		/* Record dependency between the table and tablegroup. */
+		ObjectAddress myself, tablegroup;
 		myself.classId = RelationRelationId;
 		myself.objectId = relationId;
 		myself.objectSubId = 0;
 
-		default_tablegroup.classId = YbTablegroupRelationId;
-		default_tablegroup.objectId = tablegroupId;
-		default_tablegroup.objectSubId = 0;
+		tablegroup.classId = YbTablegroupRelationId;
+		tablegroup.objectId = tablegroupId;
+		tablegroup.objectSubId = 0;
 
-		recordDependencyOn(&myself, &default_tablegroup, DEPENDENCY_NORMAL);
+		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
 	}
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
@@ -1703,6 +1731,7 @@ YBCDropIndex(Relation index)
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
 				indexRelfileNodeId,
 				false, /* if_exists */
+				YbDdlRollbackEnabled(), /* ddl_rollback_enabled */
 				&handle),
 			&not_found);
 		if (not_found)

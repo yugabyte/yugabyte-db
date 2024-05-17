@@ -16,6 +16,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.NonUniqueResultException;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.Date;
@@ -71,7 +72,7 @@ public class Release extends Model {
   public static final Finder<UUID, Release> find = new Finder<>(Release.class);
 
   public static Release create(String version, String releaseType) {
-    return create(UUID.randomUUID(), version, releaseType);
+    return create(UUID.randomUUID(), version, releaseType, null);
   }
 
   public static Release create(String version, String releaseType, String releaseTag) {
@@ -84,10 +85,13 @@ public class Release extends Model {
 
   public static Release create(
       UUID releaseUUID, String version, String releaseType, String releaseTag) {
-    if (Release.getByVersion(version, releaseTag) != null) {
+    if (Release.getByVersion(version) != null) {
+      String tagError = "";
+      if (releaseTag != null && !releaseTag.isEmpty()) {
+        tagError = " with tag " + releaseTag;
+      }
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format("release version %s with tag %s already exists", version, releaseTag));
+          BAD_REQUEST, String.format("release version %s%s already exists", version, tagError));
     }
     Release release = new Release();
     release.releaseUUID = releaseUUID;
@@ -113,12 +117,14 @@ public class Release extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST, "release with uuid " + release.releaseUUID + " already exists");
     }
-    if (Release.getByVersion(reqRelease.version, reqRelease.release_tag) != null) {
+    if (Release.getByVersion(reqRelease.version) != null) {
+      String tagError = "";
+      if (reqRelease.release_tag != null && !reqRelease.release_tag.isEmpty()) {
+        tagError = " with tag " + reqRelease.release_tag;
+      }
       throw new PlatformServiceException(
           BAD_REQUEST,
-          String.format(
-              "release version %s with tag %s already exists",
-              reqRelease.version, reqRelease.release_tag));
+          String.format("release version %s%s already exists", reqRelease.version, tagError));
     }
 
     // Required fields
@@ -128,9 +134,9 @@ public class Release extends Model {
 
     // Optional fields
     release.releaseTag = encodeReleaseTag(reqRelease.release_tag);
-    if (reqRelease.release_date != null) {
+    if (reqRelease.release_date_msecs != null) {
       try {
-        release.releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
+        release.releaseDate = Date.from(Instant.ofEpochMilli(reqRelease.release_date_msecs));
       } catch (IllegalArgumentException | DateTimeException e) {
         log.warn("unable to parse date format", e);
       }
@@ -169,7 +175,16 @@ public class Release extends Model {
   }
 
   public static Release getByVersion(String version) {
-    return Release.getByVersion(version, null);
+    // We are currently only allowing 1 Release of a given version, even with a tag.
+    // If that changes, we should go back to using the bellow line instead of the query statement.
+    // return Release.getByVersion(version, null);
+    try {
+      return find.query().where().eq("version", version).findOne();
+    } catch (NonUniqueResultException e) {
+      log.warn("Found multiple releases for version {}", version);
+      // This is safe, as we have just discovered that multiple releases with that version exist
+      return find.query().where().eq("version", version).findList().get(0);
+    }
   }
 
   public static Release getByVersion(String version, String tag) {
@@ -284,7 +299,7 @@ public class Release extends Model {
   }
 
   private static String encodeReleaseTag(String releaseTag) {
-    if (releaseTag == null) {
+    if (releaseTag == null || releaseTag.isEmpty()) {
       return NULL_CONSTANT;
     } else if (releaseTag.equals(NULL_CONSTANT)) {
       throw new PlatformServiceException(

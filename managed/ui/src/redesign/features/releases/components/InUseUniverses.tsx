@@ -1,10 +1,10 @@
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { Box, makeStyles } from '@material-ui/core';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { ReleaseUniverses } from './dtos';
-import { convertToLocalTime } from '../../../../components/xcluster/ReplicationUtils';
-import { useSelector } from 'react-redux';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 
 interface InUseUniversesProps {
   inUseUniverses: ReleaseUniverses[] | undefined;
@@ -42,7 +42,7 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
 
   const formatCreationDate = (cell: any, row: any) => {
     const creationDate = row.creation_date;
-    const localCreationTime = convertToLocalTime(creationDate, currentUserTimezone);
+    const localCreationTime = ybFormatDate(creationDate, YBTimeFormats.YB_DEFAULT_TIMESTAMP);
 
     return (
       <Box>

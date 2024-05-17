@@ -93,9 +93,9 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-YugabyteDB achieves resilience by replicating data across fault domains using the [RAFT consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
+YugabyteDB achieves resilience by replicating data across fault domains using the [Raft consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
 
 YugabyteDB Managed provides the following configurations for fault tolerance.
 
@@ -166,7 +166,7 @@ By default, clusters are created using a stable release, taken from the [stable 
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Managed.
 
-If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview releases are also used for Sandbox clusters.)
+If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 

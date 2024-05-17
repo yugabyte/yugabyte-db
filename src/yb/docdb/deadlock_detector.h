@@ -29,20 +29,85 @@
 namespace yb {
 namespace tablet {
 
-// Structure holding the required data of each blocker transaction.
+// Structure holding the required data of each blocker transaction blocking the waiter request.
 struct BlockerTransactionInfo {
-    TransactionId id;
-    TabletId status_tablet;
-    std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+  TransactionId id;
+  TabletId status_tablet;
+  std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+
+  bool operator==(const BlockerTransactionInfo& info) const {
+    // Multiple requests of a waiter transaction could be blocked on different subtxn(s) of
+    // a blocker transaction. Additionally a blocker transaction could be simultaneously
+    // active at two status tablets in case of txn promotion. Hence compare all fields.
+    return id == info.id &&
+           blocking_subtxn_info->set() == info.blocking_subtxn_info->set() &&
+           status_tablet == info.status_tablet;
+  }
+
+  std::string ToString() const {
+    return Format(
+        "blocker id: $0, status tablet: $1, blocking subtxn info: $2",
+        id.ToString(), status_tablet, blocking_subtxn_info->ToString());
+  }
 };
 
-using BlockerData = std::vector<BlockerTransactionInfo>;
-using BlockerDataPtr = std::shared_ptr<BlockerData>;
+struct WaitingRequestsInfo {
+  // Map of waiter rpc retryable request id and the time at which it was registered at the
+  // local waiting txn registry.
+  std::unordered_map<int64_t, HybridTime> waiting_requests;
 
-struct WaiterData {
-  HybridTime wait_start_time;
-  BlockerDataPtr blockers;
+  std::string ToString() const {
+    return Format("waiting_requests (id, start_time): $0", waiting_requests);
+  }
+
+  void UpdateRequests(const WaitingRequestsInfo& old_info) {
+    for (const auto& [id, start_time] : old_info.waiting_requests) {
+      // Ignore updating start time of exisiting request ids, since they are expected to be
+      // the newer ones.
+      if (waiting_requests.find(id) == waiting_requests.end()) {
+        waiting_requests.emplace(id, start_time);
+      }
+    }
+  }
 };
+
+// BlockingInfo struct captures the dependency info of a waiter transaction on a request level
+// granularity. It helps avoids duplication of BlockerTransactionInfo(s) when multiple requests
+// of a waiter could be blocked on the same (blocker_id, subtxn, status_tablet) tuple.
+//
+// Note: For read requests with explicit, conflict resolution code populates the request id as
+// -1. Since we find/create the 'BlockingInfo' for each request based on hash of the tuple above,
+// it wouldn't lead to ovewriting issues even if we receive multiple waiting requests of a waiter
+// txn with id -1 from different tablets (as the request id would get appended to multiple keys
+// of 'BlockingData').
+struct BlockingInfo {
+  BlockerTransactionInfo blocker_txn_info;
+  WaitingRequestsInfo waiting_requests_info;
+
+  bool operator==(const BlockingInfo& info) const {
+    return blocker_txn_info == info.blocker_txn_info;
+  }
+
+  std::string ToString() const {
+    return Format(
+        "$0, $1", blocker_txn_info.ToString(), waiting_requests_info.ToString());
+  }
+
+  void UpdateWaitingRequestsInfo(const WaitingRequestsInfo& info) {
+    waiting_requests_info.UpdateRequests(info);
+  }
+};
+
+struct BlockingInfoHash {
+  size_t operator()(const BlockingInfo& info) const {
+    return yb::hash_value(info.blocker_txn_info.id.ToString() +
+                          info.blocker_txn_info.blocking_subtxn_info->ToString() +
+                          info.blocker_txn_info.status_tablet);
+  }
+};
+
+using BlockingData = std::unordered_set<BlockingInfo, BlockingInfoHash>;
+using BlockingDataPtr = std::shared_ptr<BlockingData>;
 
 // WaiterInfoEntry stores the wait-for dependencies of a waiter transaction received from a
 // TabletServer. For waiter transactions spanning across tablet servers, we create multiple
@@ -51,8 +116,8 @@ class WaiterInfoEntry {
  public:
   WaiterInfoEntry(
       const TransactionId& txn_id, const std::string& tserver_uuid,
-      const std::shared_ptr<WaiterData>& waiter_data) :
-    txn_id_(txn_id), tserver_uuid_(tserver_uuid), waiter_data_(waiter_data) {}
+      const std::shared_ptr<BlockingData>& blocking_data) :
+    txn_id_(txn_id), tserver_uuid_(tserver_uuid), blocking_data_(blocking_data) {}
 
   const TransactionId& txn_id() const {
     return txn_id_;
@@ -66,17 +131,36 @@ class WaiterInfoEntry {
     return std::pair<const TransactionId, const std::string>(txn_id_, tserver_uuid_);
   }
 
-  const std::shared_ptr<WaiterData>& waiter_data() const {
-    return waiter_data_;
+  const std::shared_ptr<BlockingData>& blocking_data() const {
+    return blocking_data_;
   }
 
-  void ResetWaiterData(const std::shared_ptr<WaiterData>& waiter_data) {
-    waiter_data_ = waiter_data;
+  void ResetBlockingData(const std::shared_ptr<BlockingData>& blocking_data) {
+    blocking_data_ = blocking_data;
+  }
+
+  void UpdateBlockingData(const BlockingDataPtr& old_blocking_data) {
+    for (auto blocking_info : *old_blocking_data) {
+      auto it = blocking_data_->find(blocking_info);
+      if (it == blocking_data_->end()) {
+        blocking_data_->insert(blocking_info);
+        continue;
+      }
+      auto info = std::move(*it);
+      blocking_data_->erase(it);
+      info.UpdateWaitingRequestsInfo(blocking_info.waiting_requests_info);
+      blocking_data_->insert(info);
+    }
+  }
+
+  std::string ToString() const {
+    return Format("txn_id_: $0, tserver_uuid_: $1, waiter_data_: $2",
+                  txn_id_.ToString(), tserver_uuid_, yb::ToString(*blocking_data_));
   }
 
   const TransactionId txn_id_;
   const std::string tserver_uuid_;
-  std::shared_ptr<WaiterData> waiter_data_;
+  BlockingDataPtr blocking_data_;
 };
 
 // Waiters is a multi-indexed container storing WaiterInfoEntry records. The records are indexed

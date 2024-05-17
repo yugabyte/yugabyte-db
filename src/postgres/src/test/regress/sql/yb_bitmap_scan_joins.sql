@@ -284,22 +284,30 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 --
 -- Semi Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 
 --
 -- Anti Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
+
+--
+-- System Table Join where we don't require any values from the Bitmap table
+--
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

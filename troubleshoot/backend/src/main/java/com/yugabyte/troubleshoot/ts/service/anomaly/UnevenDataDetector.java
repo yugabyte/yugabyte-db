@@ -32,12 +32,12 @@ public class UnevenDataDetector extends UnevenDistributionDetector {
       AnomalyDetectionContext context,
       String affectedNodesStr,
       GraphAnomaly graphAnomaly) {
-    String databaseName = graphAnomaly.getLabelFirstValue(GraphFilter.dbName.name());
-    String tableName = graphAnomaly.getLabelFirstValue(GraphFilter.tableName.name());
+    String databaseName = graphAnomaly.getLabelFirstValue(GraphLabel.dbName.name());
+    String tableName = graphAnomaly.getLabelFirstValue(GraphLabel.tableName.name());
     Anomaly.TableInfo tableInfo =
         Anomaly.TableInfo.builder()
             .databaseName(databaseName)
-            .tableId(graphAnomaly.getLabelFirstValue(GraphFilter.tableId.name()))
+            .tableId(graphAnomaly.getLabelFirstValue(GraphLabel.tableId.name()))
             .tableName(tableName)
             .build();
 
@@ -61,9 +61,9 @@ public class UnevenDataDetector extends UnevenDistributionDetector {
 
   @Override
   protected String anomaliesGroupBy(GraphAnomaly anomaly) {
-    return anomaly.getLabelFirstValue(GraphFilter.dbName.name())
+    return anomaly.getLabelFirstValue(GraphLabel.dbName.name())
         + "_"
-        + anomaly.getLabelFirstValue(GraphFilter.tableId.name());
+        + anomaly.getLabelFirstValue(GraphLabel.tableId.name());
   }
 
   protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {

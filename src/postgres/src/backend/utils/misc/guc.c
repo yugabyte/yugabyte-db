@@ -1307,6 +1307,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_parallel_append", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of parallel append plans "
+						 "if YB is enabled."),
+			NULL
+		},
+		&yb_enable_parallel_append,
+		false,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables plan-time and execution-time partition pruning."),
 			gettext_noop("Allows the query planner and executor to compare partition "
@@ -2804,9 +2814,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_ddl_atomicity_infra", PGC_SUSET, DEVELOPER_OPTIONS,
-			NULL,
 			gettext_noop("Used along side with yb_ddl_rollback_enabled to control "
 						 "whether DDL atomicity is enabled."),
+			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ddl_atomicity_infra,

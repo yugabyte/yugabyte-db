@@ -19,6 +19,19 @@ On this page:
 
 ## Change log
 
+### April 17, 2024
+
+**Database**
+
+- Ability to choose from different tracks for Sandbox clusters. Sandbox clusters now default to using the Innovation track; you can also choose the Preview track.
+- Innovation track updated to 2.18.7.0.
+
+### February 28, 2024
+
+**Database**
+
+- Production track updated to 2.14.15.0.
+
 ### February 8, 2024
 
 **New Features**

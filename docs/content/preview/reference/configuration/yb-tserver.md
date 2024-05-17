@@ -788,22 +788,6 @@ Default: `false`
 
 Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
 
-### YEDIS
-
-The following flags support the use of the YEDIS API:
-
-##### --redis_proxy_bind_address
-
-Specifies the bind address for the YEDIS API.
-
-Default: `0.0.0.0:6379`
-
-##### --redis_proxy_webserver_port
-
-Specifies the port for monitoring YEDIS metrics.
-
-Default: `11000`
-
 ## Performance flags
 
 Use the following two flags to select the SSTable compression type:

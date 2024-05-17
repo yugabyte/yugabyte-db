@@ -211,7 +211,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     if (sp.exceptionSet.contains(ExceptionType.APPLICATION_NAME))
       expectedValue = "PostgreSQL JDBC Driver"; // JDBC higher precedence
     else if (sp.exceptionSet.contains(ExceptionType.YB_CACHE_MAPPING))
-      expectedValue = "repeatable read";
+      expectedValue = "read committed";
     else if (sp.exceptionSet.contains(ExceptionType.EXTRA_FLOAT_DIGITS))
       expectedValue = "3"; // JDBC higher precedence
     return expectedValue;

@@ -42,12 +42,20 @@ class AreNodesSafeToTakeDownCallbackHandler {
   template <typename T>
   void ReportHealthCheck(const T& resp, const std::string& uuid);
 
-  Result<ReplicaCountMap> WaitForResponses(CoarseTimePoint deadline);
+  // Returns whether we completed within the deadline, and a list of replicas that are still
+  // outstanding.
+  std::pair<bool, ReplicaCountMap> WaitForResponses(CoarseTimePoint deadline);
 
  private:
   const int64_t follower_lag_bound_ms_;
+
+  // The number of replicas that must heartbeat as healthy for this tablet to have quorum.
   ReplicaCountMap required_replicas_ GUARDED_BY(mutex_);
+
+  // The set of servers that have not yet responded to the health check RPCs.
   ServerUuidSet outstanding_rpcs_ GUARDED_BY(mutex_);
+
+  bool returned_ GUARDED_BY(mutex_) = false;
   std::mutex mutex_;
   std::condition_variable_any cv_;
 

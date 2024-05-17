@@ -1325,18 +1325,20 @@ Status CatalogManager::SetXReplWalRetentionForTable(
                       << table_wal_retention_secs
                       << ", which is equal or higher than cdc_wal_retention_time_secs: "
                       << min_wal_retention_secs;
-    return Status::OK();
+  } else {
+    AlterTableRequestPB alter_table_req;
+    alter_table_req.mutable_table()->set_table_id(table_id);
+    alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
+
+    AlterTableResponsePB alter_table_resp;
+    RETURN_NOT_OK_PREPEND(
+        this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch),
+        Format("Unable to change the WAL retention time for table $0", table_id));
   }
 
-  AlterTableRequestPB alter_table_req;
-  alter_table_req.mutable_table()->set_table_id(table_id);
-  alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
-
-  AlterTableResponsePB alter_table_resp;
-  RETURN_NOT_OK_PREPEND(
-      this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch),
-      Format("Unable to change the WAL retention time for table $0", table_id));
-
+  // Ideally we should WaitForAlterTableToFinish to ensure the change has propagated to all
+  // tablet peers. But since we have 15min default WAL retention and this operation completes much
+  // sooner, we skip it.
   return Status::OK();
 }
 
@@ -4192,10 +4194,8 @@ Status CatalogManager::InitXClusterConsumer(
   auto transactional = universe_l->pb.transactional();
   if (!xcluster::IsAlterReplicationGroupId(replication_info.ReplicationGroupId())) {
     if (universe_l->pb.has_db_scoped_info()) {
-      consumer_registry->set_role(cdc::XClusterRole::STANDBY);
       DCHECK(transactional);
     }
-    consumer_registry->set_transactional(transactional);
   }
 
   for (const auto& stream_info : consumer_info) {
@@ -4366,7 +4366,7 @@ void CatalogManager::MergeUniverseReplication(
 
 Status CatalogManager::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
-    DeleteUniverseReplicationResponsePB* resp) {
+    bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp) {
   scoped_refptr<UniverseReplicationInfo> ri;
   {
     SharedLock lock(mutex_);
@@ -4403,10 +4403,6 @@ Status CatalogManager::DeleteUniverseReplication(
     auto it = replication_group_map->find(replication_group_id.ToString());
     if (it != replication_group_map->end()) {
       replication_group_map->erase(it);
-      if (l->pb.has_db_scoped_info()) {
-        consumer_registry->set_role(cdc::XClusterRole::ACTIVE);
-        consumer_registry->clear_transactional();
-      }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
@@ -4418,7 +4414,7 @@ Status CatalogManager::DeleteUniverseReplication(
   }
 
   // Delete CDC stream config on the Producer.
-  if (!l->pb.table_streams().empty()) {
+  if (!l->pb.table_streams().empty() && !skip_producer_stream_deletion) {
     auto result = ri->GetOrCreateXClusterRpcTasks(l->pb.producer_master_addresses());
     if (!result.ok()) {
       LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
@@ -4497,7 +4493,8 @@ Status CatalogManager::DeleteUniverseReplication(
   }
 
   RETURN_NOT_OK(DeleteUniverseReplication(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(), resp));
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
+      req->skip_producer_stream_deletion(), resp));
   LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
             << RequestorString(rpc);
   return Status::OK();
@@ -4538,38 +4535,6 @@ Status CatalogManager::ChangeXClusterRole(
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing ChangeXClusterRole request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
-
-  auto new_role = req->role();
-  // Get the current role from the cluster config
-  auto cluster_config = ClusterConfig();
-  auto l = cluster_config->LockForWrite();
-  auto consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
-  auto current_role = consumer_registry->role();
-  if (current_role == new_role) {
-    return STATUS(
-        InvalidArgument, "New role must be different than existing role", req->ShortDebugString(),
-        MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-  if (new_role == cdc::XClusterRole::STANDBY) {
-    if (!consumer_registry->transactional()) {
-      return STATUS(
-          InvalidArgument,
-          "This replication group does not support xCluster roles. "
-          "Recreate the group with the transactional flag to enable STANDBY mode",
-          req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-  }
-  consumer_registry->set_role(new_role);
-  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  // Commit the change to the consumer registry.
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-      "updating cluster config in sys-catalog"));
-  l.Commit();
-
-  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
-
-  LOG(INFO) << "Successfully completed ChangeXClusterRole request from " << RequestorString(rpc);
   return Status::OK();
 }
 
@@ -5757,6 +5722,26 @@ Status CatalogManager::GetReplicationStatus(
   return Status::OK();
 }
 
+PgReplicaIdentity GetReplicaIdentityFromRecordType(std::string record_type_name) {
+  cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE;
+  CDCRecordType_Parse(record_type_name, &record_type);
+  switch (record_type) {
+    case cdc::CDCRecordType::ALL: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::PG_FULL: return PgReplicaIdentity::FULL;
+    case cdc::CDCRecordType::PG_DEFAULT: return PgReplicaIdentity::DEFAULT;
+    case cdc::CDCRecordType::PG_NOTHING: return PgReplicaIdentity::NOTHING;
+    case cdc::CDCRecordType::PG_CHANGE_OLD_NEW: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE: FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES:
+      LOG(WARNING) << "The record type of the older stream does not have a corresponding replica "
+                      "identity. Going forward with replica identity CHANGE.";
+      FALLTHROUGH_INTENDED;
+    case cdc::CDCRecordType::CHANGE: return PgReplicaIdentity::CHANGE;
+    // This case should never be reached.
+    default: return PgReplicaIdentity::CHANGE;
+  }
+}
+
 Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
     const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
     YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
@@ -5765,6 +5750,7 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   if (!FLAGS_ysql_yb_enable_replication_commands ||
+      !FLAGS_ysql_yb_enable_replica_identity ||
       !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
     RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
   }
@@ -5818,6 +5804,25 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
 
     pb.set_cdcsdk_ysql_replication_slot_name(req->cdcsdk_ysql_replication_slot_name());
     cdcsdk_replication_slots_to_stream_map_.insert_or_assign(replication_slot_name, stream_id);
+
+    PgReplicaIdentity replica_identity;
+    bool has_record_type =  false;
+    for (const auto& option : pb.options()) {
+      if (option.key() == cdc::kRecordType) {
+        // Check if record type is a valid replica identity, if not assign replica
+        // identity CHANGE.
+        replica_identity = GetReplicaIdentityFromRecordType(option.value());
+        has_record_type = true;
+        break;
+      }
+    }
+    // This should never happen.
+    RSTATUS_DCHECK(
+        has_record_type, NotFound, Format("Option record_type not present in stream $0"),
+        stream_id);
+    for(auto table_id : pb.table_id()) {
+       pb.mutable_replica_identity_map()->insert({table_id, replica_identity});
+    }
 
     stream_lock.Commit();
   }

@@ -196,6 +196,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
+      pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
@@ -217,6 +218,7 @@ TableInfo::TableInfo(const TableInfo& other,
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   CompleteInit();
@@ -235,6 +237,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
   CompleteInit();

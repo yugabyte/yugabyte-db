@@ -2,16 +2,19 @@ import { useEffect, useState } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { Box, makeStyles, MenuItem } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBButton } from '@yugabytedb/ui-components';
-import { YBSelect } from '../common/YBSelect';
+import {
+  YBButton,
+  YBSelect,
+  YBDateTimePicker,
+  YBTimeFormats,
+  formatDatetime
+} from '@yugabytedb/ui-components';
 import { ClusterRegionSelector } from '../common/YBClusterRegionSelector';
 import { OutlierSelector } from '../common/OutlierSelector';
 import { ZoneNodeSelector } from '../common/YBZoneNodeSelector';
 import { MetricSplitSelector } from '../common/MetricSplitSelector';
-import { YBDateTimePicker } from '../common/YBDateTimePicker';
 import { AppName, MetricMeasure, SplitMode, Universe } from '../helpers/dtos';
 import { formatData, getFilteredItems } from '../helpers/utils';
-import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
 import {
   ALL,
   metricOutlierSelectors,

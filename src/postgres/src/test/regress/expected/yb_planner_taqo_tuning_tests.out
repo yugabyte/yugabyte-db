@@ -1218,26 +1218,26 @@ EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 100000;
 
 -- Query Hash: d93f6e4d8c79ed9ff1777a8346135486
 EXPLAIN (COSTS OFF) SELECT v1 FROM t_range_100k where v1 > 0;
-                   QUERY PLAN
-------------------------------------------------
- Index Only Scan using tr100kv1 on t_range_100k
-   Index Cond: (v1 > 0)
+         QUERY PLAN
+----------------------------
+ Seq Scan on t_range_100k
+   Storage Filter: (v1 > 0)
 (2 rows)
 
 -- Query Hash: ad243137d04da666112652bc4daee5bb
 EXPLAIN (COSTS OFF) SELECT v1 FROM t_range_100k where v1 > 1;
-                   QUERY PLAN
-------------------------------------------------
- Index Only Scan using tr100kv1 on t_range_100k
-   Index Cond: (v1 > 1)
+         QUERY PLAN
+----------------------------
+ Seq Scan on t_range_100k
+   Storage Filter: (v1 > 1)
 (2 rows)
 
 -- Query Hash: bfeb69f5dd583f251a20785be7fff7f8
 EXPLAIN (COSTS OFF) SELECT v1 FROM t_range_100k where v1 > 10;
-                   QUERY PLAN
-------------------------------------------------
- Index Only Scan using tr100kv1 on t_range_100k
-   Index Cond: (v1 > 10)
+         QUERY PLAN
+-----------------------------
+ Seq Scan on t_range_100k
+   Storage Filter: (v1 > 10)
 (2 rows)
 
 -- Query Hash: 6c0176a4d1a4d77205315f39efea625c
@@ -1891,4 +1891,3 @@ DROP TABLE IF EXISTS t_real_100k CASCADE;
 DROP TABLE IF EXISTS t_char4_100k CASCADE;
 DROP TABLE IF EXISTS t_char8_100k CASCADE;
 DROP TABLE IF EXISTS t_char16_100k CASCADE;
-
