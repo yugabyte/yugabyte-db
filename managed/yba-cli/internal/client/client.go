@@ -157,11 +157,10 @@ type YBAMinimumVersion struct {
 func (a *AuthAPIClient) CheckValidYBAVersion(versions YBAMinimumVersion) (bool,
 	string, error) {
 
-	r, response, err := a.GetAppVersion().Execute()
+	r, _, err := a.GetAppVersion().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"YBA Version", "Get App Version")
-		return false, "", errMessage
+		host := viper.GetString("host")
+		return false, "", fmt.Errorf("YugabyteDB Anywhere is not available at host %s", host)
 	}
 	currentVersion := r["version"]
 	// check if current version is stable or preview
@@ -195,8 +194,11 @@ func (a *AuthAPIClient) IsCLISupported() {
 
 	if !allowed {
 		errMessage := fmt.Sprintf(
-			"YugabyteDB Anywhere CLI is not supported for YugabyteDB Anywhere Host version %s\n",
-			version)
+			"YugabyteDB Anywhere CLI is not supported for YugabyteDB Anywhere Host version %s. "+
+				"Please use a version greater than or equal to Stable: %s, Preview: %s\n",
+			version,
+			allowedVersions.Stable,
+			allowedVersions.Preview)
 		logrus.Fatalln(formatter.Colorize(errMessage, formatter.RedColor))
 	}
 }

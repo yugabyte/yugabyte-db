@@ -3,7 +3,7 @@ import { Component } from 'react';
 import * as Yup from 'yup';
 import Cookies from 'js-cookie';
 import moment from 'moment-timezone';
-import { isEqual } from 'lodash';
+import { isEqual, omit } from 'lodash';
 import { Col, Row } from 'react-bootstrap';
 import { FormHelperText } from '@material-ui/core';
 import { YBButton, YBFormInput, YBFormSelect, YBTextArea } from '../common/forms/fields';
@@ -86,6 +86,7 @@ export default class UserProfileForm extends Component {
       customerId: customer.data.uuid,
       password: '',
       confirmPassword: '',
+      currentPassword: '',
       timezone: currentUser.data.timezone
         ? {
             value: currentUser.data.timezone,
@@ -117,7 +118,11 @@ export default class UserProfileForm extends Component {
       code: Yup.string()
         .required('Enter Environment name')
         .max(5, 'Environment name can be only 5 characters long'),
-
+      currentPassword: Yup.string().notRequired()
+      .test("currentPassword", 'Your old password cannot be same as the new password', function(value){
+        if(!value) return true;
+        return value !== this.parent.password;
+      }),
       password: Yup.string()
         .notRequired()
         .min(
@@ -156,7 +161,7 @@ export default class UserProfileForm extends Component {
           validationSchema={validationSchema}
           initialValues={initialValues}
           enableReinitialize
-          onSubmit={(values, { setSubmitting }) => {
+          onSubmit={(values, { setSubmitting, resetForm }) => {
             const payload = {
               ...values
             };
@@ -179,11 +184,17 @@ export default class UserProfileForm extends Component {
             // Compare values to initial values to see if changes were made
             let hasNameChanged = false;
             let hasUserProfileChanged = false;
+            let hasPasswordChanged = false;
+            
             Object.entries(payload).forEach(([key, value]) => {
               if (!isEqual(value, initialPayload[key])) {
                 if (key === 'name') {
                   hasNameChanged = true;
-                } else {
+                } 
+                else if(key === 'password' || key === 'confirmPassword' || key === 'currentPassword') {
+                  hasPasswordChanged = true;
+                }
+                else {
                   hasUserProfileChanged = true;
                 }
               }
@@ -191,13 +202,13 @@ export default class UserProfileForm extends Component {
             if (hasNameChanged) {
               updateCustomerDetails(payload);
             }
+            if(hasPasswordChanged){
+              updateUserPassword(currentUser.data, {currentPassword: values.currentPassword, newPassword: values.password}).then(()=>{
+                resetForm(initialValues);
+              });
+            }
             if (hasUserProfileChanged) {
-              if (
-                isDisabled(customer.data.features, 'profile.profileInfo') ||
-                isHidden(customer.data.features, 'profile.profileInfo')
-              )
-                updateUserPassword(currentUser.data, payload);
-              else updateUserProfile(currentUser.data, payload);
+              updateUserProfile(currentUser.data, omit(payload , ["password", "confirmPassword", "currentPassword"]));
             }
             setSubmitting(false);
             this.setState({ statusUpdated: hasNameChanged || hasUserProfileChanged });
@@ -262,6 +273,14 @@ export default class UserProfileForm extends Component {
                       <Col sm={12}>
                         <br />
                         <h3>Change Password</h3>
+                        <Field
+                          name="currentPassword"
+                          type="password"
+                          component={YBFormInput}
+                          label="Old Password"
+                          autoComplete="current-password"
+                          placeholder="Enter Old Password"
+                        />
                         <Field
                           name="password"
                           type="password"

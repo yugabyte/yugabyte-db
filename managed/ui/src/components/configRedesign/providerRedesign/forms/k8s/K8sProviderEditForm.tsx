@@ -674,15 +674,13 @@ const constructProviderPayload = async (
               azFormValues.editKubeConfigContent;
 
             return {
-              ...(existingZone && {
-                active: existingZone.active,
-                uuid: existingZone.uuid
-              }),
+              ...existingZone,
               code: azFormValues.code,
               name: azFormValues.code,
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
+                    ...existingZone?.details?.cloudInfo?.kubernetes,
                     ...(shouldReadKubeConfigOnForm
                       ? {
                           ...(azFormValues.kubeConfigContent && {
@@ -725,10 +723,7 @@ const constructProviderPayload = async (
         );
 
         const newRegion: K8sRegionMutation = {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.regionData.value.code,
           name: regionFormValues.regionData.label,
           zones: [

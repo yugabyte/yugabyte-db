@@ -20,7 +20,7 @@
         },
         {
           "name": "enable_automatic_tablet_splitting",
-          "class": 2,
+          "class": 3,
           "is_runtime": true
         },
         {
@@ -140,7 +140,7 @@
         },
         {
           "name": "enable_automatic_tablet_splitting",
-          "class": 2,
+          "class": 3,
           "is_runtime": true
         },
         {

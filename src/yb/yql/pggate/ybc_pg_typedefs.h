@@ -387,6 +387,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
+  const bool*     ysql_enable_colocated_tables_with_tablespaces;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
@@ -494,6 +495,7 @@ typedef struct PgSessionParallelData {
   uint64_t session_id;
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
+  uint32_t active_sub_transaction_id;
 } YBCPgSessionParallelData;
 
 typedef struct PgJwtAuthOptions {
@@ -720,6 +722,19 @@ typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
   YB_REPLICATION_SLOT_USE_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
+
+typedef struct PgTabletsDescriptor {
+  const char* tablet_id;
+  const char* table_name;
+  const char* table_id;
+  const char* namespace_name;
+  const char* table_type;
+  const char* pgschema_name;
+  const char* partition_key_start;
+  size_t partition_key_start_len;
+  const char* partition_key_end;
+  size_t partition_key_end_len;
+} YBCPgTabletsDescriptor;
 
 #ifdef __cplusplus
 }  // extern "C"

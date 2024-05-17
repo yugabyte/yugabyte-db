@@ -130,7 +130,7 @@ yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 
 ##### current_hybrid_time
 
-Prints the value of the current [hybrid time](../../architecture/transactions/transactions-overview/#mvcc-using-hybrid-time).
+Prints the value of the current [hybrid time](../../architecture/transactions/transactions-overview/#hybrid-logical-clocks).
 
 **Syntax**
 

@@ -73,6 +73,7 @@
 #include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/heartbeater.h"
@@ -221,6 +222,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
 
 DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
+
+DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
+    "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
+    "version that is retrieved from a tserver-master heartbeat response.");
 
 namespace yb::tserver {
 
@@ -508,10 +513,10 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
-Status TabletServer::InitAutoFlags() {
-  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString(), *opts_.GetMasterAddresses()));
+Status TabletServer::InitAutoFlags(rpc::Messenger* messenger) {
+  RETURN_NOT_OK(auto_flags_manager_->Init(messenger, *opts_.GetMasterAddresses()));
 
-  return RpcAndWebServerBase::InitAutoFlags();
+  return RpcAndWebServerBase::InitAutoFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
@@ -880,7 +885,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
     const auto it = ysql_db_catalog_version_map_.insert(
       std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
                                                  .last_breaking_version = new_breaking_version,
-                                                 .shm_index = -1})));
+                                                 .shm_index = -1,
+                                                 .new_version_ignored_count = 0})));
     if (ysql_db_catalog_version_map_.size() > 1) {
       if (!catalog_version_table_in_perdb_mode_.has_value() ||
           !catalog_version_table_in_perdb_mode_.value()) {
@@ -899,6 +905,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       if (new_version > existing_entry.current_version) {
         existing_entry.current_version = new_version;
         existing_entry.last_breaking_version = new_breaking_version;
+        existing_entry.new_version_ignored_count = 0;
         row_updated = true;
         shm_index = existing_entry.shm_index;
         CHECK(
@@ -906,13 +913,25 @@ void TabletServer::SetYsqlDBCatalogVersions(
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
-        LOG(DFATAL) << "Ignoring ysql db " << db_oid
-                    << " catalog version update: new version too old. "
-                    << "New: " << new_version << ", Old: " << existing_entry.current_version;
+        ++existing_entry.new_version_ignored_count;
+        // If the new version is continuously older than what we have seen, it implies that master's
+        // current version has somehow gone backwards which isn't expected. Crash this tserver to
+        // sync up with master again. Do so with RandomUniformInt to reduce the chance that all
+        // tservers are crashed at the same time.
+        auto new_version_ignored_count =
+          RandomUniformInt<uint32_t>(FLAGS_ysql_min_new_version_ignored_count,
+                                     FLAGS_ysql_min_new_version_ignored_count + 180);
+        (existing_entry.new_version_ignored_count >= new_version_ignored_count ?
+         LOG(FATAL) : LOG(DFATAL))
+            << "Ignoring ysql db " << db_oid
+            << " catalog version update: new version too old. "
+            << "New: " << new_version << ", Old: " << existing_entry.current_version
+            << ", ignored count: " << existing_entry.new_version_ignored_count;
       } else {
         // It is not possible to have same current_version but different last_breaking_version.
         CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
             << "db_oid: " << db_oid << ", new_version: " << new_version;
+        existing_entry.new_version_ignored_count = 0;
       }
     } else {
       auto& inserted_entry = it.first->second;
@@ -1077,14 +1096,6 @@ PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
 }
 
-Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
-  auto xcluster_consumer_ptr = GetXClusterConsumer();
-  if (!xcluster_consumer_ptr) {
-    return STATUS(Uninitialized, "XCluster consumer has not been initialized");
-  }
-  return xcluster_consumer_ptr->TEST_GetXClusterRole();
-}
-
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
     TabletServerServiceRpcMethodIndexes metric) {
   auto tablet_server_service = tablet_server_service_.lock();
@@ -1217,8 +1228,6 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
       RETURN_NOT_OK(CreateXClusterConsumer());
       xcluster_consumer = GetXClusterConsumer();
     }
-
-    xcluster_context_->SetDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
 
   if (xcluster_consumer) {
@@ -1389,4 +1398,17 @@ void TabletServer::ClearAllMetaCachesOnServer() {
   }
   client()->ClearAllMetaCachesOnServer();
 }
+
+Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
+  std::vector<tablet::TabletStatusPB> result;
+  auto peers = tablet_manager_.get()->GetTabletPeers();
+  for (const std::shared_ptr<tablet::TabletPeer>& peer : peers) {
+    tablet::TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+    status.set_pgschema_name(peer->status_listener()->schema()->SchemaName());
+    result.emplace_back(std::move(status));
+  }
+  return result;
+}
+
 }  // namespace yb::tserver

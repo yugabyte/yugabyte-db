@@ -52,6 +52,8 @@ void MultiStepMonitoredTask::TaskCompleted(const Status& status) {
   // NoOp
 }
 
+void MultiStepMonitoredTask::PerformAbort() { AbortReactorTaskIfScheduled(); }
+
 void MultiStepMonitoredTask::Complete() {
   if (TrySetState(server::MonitoredTaskState::kComplete)) {
     EndTask(Status::OK());
@@ -63,7 +65,15 @@ server::MonitoredTaskState MultiStepMonitoredTask::AbortAndReturnPrevState(const
   DCHECK(!status.ok());
   auto old_state = state();
   if (TrySetState(server::MonitoredTaskState::kAborted)) {
-    AbortReactorTaskIfScheduled();
+    PerformAbort();
+    {
+      // After setting the state grab the mutex to wait for the current step to finish.
+      LongOperationTracker long_operation_tracker(
+          Format("Waiting for task $0 to finish in progress step", ToString()).c_str(),
+          MonoDelta::FromSeconds(1));
+      std::lock_guard l(step_execution_mutex_);
+    }
+
     EndTask(status);
   } else {
     LOG_WITH_PREFIX(WARNING) << this << ": Task already ended. Unable to abort it: " << status;
@@ -168,6 +178,13 @@ Status MultiStepMonitoredTask::RunInternal() {
   // Grab the step_execution_mutex_, since one step schedules the next step, and we dont want the
   // second one to start before the first once goes fully out of scope.
   std::lock_guard step_execution_l(step_execution_mutex_);
+
+  // Check the state after acquiring lock, since abort will set the state and then get lock.
+  SCHECK_EQ(
+      state(), server::MonitoredTaskState::kRunning, IllegalState, "Task in unexpected state");
+
+  // Grab the schedule_task_mutex_ to swap the next step and the next step description.
+  // This is done to avoid
   {
     std::lock_guard schedule_task_l(schedule_task_mutex_);
     reactor_task_id_ = rpc::kInvalidTaskId;

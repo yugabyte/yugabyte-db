@@ -311,12 +311,14 @@ extern bool YbPredetermineNeedsRecheck(Relation relation,
 									   ScanKey keys,
 									   int nkeys);
 
-HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
-IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
-bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
-						 bool index_only_scan);
+extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir,
+									   bool *recheck);
+extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir,
+										 bool *recheck);
+extern bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+								bool index_only_scan);
 
-Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
+extern Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
 /* Number of rows assumed for a YB table if no size estimates exist */
 #define YBC_DEFAULT_NUM_ROWS  1000
@@ -387,17 +389,19 @@ typedef struct YbSampleData
 
 typedef struct YbSampleData *YbSample;
 
-YbSample ybBeginSample(Relation rel, int targrows);
-bool ybSampleNextBlock(YbSample ybSample);
-int ybFetchSample(YbSample ybSample, HeapTuple *rows);
-void ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid);
+extern YbSample ybBeginSample(Relation rel, int targrows);
+extern bool ybSampleNextBlock(YbSample ybSample);
+extern int ybFetchSample(YbSample ybSample, HeapTuple *rows);
+extern void ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid);
 
-int ybParallelWorkers(double numrows);
+extern int ybParallelWorkers(double numrows);
 
-Size yb_estimate_parallel_size(void);
-void yb_init_partition_key_data(void *data);
-void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
-				  YBCPgExecParameters *exec_params, bool is_forward);
-bool ybParallelNextRange(YBParallelPartitionKeys ppk,
-					const char **low_bound, size_t *low_bound_size,
-					const char **high_bound, size_t *high_bound_size);
+extern Size yb_estimate_parallel_size(void);
+extern void yb_init_partition_key_data(void *data);
+extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
+							  YBCPgExecParameters *exec_params,
+							  bool is_forward);
+extern bool ybParallelNextRange(YBParallelPartitionKeys ppk,
+								const char **low_bound, size_t *low_bound_size,
+								const char **high_bound,
+								size_t *high_bound_size);

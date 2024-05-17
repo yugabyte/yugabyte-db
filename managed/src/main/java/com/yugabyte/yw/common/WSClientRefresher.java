@@ -74,8 +74,10 @@ public class WSClientRefresher implements CustomTrustStoreListener {
 
   private WSClient newClient(String ybWsConfigPath, Map<String, ConfigValue> wsOverrides) {
     Config customWsConfig = getWsConfig(ybWsConfigPath);
-    for (Map.Entry<String, ConfigValue> entry : wsOverrides.entrySet()) {
-      customWsConfig = customWsConfig.withValue(entry.getKey(), entry.getValue());
+    if (wsOverrides != null) {
+      for (Map.Entry<String, ConfigValue> entry : wsOverrides.entrySet()) {
+        customWsConfig = customWsConfig.withValue(entry.getKey(), entry.getValue());
+      }
     }
     ConfigValue ybWsOverrides = customWsConfig.getValue("play.ws");
     return customWsClientFactory.forCustomConfig(ybWsOverrides);
@@ -85,9 +87,11 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     Config customWsConfig = getWsConfig(ybWsConfigPath);
     ConfigValue ybWsOverrides = customWsConfig.getValue("play.ws");
 
-    log.debug(
-        "Creating ws client with config override: {}",
-        ybWsOverrides.render(ConfigRenderOptions.concise()));
+    if (ybWsOverrides != null) {
+      log.debug(
+          "Creating ws client with config override: {}",
+          ybWsOverrides.render(ConfigRenderOptions.concise()));
+    }
 
     return customWsClientFactory.forCustomConfig(ybWsOverrides);
   }

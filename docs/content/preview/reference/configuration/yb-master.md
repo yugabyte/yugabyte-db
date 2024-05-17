@@ -520,13 +520,13 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
 
-Default: `8`
+Default: `1`
 
 ##### --tablet_split_low_phase_size_threshold_bytes
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `512_MB`
+Default: `128_MB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -574,7 +574,7 @@ Default: `0`
 
 Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
-Default: `1`
+Default: `0`
 
 ##### --outstanding_tablet_split_limit_per_tserver
 

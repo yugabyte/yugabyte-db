@@ -22,8 +22,6 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.DateFormat;
-import java.text.ParseException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -56,7 +54,7 @@ public class ReleasesUtils {
   public final String YB_HELM_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(?:(?:(.*?)(?:-helm))|(\\d+\\.\\d+\\.\\d+)).(?:tar.gz|tgz)";
   // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
-  public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
+  public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d\\.\\d+)";
 
   public final String YB_TAG_REGEX =
       "yugabyte-(?:ee-)?(?:.*)-(?!b\\d+)(.*)-(?:alma|centos|linux|el8|darwin)(?:.*).tar.gz";
@@ -72,7 +70,10 @@ public class ReleasesUtils {
           put("2.16", "STS");
           put("2.18", "STS");
           put("2.20", "LTS");
-          put("2024", "STS");
+          put("2024.1", "STS");
+          put("2024.2", "LTS");
+          put("2025.1", "STS");
+          put("2025.2", "LTS");
         }
       };
 
@@ -182,8 +183,8 @@ public class ReleasesUtils {
           if (node.has("release_type")) {
             metadata.release_type = node.get("release_type").asText();
           } else {
-            log.warn("no release type, default to PREVIEW");
-            metadata.release_type = "PREVIEW (DEFAULT)";
+            log.warn("no release type, attempt to parse version for type");
+            metadata.release_type = releaseTypeFromVersion(metadata.version);
           }
           // Only Linux platform has architecture. K8S expects null value for architecture.
           if (metadata.platform.equals(ReleaseArtifact.Platform.LINUX)) {
@@ -195,30 +196,25 @@ public class ReleasesUtils {
           }
 
           // Populate optional sections if available.
+          String rawDate = null;
           if (node.has("release_date")) {
-            DateFormat df = DateFormat.getDateInstance();
-            try {
-              metadata.release_date = df.parse(node.get("release_date").asText());
-              // best effort parse.
-            } catch (ParseException e) {
-              log.warn("invalid date format", e);
-            }
+            rawDate = node.get("release_date").asText();
           } else if (node.has("build_timestamp")) {
-            DateFormat df = DateFormat.getDateInstance();
+            rawDate = node.get("build_timestamp").asText();
+            log.debug("using build timestamp {} as release date for {}", rawDate, metadata.version);
+          }
+          if (rawDate != null) {
             try {
               DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss z");
-              LocalDateTime dateTime =
-                  LocalDateTime.parse(node.get("build_timestamp").asText(), formatter);
+              LocalDateTime dateTime = LocalDateTime.parse(rawDate, formatter);
               metadata.release_date = Date.from(dateTime.atZone(ZoneId.of("UTC")).toInstant());
-              log.debug(
-                  "using build timestamp {} as release date for {}",
-                  metadata.release_date,
-                  metadata.version);
               // best effort parse.
             } catch (DateTimeParseException e) {
               log.warn("invalid date format", e);
             }
           }
+
+          // and finally get the release notes if its available.
           if (node.has("release_notes")) {
             metadata.release_notes = node.get("release_notes").asText();
           }

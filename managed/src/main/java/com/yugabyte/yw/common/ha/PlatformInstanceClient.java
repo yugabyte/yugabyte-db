@@ -39,7 +39,7 @@ import play.mvc.Call;
 import play.mvc.Http;
 import v1.RoutesPrefix;
 
-public class PlatformInstanceClient {
+public class PlatformInstanceClient implements AutoCloseable {
 
   public static final String YB_HA_WS_KEY = "yb.ha.ws";
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceClient.class);
@@ -146,6 +146,7 @@ public class PlatformInstanceClient {
                 backupFile,
                 ImmutableMap.of(
                     "leader", leaderAddr, "sender", senderAddr, "ybaversion", getYbaVersion())));
+    // Manually close WS client as we are calling multipartRequest on apiHelper and not makeRequest
     if (response == null || response.get("error") != null) {
       LOG.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
       return false;
@@ -196,5 +197,10 @@ public class PlatformInstanceClient {
 
   public void clearMetrics() {
     HA_YBA_VERSION_MISMATCH_GAUGE.clear();
+  }
+
+  @Override
+  public void close() {
+    this.apiHelper.closeClient();
   }
 }

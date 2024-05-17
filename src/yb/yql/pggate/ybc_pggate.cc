@@ -79,6 +79,8 @@ DECLARE_int32(client_read_write_timeout_ms);
 
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
+DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
@@ -370,6 +372,16 @@ void AshCopyTServerSamples(
   }
 }
 
+std::string HumanReadableTableType(yb::TableType table_type) {
+  switch (table_type) {
+    case yb::TableType::PGSQL_TABLE_TYPE: return "YSQL";
+    case yb::TableType::YQL_TABLE_TYPE: return "YCQL";
+    case yb::TableType::TRANSACTION_STATUS_TABLE_TYPE: return "System";
+    case yb::TableType::REDIS_TABLE_TYPE: return "Unknown";
+  }
+  FATAL_INVALID_ENUM_VALUE(yb::TableType, table_type);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -476,6 +488,7 @@ bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) 
     session_data->session_id = pgapi->GetSessionId();
     session_data->txn_serial_no = pgapi->GetTxnSerialNo();
     session_data->read_time_serial_no = pgapi->GetReadTimeSerialNo();
+    session_data->active_sub_transaction_id = pgapi->GetActiveSubTransactionId();
     return true;
   }
   return false;
@@ -1151,9 +1164,10 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
 YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
                             const YBCPgOid index_oid,
                             bool if_exist,
+                            bool ddl_rollback_enabled,
                             YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
+  return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, ddl_rollback_enabled, handle));
 }
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
@@ -1187,10 +1201,6 @@ YBCStatus YBCPgBackfillIndex(
 
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
-}
-
-YBCStatus YBCPgDmlHasRegularTargets(YBCPgStatement handle, bool *has_targets) {
-  return ExtractValueFromResult(pgapi->DmlHasRegularTargets(handle), has_targets);
 }
 
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
@@ -1850,6 +1860,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
+      .ysql_enable_colocated_tables_with_tablespaces =
+          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
       .ysql_enable_create_database_oid_collision_retry =
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
@@ -2119,6 +2131,7 @@ YBCStatus YBCPgListReplicationSlots(
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
+  VLOG(4) << "The ListReplicationSlots response: " << result->DebugString();
 
   const auto &replication_slots_info = result.get().replication_slots();
   *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
@@ -2495,6 +2508,36 @@ YBCStatus YBCPgUpdateAndPersistLSN(
   }
 
   *DCHECK_NOTNULL(restart_lsn) = result->restart_lsn();
+  return YBCStatusOK();
+}
+
+YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
+  const auto result = pgapi->TabletsMetadata();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& local_tablets = result.get().tablets();
+  *count = local_tablets.size();
+  if (!local_tablets.empty()) {
+    *tablets = static_cast<YBCPgTabletsDescriptor*>(
+        YBCPAlloc(sizeof(YBCPgTabletsDescriptor) * local_tablets.size()));
+    YBCPgTabletsDescriptor* dest = *tablets;
+    for (const auto& tablet : local_tablets) {
+      new (dest) YBCPgTabletsDescriptor {
+        .tablet_id = YBCPAllocStdString(tablet.tablet_id()),
+        .table_name = YBCPAllocStdString(tablet.table_name()),
+        .table_id = YBCPAllocStdString(tablet.table_id()),
+        .namespace_name = YBCPAllocStdString(tablet.namespace_name()),
+        .table_type = YBCPAllocStdString(HumanReadableTableType(tablet.table_type())),
+        .pgschema_name = YBCPAllocStdString(tablet.pgschema_name()),
+        .partition_key_start = YBCPAllocStdString(tablet.partition().partition_key_start()),
+        .partition_key_start_len = tablet.partition().partition_key_start().size(),
+        .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
+        .partition_key_end_len = tablet.partition().partition_key_end().size(),
+      };
+      ++dest;
+    }
+  }
   return YBCStatusOK();
 }
 

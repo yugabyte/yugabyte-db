@@ -132,13 +132,15 @@ message LockInfoPB {
 
   repeated LockMode modes = 9;
 
-  // Populated only when the lock belongs to a colocated table. When set, TabletLockInfoPB::table_id
-  // should be ignored.
-  optional bytes table_id = 10;
+  // Populated only when the lock belongs to a colocated table. When set,
+  // TabletLockInfoPB::pg_table_id should be ignored.
+  optional bytes pg_table_id = 10;
 }
 
 message TabletLockInfoPB {
-  optional bytes table_id = 1;
+  // The TableId containing the PG table OID. Note: This will NOT match the DocDB table's uuid
+  // if the table was rewritten.
+  optional bytes pg_table_id = 1;
 
   optional bytes tablet_id = 2;
 

@@ -1653,16 +1653,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN
--------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Append
-         ->  Seq Scan on ischk_d1 ischk_1
-               Storage Filter: (b = '''x'''::tsvector)
-         ->  Seq Scan on ischk_d2 ischk_2
-               Storage Filter: (b = '''x'''::tsvector)
-(7 rows)
+                   QUERY PLAN
+-------------------------------------------------
+ Append
+   ->  Seq Scan on ischk_d1 ischk_1
+         Storage Filter: (b = '''x'''::tsvector)
+   ->  Seq Scan on ischk_d2 ischk_2
+         Storage Filter: (b = '''x'''::tsvector)
+(5 rows)
 
 DROP TABLE ischk;
 -- quote test

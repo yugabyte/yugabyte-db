@@ -74,7 +74,8 @@ public class RuntimeConfigService
     if (environment.getProperty(entity.getPath()) == null) {
       beanValidator
           .error()
-          .forField("path", "Property does not exist for path " + entity.getPath());
+          .forField("path", "Property does not exist for path " + entity.getPath())
+          .throwError();
     }
   }
 }

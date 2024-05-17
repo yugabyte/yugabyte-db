@@ -79,7 +79,6 @@ serviceEndpoints:
     app: "yb-tserver"
     ports:
       ycql-port: "9042"
-      yedis-port: "6379"
       ysql-port: "5433"
 ```
 

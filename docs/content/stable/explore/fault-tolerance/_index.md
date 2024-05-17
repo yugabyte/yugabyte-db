@@ -1,9 +1,9 @@
 ---
-title: Continuous availability
-headerTitle: Continuous availability
-linkTitle: Resilience
+title: Resiliency, high availability, and fault tolerance
+headerTitle: Resiliency, high availability, and fault tolerance
+linkTitle: Resiliency
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
-headcontent: High availability, fault tolerance, and resilience
+headcontent: Survive and recover from outages
 image: /images/section_icons/explore/fault_tolerance.png
 menu:
   stable:
@@ -14,7 +14,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Resilience, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs, to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
+Resiliency, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures, ranging from hardware malfunctions and software bugs to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
 
 YugabyteDB has been designed ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 

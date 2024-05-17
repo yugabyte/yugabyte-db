@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { useQuery } from 'react-query';
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBErrorIndicator } from '../common/YBErrorIndicator';
+import { YBErrorIndicator, isNonEmptyArray } from '@yugabytedb/ui-components';
 import { PrimaryDashboardData } from './PrimaryDashboardData';
 import { TroubleshootAPI, QUERY_KEY } from '../api';
 import { Anomaly, AppName } from '../helpers/dtos';
-import { isNonEmptyArray } from '../helpers/objectUtils';
 
 import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
 import { useHelperStyles } from './styles';
@@ -15,6 +14,7 @@ interface TroubleshootAdvisorProps {
   universeUuid: string;
   appName: AppName;
   timezone?: string;
+  hostUrl?: string;
   onSelectedIssue?: (troubleshootUuid: string) => void;
 }
 
@@ -39,6 +39,7 @@ export const TroubleshootAdvisor = ({
   universeUuid,
   appName,
   timezone,
+  hostUrl,
   onSelectedIssue
 }: TroubleshootAdvisorProps) => {
   const helperClasses = useHelperStyles();
@@ -50,7 +51,7 @@ export const TroubleshootAdvisor = ({
 
   const { isLoading, isError, isIdle, refetch: anomaliesRefetch } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime),
+    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime, hostUrl),
     {
       enabled: anomalyList === null,
       onSuccess: (data: Anomaly[]) => {

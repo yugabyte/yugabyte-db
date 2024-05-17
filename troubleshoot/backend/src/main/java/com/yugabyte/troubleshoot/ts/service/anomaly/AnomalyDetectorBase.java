@@ -103,9 +103,10 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
             .setReplaceNaN(false)
+            .setFillMissingPoints(false)
             .setFilters(
                 ImmutableMap.of(
-                    GraphFilter.universeUuid,
+                    GraphLabel.universeUuid,
                     ImmutableList.of(context.getUniverseUuid().toString())));
 
     GraphResponse response =
@@ -124,14 +125,14 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
   private GraphMetadata fillGraphMetadata(
       GraphMetadata template, GraphAnomaly graphAnomaly, AnomalyDetectionContext context) {
     GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
-    Map<GraphFilter, List<String>> filters = new HashMap<>(template.getFilters());
-    for (GraphFilter filterKey : template.getFilters().keySet()) {
+    Map<GraphLabel, List<String>> filters = new HashMap<>(template.getFilters());
+    for (GraphLabel filterKey : template.getFilters().keySet()) {
       if (graphAnomaly.getLabels().containsKey(filterKey.name())) {
         filters.put(filterKey, new ArrayList<>(graphAnomaly.getLabels().get(filterKey.name())));
       }
     }
-    if (template.getFilters().containsKey(GraphFilter.universeUuid)) {
-      filters.put(GraphFilter.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
+    if (template.getFilters().containsKey(GraphLabel.universeUuid)) {
+      filters.put(GraphLabel.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
     }
     return metadataBuilder.filters(filters).build();
   }
@@ -210,7 +211,7 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
                   .toList());
 
           List<Anomaly.NodeInfo> affectedNodes =
-              graphAnomaly.getLabels().get(GraphFilter.instanceName.name()).stream()
+              graphAnomaly.getLabels().get(GraphLabel.instanceName.name()).stream()
                   .filter(Objects::nonNull)
                   .map(nodeName -> Anomaly.NodeInfo.builder().name(nodeName).build())
                   .toList();

@@ -3922,10 +3922,6 @@ IsInTransactionBlock(bool isTopLevel)
 	if (!isTopLevel)
 		return true;
 
-	if (CurrentTransactionState->blockState != TBLOCK_DEFAULT &&
-		CurrentTransactionState->blockState != TBLOCK_STARTED)
-		return true;
-
 	return false;
 }
 

@@ -466,7 +466,7 @@ generateCrdObjects := {
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
@@ -710,7 +710,7 @@ compileYbaCliBinary := {
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  
+
   val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
   completeFileList = fileList1
   status = status1
@@ -772,7 +772,7 @@ cleanYbaCliBinary := {
 def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
   val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
   val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
-  
+
   status
 }
 
@@ -832,6 +832,9 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
     openApiValidateSpec := SettingDisabled,
     openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
+    openApiTypeMappings := Map[String, String](
+      "OffsetDateTime" -> "java.util.Date"
+    ),
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
@@ -905,7 +908,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.83-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b8"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(

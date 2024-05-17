@@ -463,6 +463,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  bool is_being_altered_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+  }
+
   std::vector<std::string> cols_marked_for_deletion() const {
     std::vector<std::string> columns;
     for (const auto& col : pb.schema().columns()) {

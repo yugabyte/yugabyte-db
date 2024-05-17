@@ -3248,4 +3248,20 @@ public class TestSelect extends BaseCQLTest {
         assertEquals(2, metrics.seekCount);
     }
   }
+
+  @Test
+  public void testGroupBy() throws Exception
+  {
+    // Expect error in SELECT with GROUP BY.
+    session.execute("CREATE TABLE test_tbl (id int primary key, v int);");
+    runInvalidStmt("SELECT * FROM test_tbl GROUP BY v;");
+
+    // Restart with GROUP BY queries with error suppressed.
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ycql_suppress_group_by_error", "true");
+    restartClusterWithTSFlags(flags);
+
+    session.execute("CREATE TABLE test_tbl (id int primary key, v int);");
+    session.execute("SELECT * FROM test_tbl GROUP BY v;");
+  }
 }

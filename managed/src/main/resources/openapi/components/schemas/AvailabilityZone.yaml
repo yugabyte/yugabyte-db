@@ -1,0 +1,37 @@
+title: Availability Zone within a Region in a cloud provider
+type: object
+required:
+  - name
+description: Availability zone (AZ) for a region
+properties:
+  uuid:
+    description: AZ UUID
+    type: string
+    format: uuid
+    readOnly: true
+  name:
+    description: AZ name
+    type: string
+    example: us-west1-a
+  code:
+    description: AZ code
+    type: string
+    example: us-west1-a
+  active:
+    description: AZ status. This value is `true` for an active AZ.
+    type: boolean
+    readOnly: true
+  kubeconfig_path:
+    description: Path to Kubernetes configuration file. Applicable only to a k8s cloud provider
+    type: string
+    readOnly: true
+  secondary_subnet:
+    description: AZ secondary subnet
+    type: string
+    example: secondary subnet id
+  subnet:
+    description: AZ subnet
+    type: string
+    example: subnet id
+  details:
+    $ref: ./AvailabilityZoneDetails.yaml

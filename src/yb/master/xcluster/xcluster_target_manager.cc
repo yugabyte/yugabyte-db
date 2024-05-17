@@ -334,8 +334,6 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
   SysClusterConfigEntryPB cluster_config;
   RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
   const auto& consumer_registry = cluster_config.consumer_registry();
-  xcluster_status.role = XClusterRole_Name(consumer_registry.role());
-  xcluster_status.transactional = consumer_registry.transactional();
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
@@ -431,4 +429,16 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
 
   return Status::OK();
 }
+
+std::unordered_set<xcluster::ReplicationGroupId>
+XClusterTargetManager::GetTransactionalReplicationGroups() const {
+  std::unordered_set<xcluster::ReplicationGroupId> result;
+  for (const auto& replication_info : catalog_manager_.GetAllXClusterUniverseReplicationInfos()) {
+    if (replication_info.transactional()) {
+      result.insert(xcluster::ReplicationGroupId(replication_info.replication_group_id()));
+    }
+  }
+  return result;
+}
+
 }  // namespace yb::master

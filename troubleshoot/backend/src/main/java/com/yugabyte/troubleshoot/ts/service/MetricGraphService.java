@@ -33,25 +33,11 @@ public class MetricGraphService implements GraphSourceIF {
   private static final Pattern SPECIAL_FILTER_PATTERN = Pattern.compile("[*|+$]");
 
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
-
-  private static final String CONTAINER_METRIC_PREFIX = "container";
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
   public static final String NODE_PREFIX = "node_prefix";
-
-  private static final Set<String> DATA_DISK_USAGE_METRICS =
-      ImmutableSet.of(
-          "disk_usage", "disk_used_size_total", "disk_capacity_size_total", "disk_usage_percent");
-
-  private static final Set<String> DISK_USAGE_METRICS =
-      ImmutableSet.<String>builder()
-          .addAll(DATA_DISK_USAGE_METRICS)
-          .add("disk_volume_usage_percent")
-          .add("disk_volume_used")
-          .add("disk_volume_capacity")
-          .build();
 
   private final PrometheusClient prometheusClient;
   private final Map<String, MetricsGraphConfig> metricGraphConfigs;
@@ -70,7 +56,7 @@ public class MetricGraphService implements GraphSourceIF {
   }
 
   @Override
-  public long minGraphStepSeconds(UniverseMetadata universeMetadata) {
+  public long minGraphStepSeconds(GraphQuery query, UniverseMetadata universeMetadata) {
     return universeMetadata.getMetricsScrapePeriodSec() * 3;
   }
 
@@ -87,7 +73,6 @@ public class MetricGraphService implements GraphSourceIF {
     if (config == null) {
       throw new IllegalArgumentException("Metric graph " + query.getName() + " does not exists");
     } else {
-      query = preProcessFilters(universeMetadata, universeDetails, query);
       Map<String, String> topKQueries = Collections.emptyMap();
       Map<String, String> aggregatedQueries = Collections.emptyMap();
       MetricQueryContext context =
@@ -327,13 +312,13 @@ public class MetricGraphService implements GraphSourceIF {
       // The kubelet volume metrics only has the persistentvolumeclain field
       // as well as namespace. Adding any other field will cause the query to fail.
       if (metric.startsWith("kubelet_volume")) {
-        allFilters.remove(GraphFilter.podName.getMetricLabel());
-        allFilters.remove(GraphFilter.containerName.getMetricLabel());
+        allFilters.remove(GraphLabel.podName.getMetricLabel());
+        allFilters.remove(GraphLabel.containerName.getMetricLabel());
       }
       // For all other metrics, it is safe to remove the filter if
       // it exists.
       else {
-        allFilters.remove(GraphFilter.pvc.getMetricLabel());
+        allFilters.remove(GraphLabel.pvc.getMetricLabel());
       }
     }
     allExcludeFilters.putAll(context.getExcludeFilters());
@@ -428,7 +413,7 @@ public class MetricGraphService implements GraphSourceIF {
 
   private static Set<String> getAdditionalGroupBy(GraphSettings settings) {
     return switch (settings.getSplitType()) {
-      case NODE -> ImmutableSet.of(GraphFilter.instanceName.getMetricLabel());
+      case NODE -> ImmutableSet.of(GraphLabel.instanceName.getMetricLabel());
       case TABLE -> ImmutableSet.of(NAMESPACE_NAME, NAMESPACE_ID, TABLE_ID, TABLE_NAME);
       case NAMESPACE -> ImmutableSet.of(NAMESPACE_NAME, NAMESPACE_ID);
       default -> Collections.emptySet();
@@ -453,13 +438,13 @@ public class MetricGraphService implements GraphSourceIF {
     // We should use instance name for aggregated graph in case it's grouped by instance.
     boolean useInstanceName =
         config.getGroupBy() != null
-            && config.getGroupBy().equals(GraphFilter.instanceName.getMetricLabel())
+            && config.getGroupBy().equals(GraphLabel.instanceName.getMetricLabel())
             && settings.getSplitMode() == GraphSettings.SplitMode.NONE;
     for (final MetricResponse.Result result : response.getData().getResult()) {
       GraphData metricGraphData = new GraphData();
       Map<String, String> metricInfo = result.getMetric();
 
-      metricGraphData.setInstanceName(metricInfo.remove(GraphFilter.instanceName.getMetricLabel()));
+      metricGraphData.setInstanceName(metricInfo.remove(GraphLabel.instanceName.getMetricLabel()));
       metricGraphData.setTableId(metricInfo.remove(TABLE_ID));
       metricGraphData.setTableName(metricInfo.remove(TABLE_NAME));
       metricGraphData.setNamespaceName(metricInfo.remove(NAMESPACE_NAME));
@@ -560,126 +545,6 @@ public class MetricGraphService implements GraphSourceIF {
                   return Integer.MAX_VALUE - 1;
                 }))
         .collect(Collectors.toList());
-  }
-
-  private GraphQuery preProcessFilters(
-      UniverseMetadata metadata, UniverseDetails universe, GraphQuery query) {
-    // Given we have a limitation on not being able to rename the pod labels in
-    // kubernetes cadvisor metrics, we try to see if the metric being queried is for
-    // container or not, and use pod_name vs exported_instance accordingly.
-    // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
-    boolean isContainerMetric = query.getName().startsWith(CONTAINER_METRIC_PREFIX);
-    GraphFilter universeFilterLabel =
-        isContainerMetric ? GraphFilter.namespace : GraphFilter.universeUuid;
-    GraphFilter nodeFilterLabel =
-        isContainerMetric ? GraphFilter.podName : GraphFilter.instanceName;
-
-    List<UniverseDetails.UniverseDefinition.NodeDetails> nodesToFilter = new ArrayList<>();
-    Map<GraphFilter, List<String>> filters =
-        query.getFilters() != null ? query.getFilters() : new HashMap<>();
-    if (filters.containsKey(GraphFilter.clusterUuid)
-        || filters.containsKey(GraphFilter.regionCode)
-        || filters.containsKey(GraphFilter.azCode)
-        || filters.containsKey(GraphFilter.instanceName)
-        || filters.containsKey(GraphFilter.instanceType)) {
-      List<UUID> clusterUuids =
-          filters.getOrDefault(GraphFilter.clusterUuid, Collections.emptyList()).stream()
-              .map(UUID::fromString)
-              .toList();
-      List<String> regionCodes =
-          filters.getOrDefault(GraphFilter.regionCode, Collections.emptyList());
-      List<String> azCodes = filters.getOrDefault(GraphFilter.azCode, Collections.emptyList());
-      List<String> instanceNames =
-          filters.getOrDefault(GraphFilter.instanceName, Collections.emptyList());
-      List<UniverseDetails.InstanceType> instanceTypes =
-          filters.getOrDefault(GraphFilter.instanceType, Collections.emptyList()).stream()
-              .map(type -> UniverseDetails.InstanceType.valueOf(type.toUpperCase()))
-              .toList();
-      // Need to get matching nodes
-      nodesToFilter.addAll(
-          universe.getUniverseDetails().getNodeDetailsSet().stream()
-              .filter(
-                  node -> {
-                    if (CollectionUtils.isNotEmpty(instanceTypes)
-                        && instanceTypes.contains(UniverseDetails.InstanceType.MASTER)
-                        && !node.isMaster()) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(instanceTypes)
-                        && instanceTypes.contains(UniverseDetails.InstanceType.TSERVER)
-                        && !node.isTserver()) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(clusterUuids)
-                        && !clusterUuids.contains(node.getPlacementUuid())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(regionCodes)
-                        && !regionCodes.contains(node.getCloudInfo().getRegion())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(azCodes)
-                        && !azCodes.contains(node.getCloudInfo().getRegion())) {
-                      return false;
-                    }
-                    if (CollectionUtils.isNotEmpty(instanceNames)
-                        && !instanceNames.contains(node.getNodeName())) {
-                      return false;
-                    }
-                    return true;
-                  })
-              .toList());
-
-      if (CollectionUtils.isEmpty(nodesToFilter)) {
-        throw new RuntimeException(
-            "No nodes found based on passed universe, "
-                + "clusters, regions, availability zones and node names");
-      }
-    }
-    // Check if it is a Kubernetes deployment.
-    if (isContainerMetric) {
-      if (CollectionUtils.isEmpty(nodesToFilter)) {
-        nodesToFilter = new ArrayList<>(universe.getUniverseDetails().getNodeDetailsSet());
-      }
-      Set<String> podNames = new HashSet<>();
-      Set<String> containerNames = new HashSet<>();
-      Set<String> pvcNames = new HashSet<>();
-      Set<String> namespaces = new HashSet<>();
-      for (UniverseDetails.UniverseDefinition.NodeDetails node : nodesToFilter) {
-        String podName = node.getK8sPodName();
-        String namespace = node.getK8sNamespace();
-        String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
-        String pvcName = String.format("(.*)-%s", podName);
-        podNames.add(podName);
-        containerNames.add(containerName);
-        pvcNames.add(pvcName);
-        namespaces.add(namespace);
-      }
-      filters.put(nodeFilterLabel, new ArrayList<>(podNames));
-      filters.put(GraphFilter.containerName, new ArrayList<>(containerNames));
-      filters.put(GraphFilter.pvc, new ArrayList<>(pvcNames));
-      filters.put(universeFilterLabel, new ArrayList<>(namespaces));
-    } else {
-      if (CollectionUtils.isNotEmpty(nodesToFilter)) {
-        List<String> nodeNames =
-            nodesToFilter.stream()
-                .map(UniverseDetails.UniverseDefinition.NodeDetails::getNodeName)
-                .collect(Collectors.toList());
-        filters.put(nodeFilterLabel, nodeNames);
-      }
-
-      if (DISK_USAGE_METRICS.contains(query.getName())) {
-        if (DATA_DISK_USAGE_METRICS.contains(query.getName())) {
-          filters.put(GraphFilter.mountPoint, metadata.getDataMountPoints());
-        } else {
-          List<String> allMountPoints = new ArrayList<>(metadata.getOtherMountPoints());
-          allMountPoints.addAll(metadata.getDataMountPoints());
-          filters.put(GraphFilter.mountPoint, allMountPoints);
-        }
-      }
-    }
-    query.setFilters(filters);
-    return query;
   }
 
   @Value

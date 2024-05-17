@@ -25,7 +25,7 @@ When no region is preferred, YugabyteDB Managed distributes requests equally acr
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+You can enable [follower reads](../../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 

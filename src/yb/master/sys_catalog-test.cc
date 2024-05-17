@@ -523,6 +523,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   {
     auto l = security_config->LockForWrite();
     l.mutable_data()->pb.mutable_security_config()->set_roles_version(0);
+    l.mutable_data()->pb.mutable_security_config()->set_cassandra_user_created(true);
     l.Commit();
   }
   scoped_refptr<SysConfigInfo> ysql_catalog_config = new SysConfigInfo(kYsqlCatalogConfigType);

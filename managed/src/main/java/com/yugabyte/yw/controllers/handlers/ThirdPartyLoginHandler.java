@@ -108,13 +108,17 @@ public class ThirdPartyLoginHandler {
     }
     UUID custUUID = Customer.find.query().findOne().getUuid();
     Set<UUID> rolesSet = getRolesFromGroupMemberships(request, custUUID);
-    Users.Role userRole = confGetter.getGlobalConf(GlobalConfKeys.oidcDefaultRole);
+    Users.Role userRole = null;
 
     // calculate final system role to be assigned to user
     for (UUID roleUUID : rolesSet) {
       Role role = Role.find.byId(roleUUID);
       Users.Role systemRole = Users.Role.valueOf(role.getName());
       userRole = Users.Role.union(systemRole, userRole);
+    }
+
+    if (userRole == null) {
+      userRole = confGetter.getGlobalConf(GlobalConfKeys.oidcDefaultRole);
     }
 
     // update role if existing user or create new user
@@ -259,5 +263,12 @@ public class ThirdPartyLoginHandler {
             () ->
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
+  }
+
+  public ProfileManager<CommonProfile> getProfileManager(Request request) {
+    final PlayWebContext context = new PlayWebContext(request, sessionStore);
+    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+
+    return profileManager;
   }
 }

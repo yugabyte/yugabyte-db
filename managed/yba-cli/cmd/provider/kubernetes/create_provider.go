@@ -5,6 +5,7 @@
 package kubernetes
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"gopkg.in/yaml.v2"
 )
 
 // createK8sProviderCmd represents the provider command
@@ -21,6 +23,13 @@ var createK8sProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
 	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider k8s create -n <provider-name> --type gke \
+	--pull-secret-file <pull-secret-file-path> \
+	--region region-name=us-west1 \
+	--zone zone-name=us-west1-b,region-name=us-west1,storage-class=<storage-class>,\
+	overrirdes-file-path=<overrirdes-file-path> \
+	--zone zone-name=us-west1-a,region-name=us-west1,storage-class=<storage-class> \
+	--zone zone-name=us-west1-c,region-name=us-west1,storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -64,6 +73,20 @@ var createK8sProviderCmd = &cobra.Command{
 		logrus.Debug("Reading Kubernetes Pull Secret\n")
 		pullSecretContent := util.YAMLtoString(pullSecretFilePath)
 
+		pullSecretName := filepath.Base(pullSecretFilePath)
+
+		var kubernetesPullSecretYAML util.KubernetesPullSecretYAML
+
+		// Unmarshal YAML string into struct
+		if err := yaml.Unmarshal([]byte(pullSecretContent), &kubernetesPullSecretYAML); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		kubernetesImagePullSecretName := ""
+		if kubernetesPullSecretYAML.Metadata != nil {
+			kubernetesImagePullSecretName = kubernetesPullSecretYAML.Metadata.Name
+		}
+
 		configFilePath, err := cmd.Flags().GetString("kubeconfig-file")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -98,11 +121,13 @@ var createK8sProviderCmd = &cobra.Command{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Kubernetes: &ybaclient.KubernetesInfo{
-						KubernetesImageRegistry:     util.GetStringPointer(imageRegistry),
-						KubernetesProvider:          util.GetStringPointer(providerType),
-						KubernetesPullSecretContent: util.GetStringPointer(pullSecretContent),
-						KubernetesStorageClass:      util.GetStringPointer(storageClass),
-						KubeConfigContent:           util.GetStringPointer(configContent),
+						KubernetesImageRegistry:       util.GetStringPointer(imageRegistry),
+						KubernetesProvider:            util.GetStringPointer(providerType),
+						KubernetesPullSecretContent:   util.GetStringPointer(pullSecretContent),
+						KubernetesPullSecretName:      util.GetStringPointer(pullSecretName),
+						KubernetesImagePullSecretName: util.GetStringPointer(kubernetesImagePullSecretName),
+						KubernetesStorageClass:        util.GetStringPointer(storageClass),
+						KubeConfigContent:             util.GetStringPointer(configContent),
 					},
 				},
 			},

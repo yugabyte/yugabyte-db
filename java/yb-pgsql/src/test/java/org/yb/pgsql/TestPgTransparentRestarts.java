@@ -212,20 +212,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Doing SELECT * operation on short strings with savepoints enabled and created and expect
-   * restarts to to *not* happen transparently.
-   * <p>
-   * todo
-   */
-  @Test
-  public void selectStarShortWithSavepoints() throws Exception {
-    new SavepointStatementTester(
-        getConnectionBuilder(),
-        getShortString()
-    ).runTest();
-  }
-
-  /**
    * Same as the previous test but uses PreparedStatements (with no parameters)
    */
   @Test
@@ -1203,75 +1189,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     @Override
     public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
       return stmt.executeQuery();
-    }
-  }
-
-  /** SavepointStatementTester that uses regular Statement and savepoints in various places */
-  private class SavepointStatementTester extends ConcurrentInsertQueryTester<Statement> {
-    public SavepointStatementTester(
-        ConnectionBuilder cb,
-        String valueToInsert) {
-      super(cb, valueToInsert, 50 /* numInserts */);
-    }
-
-    private ThrowingRunnable getRunnableThread(
-        ConnectionBuilder cb, BooleanSupplier isExecutionDone, String secondSavepointOpString) {
-      return () -> {
-        int selectsAttempted = 0;
-        int selectsRestartRequired = 0;
-        int selectsSucceeded = 0;
-        try (Connection selectTxnConn =
-                 cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
-             Statement stmt = selectTxnConn.createStatement()) {
-          selectTxnConn.setAutoCommit(false);
-          for (/* No setup */; !isExecutionDone.getAsBoolean(); ++selectsAttempted) {
-            try {
-              stmt.execute("SAVEPOINT a");
-              if (!secondSavepointOpString.isEmpty()) {
-                stmt.execute(secondSavepointOpString);
-              }
-              stmt.executeQuery("SELECT count(*) from test_rr");
-              selectTxnConn.commit();
-              ++selectsSucceeded;
-            } catch (Exception ex) {
-              try {
-                selectTxnConn.rollback();
-              } catch (SQLException ex1) {
-                fail("Rollback failed: " + ex1.getMessage());
-              }
-              if (isRestartReadError(ex)) {
-                ++selectsRestartRequired;
-              }
-              if (!isTxnError(ex)) {
-                throw ex;
-              }
-            }
-          }
-        } catch (Exception ex) {
-          fail("SELECT in savepoint thread failed: " + ex.getMessage());
-        }
-        LOG.info(String.format(
-            "SELECT in savepoint thread with second savepoint op: \"%s\": selectsSucceeded=%d" +
-            " selectsAttempted=%d selectsRestartRequired=%d", secondSavepointOpString,
-            selectsSucceeded, selectsAttempted, selectsRestartRequired));
-        assertTrue(
-            "No SELECTs after second savepoint statement: " + secondSavepointOpString
-                + " resulted in 'restart read required' on second operation"
-                + " - but we expected them to!"
-                + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
-                selectsRestartRequired > 0);
-      };
-    }
-
-    @Override
-    public List<ThrowingRunnable> getRunnableThreads(
-        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
-      List<ThrowingRunnable> runnables = new ArrayList<>();
-      runnables.add(getRunnableThread(cb, isExecutionDone, ""));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "SAVEPOINT b"));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "ROLLBACK TO a"));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "RELEASE a"));
-      return runnables;
     }
   }
 

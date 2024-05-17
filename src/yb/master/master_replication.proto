@@ -285,6 +285,7 @@ message SetupUniverseReplicationResponsePB {
 message DeleteUniverseReplicationRequestPB {
   optional string replication_group_id = 1;
   optional bool ignore_errors = 2 [default = false];
+  optional bool skip_producer_stream_deletion = 3 [ default = false ];
 }
 
 message DeleteUniverseReplicationResponsePB {

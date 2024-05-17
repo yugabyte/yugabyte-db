@@ -1671,6 +1671,10 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				nslots_active;
 	int			nsubscriptions;
 
+	uint32_t 	yb_num_logical_conn;
+	uint32_t 	yb_num_physical_conn_from_ysqlconnmgr;
+	int		 	yb_net_client_connections;
+
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this to ensure that no new backend starts up in the target
@@ -1779,37 +1783,48 @@ removing_database_from_system:
 	 * database lock, no new ones can start after this.)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
-	 *
-	 * number of actual client connections =
-	 *		number of clients connected on ysql port
-	 * 			+ number of clients connected on ysql connection manager port
-	 * 			- number of server connections b/w ysql connection manager and ysql.
 	 */
-	uint32_t 	yb_num_logical_conn,
-				yb_num_physical_conn_from_ysqlconnmgr,
-				yb_net_client_connections;
+	if (IsYugaByteEnabled())
+	{
+		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
 
-	CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+		/*
+		 * number of actual client connections =
+		 *		number of clients connected on ysql port
+		 * 			+ number of clients connected on ysql connection manager port
+		 * 			- number of server connections b/w ysql connection manager and ysql.
+		 */
+		yb_net_client_connections = notherbackends;
 
-	yb_net_client_connections = notherbackends;
-
-	/*
-	 * Ignore the number of logical or physical connections to the database
-	 * if pg_backend is unable to read the shared memory segment for
-	 * Ysql Connection Manager stats.
-	 */
-	if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
+		/*
+		 * Ignore the number of logical or physical connections to the database
+		 * if pg_backend is unable to read the shared memory segment for
+		 * Ysql Connection Manager stats.
+		 */
+		if (YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
-		yb_net_client_connections +=
-			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
-
-	if (yb_net_client_connections != 0 || npreparedxacts != 0)
-		ereport(ERROR,
+			yb_net_client_connections +=
+				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		/*
+		 * yb_net_client_connections can be negative if there are broken physical connections
+		 * in ysql connection manager pool.
+		 */
+		if (yb_net_client_connections > 0 || npreparedxacts > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("database \"%s\" is being accessed by other users",
+							dbname),
+					 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+	}
+	else
+	{
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("database \"%s\" is being accessed by other users, num logical conn %d physical %d",
-						dbname, yb_num_logical_conn, yb_num_physical_conn_from_ysqlconnmgr),
-				 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+				 errmsg("database \"%s\" is being accessed by other users",
+						dbname),
+				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	}
 
 	/*
 	 * Check for other backends in the target database.  (Because we hold the
@@ -1926,6 +1941,11 @@ RenameDatabase(const char *oldname, const char *newname)
 	int			npreparedxacts;
 	ObjectAddress address;
 
+	uint32_t 	yb_num_logical_conn;
+	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
+	int			yb_net_client_connections;
+
+
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this for the same reasons as DROP DATABASE.
@@ -1984,12 +2004,48 @@ RenameDatabase(const char *oldname, const char *newname)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
+	if (IsYugaByteEnabled())
+	{
+		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+
+		/*
+		 * number of actual client connections =
+		 *		number of clients connected on ysql port
+		 * 			+ number of clients connected on ysql connection manager port
+		 * 			- number of server connections b/w ysql connection manager and ysql.
+		 */
+		yb_net_client_connections = notherbackends;
+
+		/*
+		 * Ignore the number of logical or physical connections to the database
+		 * if pg_backend is unable to read the shared memory segment for
+		 * Ysql Connection Manager stats.
+		 */
+		if (YbGetNumYsqlConnMgrConnections(oldname, NULL, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr))
+			yb_net_client_connections +=
+				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+		/*
+		 * yb_net_client_connections can be negative if there are broken physical connections
+		 * in ysql connection manager pool.
+		 */
+		if (yb_net_client_connections > 0 || npreparedxacts > 0)
+			ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("database \"%s\" is being accessed by other users",
+						oldname),
+				 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+	}
+	else
+	{
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",
 						oldname),
 				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	}
 
 	/* rename */
 	newtup = SearchSysCacheCopy1(DATABASEOID, ObjectIdGetDatum(db_id));

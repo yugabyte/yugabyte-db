@@ -10,6 +10,7 @@ import { ImportedArchitecture } from './ImportedArchitecture';
 import { InUseUniverses } from './InUseUniverses';
 import { YBButton } from '../../../components';
 import { ModalTitle, ReleasePlatformArchitecture, ReleaseState, Releases } from './dtos';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
@@ -148,7 +149,7 @@ interface ReleaseDetailsProps {
 const releaseDetailsMap = {
   version: 'version',
   support: 'release_type',
-  releaseDate: 'release_date',
+  releaseDate: 'release_date_msecs',
   releaseNote: 'release_notes',
   status: 'state'
 };
@@ -173,7 +174,7 @@ export const ReleaseDetails = ({
     const key = releaseDetailsMap[releaseDetailsKey];
     let value = data?.[key];
     if (!value) {
-      value = 'NA';
+      value = '';
     }
 
     if (key === releaseDetailsMap.releaseNote) {
@@ -231,12 +232,14 @@ export const ReleaseDetails = ({
         </Box>
       );
     }
+
+    // Release Date
     return (
       <Box
         className={helperClasses.releaseMetadataValue}
         data-testid={'ReleaseDetails-ReleaseMetadata'}
       >
-        {value}
+        {value ? ybFormatDate(value, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP) : ''}
       </Box>
     );
   };

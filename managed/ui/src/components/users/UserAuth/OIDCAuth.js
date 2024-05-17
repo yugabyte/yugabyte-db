@@ -44,6 +44,7 @@ const OIDC_FIELDS = [
   'oidcScope',
   'oidcEmailAttribute',
   'showJWTInfoOnLogin',
+  'oidcRefreshTokenEndpoint',
   'oidc_default_role'
 ];
 
@@ -199,7 +200,7 @@ export const OIDCAuth = (props) => {
     if (mappingData.length > 0) {
       await saveOIDCMappings(mappingData);
     }
-    
+
     queryClient.invalidateQueries("oidc_mappings");
   };
 
@@ -233,7 +234,7 @@ export const OIDCAuth = (props) => {
   }, [configEntries, setToggleVisible, setOIDC]);
 
   const isOIDCMappingEnabled = configEntries.find((config) => config.key === 'yb.security.oidc_enable_auto_create_users')?.value === "true";
-  
+
   const { data: roles } = useQuery('roles', getAllRoles, {
     select: (data) => data.data ?? [],
     enabled: getPromiseState(runtimeConfigs).isSuccess() && isOIDCMappingEnabled,
@@ -245,7 +246,7 @@ export const OIDCAuth = (props) => {
     enabled: isOIDCMappingEnabled,
     refetchOnMount: false
   });
-  
+
   const [OIDCMapping, setOIDCMapping] = useState(false);
   const [mappingData, setMappingData] = useState(oidc_mappings ?? []);
 
@@ -512,6 +513,32 @@ export const OIDCAuth = (props) => {
                     </Col>
                   </Row>
 
+                  <Row key="oidc_refresh_token_url">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c">
+                          <div>
+                            Refresh Token URL&nbsp;
+                            <YBInfoTip
+                              title="Refresh Token URL"
+                              content="Provide the endpoint that will be used for re-fetching the access token"
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <Field
+                            name="oidcRefreshTokenEndpoint"
+                            component={YBFormInput}
+                            disabled={isDisabled}
+                            className="ua-form-field"
+                          />
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+
                   {/* ROLE SETTINGS */}
                   {isOIDCMappingEnabled && (
                     <>
@@ -712,22 +739,38 @@ export const OIDCAuth = (props) => {
 
                   <Row key="oidc_provider_meta">
                     <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+
                       <Row className="ua-field-row">
-                        <div
-                          className={clsx('ua-provider-meta', isDisabled && 'ua-btn-disabled')}
-                          onClick={() => {
-                            if (isDisabled) return;
-                            const escapedStr = values?.oidcProviderMetadata
-                              ? escapeStr(values.oidcProviderMetadata).replace(/\\/g, '')
-                              : '';
-                            setOIDCMetadata(
-                              escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : ''
-                            );
-                            setShowMetadataModal(true);
-                          }}
-                        >
-                          Configure OIDC Provider Metadata
-                        </div>
+                        <Col className="ua-label-c">
+                          <div>
+                            Configure OIDC Provider Metadata&nbsp;
+                            <YBInfoTip
+                              title="Configure OIDC Metadata"
+                              content={<div>If you have an airgapped installation, provide an OpenID Provider Configuration Document for your provider. <br/>
+                              This contains the provider OIDC endpoints, supported claims, and other metadata.<br/>
+                              YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service&apos;s public signing keys</div>}
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <div
+                            className={clsx('ua-provider-meta', isDisabled && 'ua-btn-disabled')}
+                            onClick={() => {
+                              if (isDisabled) return;
+                              const escapedStr = values?.oidcProviderMetadata
+                                ? escapeStr(values.oidcProviderMetadata).replace(/\\/g, '')
+                                : '';
+                              setOIDCMetadata(
+                                escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : ''
+                              );
+                              setShowMetadataModal(true);
+                            }}
+                          >
+                            Configure OIDC Provider Metadata
+                          </div>
+                        </Col>
                       </Row>
                     </Col>
                   </Row>

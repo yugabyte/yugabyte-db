@@ -86,7 +86,7 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  virtual Status InitAutoFlags() override;
+  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
   Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;

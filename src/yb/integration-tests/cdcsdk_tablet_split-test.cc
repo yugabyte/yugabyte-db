@@ -2165,8 +2165,21 @@ void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
   ASSERT_TRUE(DeleteCDCStream(stream_id));
 }
 
-CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
-                                        TestCleanUpCDCStreamsMetadataDuringTabletSplit);
+// TODO(#22095): Enable the test after changing the test design to not block the main bg thread
+// executing CleanUpCDCSDKStreamsMetadata().
+TEST_F(
+    CDCSDKTabletSplitTest,
+    YB_DISABLE_TEST(TestCleanUpCDCStreamsMetadataDuringTabletSplitExplicit)) {
+  TestCleanUpCDCStreamsMetadataDuringTabletSplit(CDCCheckpointType::EXPLICIT);
+}
+
+// TODO(#22095): Enable the test after changing the test design to not block the main bg thread
+// executing CleanUpCDCSDKStreamsMetadata().
+TEST_F(
+    CDCSDKTabletSplitTest,
+    YB_DISABLE_TEST(TestCleanUpCDCStreamsMetadataDuringTabletSplitImplicit)) {
+  TestCleanUpCDCStreamsMetadataDuringTabletSplit(CDCCheckpointType::IMPLICIT);
+}
 
 TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDuringConsistentSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;

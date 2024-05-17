@@ -30,6 +30,9 @@ public class GraphData {
   private String namespaceId;
   private String nodePrefix;
   private String type;
+  private String waitEventComponent;
+  private String waitEventClass;
+  private String waitEvent;
   private Map<String, String> labels;
   @JsonIgnore private List<GraphPoint> points = new ArrayList<>();
 
@@ -75,5 +78,15 @@ public class GraphData {
   @JsonIgnore
   public String getNameOrEmpty() {
     return name != null ? name : StringUtils.EMPTY;
+  }
+
+  @JsonIgnore
+  public String getWaitEventClassOrEmpty() {
+    return waitEventClass != null ? waitEventClass : StringUtils.EMPTY;
+  }
+
+  @JsonIgnore
+  public String getWaitEventOrEmpty() {
+    return waitEvent != null ? waitEvent : StringUtils.EMPTY;
   }
 }

@@ -272,7 +272,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T2_NAME, T2_INDEX_NAME, 1, 200, 10);
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T3_NAME, T3_NAME),
-        T3_NAME, T3_INDEX_NAME, 4, 4000, 15);
+        T3_NAME, T3_INDEX_NAME, 5, 4000, 15);
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 79, 80000, 20);

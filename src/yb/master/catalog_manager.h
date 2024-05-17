@@ -2958,7 +2958,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   Status DeleteUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
-      DeleteUniverseReplicationResponsePB* resp);
+      bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp);
 
   void MarkUniverseReplicationFailed(
       scoped_refptr<UniverseReplicationInfo> universe, const Status& failure_status);

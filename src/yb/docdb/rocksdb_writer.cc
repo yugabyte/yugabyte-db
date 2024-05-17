@@ -16,7 +16,6 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -438,18 +437,15 @@ IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
 }
 
 IntentsWriter::IntentsWriter(const Slice& start_key,
-                             HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
                              IntentsWriterContext* context)
     : start_key_(start_key), intents_db_(intents_db), context_(*context) {
   AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
   txn_reverse_index_prefix_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
-
   reverse_index_iter_ = CreateRocksDBIterator(
       intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
-      &reverse_index_upperbound_);
+      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound_);
 }
 
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
@@ -506,7 +502,6 @@ ApplyIntentsContext::ApplyIntentsContext(
     const SubtxnSet& aborted,
     HybridTime commit_ht,
     HybridTime log_ht,
-    HybridTime file_filter_ht,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     rocksdb::DB* intents_db)
@@ -524,8 +519,7 @@ ApplyIntentsContext::ApplyIntentsContext(
       key_bounds_(key_bounds),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-          rocksdb::kDefaultQueryId,
-          CreateIntentHybridTimeFileFilter(file_filter_ht))) {
+          rocksdb::kDefaultQueryId)) {
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(

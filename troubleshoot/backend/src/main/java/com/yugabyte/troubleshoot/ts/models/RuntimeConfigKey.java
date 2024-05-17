@@ -4,6 +4,9 @@ import lombok.Getter;
 
 @Getter
 public enum RuntimeConfigKey {
+  ASH_QUERY_BATCH("task.active_session_history_query.batch"),
+  ASH_AGGREGATION_PERIOD("task.active_session_history_query.aggregation_period"),
+
   QUERY_LATENCY_BATCH_SIZE("anomaly.query_latency.batch_size"),
   QUERY_LATENCY_MIN_ANOMALY_DURATION("anomaly.query_latency.min_anomaly_duration"),
   QUERY_LATENCY_MIN_ANOMALY_VALUE("anomaly.query_latency.min_anomaly_value"),

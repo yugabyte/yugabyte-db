@@ -380,7 +380,7 @@ Returns tables in the following format, depending on the flags used:
 <db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-* *db_type*: The type of database. Valid values include `ysql`, `ycql`, `yedis`, and `unknown`.
+* *db_type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table_name*: The name of the table.
 * *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
@@ -863,7 +863,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
+* *keyspace*: The name of the database or keyspace formatted as <ycql|ysql>.<keyspace>.
 * *table_name*: The name of the table name.
 * *table_id*: The unique UUID associated with the table.
 * *flush_timeout_in_seconds*: Specifies duration (in seconds) before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.

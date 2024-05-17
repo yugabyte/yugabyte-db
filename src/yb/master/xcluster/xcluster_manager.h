@@ -60,7 +60,7 @@ class XClusterManager : public XClusterManagerIf,
 
   Status RunLoaders(const TabletInfos& hidden_tablets);
 
-  void SysCatalogLoaded();
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
 
   void RunBgTasks(const LeaderEpoch& epoch) override;
 
@@ -141,6 +141,9 @@ class XClusterManager : public XClusterManagerIf,
 
   Status MarkIndexBackfillCompleted(
       const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) override;
+
+  std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
+      const override;
 
  private:
   CatalogManager& catalog_manager_;

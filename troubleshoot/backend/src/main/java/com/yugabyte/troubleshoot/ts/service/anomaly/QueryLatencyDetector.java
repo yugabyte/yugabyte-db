@@ -66,12 +66,13 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
             .setReplaceNaN(false)
+            .setFillMissingPoints(false)
+            .setGroupBy(GraphLabel.queryId)
             .setFilters(
                 ImmutableMap.of(
-                    GraphFilter.universeUuid,
-                        ImmutableList.of(context.getUniverseUuid().toString()),
-                    GraphFilter.dbId, ImmutableList.of(dbId),
-                    GraphFilter.queryId, ImmutableList.copyOf(queryMap.keySet())));
+                    GraphLabel.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()),
+                    GraphLabel.dbId, ImmutableList.of(dbId),
+                    GraphLabel.queryId, ImmutableList.copyOf(queryMap.keySet())));
 
     GraphResponse response =
         graphService.getGraphs(context.getUniverseUuid(), ImmutableList.of(graphQuery)).get(0);
@@ -88,7 +89,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         response.getData().stream()
             .collect(
                 Collectors.groupingBy(
-                    data -> data.getLabels().get(GraphFilter.queryId.name()), Collectors.toList()));
+                    data -> data.getLabels().get(GraphLabel.queryId.name()), Collectors.toList()));
 
     long minAnomalyDurationMillis =
         Math.max(

@@ -759,14 +759,14 @@ Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
 }
 
 Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
-                                                    const std::vector<Slice> ybctids) {
+                                                    const std::vector<Slice>& ybctids) {
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-  return UpdateRequestWithYbctids(&ybctids, false);
+  return UpdateRequestWithYbctids(ybctids);
 }
 
 // Function builds vector of ybctids from primary key binds.

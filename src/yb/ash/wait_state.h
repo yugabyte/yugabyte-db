@@ -67,10 +67,6 @@ namespace yb::ash {
 //   a specific wait event component.
 // - The next 8 bits are set to 0, and reserved for future use.
 // - Each wait event class may have up to 2^16 wait events.
-//
-// Note that it's not possible to get the wait event class solely from the 'class'
-// bits because those bits are reused for each component. You need the first 8 bits
-// to get the wait event class. Similar thing applies for wait event.
 
 #define YB_ASH_CLASS_BITS          4U
 #define YB_ASH_CLASS_POSITION      24U
@@ -106,6 +102,17 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kRocksDB)
     (kCommon));
 
+// This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
+// is used interchangeably in the code. The uint32_t values of all the wait events across PG
+// and WaitStateCode is distinct, so PG can use these wait events as well.
+//
+// The difference between PG and us is that this enum is only 28 bits long. 4 bits (component bits)
+// are prepended while fetching the wait events so that we can reuse some wait events across
+// components. Another difference is that if a PG wait event were casted/interpreted as an
+// ASH wait event, the bits where we expect to see class information would actually contain type
+// information.
+//
+// The wait event type is not directly encoded in our wait events.
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Don't change the value of kUnused
     ((kUnused, 0xFFFFFFFFU))
@@ -158,11 +165,15 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
+
+    // Wait states related to YCQL
     ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
     (kYCQL_Read)
     (kYCQL_Write)
     (kYCQL_Analyze)
     (kYCQL_Execute)
+
+    // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
 );
@@ -469,5 +480,6 @@ class WaitStateTracker {
 
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogAppenderWaitStatesTracker();
+WaitStateTracker& SharedMemoryPgPerformTracker();
 
 }  // namespace yb::ash

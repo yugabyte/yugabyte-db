@@ -32,6 +32,9 @@ import {
   fetchSoftwareVersions,
   fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure,
+  fetchDBVersions,
+  fetchDBVersionsSuccess,
+  fetchDBVersionsFailure,
   fetchYugaWareVersion,
   fetchYugaWareVersionResponse,
   fetchCustomerConfigs,
@@ -57,12 +60,23 @@ import Cookies from 'js-cookie';
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    // Remove - 2024.2
     fetchSoftwareVersions: () => {
       dispatch(fetchSoftwareVersions()).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(fetchSoftwareVersionsFailure(response.payload));
         } else {
           dispatch(fetchSoftwareVersionsSuccess(response.payload));
+        }
+      });
+    },
+
+    fetchDBVersions: () => {
+      dispatch(fetchDBVersions()).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(fetchDBVersionsFailure(response.payload));
+        } else {
+          dispatch(fetchDBVersionsSuccess(response.payload));
         }
       });
     },

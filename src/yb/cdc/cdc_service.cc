@@ -196,6 +196,10 @@ DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
+DEFINE_RUNTIME_bool(enable_cdcsdk_lag_collection, false,
+    "When enabled, vlog containing the lag for the getchanges call as well as last commit record "
+    "in response will be printed.");
+
 METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -1769,6 +1773,14 @@ void CDCServiceImpl::GetChanges(
       // Clean all the records which got added in the resp, till the enum cache miss failure is
       // encountered.
       resp->clear_cdc_sdk_proto_records();
+      if (req->has_need_schema_info() && req->need_schema_info()) {
+        VLOG(2) << "Clearing cached schema for tablet " << req->tablet_id()
+                << "since the response needs schema details.";
+        cached_schema_details.clear();
+      }
+
+      VLOG(2) << "Handling GetChanges retry internally for tablet " << req->tablet_id()
+              << " for error: " << status.ToString();
       status = GetChangesForCDCSDK(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
@@ -1809,10 +1821,15 @@ void CDCServiceImpl::GetChanges(
   }
 
   VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
+  if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
+    LogGetChangesLagForCDCSDK(stream_id, *resp);
+  }
+
+  const auto* error_data = status.ErrorData(CDCErrorTag::kCategory);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
-      status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
+      error_data ? CDCErrorTag::Decode(error_data) : CDCErrorPB::UNKNOWN_ERROR,
       context);
   tablet_peer = context_->LookupTablet(req->tablet_id());
 
@@ -4368,7 +4385,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
             session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this);
+    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this, stream_id, session_id);
     session_virtual_wal_[session_id] = virtual_wal;
   }
 
@@ -4379,7 +4396,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      stream_id, table_list, hostport, GetDeadline(context, client()));
+      table_list, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);
@@ -4431,8 +4448,8 @@ void CDCServiceImpl::GetConsistentChanges(
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   HostPort hostport(context.local_address());
-  Status s = virtual_wal->GetConsistentChangesInternal(
-      stream_id, resp, hostport, GetDeadline(context, client()));
+  Status s =
+      virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string msg =
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
@@ -4569,7 +4586,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   auto confirmed_flush_lsn = req->confirmed_flush_lsn();
   auto restart_lsn = req->restart_lsn();
-  auto res = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
+  auto res = virtual_wal->UpdateAndPersistLSNInternal(confirmed_flush_lsn, restart_lsn);
   if (!res.ok()) {
     std::string error_msg = Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id);
     LOG(WARNING) << error_msg;
@@ -4626,7 +4643,7 @@ void CDCServiceImpl::UpdatePublicationTableList(
   }
 
   Status s = virtual_wal->UpdatePublicationTableListInternal(
-      stream_id, new_table_list, hostport, GetDeadline(context, client()));
+      new_table_list, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string error_msg =
         Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);
@@ -4639,5 +4656,41 @@ void CDCServiceImpl::UpdatePublicationTableList(
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::LogGetChangesLagForCDCSDK(
+    const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  int64_t getchanges_call_lag_in_ms = -1;
+  if (resp.safe_hybrid_time() != -1) {
+    getchanges_call_lag_in_ms =
+        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time())) / 1000;
+  }
+
+  int64_t commit_time_lag_in_ms = -1;
+  uint64_t commit_record_ct = 0;
+  uint64_t safepoint_ct = 0;
+  // If there are no commit records in the response, we take the safepoint record's commit_time.
+  for (auto it = resp.cdc_sdk_proto_records().rbegin(); it != resp.cdc_sdk_proto_records().rend();
+       ++it) {
+    if (it->row_message().op() == RowMessage::SAFEPOINT) {
+      safepoint_ct = it->row_message().commit_time();
+    } else if (it->row_message().op() == RowMessage::COMMIT) {
+      commit_record_ct = it->row_message().commit_time();
+      break;
+    }
+  }
+
+  if (commit_record_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct))) / 1000;
+  } else if (safepoint_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct))) / 1000;
+  }
+
+  VLOG(3) << "stream_id: " << stream_id << ", GetChanges call lag: "
+          << ((getchanges_call_lag_in_ms != -1) ? Format("$0 ms", getchanges_call_lag_in_ms) : "-1")
+          << ", Commit time lag: "
+          << ((commit_time_lag_in_ms != -1) ? Format("$0 ms", commit_time_lag_in_ms) : "-1");
+}
 }  // namespace cdc
 }  // namespace yb

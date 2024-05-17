@@ -110,6 +110,7 @@ namespace tserver {
 XClusterPoller::XClusterPoller(
     const xcluster::ProducerTabletInfo& producer_tablet_info,
     const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    const NamespaceId& consumer_namespace_id,
     std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
     rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
     const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
@@ -118,6 +119,7 @@ XClusterPoller::XClusterPoller(
     : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
+      consumer_namespace_id_(consumer_namespace_id),
       poller_id_(
           producer_tablet_info.replication_group_id, consumer_tablet_info.table_id,
           producer_tablet_info.tablet_id, leader_term),
@@ -148,11 +150,11 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
 
 void XClusterPoller::InitDDLQueuePoller(
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
-    const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func) {
+    ConnectToPostgresFunc connect_to_pg_func) {
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
-      local_client_, namespace_name, namespace_id, std::move(connect_to_pg_func));
+      local_client_, namespace_name, consumer_namespace_id_, std::move(connect_to_pg_func));
 }
 
 void XClusterPoller::StartShutdown() {

@@ -2462,7 +2462,8 @@ YbTestGucFailIfStrEqual(char *actual, const char *expected)
 	}
 }
 
-static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+int
+YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 {
 	int ncols = 0; /* Equals to the number of OUT arguments. */
 
@@ -3420,6 +3421,117 @@ yb_server_zone(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	return CStringGetTextDatum(current_zone);
+}
+
+static bytea *
+bytesToBytea(const char *in, int len)
+{
+	bytea	   *out;
+
+	out = (bytea *) palloc(len + VARHDRSZ);
+	SET_VARSIZE(out, len + VARHDRSZ);
+	memcpy(VARDATA(out), in, len);
+
+	return out;
+}
+
+Datum
+yb_local_tablets(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define YB_TABLET_INFO_COLS 8
+
+	/* only superuser and yb_db_admin can query this function */
+	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers and yb_db_admin can query yb_local_tablets"))));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YBCPgTabletsDescriptor	*tablets = NULL;
+	size_t		num_tablets = 0;
+	HandleYBStatus(YBCLocalTablets(&tablets, &num_tablets));
+
+	for (i = 0; i < num_tablets; ++i)
+	{
+		YBCPgTabletsDescriptor *tablet = (YBCPgTabletsDescriptor *)tablets + i;
+		Datum		values[YB_TABLET_INFO_COLS];
+		bool		nulls[YB_TABLET_INFO_COLS];
+		bytea	   *partition_key_start;
+		bytea	   *partition_key_end;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = CStringGetTextDatum(tablet->tablet_id);
+		values[1] = CStringGetTextDatum(tablet->table_id);
+		values[2] = CStringGetTextDatum(tablet->table_type);
+		values[3] = CStringGetTextDatum(tablet->namespace_name);
+		values[4] = CStringGetTextDatum(tablet->pgschema_name);
+		values[5] = CStringGetTextDatum(tablet->table_name);
+
+		if (tablet->partition_key_start_len)
+		{
+			partition_key_start = bytesToBytea(tablet->partition_key_start,
+											   tablet->partition_key_start_len);
+			values[6] = PointerGetDatum(partition_key_start);
+		}
+		else
+			nulls[6] = true;
+
+		if (tablet->partition_key_end_len)
+		{
+			partition_key_end = bytesToBytea(tablet->partition_key_end,
+											 tablet->partition_key_end_len);
+			values[7] = PointerGetDatum(partition_key_end);
+		}
+		else
+			nulls[7] = true;
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+#undef YB_TABLET_INFO_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return (Datum) 0;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4833,7 +4945,7 @@ Relation
 YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
 {
 	Relation relation;
-	
+
 	relation = RelationIdGetRelation(relid);
 	if (!RelationIsValid(relation))
 		elog(ERROR, "could not open relation with OID %u", relid);

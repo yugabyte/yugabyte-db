@@ -646,7 +646,9 @@ public class PlacementInfoUtil {
       Map<UUID, Integer> nodeCountByAz =
           PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
       for (Cluster clust : clusters) {
-        if (!clust.uuid.equals(cluster.uuid)
+        if (!cluster.uuid.equals(clust.uuid)
+            && clust.placementInfo != null
+            && clust.userIntent != null
             && Objects.equals(clust.userIntent.instanceType, cluster.userIntent.instanceType)) {
           clust
               .placementInfo

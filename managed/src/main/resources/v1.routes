@@ -485,6 +485,8 @@ PUT    /customers/:cUUID/users/:uUUID                                          c
 PUT    /customers/:cUUID/users/:uUUID/change_password                          com.yugabyte.yw.controllers.UsersController.changePassword(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 PUT    /customers/:cUUID/users/:uUUID/update_profile                           com.yugabyte.yw.controllers.UsersController.updateProfile(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/users/:uUUID                                          com.yugabyte.yw.controllers.UsersController.delete(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
+PUT    /customers/:cUUID/reset_password                                        com.yugabyte.yw.controllers.UsersController.resetPassword(cUUID: java.util.UUID, request: Request)
+
 + forceAudit
 GET    /customers/:cUUID/users/:uUUID/oidc_auth_token                          com.yugabyte.yw.controllers.UsersController.retrieveOidcAuthToken(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 

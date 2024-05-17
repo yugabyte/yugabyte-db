@@ -53,6 +53,12 @@ DEFINE_test_flag(bool, skip_transaction_verification, false,
 DEFINE_test_flag(int32, ysql_ddl_transaction_verification_failure_percentage, 0,
     "Inject random failure in checking transaction status for DDL transactions");
 
+DEFINE_test_flag(bool, yb_test_table_rewrite_keep_old_table, false,
+    "Used together with the PG GUC yb_test_table_rewrite_keep_old_table in "
+    "some unit tests where we want to test schema version mismatch error on "
+    "concurrent DMLs. If the table is dropped too soon, we will just get a "
+    "table does not exist error instead.");
+
 using std::string;
 using std::vector;
 
@@ -263,6 +269,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   qlexpr::QLTableRow row;
   bool table_found = false;
+  bool table_rewritten = false;
 
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
@@ -272,17 +279,36 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
       if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;
+        table_rewritten = true;
       }
     }
   }
 
-  // Table not found in pg_class. This can only happen in two cases: Table creation failed,
-  // or a table deletion went through successfully.
+  // Table not found in pg_class. This can only happen in three cases:
+  // * Table creation failed,
+  // * A table deletion went through successfully,
+  // * In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
+  //   is set on yb-master and PG GUC yb_test_table_rewrite_keep_old_table is true,
+  //   an ALTER TABLE statement that involves a table rewrite will not have
+  //   "contains_drop_table_op" set, therefore is_being_deleted_by_ysql_ddl_txn()
+  //   is false. If such an ALTER TABLE statement went through successfully, then
+  //   the old PG table is deleted from pg_class while the old DocDB table is kept
+  //   for testing purpose.
   if (!table_found) {
     *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       *result = true;
       return Status::OK();
+    }
+    if (FLAGS_TEST_yb_test_table_rewrite_keep_old_table) {
+      // If alter table resulted in a table rewrite and the old table is
+      // already deleted from PG catalog after the ddl transaction completes,
+      // then the ddl transaction must have committed because the old table
+      // should still exist if the ddl transaction aborted.
+      if (l->is_being_altered_by_ysql_ddl_txn() && table_rewritten) {
+        *result = true;
+        return Status::OK();
+      }
     }
     CHECK(l->is_being_created_by_ysql_ddl_txn())
         << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
@@ -492,20 +518,19 @@ PollTransactionStatusBase::PollTransactionStatusBase(
 }
 
 PollTransactionStatusBase::~PollTransactionStatusBase() {
-#ifndef NDEBUG
+  std::lock_guard l(rpc_mutex_);
   DCHECK(shutdown_) << "Shutdown not invoked";
-#endif
 }
 
 void PollTransactionStatusBase::Shutdown() {
+  std::lock_guard l(rpc_mutex_);
+
   rpcs_.Shutdown();
   // Shutdown times out after waiting a certain amount of time. The callback requires both this and
   // the Rpcs to be valid, so wait for it to complete.
   CHECK_OK(sync_.Wait());
 
-#ifndef NDEBUG
   shutdown_ = true;
-#endif
 }
 
 Status PollTransactionStatusBase::VerifyTransaction() {
@@ -527,6 +552,14 @@ Status PollTransactionStatusBase::VerifyTransaction() {
         "Shutting down. Cannot send GetTransactionStatus: $0", transaction_);
   }
 
+  RETURN_NOT_OK(sync_.Wait());
+  sync_.Reset();
+
+  std::lock_guard l(rpc_mutex_);
+  SCHECK(
+      !shutdown_, IllegalState, "Task has been shut down. Cannot send GetTransactionStatus: $0",
+      transaction_);
+
   // Prepare the rpc after checking if it is shutting down in case it returns because of
   // client is null and leave the reserved rpc as uninitialized.
   auto rpc_handle = rpcs_.Prepare();
@@ -536,8 +569,6 @@ Status PollTransactionStatusBase::VerifyTransaction() {
   }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
-  RETURN_NOT_OK(sync_.Wait());
-  sync_.Reset();
   auto sync_cb = sync_.AsStdStatusCallback();
   auto callback = [this, rpc_handle, user_cb = std::move(sync_cb)](
                       Status status, const tserver::GetTransactionStatusResponsePB& resp) {
@@ -671,6 +702,16 @@ Status NamespaceVerificationTask::ValidateRunnable() {
   return Status::OK();
 }
 
+void NamespaceVerificationTask::TaskCompleted(const Status& status) {
+  MultiStepNamespaceTaskBase::TaskCompleted(status);
+  Shutdown();
+}
+
+void NamespaceVerificationTask::PerformAbort() {
+  MultiStepNamespaceTaskBase::PerformAbort();
+  Shutdown();
+}
+
 TableSchemaVerificationTask::TableSchemaVerificationTask(
     CatalogManager& catalog_manager, scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction, std::function<void(Result<bool>)> complete_callback,
@@ -786,6 +827,16 @@ Status TableSchemaVerificationTask::CompareSchema(Status txn_rpc_success) {
   // If the transaction was a success, we need to compare the schema of the table in PG catalog
   // with the schema in DocDB.
   return FinishTask(PgSchemaChecker(sys_catalog_, table_info_));
+}
+
+void TableSchemaVerificationTask::TaskCompleted(const Status& status) {
+  MultiStepTableTaskBase::TaskCompleted(status);
+  Shutdown();
+}
+
+void TableSchemaVerificationTask::PerformAbort() {
+  MultiStepTableTaskBase::PerformAbort();
+  Shutdown();
 }
 
 }  // namespace master

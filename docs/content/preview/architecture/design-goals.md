@@ -32,8 +32,7 @@ YugabyteDB is resilient to various types of failures, such as node crashes, netw
 YugabyteDB supports distributed transactions while offering strong consistency guarantees (ACID) in the face of potential failures.
 For more information, see the following:
 
-- [Achieving consistency with Raft consensus](../docdb-replication/replication/)
-- [Fault tolerance and high availability](../core-functions/high-availability/)
+- [Achieving consistency with Raft consensus](../docdb-replication/raft)
 - [Single-row linearizable transactions in YugabyteDB](../transactions/single-row-transactions/)
 - [The architecture of distributed transactions](../transactions/distributed-txns/)
 
@@ -55,7 +54,7 @@ YugabyteDB supports multi-row transactions with three isolation levels: Serializ
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a consistent and partition-tolerant (CP) database which achieves very high availability at the same time. The architectural design of YugabyteDB is similar to Google Cloud Spanner, another CP system. The description of [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is also applicable to YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers sufficient high availability that most users no longer have to be concerned about outages. For example, given that there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct not to worry about it.
 
-Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgment purposes) RAFT group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
+Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgment purposes) Raft group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
 
 ## Data distribution
 
@@ -129,7 +128,7 @@ For more information, see [High performance in YugabyteDB](../docdb/performance/
 
 ## Geographically distributed deployments
 
-YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning) of tables. This enables a specific row to be placed in a specific geography. It leverages two PostgreSQL features, [Table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) and [Tablespaces](../../explore/ysql-language-features/going-beyond-sql/tablespaces/) to accomplish this elegantly.
+YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning) of tables. This enables a specific row to be placed in a specific geography. It leverages two PostgreSQL features, [Table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) and [Tablespaces](../../explore/going-beyond-sql/tablespaces/) to accomplish this elegantly.
 
 ## Cloud-ready
 
@@ -156,4 +155,3 @@ YugabyteDB is 100% open source under the very permissive Apache 2.0 license. The
 - [DocDB architecture](../docdb/)
 - [Transactions in DocDB](../transactions/)
 - [Query layer design](../query-layer/)
-- [Core functions](../core-functions/)

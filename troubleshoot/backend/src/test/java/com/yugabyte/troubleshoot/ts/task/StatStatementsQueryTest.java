@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.task;
 
+import static com.yugabyte.troubleshoot.ts.CommonUtils.SYSTEM_PLATFORM;
 import static com.yugabyte.troubleshoot.ts.TestUtils.readResourceAsJsonList;
 import static com.yugabyte.troubleshoot.ts.task.StatStatementsQuery.*;
 import static org.assertj.core.api.Assertions.assertThat;

@@ -273,13 +273,12 @@ class TSDescriptor {
     ts_metrics_.ClearMetrics();
   }
 
-  // Set of methods to keep track of pending tablet deletes for a tablet server. We use them to
-  // avoid assigning more tablets to a tserver that might be potentially unresponsive.
+  // Set of methods to keep track of pending tablet deletes for a tablet server.
   bool HasTabletDeletePending() const;
-  bool IsTabletDeletePending(const std::string& tablet_id) const;
   void AddPendingTabletDelete(const std::string& tablet_id);
-  void ClearPendingTabletDelete(const std::string& tablet_id);
+  size_t ClearPendingTabletDelete(const std::string& tablet_id);
   std::string PendingTabletDeleteToString() const;
+  std::set<std::string> TabletsPendingDeletion() const;
 
   std::string ToString() const;
 

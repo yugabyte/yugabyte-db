@@ -340,16 +340,16 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
-                     QUERY PLAN
-----------------------------------------------------
+                              QUERY PLAN
+----------------------------------------------------------------------
  Gather
    Workers Planned: 2
    ->  Parallel Hash Join
          Hash Cond: (pctest2.b = pctest1.a)
-         ->  Parallel Seq Scan on pctest2
+         ->  Parallel Index Only Scan using pctest2_b_idx on pctest2
          ->  Parallel Hash
-               ->  Parallel Seq Scan on pctest1
-                     Storage Filter: ((a % 10) = 0)
+               ->  Parallel Index Scan using pctest1_a_idx on pctest1
+                     Storage Index Filter: ((a % 10) = 0)
 (8 rows)
 
 SELECT pctest1.* FROM pctest1, pctest2
@@ -381,19 +381,18 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
+                                 QUERY PLAN
+----------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
-               ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(10 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (pctest1.k = pctest2.k)
+         Sort Keys: pctest1.k
+         ->  Parallel Index Scan using pctest1_pkey on pctest1
+               Storage Filter: (c = 42)
+         ->  Index Scan using pctest2_pkey on pctest2
+               Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(9 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -437,19 +436,18 @@ set enable_hashjoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- Gather Merge
-   Workers Planned: 2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
-               ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(10 rows)
+                          QUERY PLAN
+---------------------------------------------------------------
+ Merge Join
+   Merge Cond: (pctest1.k = pctest2.k)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest1_pkey on pctest1
+               Storage Filter: (c = 42)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest2_pkey on pctest2
+(9 rows)
 
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -478,9 +476,9 @@ SELECT x, d FROM
                Workers Planned: 2
                ->  Parallel Hash Join
                      Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-                     ->  Parallel Seq Scan on pctest1
+                     ->  Parallel Index Scan using pctest1_pkey on pctest1
                      ->  Parallel Hash
-                           ->  Parallel Seq Scan on pctest2
+                           ->  Parallel Index Scan using pctest2_pkey on pctest2
          ->  Hash
                ->  Values Scan on "*VALUES*"
 (13 rows)
@@ -504,28 +502,26 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (pctest1.b = pctest2_1.c)
    ->  Gather
          Workers Planned: 2
          ->  Parallel Hash Join
                Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-               ->  Parallel Seq Scan on pctest1
+               ->  Parallel Index Scan using pctest1_pkey on pctest1
                ->  Parallel Hash
-                     ->  Parallel Seq Scan on pctest2
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2
    ->  Materialize
-         ->  Hash Join
-               Hash Cond: ((pctest2_1.k = pctest1_1.k) AND (pctest2_1.b = pctest1_1.b))
-               ->  Gather
-                     Workers Planned: 2
-                     ->  Parallel Seq Scan on pctest2 pctest2_1
-               ->  Hash
-                     ->  Gather
-                           Workers Planned: 2
-                           ->  Parallel Seq Scan on pctest1 pctest1_1
-(19 rows)
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Hash Join
+                     Hash Cond: ((pctest1_1.k = pctest2_1.k) AND (pctest1_1.b = pctest2_1.b))
+                     ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest1_1
+                     ->  Parallel Hash
+                           ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest2_1
+(17 rows)
 
 SELECT * FROM
   (SELECT pctest1.* FROM pctest1, pctest2

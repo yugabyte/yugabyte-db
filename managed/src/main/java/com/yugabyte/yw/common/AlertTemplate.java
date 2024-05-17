@@ -8,6 +8,7 @@ import io.swagger.annotations.ApiModel;
 public enum AlertTemplate {
   REPLICATION_LAG,
   CLOCK_SKEW,
+  CLOCK_SYNC_CHECK_FAILED,
   MEMORY_CONSUMPTION,
   HEALTH_CHECK_ERROR,
   HEALTH_CHECK_NOTIFICATION_ERROR,

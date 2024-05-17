@@ -1194,14 +1194,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> releasesRedesign =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.releases_redesign",
-          ScopeType.GLOBAL,
-          "Enable the option to view new releases page",
-          "Enable the option to view new releases page",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Duration> replicationFrequency =
       new ConfKeyInfo<>(
           "yb.ha.replication_frequency",
@@ -1345,4 +1337,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcRefreshTokenEndpoint =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenEndpoint",
+          ScopeType.GLOBAL,
+          "Endpoint for fetching the access token",
+          "YBA will fetch the access token using the refresh token if specified from the endpoint",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> oidcRefreshTokenInterval =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenInterval",
+          ScopeType.GLOBAL,
+          "OIDC Refresh Access Token Interval",
+          "If configured, YBA will refresh the access token at the specified duration, defaulted to"
+              + " 5 minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

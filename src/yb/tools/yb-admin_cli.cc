@@ -2085,14 +2085,11 @@ Status change_xcluster_role_action(
   if (args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  auto xcluster_role = args[0];
-  if (xcluster_role == "STANDBY") {
-    return client->ChangeXClusterRole(cdc::XClusterRole::STANDBY);
-  }
-  if (xcluster_role == "ACTIVE") {
-    return client->ChangeXClusterRole(cdc::XClusterRole::ACTIVE);
-  }
-  return STATUS(InvalidArgument, Format("Expected one of STANDBY OR ACTIVE, found $0", args[0]));
+
+  std::cout << "Changed role successfully" << endl
+            << endl
+            << "NOTE: change_xcluster_role is no longer required and has been deprecated" << endl;
+  return Status::OK();
 }
 
 const auto set_universe_replication_enabled_args = "<producer_universe_uuid> (0|1)";

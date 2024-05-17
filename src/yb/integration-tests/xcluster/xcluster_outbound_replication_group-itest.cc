@@ -19,10 +19,10 @@
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 
-DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
-
+DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
 namespace yb {
 namespace master {
 
@@ -36,7 +36,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
  public:
   XClusterOutboundReplicationGroupTest() {}
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
@@ -134,6 +134,14 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
           Format("Tablet: $0", tablet->tablet_metadata()->LogPrefix()));
     }
 
+    return Status::OK();
+  }
+
+  Status RestartMaster() {
+    auto master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster());
+    RETURN_NOT_OK(master->Restart());
+    catalog_manager_ = &master->catalog_manager_impl();
+    epoch_ = catalog_manager_->GetLeaderEpochInternal();
     return Status::OK();
   }
 
@@ -353,6 +361,47 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeleted
 
   auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
   ASSERT_FALSE(is_bootstrap_required);
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, MasterRestartDuringCheckpoint) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_xcluster_checkpoint_namespace_task) = true;
+
+  ASSERT_OK(XClusterClient().XClusterCreateOutboundReplicationGroup(
+      kReplicationGroupId, {kNamespaceName}));
+
+  std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
+  auto future = promise.get_future();
+  ASSERT_OK(XClusterClient().GetXClusterStreams(
+      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_, /*table_names=*/{},
+      /*pg_schema_names=*/{}, [&promise](const auto& resp) { promise.set_value(resp); }));
+
+  ASSERT_EQ(future.wait_for(5s), std::future_status::timeout);
+
+  ASSERT_OK(RestartMaster());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_xcluster_checkpoint_namespace_task) = false;
+
+  auto resp = ASSERT_RESULT(future.get());
+  size_t stream_count = 2;
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, resp));
+
+  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
+
+  // TODO (#21986) : Disabled since VerifyWalRetentionOfTable fails.
+  // ASSERT_OK(
+  //     catalog_manager_->WaitForAlterTableToFinish(table_id_1, CoarseMonoClock::Now() +
+  //     kDeadline));
+  // ASSERT_OK(
+  //     catalog_manager_->WaitForAlterTableToFinish(table_id_2, CoarseMonoClock::Now() +
+  //     kDeadline));
+
+  // ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
+  // ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }
 
 }  // namespace master

@@ -894,4 +894,28 @@ Status XClusterOutboundReplicationGroup::RemoveStreams(
   return Status::OK();
 }
 
+void XClusterOutboundReplicationGroup::StartPostLoadTasks(const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto lock_result = LockForWrite();
+  if (!lock_result.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to lock: " << lock_result.status();
+    return;
+  }
+
+  auto tasks = GetTasks();
+  if (!tasks.empty()) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Tasks already in progress: " << AsString(tasks);
+    return;
+  }
+
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& [ns_id, ns_info] : lock_result->mutable_data()->pb.namespace_infos()) {
+    if (ns_info.state() == NamespaceInfoPB::CHECKPOINTING) {
+      namespace_ids.push_back(ns_id);
+    }
+  }
+
+  StartNamespaceCheckpointTasks(namespace_ids, epoch);
+}
+
 }  // namespace yb::master

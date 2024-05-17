@@ -61,9 +61,16 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
     JsonNode cloudInfoJson = detailsJson.get("cloudInfo").get("gcp");
 
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
-    if (!gcpCloudImpl.isValidCreds(provider)) {
-      // Further validation is not done since SA validation has failed
-      String errorMsg = "Invalid GCP-SA Credentials [check logs for more info]";
+    String errorMsg = "";
+    try {
+      if (!gcpCloudImpl.isValidCreds(provider)) {
+        // Further validation is not done since SA validation has failed
+        errorMsg = "Invalid GCP-SA Credentials [check logs for more info]";
+      }
+    } catch (PlatformServiceException e) {
+      errorMsg = e.getMessage();
+    }
+    if (StringUtils.isNotEmpty(errorMsg)) {
       throwBeanProviderValidatorError(
           cloudInfoJson.get("useHostCredentials").get("jsonPath").asText(),
           errorMsg,
@@ -370,7 +377,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
             String missingTagsMessage =
                 "Missing firewall tag(s) in the GCP project: "
                     + String.join(
-                        ", ", missingFirewallTags); // Create a comma-separated list of missing tags
+                        ", ", missingFirewallTags) // Create a comma-separated list of missing tags
+                    + String.format(" -or- networks/%s doesn't exist", getVpcNetwork(provider));
             validationErrorsMap.put(jsonPath, missingTagsMessage);
           }
         } catch (PlatformServiceException e) {

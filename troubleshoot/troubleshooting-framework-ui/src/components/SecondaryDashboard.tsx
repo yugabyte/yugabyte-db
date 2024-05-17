@@ -4,10 +4,9 @@ import clsx from 'clsx';
 import _ from 'lodash';
 import { Tooltip, Box, makeStyles, MenuItem } from '@material-ui/core';
 import moment from 'moment-timezone';
-import { YBButton } from '@yugabytedb/ui-components';
-import { YBSelect } from '../common/YBSelect';
-import { Anomaly, AppName, GraphType, MetricMeasure } from '../helpers/dtos';
 import {
+  YBButton,
+  YBSelect,
   isNonEmptyArray,
   isNonEmptyObject,
   removeNullProperties,
@@ -15,10 +14,17 @@ import {
   divideYAxisByThousand,
   timeFormatXAxis,
   isNonEmptyString
-} from '../helpers/objectUtils';
+} from '@yugabytedb/ui-components';
+import { Anomaly, AppName, GraphType, MetricMeasure } from '../helpers/dtos';
 import { METRIC_FONT, MetricConsts } from '../helpers/constants';
 
 import PrometheusIcon from '../assets/prometheus-icon.svg';
+
+export const ASH_GROUPBY_VALUES = {
+  WAIT_EVENT_COMPONENT: 'waitEventComponent',
+  WAIT_EVENT_CLASS: 'waitEventClass',
+  WAIT_EVENT: 'waitEvent'
+};
 
 const Plotly = require('plotly.js/lib/index-basic.js');
 
@@ -38,6 +44,7 @@ interface SecondaryDashboardProps {
   timezone?: string;
   className?: any;
   graphType: GraphType;
+  onSelectAshLabel: (groupBy: string) => void;
 }
 
 const MIN_OUTLIER_BUTTONS_WIDTH = 250;
@@ -103,7 +110,7 @@ const useStyles = makeStyles((theme) => ({
     padding: '15px 20px',
     height: '52px'
   },
-  outlierButtonContaimer: {
+  outlierButtonContainer: {
     position: 'absolute',
     top: '20px',
     right: '50px',
@@ -140,7 +147,8 @@ export const SecondaryDashboard = ({
   isMetricLoading,
   className,
   timezone,
-  graphType
+  graphType,
+  onSelectAshLabel
 }: SecondaryDashboardProps) => {
   const classes = useStyles();
   let showDropdown = false;
@@ -200,10 +208,13 @@ export const SecondaryDashboard = ({
       }
       const layoutWidth = width ?? getGraphWidth(graphWidth);
 
-      if (operations.length || metricOperation) {
-        const matchingMetricOperation = metricOperation
-          ? metricOperation
-          : focusedButton ?? operations[0];
+      const matchingMetricOperation = metricOperation
+        ? metricOperation
+        : focusedButton ?? operations[0];
+      if (
+        (operations.length || metricOperation) &&
+        (metricMeasure === MetricMeasure.OUTLIER || metricMeasure === MetricMeasure.OUTLIER_TABLES)
+      ) {
         metric.data = metric.data.filter(
           (dataItem: any) => dataItem.name === matchingMetricOperation
         );
@@ -221,6 +232,14 @@ export const SecondaryDashboard = ({
           dataItem['fullname'] = MetricConsts.NODE_AVERAGE;
         } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
           dataItem['fullname'] = dataItem['tableName'];
+        } else if (metric?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) {
+          if (matchingMetricOperation === 'Component') {
+            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT];
+          } else if (matchingMetricOperation === 'Class') {
+            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS];
+          } else {
+            dataItem['fullname'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT];
+          }
         } else {
           dataItem['fullname'] = dataItem['name'];
         }
@@ -230,7 +249,17 @@ export const SecondaryDashboard = ({
         // - trace name longer than the max name legnth
         const shouldAbbreviate =
           shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
-        if (shouldAbbreviate && !(metricMeasure === MetricMeasure.OUTLIER)) {
+        if (metric?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) {
+          // dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
+
+          if (matchingMetricOperation === 'Component') {
+            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT];
+          } else if (matchingMetricOperation === 'Class') {
+            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS];
+          } else {
+            dataItem['name'] = dataItem[ASH_GROUPBY_VALUES.WAIT_EVENT];
+          }
+        } else if (shouldAbbreviate && !(metricMeasure === MetricMeasure.OUTLIER)) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
           // Legend name from outlier should be based on instance name in case of outliers
         } else if (metricMeasure === MetricMeasure.OUTLIER) {
@@ -270,13 +299,24 @@ export const SecondaryDashboard = ({
 
       let max = 0;
       metric.data.forEach((data: any) => {
+        if (metric?.layout?.title === 'ASH') {
+          data.fill = 'tonexty';
+          data.stackgroup = 'one';
+          data.type = 'scatter';
+        }
         if (metricMeasure === MetricMeasure.OUTLIER_TABLES && data?.namespaceName) {
           data.hovertemplate =
             '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
         } else {
           data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         }
-        if (data.y) {
+
+        if (data.y && metric?.layout?.title === 'ASH') {
+          data.y.forEach((y: any) => {
+            y = parseFloat(y) * 2.5;
+            if (y > max) max = y;
+          });
+        } else {
           data.y.forEach((y: any) => {
             y = parseFloat(y) * 1.25;
             if (y > max) max = y;
@@ -328,7 +368,7 @@ export const SecondaryDashboard = ({
       ];
 
       metric.layout.title = {
-        text: metric.layout.title,
+        text: metric.layout?.title,
         x: 0.05,
         y: 2.2,
         xref: 'container',
@@ -392,7 +432,9 @@ export const SecondaryDashboard = ({
   const loadDataByMetricOperation = (metricOperation: string, itemInDropdown: boolean) => {
     setFocusedButton(metricOperation);
     setItemInDropdown(itemInDropdown);
-    plotGraph(metricOperation);
+    metricData?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL
+      ? onSelectAshLabel(metricOperation)
+      : plotGraph(metricOperation);
   };
 
   // Plot graph during mount of the component with metric data
@@ -490,8 +532,9 @@ export const SecondaryDashboard = ({
 
   return (
     <Box id={metricKey} className={clsx(className, classes.metricPanel)}>
-      <span ref={outlierButtonsRef} className={classes.outlierButtonContaimer}>
-        {(metricMeasure === MetricMeasure.OUTLIER ||
+      <span ref={outlierButtonsRef} className={classes.outlierButtonContainer}>
+        {((metricData?.layout?.title === 'ASH' && metricMeasure === MetricMeasure.OVERALL) ||
+          metricMeasure === MetricMeasure.OUTLIER ||
           metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
           operations.length > 0 &&
           metricOperationsDisplayed.map((operation, idx) => {

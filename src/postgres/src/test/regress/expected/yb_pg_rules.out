@@ -2350,8 +2350,18 @@ yb_active_session_history| SELECT yb_active_session_history.sample_time,
     yb_active_session_history.ysql_session_id,
     yb_active_session_history.client_node_ip,
     yb_active_session_history.wait_event_aux,
-    yb_active_session_history.sample_weight
-   FROM yb_active_session_history() yb_active_session_history(sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, top_level_node_id, query_id, ysql_session_id, client_node_ip, wait_event_aux, sample_weight);
+    yb_active_session_history.sample_weight,
+    yb_active_session_history.wait_event_type
+   FROM yb_active_session_history() yb_active_session_history(sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, top_level_node_id, query_id, ysql_session_id, client_node_ip, wait_event_aux, sample_weight, wait_event_type);
+yb_local_tablets| SELECT yb_local_tablets.tablet_id,
+    yb_local_tablets.table_id,
+    yb_local_tablets.table_type,
+    yb_local_tablets.namespace_name,
+    yb_local_tablets.ysql_schema_name,
+    yb_local_tablets.table_name,
+    yb_local_tablets.partition_key_start,
+    yb_local_tablets.partition_key_end
+   FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end);
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_text,

@@ -117,7 +117,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
-  virtual Status InitAutoFlags() override;
+  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
 
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
@@ -298,8 +298,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
-  Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
-
   Status ListMasterServers(const ListMasterServersRequestPB* req,
                            ListMasterServersResponsePB* resp) const;
 
@@ -344,6 +342,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
   void ClearAllMetaCachesOnServer() override;
+
+  Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
  protected:
   virtual Status RegisterServices();

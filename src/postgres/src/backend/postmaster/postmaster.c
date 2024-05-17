@@ -4847,6 +4847,20 @@ BackendInitialize(Port *port)
 	pfree(ps_data.data);
 
 	set_ps_display("initializing");
+
+	if (YBIsEnabledInPostgresEnvVar() && am_walsender)
+	{
+		char		remote_ps_data[NI_MAXHOST];
+	
+		if (remote_port[0] == '\0')
+			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s", remote_host);
+		else
+			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
+
+		YBC_LOG_INFO("Started Walsender backend with pid: %d, user_name: %s, "
+					 "remote_ps_data: %s",
+					 getpid(), port->user_name, remote_ps_data);
+	}
 }
 
 

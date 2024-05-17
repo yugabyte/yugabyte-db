@@ -53,15 +53,15 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
-DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
+DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(),
     "Exports wait-state name as a human understandable string.");
-DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
+DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::IsDebug(),
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
 DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
     "If enabled, add a sleep/delay when we enter the specified wait state.");
-DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::kIsDebug,
+DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::IsDebug(),
     "Exports wait-state name as a human understandable string.");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
@@ -407,6 +407,7 @@ namespace {
 
 WaitStateTracker flush_and_compaction_wait_states_tracker;
 WaitStateTracker raft_log_appender_wait_states_tracker;
+WaitStateTracker pg_shared_memory_perform_tracker;
 
 }  // namespace
 
@@ -416,6 +417,10 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker() {
 
 WaitStateTracker& RaftLogAppenderWaitStatesTracker() {
   return raft_log_appender_wait_states_tracker;
+}
+
+WaitStateTracker& SharedMemoryPgPerformTracker() {
+  return pg_shared_memory_perform_tracker;
 }
 
 }  // namespace yb::ash

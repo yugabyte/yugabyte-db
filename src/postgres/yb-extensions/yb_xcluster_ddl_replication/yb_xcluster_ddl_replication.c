@@ -15,14 +15,18 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/htup_details.h"
 #include "access/xact.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
 #include "commands/explain.h"
 #include "executor/spi.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/fmgroids.h"
 #include "utils/jsonb.h"
 #include "utils/memutils.h"
 
@@ -40,6 +44,9 @@ PG_MODULE_MAGIC;
 		context_new = AllocSetContextCreate(GetCurrentMemoryContext(), desc, \
 											ALLOCSET_DEFAULT_SIZES); \
 		context_old = MemoryContextSwitchTo(context_new); \
+		GetUserIdAndSecContext(&save_userid, &save_sec_context); \
+		SetUserIdAndSecContext(XClusterExtensionOwner(), \
+							   SECURITY_RESTRICTED_OPERATION); \
 		if (SPI_connect() != SPI_OK_CONNECT) \
 			elog(ERROR, "SPI_connect failed"); \
 	} while (false)
@@ -49,9 +56,16 @@ PG_MODULE_MAGIC;
 	{ \
 		if (SPI_finish() != SPI_OK_FINISH) \
 			elog(ERROR, "SPI_finish() failed"); \
+		SetUserIdAndSecContext(save_userid, save_sec_context); \
 		MemoryContextSwitchTo(context_old); \
 		MemoryContextDelete(context_new); \
 	} while (false)
+
+// Handle old PG11 and newer PG15 code.
+#if (PG_VERSION_NUM < 120000)
+#define table_open(r, l) heap_open(r, l)
+#define table_close(r, l) heap_close(r, l)
+#endif
 
 typedef enum ClusterReplicationRole
 {
@@ -73,10 +87,12 @@ static int ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
 char *DDLQueuePrimaryKeyStartTime = NULL;
 char *DDLQueuePrimaryKeyQueryId = NULL;
+static Oid CachedExtensionOwnerOid = 0; /* Cached for a pg connection. */
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 static int64 GetInt64FromVariable(const char *var, const char *var_name);
+static Oid XClusterExtensionOwner(void);
 
 /* Json util functions. */
 static void AddNumericJsonEntry(
@@ -237,6 +253,8 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 {
 	// Create memory context for handling json creation + query execution.
 	MemoryContext context_new, context_old;
+	Oid save_userid;
+	int save_sec_context;
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
 		"yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
 
@@ -247,6 +265,16 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
 	(void) AddStringJsonEntry(state, "command_tag",
 							  GetCommandTagName(trig_data->tag));
+
+	const char *current_user = GetUserNameFromId(GetUserId(), false);
+	if (current_user)
+		(void) AddStringJsonEntry(state, "user", current_user);
+
+	LOCAL_FCINFO(fcinfo, 0);
+	InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+	const char *cur_schema = DatumGetCString(current_schema(fcinfo));
+	if (cur_schema)
+		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
 	/*
 	 * TODO(jhe): Need a better way of handling all these DDL types. Perhaps can
@@ -297,6 +325,8 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 
 	// Create memory context for handling json creation + query execution.
 	MemoryContext context_new, context_old;
+	Oid save_userid;
+	int save_sec_context;
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
 		"yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
 
@@ -353,7 +383,6 @@ IsInIgnoreList(EventTriggerData *trig_data)
 	return false;
 }
 
-
 static int64
 GetInt64FromVariable(const char *var, const char *var_name)
 {
@@ -368,6 +397,43 @@ GetInt64FromVariable(const char *var, const char *var_name)
 						errmsg("Error parsing %s: %s", var_name, var)));
 
 	return ret;
+}
+
+/*
+ * XClusterExtensionOwner returns the oid of the user that owns the extension.
+ */
+static Oid
+XClusterExtensionOwner(void)
+{
+	if (CachedExtensionOwnerOid > 0)
+		return CachedExtensionOwnerOid;
+
+	Relation extensionRelation = table_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyData entry[1];
+	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
+				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
+
+	SysScanDesc scanDescriptor = systable_beginscan(
+		extensionRelation, ExtensionNameIndexId, true, NULL, 1, entry);
+
+	HeapTuple extensionTuple = systable_getnext(scanDescriptor);
+	if (!HeapTupleIsValid(extensionTuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("%s extension is not loaded", EXTENSION_NAME)));
+	}
+
+	Form_pg_extension extensionForm =
+		(Form_pg_extension) GETSTRUCT(extensionTuple);
+	Oid extensionOwner = extensionForm->extowner;
+
+	systable_endscan(scanDescriptor);
+	table_close(extensionRelation, AccessShareLock);
+
+	// Cache this value for future calls.
+	CachedExtensionOwnerOid = extensionOwner;
+	return extensionOwner;
 }
 
 static void

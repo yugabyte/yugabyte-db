@@ -1073,8 +1073,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
-  if (!ddl_mode && xcluster_context_ &&
-      xcluster_context_->IsXClusterReadOnlyMode(options.namespace_id())) {
+  if (!ddl_mode && xcluster_context_ && xcluster_context_->IsReadOnlyMode(options.namespace_id())) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.
@@ -1959,7 +1958,20 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
   auto status = data->Init(size);
   if (status.ok()) {
+    static std::atomic<int64_t> next_rpc_id{0};
+    auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
+    ADOPT_WAIT_STATE(wait_state);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
+    if (wait_state) {
+      wait_state->UpdateMetadata(
+          {.rpc_request_id = next_rpc_id.fetch_add(1, std::memory_order_relaxed)});
+      wait_state->UpdateAuxInfo({.method = "Perform"});
+      ash::SharedMemoryPgPerformTracker().Track(wait_state);
+    }
     status = DoPerform(data, data->deadline, nullptr);
+    if (wait_state) {
+      ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
+    }
   }
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());

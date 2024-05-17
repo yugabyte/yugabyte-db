@@ -200,6 +200,9 @@ static StringInfoData row_description_buf;
 /* Flag to mark cache as invalid if discovered within a txn block. */
 static bool yb_need_cache_refresh = false;
 
+/* whether or not we are executing a multi-statement query received via simple query protocol */
+static bool yb_is_multi_statement_query = false;
+
 /*
  * String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
@@ -1141,6 +1144,7 @@ exec_simple_query(const char *query_string)
 	 * transaction block.
 	 */
 	use_implicit_block = (list_length(parsetree_list) > 1);
+	yb_is_multi_statement_query = use_implicit_block;
 
 	/*
 	 * Run through the raw parsetree(s) and process each one.
@@ -4460,23 +4464,23 @@ YBIsDmlCommandTag(CommandTag command_tag)
 
 /* Whether we are allowed to restart current query/txn. */
 static bool
-yb_is_restart_possible(const ErrorData* edata,
+yb_is_restart_possible(ErrorData* edata,
 					   int attempt,
-					   const YBQueryRestartData* restart_data,
-					   bool* retries_exhausted,
-					   bool* rc_ignoring_ddl_statement)
+					   const YBQueryRestartData* restart_data)
 {
 	CommandTag command_tag;
+
+	if (yb_debug_log_internal_restarts)
+		elog(LOG, "Error details: edata->message=%s, edata->filename=%s, edata->lineno=%d",
+				 edata->message, edata->filename, edata->lineno);
 
 	if (!IsYugaByteEnabled())
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, YB is not enabled");
+			elog(LOG, "query layer retry isn't possible, YB is not enabled");
 		return false;
 	}
 
-	elog(DEBUG2, "Error details: edata->message=%s edata->filename=%s edata->lineno=%d",
-			 edata->message, edata->filename, edata->lineno);
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	bool is_deadlock_error = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
@@ -4485,16 +4489,18 @@ yb_is_restart_possible(const ErrorData* edata,
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(
-					LOG, "Restart isn't possible, code %d isn't a read restart/conflict/deadlock error",
-					edata->yb_txn_errcode);
+					LOG, "query layer retry isn't possible, txn error %s isn't one of "
+					"kConflict/kReadRestart/kDeadlock", YBCTxnErrCodeToString(edata->yb_txn_errcode));
 		return false;
 	}
 
-	if (attempt >= yb_max_query_layer_retries)
+	if (yb_is_multi_statement_query)
 	{
+		const char* retry_err = "query layer retries aren't supported for multi-statement queries "
+				"issued via the simple query protocol, upvote github issue #21833 if you want this";
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Query layer is out of retries, retry limit is %d", yb_max_query_layer_retries);
-		*retries_exhausted = true;
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -4521,9 +4527,11 @@ yb_is_restart_possible(const ErrorData* edata,
 	 * previous statement had executed.
 	 */
 	if (IsYBReadCommitted() && is_deadlock_error) {
+		const char* retry_err = "query layer retries are not supported for deadlock errors in "
+				"READ COMMITTED isolation, upvote github issue #18616 if you want this";
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, encountered deadlock in READ COMMITTED isolation. "
-					"See #18616");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -4539,8 +4547,13 @@ yb_is_restart_possible(const ErrorData* edata,
 	if ((!IsYBReadCommitted() && YBIsDataSent()) ||
 			(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
-		elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
-							edata->yb_txn_errcode);
+		const char* retry_err = "query layer retry isn't possible because data was already sent, "
+				"if this is the read committed isolation (or) the first statement in repeatable read/ "
+				"serializable isolation transaction, consider increasing the tserver gflag "
+				"ysql_output_buffer_size";
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -4554,15 +4567,28 @@ yb_is_restart_possible(const ErrorData* edata,
 	 */
 	if (YbIsBatchedExecution() && (GetCurrentCommandId(false) > FirstCommandId))
 	{
-		elog(LOG, "Restart isn't possible: executing non-first statement in batch, will be unable "
-				  "to replay earlier commands. Txn error code=%d", edata->yb_txn_errcode);
+		const char* retry_err = "query layer retries aren't supported when executing non-first "
+				"statement in batch, will be unable to replay earlier commands";
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	if (attempt >= yb_max_query_layer_retries)
+	{
+		const char* retry_err = psprintf(
+				"yb_max_query_layer_retries set to %d are exhausted", yb_max_query_layer_retries);
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
 	if (!restart_data)
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, restart data is missing");
+			elog(LOG, "query layer retry isn't possible, restart data is missing");
 		return false;
 	}
 
@@ -4570,13 +4596,7 @@ yb_is_restart_possible(const ErrorData* edata,
 	if (!restart_data->query_string)
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, query string is missing");
-		return false;
-	}
-
-	if (IsSubTransaction() && !IsYBReadCommitted()) {
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, savepoints have been used");
+			elog(LOG, "query layer retry isn't possible, query string is missing");
 		return false;
 	}
 
@@ -4607,8 +4627,11 @@ yb_is_restart_possible(const ErrorData* edata,
 	if (IsYBReadCommitted())
 	{
 		if (YBGetDdlNestingLevel() != 0) {
-			elog(LOG, "READ COMMITTED retry semantics don't support DDLs");
-			*rc_ignoring_ddl_statement = true;
+			const char* retry_err = "query layer retries aren't supported for DDLs inside a "
+					"read committed isolation transaction block";
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 	}
@@ -4618,13 +4641,11 @@ yb_is_restart_possible(const ErrorData* edata,
 		// statements that might result in a kReadRestart/kConflict like CREATE INDEX. We don't retry
 		// those as of now.
 		if (yb_debug_log_internal_restarts)
-			elog(LOG,
-					 "Restart isn't possible because statement isn't one of SELECT/UPDATE/INSERT/DELETE");
+			elog(LOG, "query layer retries not possible because statement isn't one of "
+					 "SELECT/UPDATE/INSERT/DELETE");
 		return false;
 	}
 
-	if (yb_debug_log_internal_restarts)
-		elog(LOG, "Restart is possible");
 	return true;
 }
 
@@ -4855,20 +4876,11 @@ yb_attempt_to_restart_on_error(int attempt,
 	 */
 	MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 	ErrorData*    edata         = CopyErrorData();
-	bool					retries_exhausted = false;
-	bool					rc_ignoring_ddl_statement = false;
 
-	if (yb_is_restart_possible(
-					edata, attempt, restart_data, &retries_exhausted, &rc_ignoring_ddl_statement)) {
+	if (yb_is_restart_possible(edata, attempt, restart_data)) {
 		if (yb_debug_log_internal_restarts)
-		{
-			ereport(LOG,
-							(errmsg("Restarting statement due to kReadRestart/kConflict error:"
-			                "\nQuery: %s\nError: %s\nAttempt No: %d",
-			                restart_data->query_string,
-			                edata->message,
-			                attempt)));
-		}
+			ereport(LOG, (errmsg("Performing query layer retry with attempt number: %d", attempt)));
+
 		/*
 		 * Cleanup the error and restart portal.
 		 */
@@ -4876,7 +4888,8 @@ yb_attempt_to_restart_on_error(int attempt,
 
 		if (restart_data->portal_name)
 		{
-			elog(DEBUG1, "Restarting portal %s for retry", restart_data->portal_name);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "Restarting portal %s for retry", restart_data->portal_name);
 			yb_restart_portal(restart_data->portal_name);
 		}
 		YBRestoreOutputBufferPosition();
@@ -4887,7 +4900,8 @@ yb_attempt_to_restart_on_error(int attempt,
 			 * In this case the txn is not restarted, just the statement is restarted after rolling back
 			 * to the internal savepoint registered at start of the statement.
 			 */
-			elog(DEBUG1, "Rolling back statement");
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "Rolling back and retrying current statement");
 
 			/*
 			 * Presence of triggers pushes additional snapshots. Pop all of them.
@@ -4956,7 +4970,8 @@ yb_attempt_to_restart_on_error(int attempt,
 			 * In this case the txn is restarted, which can be done since we haven't executed even the
 			 * first statement fully and no data has been sent to the client.
 			 */
-			elog(DEBUG1, "Restarting txn");
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "Restarting transaction");
 
 			/*
 			 * The txn might or might not have performed writes. Reset the state in
@@ -4992,20 +5007,7 @@ yb_attempt_to_restart_on_error(int attempt,
 		}
 	} else {
 		/* if we shouldn't restart - propagate the error */
-
-		if (rc_ignoring_ddl_statement) {
-			edata->message = psprintf(
-				"Read Committed txn cannot proceed because of error in DDL. %s", edata->message);
-			ReThrowError(edata);
-		}
-
-		if (retries_exhausted) {
-			edata->message = psprintf("%s. %s", "All transparent retries exhausted", edata->message);
-			ReThrowError(edata);
-		}
-
-		MemoryContextSwitchTo(error_context);
-		PG_RE_THROW();
+		ReThrowError(edata);
 	}
 }
 
@@ -5353,12 +5355,11 @@ PostgresMain(const char *dbname, const char *username)
 	 * *MyProcPort, because ConnCreate() allocated that space with malloc()
 	 * ... else we'd need to copy the Port data first.  Also, subsidiary data
 	 * such as the username isn't lost either; see ProcessStartupPacket().
-	 * PostmasterContext is required in case of connections created by
+	 * YB note: PostmasterContext is required in case of connections created by
 	 * Ysql Connection Manager for `Authentication Passthrough`, so it shouldn't
 	 * be deleted in this case.
 	 */
-	if(!(YbIsClientYsqlConnMgr())
-		&& PostmasterContext)
+	if (PostmasterContext && !YbIsClientYsqlConnMgr())
 	{
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;
@@ -5768,6 +5769,7 @@ PostgresMain(const char *dbname, const char *username)
 			if (IsYsqlUpgrade &&
 				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 				yb_catalog_version_type = CATALOG_VERSION_UNSET;
+			yb_is_multi_statement_query = false;
 		}
 
 		switch (firstchar)
@@ -6235,6 +6237,16 @@ PostgresMain(const char *dbname, const char *username)
 			case 'A': /* Auth Passthrough Request */
 				if (YbIsClientYsqlConnMgr())
 				{
+					/*
+					 * Do not rely on cache during authentication passthrough.
+					 * "ALTER ROLE" does not change the catalog version due to this
+					 * local cache may have an invalid cache.
+					 * 
+					 * TODO (GH #21998): Invalidate cache specific to the role credentials and
+					 * logic permissions.
+					 */
+					ResetCatalogCaches();
+
 					/* Store a copy of the old context */
 					char *db_name = MyProcPort->database_name;
 					char *user_name = MyProcPort->user_name;

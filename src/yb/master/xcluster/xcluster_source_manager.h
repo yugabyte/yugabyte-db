@@ -90,7 +90,7 @@ class XClusterSourceManager {
 
   Status RunLoaders(const TabletInfos& hidden_tablets);
 
-  void SysCatalogLoaded();
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
 
   void DumpState(std::ostream& out, bool on_disk_dump) const;
 

@@ -25,6 +25,7 @@ var AuthCmd = &cobra.Command{
 	Long: "Authenticate the yba cli through this command by providing the host and API Token." +
 		" If non-interactive mode is set, provide the host and API Token using flags. " +
 		"Default for host is \"http://localhost:9000\"",
+	Example: "yba auth -f -H <host> -a <api-token>",
 	Run: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {

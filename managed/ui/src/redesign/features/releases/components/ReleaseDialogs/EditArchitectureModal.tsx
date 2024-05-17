@@ -187,7 +187,7 @@ export const EditArchitectureModal = ({
       sha256: artifact?.sha256,
       architecture: artifact?.architecture,
       platform: artifact?.platform,
-      releaseDate: data?.release_date,
+      releaseDate: data?.release_date_msecs,
       releaseNotes: data?.release_notes,
       releaseType: data?.release_type
     },
@@ -214,7 +214,7 @@ export const EditArchitectureModal = ({
     setUrlMetadata({
       version: data?.version,
       releaseType: data?.release_type,
-      releaseDate: data?.release_date,
+      releaseDate: data?.release_date_msecs,
       platform: artifact?.platform,
       architecture: artifact?.architecture
     });
@@ -297,7 +297,7 @@ export const EditArchitectureModal = ({
     setUrlMetadata({
       version: response.version,
       releaseType: response.release_type,
-      releaseDate: response.release_date,
+      releaseDate: response.release_date_msecs,
       platform: response.platform,
       architecture: response.architecture
     });

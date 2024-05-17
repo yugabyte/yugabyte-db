@@ -1875,11 +1875,7 @@ typedef struct BitmapHeapScanState
  *		work_mem_exceeded  if we've exceeded work_mem, internally switch to
  *						   seq scan
  *		average_ybctid_bytes	an estimate of the average ybctid size
- *		can_skip_fetch	   can we potentially skip tuple fetches in this scan?
  *		skipped_tuples	   how many tuples have we skipped fetching?
- *		recheck_pushdown   if index recheck is required, check these remote
- *						   quals
- *		fallback_pushdown  if work_mem is exceeded, check these remote quals
  * ----------------
  */
 typedef struct YbBitmapTableScanState
@@ -1894,7 +1890,6 @@ typedef struct YbBitmapTableScanState
 	bool		recheck_required;
 	bool		work_mem_exceeded;
 	size_t		average_ybctid_bytes;
-	bool		can_skip_fetch;
 	int			skipped_tuples;
 } YbBitmapTableScanState;
 

@@ -349,10 +349,6 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   Status SetupReplicationAndWaitForValidSafeTime() {
     RETURN_NOT_OK(
         SetupUniverseReplication(producer_tables_, {LeaderOnly::kTrue, Transactional::kTrue}));
-    // Verify that universe was setup on consumer.
-    master::GetUniverseReplicationResponsePB resp;
-    RETURN_NOT_OK(VerifyUniverseReplication(&resp));
-    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
     return WaitForValidSafeTimeOnAllTServers(consumer_tables_.front()->name().namespace_id());
   }
 
@@ -619,10 +615,6 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   auto yb_table = ASSERT_RESULT(producer_client()->OpenTable(table_name_with_id.table_id()));
 
   ASSERT_OK(SetupUniverseReplication({yb_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
-  // Verify that universe was setup on consumer.
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   ASSERT_OK(WaitForValidSafeTimeOnAllTServers(table_name_with_id.namespace_id()));
 
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -1022,7 +1014,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
 
   // Restart cluster to clear meta cache partition ranges.
   // TODO: don't check partition bounds for txn status tablets.
-  ASSERT_OK(consumer_cluster()->RestartSync());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    ASSERT_OK(consumer_cluster()->RestartSync());
+  }
 
   // Now add 2 txn tablets on the consumer, then rerun test.
   global_txn_table_id =
@@ -1032,9 +1027,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
   wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
 
-  // Reset the role and data before setting up replication again.
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
-  ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      consumer_table_->name().namespace_id(), /*is_read_only=*/false));
+
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(producer_table_->name().namespace_name()));
     return conn.ExecuteFormat("delete from $0;", producer_table_->name().table_name());
@@ -1046,7 +1041,6 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
       ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), {producer_table_}));
   ASSERT_OK(SetupUniverseReplication(
       producer_tables_, bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table_->name().namespace_id()));
   // Run test.
   run_write_verify_delete_test();
@@ -1103,37 +1097,6 @@ TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
-}
-
-TEST_F(XClusterYsqlTest, ChangeRole) {
-  // 1. Test that an existing universe without replication of txn status table cannot become a
-  // STANDBY.
-  ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
-
-  ASSERT_OK(SetupUniverseReplication({producer_table_}));
-
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-
-  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  ASSERT_OK(DeleteUniverseReplication());
-
-  // 2. Test that a universe cannot change a role to its same role.
-  ASSERT_OK(
-      SetupUniverseReplication({producer_table_}, {LeaderOnly::kFalse, Transactional::kTrue}));
-
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-
-  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
-
-  // 3. Test that a change role to STANDBY mode succeeds.
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-
-  // 4. Test that a change of role back to ACTIVE mode succeeds.
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
-  ASSERT_OK(DeleteUniverseReplication());
 }
 
 TEST_F(XClusterYsqlTest, SetupUniverseReplication) {
@@ -2573,19 +2536,13 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
     return ConnectConsumers(namespaces);
   }
 
-  Status SetRoleToStandbyAndWaitForValidSafeTime() {
-    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  Status WaitForValidSafeTime() {
     auto deadline = PropagationDeadline();
     for (const auto& namespace_id : namespace_ids_) {
       RETURN_NOT_OK(
           WaitForValidSafeTimeOnAllTServers(namespace_id, nullptr /* cluster */, deadline));
     }
     return Status::OK();
-  }
-
-  Status SetRoleToActive() {
-    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
-    return WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE);
   }
 
  private:
@@ -2615,22 +2572,15 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
       "INSERT INTO $0 VALUES($1, 100)", "UPDATE $0 SET balance = 0 WHERE id = $1",
       "DELETE FROM $0 WHERE id = $1"};
   std::vector<std::string> queries;
-  queries.reserve(query_patterns.size());
   for (const auto& pattern : query_patterns) {
     queries.push_back(Format(pattern, kTableName, 1));
-  }
-
-  for (auto& conn : consumer_conns) {
-    for (const auto& query : queries) {
-      ASSERT_OK(conn.Execute(query));
-    }
   }
 
   for (const auto& query : queries) {
     ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 
-  ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
+  ASSERT_OK(WaitForValidSafeTime());
 
   // Test that INSERT, UPDATE, and DELETE operations fail while the cluster is on STANDBY mode.
   const std::string allow_writes = "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;";
@@ -2654,9 +2604,18 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
     ASSERT_OK(non_replicated_db_conn.Execute(query));
   }
 
-  ASSERT_OK(SetRoleToActive());
+  ASSERT_OK(DeleteUniverseReplication());
 
-  // Test that DML operations are allowed again once the cluster is set to ACTIVE mode.
+  std::vector<std::string> namespaces{namespace_name, namespace_3};
+
+  for (auto& conn : consumer_conns) {
+    auto namespace_name = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_database()"));
+    auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace_name));
+    ASSERT_OK(
+        WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, &consumer_cluster_));
+  }
+
+  // Test that DML operations are allowed again once the replication is deleted.
   for (auto& conn : consumer_conns) {
     for (const auto& query : queries) {
       ASSERT_OK(conn.Execute(query));
@@ -2670,7 +2629,7 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
 
 TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XClusterYsqlTestReadOnly) {
   auto consumer_conns = ASSERT_RESULT(PrepareClusters());
-  ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
+  ASSERT_OK(WaitForValidSafeTime());
   constexpr auto* kNewTestTableName = "new_test_table";
   constexpr auto* kNewDBPrefix = "test_db_";
 
@@ -3155,6 +3114,85 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   cdc_row = ASSERT_RESULT(
       cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(cdc_row.has_value());
+}
+
+// Verify bi-directional transactional replication with 2 DBs and 2 replication groups.
+TEST_F(XClusterYsqlTest, TransactionalBidirectionalWithTwoDBs) {
+  ASSERT_OK(Initialize(3 /* replication factor */));
+  const auto namespace_2 = "test_namespace2";
+  ASSERT_OK(RunOnBothClusters([this, &namespace_2](Cluster* cluster) -> Status {
+    return CreateDatabase(cluster, namespace_2);
+  }));
+
+  const std::vector<NamespaceName> namespaces = {namespace_name, namespace_2};
+
+  ASSERT_OK(RunOnBothClusters([this, &namespaces](Cluster* cluster) -> Status {
+    for (const auto& namespace_name : namespaces) {
+      auto table_name = VERIFY_RESULT(CreateYsqlTable(
+          cluster, namespace_name, "" /* schema_name */, "test_table",
+          /*tablegroup_name=*/boost::none,
+          /*num_tablets=*/3));
+      std::shared_ptr<client::YBTable> table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+      cluster->tables_.push_back(std::move(table));
+    }
+
+    return Status::OK();
+  }));
+
+  // Setup transactional replication for namespace1 from producer to consumer, and for namespace2
+  // from consumer to producer.
+  const xcluster::ReplicationGroupId kProdToConsumerGroupId("PtoC");
+  const xcluster::ReplicationGroupId kConsumerToProdGroupId("CtoP");
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kProdToConsumerGroupId,
+      {producer_tables_[0]}, {} /* bootstrap_ids */, {LeaderOnly::kTrue, Transactional::kTrue}));
+
+  ASSERT_OK(SetupUniverseReplication(
+      consumer_cluster(), producer_cluster(), producer_client(), kConsumerToProdGroupId,
+      {consumer_tables_[1]}, {} /* bootstrap_ids */, {LeaderOnly::kTrue, Transactional::kTrue}));
+
+  auto consumer_db1_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  auto consumer_db2_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_2));
+  auto producer_db1_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto producer_db2_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_2));
+
+  const auto kReadOnlyError = "Data modification is forbidden";
+
+  // Inserting into the target side should fail.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(0, 100, &consumer_cluster_, consumer_tables_[0]->name()), kReadOnlyError);
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(0, 100, &producer_cluster_, producer_tables_[1]->name()), kReadOnlyError);
+
+  // Inserting into the source side and verify replication.
+  ASSERT_OK(WriteWorkload(0, 100, &producer_cluster_, producer_tables_[0]->name()));
+  ASSERT_OK(WriteWorkload(0, 150, &consumer_cluster_, consumer_tables_[1]->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_tables_[0], consumer_tables_[0]));
+  ASSERT_OK(VerifyWrittenRecords(producer_tables_[1], consumer_tables_[1]));
+
+  // Delete the first replication group and make sure we can now write on both sides.
+  ASSERT_OK(
+      DeleteUniverseReplication(kProdToConsumerGroupId, consumer_client(), consumer_cluster()));
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      consumer_tables_[0]->name().namespace_id(), /*is_read_only=*/false, &consumer_cluster_));
+  ASSERT_OK(WriteWorkload(100, 200, &consumer_cluster_, consumer_tables_[0]->name()));
+  ASSERT_OK(WriteWorkload(100, 200, &producer_cluster_, producer_tables_[0]->name()));
+
+  // Other namespace/table should not be affected.
+  ASSERT_NOK_STR_CONTAINS(
+      WriteWorkload(150, 250, &producer_cluster_, producer_tables_[1]->name()), kReadOnlyError);
+  ASSERT_OK(WriteWorkload(150, 250, &consumer_cluster_, consumer_tables_[1]->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_tables_[1], consumer_tables_[1]));
+
+  // Delete the second replication group and make sure we can now write on both sides.
+  ASSERT_OK(
+      DeleteUniverseReplication(kConsumerToProdGroupId, producer_client(), producer_cluster()));
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      producer_tables_[1]->name().namespace_id(), /*is_read_only=*/false, &producer_cluster_));
+  ASSERT_OK(WriteWorkload(250, 350, &producer_cluster_, producer_tables_[1]->name()));
+  ASSERT_OK(WriteWorkload(250, 350, &consumer_cluster_, consumer_tables_[1]->name()));
 }
 
 }  // namespace yb

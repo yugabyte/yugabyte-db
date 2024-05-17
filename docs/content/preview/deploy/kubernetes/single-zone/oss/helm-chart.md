@@ -344,7 +344,6 @@ serviceEndpoints:
     type: "LoadBalancer"
     ports:
       tcp-yql-port: "9042"
-      tcp-yedis-port: "6379"
       tcp-ysql-port: "5433"
 ```
 

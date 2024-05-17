@@ -907,14 +907,14 @@ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 
 --
 -- Semi Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
- Nested Loop Semi Join  (cost=3.30..3439.72 rows=333 width=4) (actual rows=6 loops=1)
-   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
-   ->  YB Bitmap Table Scan on joinb  (cost=3.30..7.43 rows=333 width=4) (actual rows=1 loops=10)
-         ->  Bitmap Index Scan on joinb_c_idx  (cost=0.00..3.30 rows=10 width=0) (actual rows=3 loops=10)
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Nested Loop Semi Join (actual rows=6 loops=1)
+   ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on joinb (actual rows=1 loops=10)
+         ->  Bitmap Index Scan on joinb_c_idx (actual rows=3 loops=10)
                Index Cond: (c >= joina.b)
 (5 rows)
 
@@ -929,16 +929,16 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
  12
 (6 rows)
 
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                                     QUERY PLAN
---------------------------------------------------------------------------------------------------------------------
- Sort  (cost=188.39..189.22 rows=333 width=4) (actual rows=6 loops=1)
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
    Sort Key: joina.a
    Sort Method: quicksort
-   ->  Nested Loop Semi Join  (cost=0.00..174.44 rows=333 width=4) (actual rows=6 loops=1)
-         ->  Seq Scan on joina  (cost=0.00..100.00 rows=1000 width=8) (actual rows=10 loops=1)
-         ->  Index Only Scan using joinb_c_idx on joinb  (cost=0.00..1.10 rows=10 width=4) (actual rows=1 loops=10)
+   ->  Nested Loop Semi Join (actual rows=6 loops=1)
+         ->  Seq Scan on joina (actual rows=10 loops=1)
+         ->  Index Only Scan using joinb_c_idx on joinb (actual rows=1 loops=10)
                Index Cond: (c >= joina.b)
                Heap Fetches: 0
 (8 rows)
@@ -957,14 +957,14 @@ SELECT joina.a FROM joina WHERE EXISTS (SELECT FROM joinb WHERE joinb.c >= joina
 --
 -- Anti Join
 --
-/*+ BitmapScan(joinb) */ EXPLAIN ANALYZE
+/*+ BitmapScan(joinb) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
- Nested Loop Anti Join  (cost=3.30..3439.72 rows=667 width=4) (actual rows=4 loops=1)
-   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
-   ->  YB Bitmap Table Scan on joinb  (cost=3.30..7.43 rows=333 width=4) (actual rows=1 loops=10)
-         ->  Bitmap Index Scan on joinb_c_idx  (cost=0.00..3.30 rows=10 width=0) (actual rows=3 loops=10)
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Nested Loop Anti Join (actual rows=4 loops=1)
+   ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on joinb (actual rows=1 loops=10)
+         ->  Bitmap Index Scan on joinb_c_idx (actual rows=3 loops=10)
                Index Cond: (c >= joina.b)
 (5 rows)
 
@@ -977,13 +977,13 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
  20
 (4 rows)
 
-/*+ Set(enable_bitmapscan false) */ EXPLAIN ANALYZE
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, COSTS OFF)
 SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= joina.b) ORDER BY joina.a;
-                                                  QUERY PLAN
---------------------------------------------------------------------------------------------------------------
- Nested Loop Anti Join  (cost=0.00..198.44 rows=667 width=4) (actual rows=4 loops=1)
-   ->  Index Scan using joina_a_idx on joina  (cost=0.00..124.00 rows=1000 width=8) (actual rows=10 loops=1)
-   ->  Index Only Scan using joinb_c_idx on joinb  (cost=0.00..1.10 rows=10 width=4) (actual rows=1 loops=10)
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Nested Loop Anti Join (actual rows=4 loops=1)
+   ->  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
+   ->  Index Only Scan using joinb_c_idx on joinb (actual rows=1 loops=10)
          Index Cond: (c >= joina.b)
          Heap Fetches: 0
 (5 rows)
@@ -996,6 +996,28 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
  18
  20
 (4 rows)
+
+--
+-- System Table Join where we don't require any values from the Bitmap table
+--
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Nested Loop (actual rows=1 loops=1)
+   ->  Seq Scan on pg_class c (actual rows=1 loops=1)
+         Storage Filter: (relname = 'pg_class'::name)
+   ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
+               Index Cond: (oid = c.relnamespace)
+(6 rows)
+
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
+SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
+ relname
+----------
+ pg_class
+(1 row)
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

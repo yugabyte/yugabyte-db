@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { alertConfigQueryKey } from '../../../../redesign/helpers/api';
 import { formatLagMetric } from '../../../../utils/Formatters';
+import { DOCS_URL_SET_UP_REPLICATION_LAG_ALERT } from '../constants';
 import { PollingIntervalMs } from '../../constants';
 import { getStrictestReplicationLagAlertThreshold } from '../../ReplicationUtils';
 
@@ -125,7 +126,20 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
             </Typography>
           )}
           <Box marginTop={6}>
-            <Typography variant="body2">{t('infoText')}</Typography>
+            <Typography variant="body2">
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.infoText`}
+                components={{
+                  configureReplicationLagAlertDocLink: (
+                    <a
+                      href={DOCS_URL_SET_UP_REPLICATION_LAG_ALERT}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  )
+                }}
+              />
+            </Typography>
           </Box>
         </li>
       </ol>

@@ -88,6 +88,10 @@ void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn) {
   }
 }
 
+Result<std::string> GetPGVersionString(PGConn* conn) {
+  return conn->FetchRow<string>("SELECT version()");
+}
+
 void LibPqTestBase::UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* options) {
   // This test depends on fail-on-conflict concurrency control to perform its validation.
   // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871

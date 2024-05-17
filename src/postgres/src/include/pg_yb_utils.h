@@ -793,6 +793,8 @@ extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
+extern int YbGetNumberOfFunctionOutputColumns(Oid func_oid);
+
 char *YBDetailSorted(char *input);
 
 /*

@@ -362,6 +362,10 @@ void od_storage_watchdog_watch(void *arg)
 			od_debug(&instance->logger, "watchdog", watchdog_client,
 				 NULL,
 				 "deallocating obsolete storage watchdog");
+			if (watchdog_client->io.io) {
+				machine_close(watchdog_client->io.io);
+				machine_io_free(watchdog_client->io.io);
+			}
 			od_client_free(watchdog_client);
 			od_storage_watchdog_free(watchdog);
 			return;

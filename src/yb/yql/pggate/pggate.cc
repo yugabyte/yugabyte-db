@@ -242,8 +242,7 @@ class PrecastRequestSender {
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables,
-                            const bool keep_order) {
+                            const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -279,9 +278,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     exec_params.rowmark = ROW_MARK_KEYSHARE;
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
+    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it), keep_order}));
+    }), static_cast<size_t>(end - it)}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -1254,11 +1253,12 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
+                               bool ddl_rollback_enabled,
                                PgStatement **handle) {
   SCHECK(pg_txn_manager_->IsDdlMode(),
          IllegalState,
          "Index is being dropped outside of DDL mode");
-  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
+  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist, ddl_rollback_enabled);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -1330,10 +1330,6 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
-}
-
-Result<bool> PgApiImpl::DmlHasRegularTargets(PgStatement *handle) {
-  return down_cast<PgDml*>(handle)->has_regular_targets();
 }
 
 Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
@@ -2231,7 +2227,7 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
             return FetchExistingYbctids(
-                pg_session_, database_id, ybctids, region_local_tables, false);
+                pg_session_, database_id, ybctids, region_local_tables);
           }));
 }
 
@@ -2330,6 +2326,10 @@ uint64_t PgApiImpl::GetTxnSerialNo() {
   return pg_txn_manager_->GetTxnSerialNo();
 }
 
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+  return pg_txn_manager_->GetActiveSubTransactionId();
+}
+
 void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
   pg_txn_manager_->RestoreSessionParallelData(session_data);
 }
@@ -2411,6 +2411,10 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgApiImpl::YCQLStatementStats() 
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {
   return pg_session_->ActiveSessionHistory();
+}
+
+Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
+  return pg_session_->TabletsMetadata();
 }
 
 } // namespace pggate

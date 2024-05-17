@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
@@ -146,9 +148,11 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -246,6 +250,7 @@ import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMastersResponse;
@@ -477,11 +482,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return () -> {
         // Refresh the nodes from the DB to get IPs.
         Universe universe = Universe.getOrBadRequest(universeUuid);
+        // TODO cloudEnabled is supposed to be a static config but this is read from runtime config
+        // to make itests work.
+        boolean cloudEnabled =
+            confGetter.getConfForScope(
+                Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
         return universe.getHostPortsString(
             universe.getNodes().stream().filter(n -> nodes.contains(n)).collect(Collectors.toSet()),
             ServerType.MASTER,
             PortType.RPC,
-            config.getBoolean("yb.cloud.enabled"));
+            cloudEnabled);
       };
     }
 
@@ -1244,7 +1254,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
-    params.auditLogConfig = userIntent.auditLogConfig;
+
+    // Add audit log config from the primary cluster
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    params.auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -1774,6 +1788,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Creates a subtask to remove node agent locally. It is idempotent.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes in the universe.
+   * @param isForceDelete if true, removal errors are ignored.
+   * @return the subtask group.
+   */
+  public SubTaskGroup createRemoveNodeAgentTasks(
+      Universe universe, Collection<NodeDetails> nodes, boolean isForceDelete) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(RemoveNodeAgent.class.getSimpleName());
+    nodes =
+        filterUniverseNodes(
+            universe, nodes, n -> n.cloudInfo != null && n.cloudInfo.private_ip != null);
+    if (nodes.size() > 0) {
+      for (NodeDetails node : nodes) {
+        RemoveNodeAgent.Params params = new RemoveNodeAgent.Params();
+        params.setUniverseUUID(universe.getUniverseUUID());
+        params.isForceDelete = isForceDelete;
+        params.nodeName = node.getNodeName();
+        RemoveNodeAgent task = createTask(RemoveNodeAgent.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
@@ -2183,14 +2226,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /*
-   * For a given node, finds the tablets assigned to its tserver (if relevant).
+  /**
+   * Fetch DB entities from /dump-entities endpoint.
    *
-   * @param universe universe for which the node belongs.
-   * @param currentNode node we want to check.
-   * @return a set of tablets for the associated tserver.
+   * @param universe the universe.
+   * @return the API response.
    */
-  public Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
+  public DumpEntitiesResponse dumpDbEntities(Universe universe) {
     // Wait for a maximum of 10 seconds for url to succeed.
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     HostAndPort masterLeaderHostPort =
@@ -2208,20 +2250,132 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
               return dumpEntities;
             },
-            (d) -> {
+            d -> {
               if (d.getError() != null) {
                 log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
                 return false;
               }
               return true;
             });
+    return waitForCheck.retryWithBackoff(1, 2, 10);
+  }
 
-    DumpEntitiesResponse dumpEntitiesResponse = waitForCheck.retryWithBackoff(1, 2, 10);
-
+  /**
+   * For a given node, finds the tablets assigned to its tserver (if relevant).
+   *
+   * @param universe universe for which the node belongs.
+   * @param currentNode node we want to check.
+   * @return a set of tablets for the associated tserver.
+   */
+  public Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
+    // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
+    // make itests work.
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    DumpEntitiesResponse dumpEntitiesResponse = dumpDbEntities(universe);
+    boolean useSecondaryIp = GFlagsUtil.isUseSecondaryIP(universe, currentNode, cloudEnabled);
     HostAndPort currentNodeHP =
-        HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
-
+        HostAndPort.fromParts(
+            useSecondaryIp
+                ? currentNode.cloudInfo.secondary_private_ip
+                : currentNode.cloudInfo.private_ip,
+            currentNode.tserverRpcPort);
     return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
+  }
+
+  /**
+   * After data-move is done, this method is invoked to verify that no tablets are assigned to the
+   * blacklisted nodes. It throws illegal exception for the first node it finds.
+   *
+   * @param universe the universe.
+   */
+  public void verifyNoTabletsOnBlacklistedTservers(Universe universe) {
+    String masterAddresses = universe.getMasterAddresses();
+    try (YBClient client =
+        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+      DumpEntitiesResponse dumpEntitiesResponse = dumpDbEntities(universe);
+      GetMasterClusterConfigResponse response = client.getMasterClusterConfig();
+      Optional<String> errMsgOp =
+          response.getConfig().getServerBlacklist().getHostsList().stream()
+              .map(
+                  hp -> {
+                    NodeDetails node = universe.getNodeByAnyIP(hp.getHost());
+                    if (node == null) {
+                      // The node can be an old permanently blacklisted one.
+                      log.info(
+                          "Unknown blacklisted node {} in universe {}",
+                          hp,
+                          universe.getUniverseUUID());
+                      return null;
+                    }
+                    // Use the RPC port from node because it is generally not set in the HostAndPort
+                    // response.
+                    Set<String> tabletIds =
+                        dumpEntitiesResponse.getTabletsByTserverAddress(
+                            HostAndPort.fromParts(hp.getHost(), node.tserverRpcPort));
+                    if (log.isDebugEnabled()) {
+                      log.debug(
+                          "Number of tablets on tserver {} is {} tablets. Example tablets {}...",
+                          node.getNodeName(),
+                          tabletIds.size(),
+                          tabletIds.stream().limit(20).collect(Collectors.toSet()));
+                    }
+                    if (CollectionUtils.isNotEmpty(tabletIds)) {
+                      return String.format(
+                          "Expected 0 tablets on node %s. Got %d tablets",
+                          node.getNodeName(), tabletIds.size());
+                    }
+                    return null;
+                  })
+              .filter(Objects::nonNull)
+              .findFirst();
+      if (errMsgOp.isPresent()) {
+        throw new IllegalStateException(errMsgOp.get());
+      }
+    } catch (Exception e) {
+      log.error("Error in verifying no tablets on blacklisted tservers - {}", e.getMessage());
+      Throwables.propagate(e);
+    }
+  }
+
+  /**
+   * Checks that no tablets are assigned on the current node, otherwise throws an error.
+   *
+   * @param universe the universe the current node is in.
+   * @param currentNode the current node we are checking the number of tablets against.
+   * @param error the error message to show when check fails.
+   */
+  public void checkNoTabletsOnNode(Universe universe, NodeDetails currentNode) {
+    Duration timeout =
+        confGetter.getConfForScope(universe, UniverseConfKeys.clusterMembershipCheckTimeout);
+    boolean result =
+        doWithExponentialTimeout(
+            4000 /* initialDelayMs */,
+            30000 /* maxDelaysMs */,
+            timeout.toMillis(),
+            () -> {
+              Set<String> tabletsOnServer = getTserverTablets(universe, currentNode);
+              log.debug(
+                  "Number of tablets on node {}'s tserver is {} tablets",
+                  currentNode.getNodeName(),
+                  tabletsOnServer.size());
+
+              if (!tabletsOnServer.isEmpty()) {
+                log.debug(
+                    "Expected 0 tablets on node {}. Got {} tablets. Example tablets {} ...",
+                    currentNode.getNodeName(),
+                    tabletsOnServer.size(),
+                    tabletsOnServer.stream().limit(20).collect(Collectors.toSet()));
+              }
+              return tabletsOnServer.isEmpty();
+            });
+    if (!result) {
+      throw new RuntimeException(
+          String.format(
+              "Timed out waiting for tablets on node %s to have 0 tablets",
+              currentNode.getNodeName()));
+    }
   }
 
   /*

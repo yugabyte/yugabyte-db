@@ -637,47 +637,18 @@ public class ReleaseManager {
                     .map(rlf -> rlf.getLocalFilePath())
                     .collect(Collectors.toList()));
         try {
+          // x86/arm builds
           Files.walk(Paths.get(ybReleasesPath))
               .filter(
                   getPackageFilter(
                       "glob:**yugabyte*{centos,alma,linux,el}*{x86_64,aarch64}.tar.gz"))
               .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
-              .forEach(
-                  p -> {
-                    ReleasesUtils.ExtractedMetadata metadata = null;
-                    try {
-                      log.debug("checking local file {}", p.toString());
-                      metadata = releasesUtils.metadataFromPath(p);
-                      String rawVersion = metadata.version.split("-")[0];
-                      if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
-                        localReleaseNameValidation(rawVersion, null, p.toString());
-                      } else {
-                        localReleaseNameValidation(rawVersion, p.toString(), null);
-                      }
-                    } catch (RuntimeException e) {
-                      log.error(
-                          "local release "
-                              + p.getFileName().toString()
-                              + " failed validation: "
-                              + e.getLocalizedMessage());
-                      // continue forEach
-                      return;
-                    }
-                    ReleaseLocalFile rlf = ReleaseLocalFile.create(p.toString());
-                    ReleaseArtifact artifact =
-                        ReleaseArtifact.create(
-                            metadata.sha256,
-                            metadata.platform,
-                            metadata.architecture,
-                            rlf.getFileUUID());
-                    Release release = Release.getByVersion(metadata.version, metadata.releaseTag);
-                    if (release == null) {
-                      release =
-                          Release.create(
-                              metadata.version, metadata.release_type, metadata.releaseTag);
-                    }
-                    release.addArtifact(artifact);
-                  });
+              .forEach(p -> createLocalRelease(p));
+          // helm charts
+          Files.walk(Paths.get(ybReleasesPath))
+              .filter(ybChartFilter)
+              .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
+              .forEach(p -> createLocalRelease(p));
         } catch (Exception e) {
           log.error("failed to read local releases", e);
         }
@@ -715,6 +686,36 @@ public class ReleaseManager {
             ybcReleasesPath);
       }
     }
+  }
+
+  private void createLocalRelease(Path p) {
+    ReleasesUtils.ExtractedMetadata metadata = null;
+    try {
+      log.debug("checking local file {}", p.toString());
+      metadata = releasesUtils.metadataFromPath(p);
+      String rawVersion = metadata.version.split("-")[0];
+      if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
+        localReleaseNameValidation(rawVersion, null, p.toString());
+      } else {
+        localReleaseNameValidation(rawVersion, p.toString(), null);
+      }
+    } catch (RuntimeException e) {
+      log.error(
+          "local release "
+              + p.getFileName().toString()
+              + " failed validation: "
+              + e.getLocalizedMessage());
+      return;
+    }
+    ReleaseLocalFile rlf = ReleaseLocalFile.create(p.toString());
+    ReleaseArtifact artifact =
+        ReleaseArtifact.create(
+            metadata.sha256, metadata.platform, metadata.architecture, rlf.getFileUUID());
+    Release release = Release.getByVersion(metadata.version);
+    if (release == null) {
+      release = Release.create(metadata.version, metadata.release_type, metadata.releaseTag);
+    }
+    release.addArtifact(artifact);
   }
 
   private void importLocalLegacyReleases(

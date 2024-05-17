@@ -1,6 +1,5 @@
 ---
-title: Overview of CDC in YugabyteDB
-headerTitle: Overview
+title: Overview of CDC internals
 linkTitle: Overview
 description: Change Data Capture in YugabyteDB.
 headcontent: Change Data Capture in YugabyteDB
@@ -11,18 +10,6 @@ menu:
     weight: 10
 type: docs
 ---
-
-## What is change data capture?
-
-In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. YugabyteDB CDC captures changes made to data in the database and streams those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL).
-
-YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE, and DELETE operations in the upstream database, and publishes them as events to Kafka using Kafka Connect-compatible connectors.
-
-![What is CDC](/images/explore/cdc-overview-what.png)
-
-Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
-
-## How does CDC work?
 
 YugabyteDB automatically splits user tables into multiple shards (also called tablets) using either a hash- or range-based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row.
 

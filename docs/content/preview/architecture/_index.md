@@ -5,6 +5,8 @@ linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
 image: fa-sharp fa-thin fa-puzzle
 headcontent: Internals of query, transactions, sharding, replication, and storage layers
+aliases:
+  - /architecture/layerered-architecture/
 menu:
   preview:
     identifier: architecture
@@ -53,7 +55,7 @@ To learn more about the various sharding schemes, see [Sharding](docdb-sharding/
 
 ## Replication
 
-Tablets are replicated for resiliency, high availability, and fault tolerance. Each tablet has a leader that is responsible for consistent reads and writes to the data of the tablet and a few followers. The replication is done using the RAFT protocol to ensure consistency of data across the leader and followers.
+Tablets are replicated for resiliency, high availability, and fault tolerance. Each tablet has a leader that is responsible for consistent reads and writes to the data of the tablet and a few followers. The replication is done using the Raft protocol to ensure consistency of data across the leader and followers.
 
 {{<tip>}}
 To understand how replication works, see [Replication](docdb-replication/).
@@ -65,14 +67,6 @@ Transactions are a set of operations (CRUD) that are executed atomically with th
 
 {{<tip>}}
 To understand how transactions work in YugabyteDB, see [Transactions](transactions/).
-{{</tip>}}
-
-## Core functionality
-
-When YugabyteDB is deployed, it first creates an Universe. You can then create databases/namespaces and tables in the universe. After creating a table, you can read from and write to the tables.
-
-{{<tip>}}
-To understand how the core functionalities are implemented in YugabyteDB, see [Core functions](./core-functions).
 {{</tip>}}
 
 ## Master server

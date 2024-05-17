@@ -41,6 +41,10 @@ using strings::Substitute;
 
 DECLARE_bool(ycql_cache_login_info);
 
+DEFINE_RUNTIME_AUTO_bool(
+    ycql_allow_cassandra_drop, kLocalPersisted, false, true,
+    "When true, stops the regeneration of the cassandra user on restart of the cluster.");
+
 // TODO: remove direct references to member fields in CatalogManager from here.
 
 namespace yb {
@@ -85,12 +89,39 @@ PermissionsManager::PermissionsManager(CatalogManager* catalog_manager)
 
 Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   LockGuard lock(mutex_);
-  if (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr) {
+
+  bool userExists = (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr);
+  if (GetAtomicFlag(&FLAGS_ycql_allow_cassandra_drop)) {
+    bool userAlreadyCreated =
+        security_config_->LockForRead()->pb.security_config().cassandra_user_created();
+
+    if (userAlreadyCreated) {
+      LOG(INFO) << "Role " << kDefaultCassandraUsername
+                << " already created, skipping initialization."
+                << " User cassandra exists: " << userExists;
+      return Status::OK();
+    }
+
+    if (userExists) {
+      // If the user exists currently in the db, mark that the cassandra user was created
+      // Used during cluster upgrade
+      auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
+      l.mutable_data()->pb.mutable_security_config()->set_cassandra_user_created(true);
+      RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(term, security_config_));
+      l.Commit();
+      LOG(INFO) << "Role " << kDefaultCassandraUsername
+                << " was already created, marked it as created in config";
+      return Status::OK();
+    }
+  }
+
+  if (userExists) {
     LOG(INFO) << "Role " << kDefaultCassandraUsername
-              << " already created, skipping initialization";
+              << " was already created, skipping initialization";
     return Status::OK();
   }
 
+  // This must either be a new cluster or a cluster upgrading with a deleted cassandra user
   char hash[kBcryptHashSize];
   // TODO: refactor interface to be more c++ like...
   int ret = bcrypt_hashpw(kDefaultCassandraPassword, hash);
@@ -102,6 +133,12 @@ Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
   Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash, kBcryptHashSize),
                                 true, true, term, false /* Don't increment the roles version */);
   if (PREDICT_TRUE(s.ok())) {
+    if (GetAtomicFlag(&FLAGS_ycql_allow_cassandra_drop)) {
+      auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
+      l.mutable_data()->pb.mutable_security_config()->set_cassandra_user_created(true);
+      RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(term, security_config_));
+      l.Commit();
+    }
     LOG(INFO) << "Created role: " << kDefaultCassandraUsername;
   }
 

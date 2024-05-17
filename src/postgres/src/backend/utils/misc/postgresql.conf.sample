@@ -389,6 +389,7 @@
 #enable_sort = on
 #enable_tidscan = on
 #yb_enable_geolocation_costing = on
+#yb_enable_parallel_append = off
 #yb_enable_expression_pushdown = off
 #yb_enable_sequence_pushdown = on
 #yb_enable_distinct_pushdown = on

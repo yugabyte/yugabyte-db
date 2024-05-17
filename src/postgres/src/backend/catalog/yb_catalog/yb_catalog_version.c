@@ -554,7 +554,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 
 		if (has_data)
 		{
-			*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+			*version = DatumGetUInt64(values[current_version_attnum - 1]);
 			result = true;
 		}
 	}
@@ -581,10 +581,10 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 					 errmsg("catalog version for database %u was not found.", db_oid),
 					 errhint("Database might have been dropped by another user")));
 
-			uint32_t oid = (uint32_t) DatumGetInt32(values[oid_attnum - 1]);
+			uint32_t oid = DatumGetUInt32(values[oid_attnum - 1]);
 			if (oid == db_oid)
 			{
-				*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+				*version = DatumGetUInt64(values[current_version_attnum - 1]);
 				result = true;
 				break;
 			}
