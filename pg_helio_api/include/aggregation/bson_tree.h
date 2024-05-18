@@ -146,6 +146,9 @@ const BsonLeafPathNode * TraverseDottedPathAndGetOrAddLeafFieldNode(const
 																	createFunc,
 																	bool
 																	treatLeafDataAsConstant,
+																	const
+																	ExpressionVariableContext
+																	*variableContext,
 																	bool *nodeCreated);
 
 const BsonLeafPathNode * TraverseDottedPathAndAddLeafFieldNode(const
@@ -157,7 +160,10 @@ const BsonLeafPathNode * TraverseDottedPathAndAddLeafFieldNode(const
 															   CreateLeafNodeFunc
 															   createFunc,
 															   bool
-															   treatLeafDataAsConstant);
+															   treatLeafDataAsConstant,
+															   const
+															   ExpressionVariableContext *
+															   variableContext);
 
 const BsonLeafPathNode * TraverseDottedPathAndAddLeafValueNode(const StringView *path,
 															   const bson_value_t *value,
@@ -168,7 +174,10 @@ const BsonLeafPathNode * TraverseDottedPathAndAddLeafValueNode(const StringView 
 															   CreateIntermediateNodeFunc
 															   intermediateFunc,
 															   bool
-															   treatLeafDataAsConstant);
+															   treatLeafDataAsConstant,
+															   const
+															   ExpressionVariableContext *
+															   variableContext);
 
 BsonLeafArrayWithFieldPathNode * TraverseDottedPathAndAddLeafArrayNode(const
 																	   StringView *path,
@@ -177,7 +186,10 @@ BsonLeafArrayWithFieldPathNode * TraverseDottedPathAndAddLeafArrayNode(const
 																	   CreateIntermediateNodeFunc
 																	   intermediateFunc,
 																	   bool
-																	   treatLeafDataAsConstant);
+																	   treatLeafDataAsConstant,
+																	   const
+																	   ExpressionVariableContext
+																	   *variableContext);
 
 const BsonPathNode * TraverseDottedPathAndGetOrAddField(const StringView *path,
 														const bson_value_t *value,
@@ -186,6 +198,8 @@ const BsonPathNode * TraverseDottedPathAndGetOrAddField(const StringView *path,
 														createIntermediateFunc,
 														CreateLeafNodeFunc createLeafFunc,
 														bool treatLeafNodeAsConstant,
+														const ExpressionVariableContext *
+														variableContext,
 														void *nodeCreationState,
 														bool *nodeCreated);
 const BsonPathNode * TraverseDottedPathAndGetOrAddValue(const StringView *path,
@@ -195,6 +209,8 @@ const BsonPathNode * TraverseDottedPathAndGetOrAddValue(const StringView *path,
 														createIntermediateFunc,
 														CreateLeafNodeFunc createLeafFunc,
 														bool treatLeafNodeAsConstant,
+														const ExpressionVariableContext *
+														variableContext,
 														void *nodeCreationState,
 														bool *nodeCreated);
 
@@ -206,7 +222,8 @@ BsonIntermediatePathNode * BsonDefaultCreateIntermediateNode(const StringView *f
 
 void ResetNodeWithField(const BsonLeafPathNode *baseLeafNode, const char *relativePath,
 						const bson_value_t *value, CreateLeafNodeFunc createFunc,
-						bool treatLeafDataAsConstant);
+						bool treatLeafDataAsConstant, const
+						ExpressionVariableContext *variableContext);
 void ResetNodeWithValue(const BsonLeafPathNode *baseLeafNode, const char *relativePath,
 						const bson_value_t *value, CreateLeafNodeFunc createFunc,
 						bool treatLeafDataAsConstant);
@@ -217,6 +234,8 @@ const BsonPathNode * ResetNodeWithFieldAndState(const BsonLeafPathNode *baseLeaf
 												const bson_value_t *value,
 												CreateLeafNodeFunc createFunc,
 												bool treatLeafDataAsConstant,
+												const ExpressionVariableContext *
+												variableContext,
 												void *leafState);
 const BsonPathNode * ResetNodeWithValueAndState(const BsonLeafPathNode *baseLeafNode,
 												const char *relativePath,
@@ -231,7 +250,9 @@ const BsonLeafPathNode * AddValueNodeToLeafArrayWithField(
 	int index,
 	const bson_value_t *leafValue,
 	CreateLeafNodeFunc createFunc,
-	bool treatLeafDataAsConstant);
+	bool treatLeafDataAsConstant,
+	const ExpressionVariableContext
+	*variableContext);
 
 /*
  * Helper function to create the Root node of a Bson Path Tree.

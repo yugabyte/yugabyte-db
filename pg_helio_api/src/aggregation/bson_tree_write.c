@@ -21,7 +21,7 @@ static void TraverseTreeAndWriteFieldsToWriterCore(const
 												   pgbson_writer *writer,
 												   pgbson *parentDocument,
 												   WriteTreeContext *context,
-												   ExpressionVariableContext *
+												   const ExpressionVariableContext *
 												   variableContext,
 												   bool isRecursiveCall);
 
@@ -32,7 +32,8 @@ static void TraverseTreeAndWriteFieldsToWriterCore(const
  */
 void
 WriteLeafArrayFieldToWriter(pgbson_writer *writer, const BsonPathNode *child,
-							pgbson *document, ExpressionVariableContext *variableContext)
+							pgbson *document, const
+							ExpressionVariableContext *variableContext)
 {
 	if (child->nodeType == NodeType_LeafWithArrayField)
 	{
@@ -55,7 +56,7 @@ void
 AppendLeafArrayFieldChildrenToWriter(pgbson_array_writer *arrayWriter, const
 									 BsonLeafArrayWithFieldPathNode *leafArrayNode,
 									 pgbson *document,
-									 ExpressionVariableContext *variableContext)
+									 const ExpressionVariableContext *variableContext)
 {
 	const BsonLeafPathNode *leafPathNode;
 	foreach_array_child(leafPathNode, leafArrayNode)
@@ -103,7 +104,7 @@ TraverseTreeAndWriteFieldsToWriter(const BsonIntermediatePathNode *parentNode,
 								   pgbson_writer *writer,
 								   pgbson *parentDocument,
 								   WriteTreeContext *context,
-								   ExpressionVariableContext *variableContext)
+								   const ExpressionVariableContext *variableContext)
 {
 	bool inRecursiveContext = false;
 	TraverseTreeAndWriteFieldsToWriterCore(parentNode, writer, parentDocument, context,
@@ -117,7 +118,7 @@ static void
 TraverseTreeAndWriteFieldsToWriterCore(const BsonIntermediatePathNode *parentNode,
 									   pgbson_writer *writer, pgbson *parentDocument,
 									   WriteTreeContext *context,
-									   ExpressionVariableContext *variableContext,
+									   const ExpressionVariableContext *variableContext,
 									   bool inRecursiveContext)
 {
 	check_stack_depth();

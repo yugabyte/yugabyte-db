@@ -949,12 +949,13 @@ ProcessDollarToDecimalElement(bson_value_t *result, const bson_value_t *currentE
  */
 void
 ParseDollarMakeArray(const bson_value_t *inputDocument,
-					 AggregationExpressionData *data)
+					 AggregationExpressionData *data,
+					 const ExpressionVariableContext *variableContext)
 {
 	AggregationExpressionData *argumentData = palloc0(
 		sizeof(AggregationExpressionData));
 
-	ParseAggregationExpressionData(argumentData, inputDocument);
+	ParseAggregationExpressionData(argumentData, inputDocument, variableContext);
 
 	data->operator.arguments = argumentData;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;

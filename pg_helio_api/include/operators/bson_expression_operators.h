@@ -218,10 +218,10 @@ bson_value_t EvaluateExpressionAndGetValue(pgbson *doc, const
 										   bool isNullOnEmpty);
 ExpressionResult ExpressionResultCreateChild(ExpressionResult *parent);
 void ExpressionResultReset(ExpressionResult *expressionResult);
-void ExpressionResultSetVariable(ExpressionResult *expressionResult, StringView
-								 variableName, const bson_value_t *value);
-void ExpressionResultOverrideSingleVariableValue(ExpressionResult *expressionResult, const
-												 bson_value_t *value);
+void ExpressionResultSetConstantVariable(ExpressionResult *expressionResult, const
+										 StringView *variableName, const
+										 bson_value_t *value);
+
 void ValidateVariableName(StringView name);
 
 /* Operator handlers definition */
@@ -477,72 +477,118 @@ void HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarZip(pgbson *doc, void *arguments,
 							  ExpressionResult *ExpressionResult);
-void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data,
+					const ExpressionVariableContext *variableContext);
+void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data,
+						 const ExpressionVariableContext *variableContext);
+void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data,
+						   const ExpressionVariableContext *variableContext);
+void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data,
+					const ExpressionVariableContext *variableContext);
+void ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data,
+						const ExpressionVariableContext *variableContext);
+void ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data,
+						 const ExpressionVariableContext *variableContext);
 void ParseDollarDateFromParts(const bson_value_t *argument,
-							  AggregationExpressionData *data);
+							  AggregationExpressionData *data,
+							  const ExpressionVariableContext *variableContext);
 void ParseDollarDateFromString(const bson_value_t *argument,
-							   AggregationExpressionData *data);
+							   AggregationExpressionData *data,
+							   const ExpressionVariableContext *variableContext);
 void ParseDollarDateSubtract(const bson_value_t *argument,
-							 AggregationExpressionData *data);
-void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarFirstN(const bson_value_t *argument, AggregationExpressionData *data);
+							 AggregationExpressionData *data,
+							 const ExpressionVariableContext *variableContext);
+void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data,
+						  const ExpressionVariableContext *variableContext);
+void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data, const
+				   ExpressionVariableContext *variableContext);
+void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data, const
+				   ExpressionVariableContext *variableContext);
+void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data, const
+				   ExpressionVariableContext *variableContext);
+void ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data, const
+				   ExpressionVariableContext *variableContext);
+void ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
+					   const ExpressionVariableContext *variableContext);
+void ParseDollarFirstN(const bson_value_t *argument, AggregationExpressionData *data,
+					   const ExpressionVariableContext *variableContext);
 void ParseDollarIndexOfArray(const bson_value_t *argument,
-							 AggregationExpressionData *data);
-void ParseDollarLastN(const bson_value_t *argument, AggregationExpressionData *data);
+							 AggregationExpressionData *data,
+							 const ExpressionVariableContext *variableContext);
+void ParseDollarLastN(const bson_value_t *argument, AggregationExpressionData *data,
+					  const ExpressionVariableContext *variableContext);
 void ParseDollarLiteral(const bson_value_t *inputDocument,
-						AggregationExpressionData *data);
+						AggregationExpressionData *data,
+						const ExpressionVariableContext *variableContext);
 void ParseDollarMakeArray(const bson_value_t *inputDocument,
-						  AggregationExpressionData *data);
-void ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data);
+						  AggregationExpressionData *data,
+						  const ExpressionVariableContext *variableContext);
+void ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data,
+					 const ExpressionVariableContext *variableContext);
+void ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data,
+					 const ExpressionVariableContext *variableContext);
+void ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data,
+					  const ExpressionVariableContext *variableContext);
+void ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
+					   const ExpressionVariableContext *variableContext);
+void ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data,
+						  const ExpressionVariableContext *variableContext);
 void ParseDollarRegexFindAll(const bson_value_t *argument,
-							 AggregationExpressionData *data);
-void ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarReplaceAll(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *data);
+							 AggregationExpressionData *data,
+							 const ExpressionVariableContext *variableContext);
+void ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data,
+						   const ExpressionVariableContext *variableContext);
+void ParseDollarReplaceAll(const bson_value_t *argument, AggregationExpressionData *data,
+						   const ExpressionVariableContext *variableContext);
+void ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *data,
+						   const ExpressionVariableContext *variableContext);
 void ParseDollarReverseArray(const bson_value_t *argument,
-							 AggregationExpressionData *data);
-void ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarSubstr(const bson_value_t *argument, AggregationExpressionData *data);
+							 AggregationExpressionData *data,
+							 const ExpressionVariableContext *variableContext);
+void ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
+						 const ExpressionVariableContext *variableContext);
+void ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data,
+						  const ExpressionVariableContext *variableContext);
+void ParseDollarSubstr(const bson_value_t *argument, AggregationExpressionData *data,
+					   const ExpressionVariableContext *variableContext);
 void ParseDollarSubstrBytes(const bson_value_t *argument,
-							AggregationExpressionData *data);
-void ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data);
-void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data);
+							AggregationExpressionData *data,
+							const ExpressionVariableContext *variableContext);
+void ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data,
+						 const ExpressionVariableContext *variableContext);
+void ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data, const
+					ExpressionVariableContext *variableContext);
+void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data,
+						 const ExpressionVariableContext *variableContext);
 void ParseDollarTsIncrement(const bson_value_t *argument,
-							AggregationExpressionData *data);
-void ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data);
+							AggregationExpressionData *data,
+							const ExpressionVariableContext *variableContext);
+void ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
+					const ExpressionVariableContext *variableContext);
 
 /* Shared functions for operator handlers */
 void * ParseFixedArgumentsForExpression(const bson_value_t *argumentValue,
 										int numberOfExpectedArgs,
 										const char *operatorName,
-										AggregationExpressionArgumentsKind *argumentsKind);
+										AggregationExpressionArgumentsKind *argumentsKind,
+										const ExpressionVariableContext *variableContext);
 
 void * ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 										int minRequiredArgs,
 										int maxRequiredArgs,
 										const char *operatorName,
-										AggregationExpressionArgumentsKind *argumentsKind);
+										AggregationExpressionArgumentsKind *argumentsKind,
+										const ExpressionVariableContext *variableContext);
 void HandleVariableArgumentExpression(pgbson *doc,
 									  const bson_value_t *operatorValue,
 									  ExpressionResult *expressionResult,

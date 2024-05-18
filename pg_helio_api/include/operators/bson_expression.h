@@ -18,6 +18,26 @@
 
 typedef struct ExpressionResult ExpressionResult;
 typedef struct BsonIntermediatePathNode BsonIntermediatePathNode;
+typedef struct AggregationExpressionData AggregationExpressionData;
+
+/*
+ * A struct that defines the value for a specific variable
+ */
+typedef struct
+{
+	/* The name of the variable. */
+	StringView name;
+
+	/* Whether the variable is a constant or an expression. */
+	bool isConstant;
+
+	/* A union which holds either the constant value or the expression data. */
+	union
+	{
+		AggregationExpressionData *expression;
+		bson_value_t bsonValue;
+	};
+} VariableData;
 
 /*
  * A struct that defines the variable context available for an expression.
@@ -29,15 +49,15 @@ typedef struct ExpressionVariableContext
 
 	union
 	{
-		/* a pgbsonelement holding the single variable information in this context. */
-		pgbsonelement variable;
+		/* a struct representing the variable. */
+		VariableData variable;
 
 		/* a hashtable containing the variables at this context. */
 		HTAB *table;
 	} context;
 
 	/* the expression's parent to be  able to traverse if the variable is not found in the current context. */
-	struct ExpressionVariableContext *parent;
+	const struct ExpressionVariableContext *parent;
 } ExpressionVariableContext;
 
 /* Func that will handle evaluating a given operator on a document. */
@@ -185,9 +205,10 @@ void EvaluateAggregationExpressionDataToWriter(const
 											   AggregationExpressionData *expressionData,
 											   pgbson *document, StringView path,
 											   pgbson_writer *writer,
-											   ExpressionVariableContext *variableContext,
+											   const ExpressionVariableContext *
+											   variableContext,
 											   bool isNullOnEmpty);
 void ParseAggregationExpressionData(AggregationExpressionData *expressionData,
-									const bson_value_t *value);
-
+									const bson_value_t *value,
+									const ExpressionVariableContext *variableContext);
 #endif

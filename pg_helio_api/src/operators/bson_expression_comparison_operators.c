@@ -59,7 +59,8 @@ static void HandlePreParsedComparisonOperator(pgbson *doc,
 static void ParseComparisonOperator(const bson_value_t *argument,
 									AggregationExpressionData *data,
 									const char *operatorName,
-									ComparisonType comparisonType);
+									ComparisonType comparisonType,
+									const ExpressionVariableContext *variableContext);
 
 static void CompareExpressionBsonValues(const bson_value_t *firstValue,
 										const bson_value_t *secondValue,
@@ -110,13 +111,15 @@ static void
 ParseComparisonOperator(const bson_value_t *argument,
 						AggregationExpressionData *data,
 						const char *operatorName,
-						ComparisonType comparisonType)
+						ComparisonType comparisonType,
+						const ExpressionVariableContext *variableContext)
 {
 	int numOfRequiredArgs = 2;
 	List *arguments = ParseFixedArgumentsForExpression(argument,
 													   numOfRequiredArgs,
 													   operatorName,
-													   &data->operator.argumentsKind);
+													   &data->operator.argumentsKind,
+													   variableContext);
 
 	AggregationExpressionData *first = list_nth(arguments, 0);
 	AggregationExpressionData *second = list_nth(arguments, 1);
@@ -232,9 +235,10 @@ HandlePreParsedDollarEq(pgbson *doc, void *arguments, ExpressionResult *expressi
  * $eq is expressed as { "$eq": [ <expression>, <expression> ] }
  */
 void
-ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data, const
+			  ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$eq", ComparisonType_Eq);
+	ParseComparisonOperator(argument, data, "$eq", ComparisonType_Eq, variableContext);
 }
 
 
@@ -258,9 +262,10 @@ HandlePreParsedDollarCmp(pgbson *doc, void *arguments, ExpressionResult *express
  * $cmp is expressed as { "$cmp": [ <expression>, <expression> ] }
  */
 void
-ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data, const
+			   ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$cmp", ComparisonType_Cmp);
+	ParseComparisonOperator(argument, data, "$cmp", ComparisonType_Cmp, variableContext);
 }
 
 
@@ -283,9 +288,10 @@ HandlePreParsedDollarGt(pgbson *doc, void *arguments, ExpressionResult *expressi
  * $gt is expressed as { "$gt": [ <expression>, <expression> ] }
  */
 void
-ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data, const
+			  ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$gt", ComparisonType_Gt);
+	ParseComparisonOperator(argument, data, "$gt", ComparisonType_Gt, variableContext);
 }
 
 
@@ -308,9 +314,10 @@ HandlePreParsedDollarGte(pgbson *doc, void *arguments, ExpressionResult *express
  * $gte is expressed as { "$gte": [ <expression>, <expression> ] }
  */
 void
-ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data, const
+			   ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$gte", ComparisonType_Gte);
+	ParseComparisonOperator(argument, data, "$gte", ComparisonType_Gte, variableContext);
 }
 
 
@@ -333,9 +340,10 @@ HandlePreParsedDollarLt(pgbson *doc, void *arguments, ExpressionResult *expressi
  * $lt is expressed as { "$lt": [ <expression>, <expression> ] }
  */
 void
-ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data, const
+			  ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$lt", ComparisonType_Lt);
+	ParseComparisonOperator(argument, data, "$lt", ComparisonType_Lt, variableContext);
 }
 
 
@@ -358,9 +366,10 @@ HandlePreParsedDollarLte(pgbson *doc, void *arguments, ExpressionResult *express
  * $lte is expressed as { "$lte": [ <expression>, <expression> ] }
  */
 void
-ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data, const
+			   ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$lte", ComparisonType_Lte);
+	ParseComparisonOperator(argument, data, "$lte", ComparisonType_Lte, variableContext);
 }
 
 
@@ -383,7 +392,8 @@ HandlePreParsedDollarNe(pgbson *doc, void *arguments, ExpressionResult *expressi
  * $ne is expressed as { "$ne": [ <expression>, <expression> ] }
  */
 void
-ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data, const
+			  ExpressionVariableContext *variableContext)
 {
-	ParseComparisonOperator(argument, data, "$ne", ComparisonType_Ne);
+	ParseComparisonOperator(argument, data, "$ne", ComparisonType_Ne, variableContext);
 }

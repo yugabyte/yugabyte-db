@@ -701,12 +701,14 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	 * specified before (say, via "x.y") in that spec.
 	 */
 	bool treatLeafDataAsConstant = true;
+	const ExpressionVariableContext *variableContext = NULL;
 	TraverseDottedPathAndGetOrAddField(&pathView,
 									   value,
 									   tree,
 									   BsonDefaultCreateIntermediateNode,
 									   BsonDefaultCreateLeafNode,
 									   treatLeafDataAsConstant,
+									   variableContext,
 									   nodeCreationState,
 									   &nodeCreated);
 

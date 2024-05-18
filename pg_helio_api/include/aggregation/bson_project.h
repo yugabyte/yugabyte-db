@@ -86,6 +86,9 @@ typedef struct ProjectDocumentState
 	/* Matched document for projection */
 	pgbson *parentDocument;
 
+	/* variable context for the current projection. */
+	const ExpressionVariableContext *variableContext;
+
 	/*
 	 * Whether or not for a $ projection the query is used to evaluate the matching index
 	 * This can only be used once by the outermost array for a positional path spec

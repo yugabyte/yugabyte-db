@@ -73,6 +73,9 @@ typedef struct BuildBsonPathTreeContext
 
 	/* IN: Useful functions to handle intermediate stages while building the path tree */
 	BuildBsonPathTreeFunctions *buildPathTreeFuncs;
+
+	/* IN: Parse time expression variable context. */
+	const ExpressionVariableContext *variableContext;
 } BuildBsonPathTreeContext;
 
 
