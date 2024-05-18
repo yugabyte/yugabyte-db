@@ -654,13 +654,12 @@ bool YBCExecuteDelete(Relation rel,
 {
 	TupleDesc		tupleDesc = RelationGetDescr(rel);
 	Oid				dboid = YBCGetDatabaseOid(rel);
-#ifdef YB_TODO
-	/* (connected to below YB_TODO) */
 	Oid				relid = RelationGetRelid(rel);
-#endif
 	YBCPgStatement	delete_stmt = NULL;
 	Datum			ybctid;
 	Oid				relfileNodeId = YbGetRelfileNodeId(rel);
+	HeapTuple		tuple = NULL;
+	bool			shouldFree = false;
 
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
@@ -682,11 +681,10 @@ bool YBCExecuteDelete(Relation rel,
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
 	{
-		bool shouldFree = true;
-		HeapTuple tuple = ExecFetchSlotHeapTuple(planSlot, true, &shouldFree);
-		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, planSlot->tts_tupleDescriptor);
-		if (shouldFree)
-			pfree(tuple);
+		/* tuple will be used transitorily, don't materialize it */
+		tuple = ExecFetchSlotHeapTuple(planSlot, false, &shouldFree);
+		ybctid =
+			YBCGetYBTupleIdFromTuple(rel, tuple, planSlot->tts_tupleDescriptor);
 	}
 
 	if (ybctid == 0)
@@ -729,6 +727,10 @@ bool YBCExecuteDelete(Relation rel,
 		YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count);
 		/* Cleanup. */
 		YBCPgDeleteStatement(delete_stmt);
+
+		if (tuple && shouldFree)
+			pfree(tuple);
+
 		return rows_affected_count > 0;
 	}
 
@@ -748,10 +750,8 @@ bool YBCExecuteDelete(Relation rel,
 	if (IsCatalogRelation(rel))
 	{
 		MarkCurrentCommandUsed();
-#ifdef YB_TODO
-		/* Need rework for pg15. Interface is changed for slot and tuple */
-		if (slot->tts_tuple)
-			CacheInvalidateHeapTuple(rel, slot->tts_tuple, NULL);
+		if (!target_tuple_fetched)
+			CacheInvalidateHeapTuple(rel, tuple, NULL);
 		else
 		{
 			/*
@@ -762,8 +762,11 @@ bool YBCExecuteDelete(Relation rel,
 			 */
 			CacheInvalidateCatalog(relid);
 		}
-#endif
 	}
+
+	/* Done with tuple, free it. */
+	if (tuple && shouldFree)
+		pfree(tuple);
 
 	YBCExecWriteStmt(delete_stmt,
 					 rel,
