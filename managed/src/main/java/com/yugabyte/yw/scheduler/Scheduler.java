@@ -175,14 +175,17 @@ public class Scheduler {
             alreadyRunning = true;
           }
 
+          Date currentTime = new Date();
+
           boolean isExpectedScheduleTaskTimeExpired = false;
           if (expectedScheduleTaskTime != null) {
-            isExpectedScheduleTaskTimeExpired = Util.isTimeExpired(expectedScheduleTaskTime);
+            isExpectedScheduleTaskTimeExpired =
+                Util.isTimeExpired(expectedScheduleTaskTime, currentTime);
           }
           boolean isExpectedIncrementScheduleTaskTime = false;
           if (expectedIncrementScheduleTaskTime != null) {
             isExpectedIncrementScheduleTaskTime =
-                Util.isTimeExpired(expectedIncrementScheduleTaskTime);
+                Util.isTimeExpired(expectedIncrementScheduleTaskTime, currentTime);
           }
 
           // Update next scheduled task time if it is expired or null.
@@ -204,7 +207,7 @@ public class Scheduler {
               && (expectedIncrementScheduleTaskTime == null
                   || isExpectedIncrementScheduleTaskTime)) {
             Date nextIncrementScheduleTaskTime =
-                ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
+                ScheduleUtil.nextExpectedIncrementTaskTime(schedule, currentTime);
             expectedIncrementScheduleTaskTime =
                 expectedIncrementScheduleTaskTime == null
                     ? nextIncrementScheduleTaskTime
@@ -220,7 +223,7 @@ public class Scheduler {
           if (backlogStatus || incrementBacklogStatus) {
             log.debug(
                 "Scheduling a backup for schedule {} due to backlog status: {}, incremental backlog"
-                    + " status",
+                    + " status {}",
                 schedule.getScheduleUUID(),
                 backlogStatus,
                 incrementBacklogStatus);
