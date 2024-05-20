@@ -334,6 +334,49 @@ Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
   return Status::OK();
 }
 
+Result<std::vector<xcluster::ReplicationGroupId>>
+XClusterClient::GetXClusterOutboundReplicationGroups(const NamespaceId& namespace_id) {
+  master::GetXClusterOutboundReplicationGroupsRequestPB req;
+  if (!namespace_id.empty()) {
+    req.set_namespace_id(namespace_id);
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(GetXClusterOutboundReplicationGroups, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<xcluster::ReplicationGroupId> replication_group_ids;
+  for (const auto& replication_group_id : resp.replication_group_ids()) {
+    replication_group_ids.emplace_back(replication_group_id);
+  }
+
+  return replication_group_ids;
+}
+
+Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+XClusterClient::GetXClusterOutboundReplicationGroupInfo(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  master::GetXClusterOutboundReplicationGroupInfoRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(GetXClusterOutboundReplicationGroupInfo, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>> result;
+  for (const auto& namespace_info : resp.namespace_infos()) {
+    auto& table_info = result[namespace_info.namespace_id()];
+    for (const auto& [table_id, stream_id] : namespace_info.table_streams()) {
+      table_info.emplace(table_id, VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
+    }
+  }
+  return result;
+}
+
+// XClusterRemoteClient
+
 XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)
     : certs_for_cdc_dir_(certs_for_cdc_dir), timeout_(timeout) {}
 

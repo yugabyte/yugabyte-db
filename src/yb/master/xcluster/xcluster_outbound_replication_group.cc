@@ -1080,4 +1080,15 @@ Status XClusterOutboundReplicationGroup::VerifyNoTasksInProgress() {
   return Status::OK();
 }
 
+Result<std::vector<NamespaceId>> XClusterOutboundReplicationGroup::GetNamespaces() const {
+  SharedLock mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForRead());
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& [namespace_id, _] : l->pb.namespace_infos()) {
+    namespace_ids.push_back(namespace_id);
+  }
+
+  return namespace_ids;
+}
+
 }  // namespace yb::master

@@ -127,6 +127,14 @@ class XClusterClient {
   Status RepairOutboundXClusterReplicationGroupRemoveTable(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
 
+  // Returns the outbound replication groups for the given namespace. If namespace_id is empty, then
+  // all outbound replication groups are returned.
+  Result<std::vector<xcluster::ReplicationGroupId>> GetXClusterOutboundReplicationGroups(
+      const NamespaceId& namespace_id = {});
+
+  Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+  GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
+
  private:
   template <typename ResponsePB, typename RequestPB, typename Method>
   Result<ResponsePB> SyncLeaderMasterRpc(

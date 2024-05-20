@@ -2528,6 +2528,57 @@ Status repair_xcluster_outbound_replication_remove_table_action(
   return Status::OK();
 }
 
+const auto list_xcluster_outbound_replication_groups_args = "[namespace_id]";
+Status list_xcluster_outbound_replication_groups_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  NamespaceId namespace_id;
+  if (args.size() > 0) {
+    namespace_id = args[0];
+  }
+
+  auto group_ids =
+      VERIFY_RESULT(client->XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id));
+
+  std::cout << group_ids.size() << " Outbound Replication Groups found"
+            << (namespace_id.empty() ? "" : Format(" for namespace $0", namespace_id)) << ": "
+            << std::endl
+            << yb::AsString(group_ids) << std::endl;
+
+  return Status::OK();
+}
+
+const auto get_xcluster_outbound_replication_group_info_args = "<replication_group_id>";
+Status get_xcluster_outbound_replication_group_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto group_info = VERIFY_RESULT(
+      client->XClusterClient().GetXClusterOutboundReplicationGroupInfo(replication_group_id));
+
+  const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
+
+  std::cout << "Outbound Replication Group: " << replication_group_id << std::endl;
+
+  for (const auto& [namespace_id, table_info] : group_info) {
+    std::cout << std::endl << "NamespaceId: " << namespace_id << std::endl;
+    auto* namespace_info = FindOrNull(namespace_map, namespace_id);
+    std::cout << "Namespace name: " << (namespace_info ? namespace_info->id.name() : "<N/A>")
+              << std::endl;
+    for (const auto& [table_id, stream_id] : table_info) {
+      std::cout << "\tTable: " << table_id << ", Stream: " << stream_id << std::endl;
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2653,6 +2704,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(remove_namespace_from_xcluster_replication);
   REGISTER_COMMAND(repair_xcluster_outbound_replication_add_table);
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
+  REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
+  REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

@@ -1119,4 +1119,39 @@ Status XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
   return outbound_replication_group->RepairRemoveTable(table_id, epoch);
 }
 
+std::vector<xcluster::ReplicationGroupId>
+XClusterSourceManager::GetXClusterOutboundReplicationGroups(NamespaceId namespace_filter) {
+  std::vector<xcluster::ReplicationGroupId> replication_groups;
+  for (const auto& outbound_group : GetAllOutboundGroups()) {
+    if (namespace_filter.empty() || outbound_group->HasNamespace(namespace_filter)) {
+      replication_groups.push_back(outbound_group->Id());
+    }
+  }
+
+  return replication_groups;
+}
+
+Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  const auto namespace_ids = VERIFY_RESULT(outbound_replication_group->GetNamespaces());
+
+  std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>> result;
+  for (const auto& namespace_id : namespace_ids) {
+    const auto namespace_info =
+        VERIFY_RESULT(outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id));
+    if (!namespace_info) {
+      continue;
+    }
+    std::unordered_map<TableId, xrepl::StreamId> ns_info;
+    for (const auto& table_info : namespace_info->table_infos) {
+      ns_info.emplace(table_info.table_id, table_info.stream_id);
+    }
+    result[namespace_id] = std::move(ns_info);
+  }
+  return result;
+}
+
 }  // namespace yb::master
