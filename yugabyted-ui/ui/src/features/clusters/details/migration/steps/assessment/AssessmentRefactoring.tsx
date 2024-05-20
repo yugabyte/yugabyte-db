@@ -77,10 +77,14 @@ const useStyles = makeStyles((theme) => ({
   innerTable: {
     borderRadius: theme.shape.borderRadius,
     backgroundColor: theme.palette.background.default,
-    marginLeft: theme.spacing(4),
+    marginLeft: theme.spacing(5),
     "& .MuiPaper-root": {
       backgroundColor: "transparent !important",
     },
+  },
+  innerTableParent: {
+    padding: 0,
+    paddingBottom: theme.spacing(1),
   },
 }));
 
@@ -116,24 +120,24 @@ const getRowCellComponent = (
       name: "objecttype",
       label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellProps: () => ({ style: { padding: "6px 16px" } }),
       },
     },
     {
       name: "fileDirectory",
       label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellProps: () => ({ style: { padding: "6px 16px" } }),
       },
     },
     {
       name: "totalObjects",
       label: t("clusterDetail.voyager.planAndAssess.refactoring.totalObjects"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellProps: () => ({ style: { padding: "6px 16px" } }),
       },
     },
     {
@@ -142,8 +146,8 @@ const getRowCellComponent = (
       options: {
         customBodyRenderLite: (dataIndex: number) =>
           `${innerData[dataIndex].acknowledgedObjects} / ${innerData[dataIndex].totalObjects}`,
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
+        setCellProps: () => ({ style: { padding: "6px 16px" } }),
       },
     },
   ];
@@ -182,7 +186,7 @@ const getRowCellComponent = (
         </TableRow>
         {expanded[dataIndex] && (
           <TableRow>
-            <TableCell colSpan={4}>
+            <TableCell colSpan={4} className={classes.innerTableParent}>
               <Box className={classes.innerTable}>
                 <YBTable
                   data={innerData}
@@ -316,31 +320,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
     },
     {
       name: "",
-      label: (
-        <Box display="flex" justifyContent="end">
-          <YBButton
-            variant="ghost"
-            startIcon={
-              expandedSuggestions.filter((s) => s).length < overviewData.length ? (
-                <ExpandIcon />
-              ) : (
-                <CollpaseIcon />
-              )
-            }
-            onClick={() => {
-              setExpandedSuggestions(
-                new Array(overviewData.length).fill(
-                  expandedSuggestions.filter((s) => s).length < overviewData.length
-                )
-              );
-            }}
-          >
-            {expandedSuggestions.filter((s) => s).length < overviewData.length
-              ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
-              : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
-          </YBButton>
-        </Box>
-      ) as unknown as string,
+      label: "",
       options: {
         sort: false,
         customBodyRenderLite: (dataIndex: number) =>
@@ -450,7 +430,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           </ResponsiveContainer>
         </Box>
 
-        <Box>
+        <Box position="relative">
           <YBTable
             data={overviewData}
             columns={refactoringOverviewColumns}
@@ -460,6 +440,30 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
             }}
             withBorder
           />
+
+          <Box display="flex" justifyContent="end" position="absolute" right={10} top={6}>
+            <YBButton
+              variant="ghost"
+              startIcon={
+                expandedSuggestions.filter((s) => s).length < overviewData.length ? (
+                  <ExpandIcon />
+                ) : (
+                  <CollpaseIcon />
+                )
+              }
+              onClick={() => {
+                setExpandedSuggestions(
+                  new Array(overviewData.length).fill(
+                    expandedSuggestions.filter((s) => s).length < overviewData.length
+                  )
+                );
+              }}
+            >
+              {expandedSuggestions.filter((s) => s).length < overviewData.length
+                ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
+                : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
+            </YBButton>
+          </Box>
         </Box>
       </Box>
 

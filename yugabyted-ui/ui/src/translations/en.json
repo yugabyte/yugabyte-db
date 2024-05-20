@@ -960,7 +960,7 @@
             "objectType": "Object Type",
             "acknowledged": "Acknowledged",
             "acknowledge": "Acknowledge",
-            "fileDirectory": "File directory",
+            "fileDirectory": "File Directory",
             "totalObjects": "Total Objects",
             "acknowledgedObjects": "Acknowledged Objects",
             "unsupportedDataType": "Unsupported Data Type",
