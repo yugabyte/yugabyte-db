@@ -771,6 +771,9 @@ Status TableSchemaVerificationTask::ValidateRunnable() {
     return Status::OK();
   }
   auto l = table_info_->LockForRead();
+  if (!l->has_ysql_ddl_txn_verifier_state()) {
+    return Status::OK();
+  }
   SCHECK(VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(transaction_.transaction_id)),
          IllegalState,
          "Table $0 is being modified by transaction $1, not $2", table_info_->ToString(),
