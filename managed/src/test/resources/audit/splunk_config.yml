@@ -1,6 +1,6 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
-  splunk_hec/Splunk: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$SplunkExporter
+  splunk_hec/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$SplunkExporter
     endpoint: endpoint
     index: index
     retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
@@ -15,7 +15,7 @@ extensions:
       rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
-  attributes/Splunk: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
@@ -40,9 +40,9 @@ receivers:
 service:
   extensions: [file_storage/queue]
   pipelines:
-    logs/Splunk:
-      exporters: [splunk_hec/Splunk]
-      processors: [attributes/Splunk]
+    logs/00000000-0000-0000-0000-000000000000:
+      exporters: [splunk_hec/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000]
       receivers: [filelog/ycql]
   telemetry:
     logs:
