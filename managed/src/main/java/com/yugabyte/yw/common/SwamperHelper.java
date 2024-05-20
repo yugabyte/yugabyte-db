@@ -121,19 +121,21 @@ public class SwamperHelper {
 
   @Getter
   public enum TargetType {
-    INVALID_EXPORT(false),
-    NODE_EXPORT(false),
-    MASTER_EXPORT(true),
-    TSERVER_EXPORT(true),
-    REDIS_EXPORT(true),
-    CQL_EXPORT(true),
-    YSQL_EXPORT(true),
-    OTEL_EXPORT(false);
+    INVALID_EXPORT(false, false),
+    NODE_EXPORT(false, true),
+    MASTER_EXPORT(true, false),
+    TSERVER_EXPORT(true, false),
+    REDIS_EXPORT(true, false),
+    CQL_EXPORT(true, false),
+    YSQL_EXPORT(true, false),
+    OTEL_EXPORT(false, true);
 
     private final boolean collectionLevelSupported;
+    private final boolean exportedInstanceLabelNeeded;
 
-    TargetType(boolean collectionLevelSupported) {
+    TargetType(boolean collectionLevelSupported, boolean exportedInstanceLabelNeeded) {
       this.collectionLevelSupported = collectionLevelSupported;
+      this.exportedInstanceLabelNeeded = exportedInstanceLabelNeeded;
     }
 
     public int getPort(NodeDetails nodeDetails) {
@@ -193,7 +195,16 @@ public class SwamperHelper {
       // As a result - our 'up' metrics does not have this exported_instance label (seem like some
       // internal prometheus logic we can't change), while other metrics have one.
       // So better just not use that. But have to leave for backward compatibility anyway.
-      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
+
+      // We are now removing this label from DB exported metrics, since it gets confusing for
+      // customers when they see both exported_instance and exported_exported_instance labels for
+      // metrics.
+      // But for node exporter and otel collector, this is still needed since those 2 don't have
+      // their own exported_instance label.
+      // Update this for any new target types added accordingly whether it's required or not.
+      if (t != null && t.exportedInstanceLabelNeeded) {
+        labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
+      }
       labels.put(LabelType.NODE_NAME.toString().toLowerCase(), nodeDetails.nodeName);
     }
     if (nodeDetails.cloudInfo != null) {
