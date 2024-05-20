@@ -209,6 +209,12 @@ Stop attempting to log to disk if the disk is full.
 
 Default: `false`
 
+##### --callhome_enabled
+
+Disable callhome diagnostics.
+
+Default: `true`
+
 
 ## Memory division flags
 
@@ -1391,6 +1397,12 @@ If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
 
 Default: `true`
+
+##### ysql_minimal_catalog_caches_preload
+
+Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
+
+Default: `false`
 
 ##### ysql_use_relcache_file
 
