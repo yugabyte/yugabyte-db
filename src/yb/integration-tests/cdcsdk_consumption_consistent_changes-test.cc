@@ -2985,5 +2985,33 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
   }
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWhileUpdatingNonExistingRow) {
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Update a row that does not exist in table. We expect to not receive any record corresponding to
+  // this update. Although, we will receive a DDL record from cdc_service but that DDL doesnt have a
+  // commit_time, therefore will be filtered out by the VWAL.
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 10 WHERE key = 50"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test_table ($0, $1) select i, i+1 from generate_series(1,10) as i",
+      kKeyColumnName, kValueColumnName));
+
+  // 10 insert records should be received.
+  int expected_dml_records = 10;
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+
+  CheckRecordsConsistencyFromVWAL(get_consistent_changes_resp.records);
+  CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
+}
+
 }  // namespace cdc
 }  // namespace yb
