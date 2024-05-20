@@ -1,9 +1,7 @@
 import React, { FC, Fragment, useMemo } from "react";
 import {
   Box,
-  Button,
   Divider,
-  MenuItem,
   Paper,
   TableCell,
   TableRow,
@@ -11,7 +9,7 @@ import {
   makeStyles,
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBButton, YBCodeBlock, YBInput, YBSelect, YBTable, YBToggle } from "@app/components";
+import { YBButton, YBTable } from "@app/components";
 import {
   Bar,
   BarChart,
@@ -83,8 +81,7 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   innerTableParent: {
-    padding: 0,
-    paddingBottom: theme.spacing(1),
+    padding: theme.spacing(0.5, 0, 1, 0),
   },
 }));
 
@@ -339,7 +336,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           alignItems="center"
           className={classes.heading}
         >
-          <Typography variant="h4">
+          <Typography variant="h5">
             {t("clusterDetail.voyager.planAndAssess.refactoring.heading")}
           </Typography>
         </Box>
@@ -428,6 +425,14 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
               />
             </BarChart>
           </ResponsiveContainer>
+        </Box>
+
+        <Divider />
+
+        <Box my={3}>
+          <Typography variant="h5">
+            {t("clusterDetail.voyager.planAndAssess.refactoring.conversionIssues")}
+          </Typography>
         </Box>
 
         <Box position="relative">

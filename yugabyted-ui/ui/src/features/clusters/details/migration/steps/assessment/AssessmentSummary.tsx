@@ -52,7 +52,7 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
           alignItems="center"
           className={classes.heading}
         >
-          <Typography variant="h4">
+          <Typography variant="h5">
             {t("clusterDetail.voyager.planAndAssess.summary.heading")}
           </Typography>
         </Box>

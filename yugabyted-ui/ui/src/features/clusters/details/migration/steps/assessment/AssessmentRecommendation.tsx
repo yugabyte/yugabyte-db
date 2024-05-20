@@ -67,7 +67,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
           className={classes.heading}
         >
           <Box display="flex" alignItems="center" gridGap={theme.spacing(0.6)}>
-            <Typography variant="h4">
+            <Typography variant="h5">
               {t("clusterDetail.voyager.planAndAssess.recommendation.heading")}
             </Typography>
             <Box>
@@ -81,7 +81,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
         <Box display="flex">
           <Box>
             <Box mb={3}>
-              <Typography variant="h4">
+              <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.recommendation.clusterSize.heading")}
               </Typography>
             </Box>
@@ -141,7 +141,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
 
           <Box>
             <Box mb={3} display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h4">
+              <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
               </Typography>
               <YBButton

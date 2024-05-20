@@ -67,7 +67,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
         <Box display="flex">
           <Box flex={1}>
             <Box display="flex" alignItems="center" gridGap={theme.spacing(0.6)} mb={3}>
-              <Typography variant="h4">
+              <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.heading")}
               </Typography>
               <Box>
@@ -121,7 +121,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
               gridGap={theme.spacing(0.6)}
               mb={3}
             >
-              <Typography variant="h4">
+              <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceDB")}
               </Typography>
               <YBButton

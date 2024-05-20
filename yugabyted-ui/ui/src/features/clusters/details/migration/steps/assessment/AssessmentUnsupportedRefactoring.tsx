@@ -1,21 +1,10 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, MenuItem, Paper, Typography, makeStyles } from "@material-ui/core";
+import { Box, Divider, MenuItem, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import {
-  YBAccordion,
-  YBCodeBlock,
-  YBInput,
-  YBModal,
-  YBSelect,
-  YBTable,
-  YBToggle,
-} from "@app/components";
+import { YBAccordion, YBCodeBlock, YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
 import type { RefactoringDataItems } from "./AssessmentRefactoring";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
-import { TablePagination } from "mui-datatables";
-import { Pagination } from "@material-ui/lab";
-import { YBPagination } from "@app/components/YBPagination/YBPagination";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -71,7 +60,7 @@ export const MigrationUnsupportedRefactoring: FC<MigrationUnsupportedRefactoring
   const { t } = useTranslation();
 
   const [page, setPage] = React.useState<number>(1);
-  const perPage = 5
+  const perPage = 5;
 
   const [search, setSearch] = React.useState<string>("");
   const [selectedAck, setSelectedAck] = React.useState<string>("");
