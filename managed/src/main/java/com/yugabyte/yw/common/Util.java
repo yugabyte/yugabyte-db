@@ -833,9 +833,12 @@ public class Util {
     return Math.abs(d1 - d2) < Util.EPSILON;
   }
 
-  /** Checks if the given date is past the current time or not. */
   public static boolean isTimeExpired(Date date) {
-    Date currentTime = new Date();
+    return isTimeExpired(date, new Date());
+  }
+
+  /** Checks if the given date is past the current time or not. */
+  public static boolean isTimeExpired(Date date, Date currentTime) {
     return currentTime.compareTo(date) >= 0 ? true : false;
   }
 
