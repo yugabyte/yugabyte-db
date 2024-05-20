@@ -613,13 +613,14 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
+   ./installer.sh -c install -u https://<yba_address> -t <api_token>
    ```
 
    For example, if you run the following:
 
    ```sh
-   ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   # To ignore verification of YBA certificate, add --skip_verify_cert.
+   ./installer.sh  -c install -u https://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
    ```
 
    You should get output similar to the following:
