@@ -122,6 +122,7 @@ JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[1]
 JAVA	org.yb.pgsql.TestYsqlMetrics#testMetrics
+JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser
 JAVA	org.yb.pgsql.TestYsqlUpgrade#dmlsUpdatePgCache
 JAVA	org.yb.pgsql.TestYsqlUpgrade#invalidUpgradeActions
