@@ -155,6 +155,12 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
       const LeaderEpoch& epoch);
 
+  std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
+      NamespaceId namespace_filter);
+
+  Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
+  GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
+
  private:
   friend class XClusterOutboundReplicationGroup;
 

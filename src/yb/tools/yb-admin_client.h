@@ -476,6 +476,9 @@ class ClusterAdminClient {
   Status RepairOutboundXClusterReplicationGroupRemoveTable(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
 
+  using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
+  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,
@@ -603,9 +606,6 @@ class ClusterAdminClient {
       Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
       const Object& obj, const Request& req, const char* error_message = nullptr,
       const MonoDelta timeout = MonoDelta());
-
-  using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
-  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

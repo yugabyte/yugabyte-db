@@ -437,6 +437,42 @@ Status XClusterManager::RepairOutboundXClusterReplicationGroupRemoveTable(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->table_id(), epoch);
 }
 
+Status XClusterManager::GetXClusterOutboundReplicationGroups(
+    const GetXClusterOutboundReplicationGroupsRequestPB* req,
+    GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  auto outbound_groups =
+      XClusterSourceManager::GetXClusterOutboundReplicationGroups(req->namespace_id());
+  for (const auto& group_id : outbound_groups) {
+    resp->add_replication_group_ids(group_id.ToString());
+  }
+
+  return Status::OK();
+}
+
+Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
+    const GetXClusterOutboundReplicationGroupInfoRequestPB* req,
+    GetXClusterOutboundReplicationGroupInfoResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  auto group_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
+      xcluster::ReplicationGroupId(req->replication_group_id())));
+
+  for (const auto& [namespace_id, table_streams] : group_info) {
+    auto* ns_info = resp->add_namespace_infos();
+    ns_info->set_namespace_id(namespace_id);
+    for (const auto& [table_id, stream_id] : table_streams) {
+      ns_info->mutable_table_streams()->insert({table_id, stream_id.ToString()});
+    }
+  }
+
+  return Status::OK();
+}
+
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> result;
