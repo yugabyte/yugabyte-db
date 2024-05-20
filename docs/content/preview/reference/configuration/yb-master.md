@@ -251,6 +251,11 @@ Log messages at, or above, this level are copied to `stderr` in addition to log 
 
 Default: `2`
 
+##### --callhome_enabled
+
+Disable callhome diagnostics.
+
+Default: `true`
 
 ## Memory division flags
 
@@ -844,6 +849,12 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `14400` (4 hours)
+
+##### --enable_tablet_split_of_cdcsdk_streamed_tables
+
+Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
+
+Default: `false`
 
 ## Metric export flags
 
