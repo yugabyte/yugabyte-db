@@ -91,7 +91,7 @@ You configure OIDC as follows:
 
     - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
-    - In the **Refresh Token URL** field, enter the URL of the refresh token.
+    - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
 
 1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be ReadOnly or ConnectOnly.
 
