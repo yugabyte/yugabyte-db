@@ -217,3 +217,122 @@ Typically, the maximum follower lag of a healthy universe is a few seconds at mo
 - Issues during a rolling upgrade, when the YB-Master or YB-TServer process is stopped, upgrade on the associated process is performed, then the process is restarted. During the downtime, writes to the database continue to occur, but the associated YB-Master or YB-TServer are left behind. The lag gradually decreases after the YB-Master or YB-TServer has restarted and can serve requests again. However, if an upgrade is performed on a universe that is not in a healthy state to begin with (for example, a node is down or is experiencing an unexpected problem), a failure is likely to occur due to the follower lag threshold not being reached in the specified timeframe after the processes have restarted. Note that the default value for the follower lag threshold is 1 minute and the overall time allocated for the process to catch up is 15 minutes. To remedy the situation, perform the following:
   - Bring the node back to a healthy state by stopping and restarting the node, or removing it and adding a new one.
   - Ensure that the YB-Master and YB-TServer processes are running correctly on the node.
+
+## Run pre-checks before edit/upgrade operations
+
+Before running most of the edit and upgrade operations, YBA applies several pre-checks to the universe to ensure that operations will not end up leaving the universe in an unhealthy state.
+A list of such checks are described as follows:
+
+<details>
+  <summary><b>(Rolling operations) Under-replicated tablets</b></summary>
+  <br>
+
+Symptom (An approximate sample error message)
+
+  ```text
+  CheckUnderReplicatedTablets, timing out after retrying 20 times for a duration of 10005ms,
+  greater than max time out of 10000ms. Under-replicated tablet size: 3. Failing....
+  ```
+
+Details
+
+During upgrades, YBA will not proceed if any tablets have less than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
+
+Possible action/workaround
+
+1. Fix the root cause of under-replication if it is due to certain YB-TServers being down.
+1. Increase the timeout that YBA waits for under-replication to clear, by increasing the runtime configuration flag `yb.checks.under_replicated_tablets.timeout`.
+1. If temporary unavailability during the upgrade is okay, disable this check briefly by turning off the runtime configuration flag `yb.checks.under_replicated_tablets.enabled` for this universe.
+
+</details>
+
+<details>
+  <summary><b>(Rolling operations) Are nodes safe to take down?</b></summary>
+  <br>
+
+Symptom (An approximate sample error message)
+
+```text
+Nodes are not safe to take down:
+TSERVERS: [10.1.1.1] have a problem: Server[YB Master - 10.1.1.1:7100] ILLEGAL_STATE[code 9]: 3 tablet(s) would be under-replicated.
+Example: tablet c8bf6d0092004dee91c1df80e9f4223a would be under-replicated by 1 replicas
+```
+
+Details
+
+During upgrades, YBA will not proceed if any tablets or YB-Masters have less than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
+
+Possible action/workaround
+
+1. Fix the root cause of under-replication if it is due to certain YB-Masters or YB-TServers being down.
+1. Increase the timeout that YBA waits for under-replication to clear, by increasing the runtime configuration flag `yb.checks.nodes_safe_to_take_down.timeout`.
+1. Allow for YB-TServers to lag more than the default compared to their peers to be considered healthy by changing the runtime configuration flag `yb.checks.follower_lag.max_threshold`.
+1. If temporary unavailability during the rolling operation is okay, disable this check briefly by turning off the runtime configuration flag, `yb.checks.nodes_safe_to_take_down.enabled` for this universe.
+
+</details>
+
+<details>
+  <summary><b>Leaderless tablets detected on the universe</b></summary>
+  <br>
+
+Symptom (An approximate sample error message)
+
+```text
+There are leaderless tablets: [b8a3e62d6868490abca0aba82e3477d7]
+```
+
+Details
+
+YBA verifies that the universe is in a healthy state before starting operations. If any tablets do not have leaders, this check prevents further progress.
+
+Possible action/workaround
+
+1. Fix the root cause of certain tablets having no leaders. You may require to contact {{% support-platform %}}.
+1. If the situation is temporary, the timeout for this check can be raised through the runtime configuration flag `yb.checks.leaderless_tablets.timeout`.
+1. If the universe is in an unhealthy state and you have considered the risk of operating on this unhealthy state, turn off the check using the runtime configuration flag `yb.checks.leaderless_tablets.enabled`.
+
+</details>
+
+<details>
+  <summary><b>Cluster consistency check</b></summary>
+  <br>
+
+Symptom (An approximate sample error message)
+
+```text
+Unexpected TSERVER: 10.1.1.1, node with such ip is not present in cluster
+Unexpected MASTER:, 10.1.1.1 node yb-node-1 is not marked as MASTER
+```
+
+Details
+
+YBA verifies that the deployed YB-Masters/YB-TServers configuration matches the YBA metadata (universe_details_json). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may require to be reconciled to the YBA metadata.
+
+Possible action/workaround
+
+1. Fix the root cause of the inconsistency. You may require to contact {{% support-platform %}}.
+1. If the inconsistency was verified to be harmless, the check can be turned off using the runtime configuration flag `yb.task.verify_cluster_state`. Make sure before proceeding with such an inconsistency as it can have serious consequences.
+
+</details>
+
+<details>
+  <summary><b>Follower lag check</b></summary>
+  <br>
+
+Symptom (An approximate sample error message)
+
+```text
+CheckFollowerLag, timing out after retrying 10 times for a duration of 10000ms
+```
+
+Details
+
+After a node is restarted as part of a rolling operation, YBA verifies that the YB-Masters/YB-TServers catches up to its peers. If this does not happen within a specified duration, YBA aborts the rolling operation.
+
+Possible action/workaround
+
+1. Fix any unhealthy nodes in the cluster or problematic network conditions that prevent this node from catching up to its peers.
+1. Allow a restarted node more time to catch up to its peers by raising the runtime configuration flag `yb.checks.follower_lag.timeout`.
+1. If temporary unavailability is acceptable, disable this check briefly by turning off the runtime configuration flag `yb.checks.follower_lag.enabled`.
+
+</details>
