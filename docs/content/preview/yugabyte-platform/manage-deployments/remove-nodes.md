@@ -29,7 +29,7 @@ To replace a live node for extended maintenance or replace an unhealthy node, do
 
 YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
 
-For cloud providers (AWS, Azure, or GCP), YBA returns the node back to the provider.
+For cloud providers (AWS, Azure, or GCP), YBA returns the existing node back to the provider and provisions a new replacement node from the cloud provider. For on-premises universes, the existing node is returned to the [on-premises provider node pool](../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
 
 For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
 
@@ -88,13 +88,12 @@ After the YB-TServer and (where applicable) YB-Master server are stopped, the no
 
 Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
 
-It is recommended not to stop more than (RF - 1) / 2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
+In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor 3.
 
 ### Start a process
 
 You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
 
-In some cases, the system might experience an unrecoverable error. To mitigate, you can use the **Release Instance** option for the stopped node. This also removes the backing instance. For details, see [Remove a node](#remove-node).
 
 ## Remove node
 
