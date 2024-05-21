@@ -1323,7 +1323,9 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
     }
   }
   TestThreadHolder thread_holder;
-  const int iterations = IsTsan() ? 2 : 4;
+  const int iterations = 4 / kTimeMultiplier;
+  LOG(INFO) << "iterations: " << iterations;
+  ASSERT_GE(iterations, 1);
   for (const auto& db_name : db_names) {
     thread_holder.AddThreadFunctor([this, &ddlLists, &tableList, &db_name] {
 
