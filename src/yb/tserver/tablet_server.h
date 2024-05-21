@@ -90,6 +90,10 @@ class CDCServiceImpl;
 
 }
 
+namespace stateful_service {
+class PgCronLeaderService;
+}  // namespace stateful_service
+
 namespace tserver {
 
 class TserverAutoFlagsManager;
@@ -378,6 +382,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
+  void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
@@ -503,7 +509,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
-  FlagCallbackRegistration TEST_is_cron_leader_callback_;
+  std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

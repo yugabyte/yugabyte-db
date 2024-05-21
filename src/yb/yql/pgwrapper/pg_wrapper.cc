@@ -291,7 +291,10 @@ DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
 
-DEFINE_test_flag(bool, enable_pg_cron, false, "Enables the pg_cron extension");
+DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
+    "Database in which pg_cron metadata is kept.");
+
+DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -457,7 +460,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
 
-  if (FLAGS_TEST_enable_pg_cron) {
+  if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
   }
 
@@ -497,6 +500,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
                            conf.cert_base_name));
     lines.push_back(Format("ssl_ca_file='$0/ca.crt'", conf.certs_for_client_dir));
   }
+
+  // Add cron.database_name
+  lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
   // Finally add gFlags.
   // If the file contains multiple entries for the same parameter, all but the last one are

@@ -95,6 +95,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "catalog/yb_catalog_version.h"
 
 PG_MODULE_MAGIC;
 
@@ -236,7 +237,7 @@ _PG_init(void)
 		gettext_noop("Log all cron statements prior to execution."),
 		NULL,
 		&CronLogStatement,
-		true, /* TODO(hari): false? */
+		true,
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -308,7 +309,7 @@ _PG_init(void)
 			"cron.max_running_jobs",
 			gettext_noop("Maximum number of jobs that can run concurrently."),
 			NULL,
-			&MaxRunningTasks, /* TODO(Hari): We need local and global limits */
+			&MaxRunningTasks,
 			(max_worker_processes - 1 < 5) ? max_worker_processes - 1 : 5,
 			0,
 			max_worker_processes - 1,
@@ -662,6 +663,8 @@ PgCronLauncherMain(Datum arg)
 
 		List *taskList = NIL;
 		TimestampTz currentTime = 0;
+
+		CHECK_FOR_INTERRUPTS();
 
 		AcceptInvalidationMessages();
 
@@ -2163,6 +2166,12 @@ CronBackgroundWorker(Datum main_arg)
 #endif
 
 	/* Prepare to execute the query. */
+	/* YB Note: Always read the latest entries in the catalog */
+	if (IsYugaByteEnabled())
+	{
+		YBCPgResetCatalogReadTime();
+		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+	}
 	SetCurrentStatementStartTimestamp();
 	debug_query_string = command;
 	pgstat_report_activity(STATE_RUNNING, command);

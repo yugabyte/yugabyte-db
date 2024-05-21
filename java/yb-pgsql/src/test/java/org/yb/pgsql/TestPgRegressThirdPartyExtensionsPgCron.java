@@ -28,9 +28,18 @@ public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "enable_pg_cron");
+    flagMap.put("enable_pg_cron", "true");
+    return flagMap;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_enable_pg_cron", "true");
+    flagMap.put("allowed_preview_flags_csv", "enable_pg_cron");
+    flagMap.put("enable_pg_cron", "true");
     return flagMap;
   }
 

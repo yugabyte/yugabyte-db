@@ -556,6 +556,10 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::string& db_name = "yugabyte", std::optional<size_t> node_index = std::nullopt,
       bool simple_query_protocol = false);
 
+  Status MoveTabletLeader(
+      const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
+      MonoDelta timeout = MonoDelta::kMin);
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
@@ -593,12 +597,6 @@ class ExternalMiniCluster : public MiniClusterBase {
       consensus::OpIdType opid_type,
       std::vector<OpIdPB>* op_ids,
       const std::vector<ExternalMaster*>& masters);
-
-  // Ensure that the leader server is allowed to process a config change (by having at least one
-  // commit in the current term as leader).
-  Status WaitForLeaderToAllowChangeConfig(
-      const std::string& uuid,
-      consensus::ConsensusServiceProxy* leader_proxy);
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;

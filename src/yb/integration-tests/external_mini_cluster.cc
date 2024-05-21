@@ -2103,11 +2103,53 @@ Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
   if (!node_index) {
     node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
   }
+  LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
 
   auto* ts = tablet_server(*node_index);
   return pgwrapper::PGConnBuilder(
              {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
       .Connect(simple_query_protocol);
+}
+
+namespace {
+Result<itest::TabletServerMap> CreateTabletServerMap(ExternalMiniCluster& cluster) {
+  auto master = cluster.GetLeaderMaster();
+  SCHECK_NOTNULL(master);
+  return itest::CreateTabletServerMap(
+      cluster.GetProxy<master::MasterClusterProxy>(master), &cluster.proxy_cache());
+}
+}  // namespace
+
+Status ExternalMiniCluster::MoveTabletLeader(
+    const TabletId& tablet_id, std::optional<size_t> new_leader_idx, MonoDelta timeout) {
+  if (timeout == MonoDelta::kMin) {
+    timeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  }
+
+  const auto ts_map = VERIFY_RESULT(CreateTabletServerMap(*this));
+
+  itest::TServerDetails* leader_ts;
+  RETURN_NOT_OK(itest::FindTabletLeader(ts_map, tablet_id, timeout, &leader_ts));
+
+  itest::TServerDetails* new_leader_ts = nullptr;
+  if (new_leader_idx) {
+    new_leader_ts = ts_map.at(tablet_server(*new_leader_idx)->uuid()).get();
+  } else {
+    for (const auto& [ts_id, ts_details] : ts_map) {
+      if (ts_id != leader_ts->uuid()) {
+        new_leader_ts = ts_details.get();
+      }
+    }
+  }
+  SCHECK_NOTNULL(new_leader_ts);
+
+  // Step down the leader onto the second follower.
+  RETURN_NOT_OK(
+      (itest::WaitForAllPeersToCatchup(tablet_id, TServerDetailsVector(ts_map), timeout)));
+  RETURN_NOT_OK(
+      itest::LeaderStepDown(leader_ts, tablet_id, new_leader_ts, timeout, false, nullptr));
+
+  return itest::WaitUntilLeader(new_leader_ts, tablet_id, timeout);
 }
 
 //------------------------------------------------------------
