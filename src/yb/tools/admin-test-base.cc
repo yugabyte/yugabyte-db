@@ -45,13 +45,13 @@ std::string AdminTestBase::GetMasterAddresses() const {
 }
 
 Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& args) {
-  std::string result;
+  std::string output, error;
   LOG(INFO) << "Execute: " << AsString(args);
-  auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+  auto status = Subprocess::Call(args, &output, &error);
   if (!status.ok()) {
-    return status.CloneAndAppend(result);
+    return status.CloneAndAppend(error);
   }
-  return result;
+  return output;
 }
 
 Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {

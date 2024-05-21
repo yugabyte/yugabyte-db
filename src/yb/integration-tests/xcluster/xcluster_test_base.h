@@ -322,13 +322,13 @@ class XClusterTestBase : public YBTest {
   }
 
   Result<std::string> CallAdminVec(const std::vector<std::string>& args) {
-    std::string result;
+    std::string output, error;
     LOG(INFO) << "Execute: " << AsString(args);
-    auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+    auto status = Subprocess::Call(args, &output, &error);
     if (!status.ok()) {
-      return status.CloneAndAppend(result);
+      return status.CloneAndAppend(error);
     }
-    return result;
+    return output;
   }
 
   // Wait for the xcluster safe time to advance to the given time on all TServers.
