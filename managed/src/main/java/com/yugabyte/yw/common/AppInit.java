@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
@@ -106,6 +107,7 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
+      XClusterSyncScheduler xClusterSyncScheduler,
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
@@ -324,6 +326,7 @@ public class AppInit {
         nodeAgentPoller.init();
         pitrConfigPoller.start();
         automatedMasterFailover.start();
+        xClusterSyncScheduler.start();
 
         ybcUpgrade.start();
 

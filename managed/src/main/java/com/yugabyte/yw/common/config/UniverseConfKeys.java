@@ -1132,4 +1132,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Use node agent java client to run node actions on the remote nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> xClusterSyncOnUniverse =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_sync_on_universe",
+          ScopeType.UNIVERSE,
+          "XCluster Sync on Universe",
+          "Enable automatic synchronization of XCluster on Universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
