@@ -110,9 +110,11 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
-  void SetIsCronLeader(bool is_leader) { is_cron_leader_ = is_leader; }
+  void SetCronLeaderLease(MonoTime cron_leader_lease_end) {
+    cron_leader_lease_ = cron_leader_lease_end;
+  }
 
-  bool IsCronLeader() const { return is_cron_leader_; }
+  bool IsCronLeader() const;
 
  private:
   // Endpoint that should be used by local processes to access this tserver.
@@ -127,7 +129,7 @@ class TServerSharedData {
   // See same variable comments in CatalogManager.
   std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
 
-  bool is_cron_leader_ = false;
+  std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

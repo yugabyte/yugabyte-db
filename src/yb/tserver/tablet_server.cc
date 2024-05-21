@@ -82,6 +82,7 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -230,8 +231,7 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
-DEFINE_test_flag(
-    bool, is_ysql_cron_leader, false, "Make the current node run as the pg_cron leader");
+DECLARE_bool(enable_pg_cron);
 
 namespace yb::tserver {
 
@@ -516,12 +516,6 @@ Status TabletServer::Init() {
 
   shared_object().SetTserverUuid(fs_manager()->uuid());
 
-  TEST_is_cron_leader_callback_ = VERIFY_RESULT(
-      RegisterFlagUpdateCallback(&FLAGS_TEST_is_ysql_cron_leader, "is_ysql_cron_leader", [this] {
-        LOG(INFO) << "Setting the current node as the pg_cron leader";
-        TEST_SetIsCronLeader(FLAGS_TEST_is_ysql_cron_leader);
-      }));
-
   return Status::OK();
 }
 
@@ -644,6 +638,14 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RegisterService(
       FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
+  if (FLAGS_enable_pg_cron) {
+    pg_cron_leader_service_ = std::make_unique<stateful_service::PgCronLeaderService>(
+        std::bind(&TabletServer::SetCronLeaderLease, this, _1), client_future());
+    LOG(INFO) << "yb::tserver::stateful_service::PgCronLeaderService created at "
+              << pg_cron_leader_service_.get();
+    RETURN_NOT_OK(pg_cron_leader_service_->Init(tablet_manager_.get()));
+  }
+
   return Status::OK();
 }
 
@@ -679,7 +681,9 @@ void TabletServer::Shutdown() {
 
   bool expected = true;
   if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-    TEST_is_cron_leader_callback_.Deregister();
+    if (pg_cron_leader_service_) {
+      pg_cron_leader_service_->Shutdown();
+    }
 
     auto xcluster_consumer = GetXClusterConsumer();
     if (xcluster_consumer) {
@@ -1461,8 +1465,8 @@ Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadat
   return result;
 }
 
-void TabletServer::TEST_SetIsCronLeader(bool is_cron_leader) {
-  SharedObject().SetIsCronLeader(is_cron_leader);
+void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
+  SharedObject().SetCronLeaderLease(cron_leader_lease_end);
 }
 
 }  // namespace yb::tserver
