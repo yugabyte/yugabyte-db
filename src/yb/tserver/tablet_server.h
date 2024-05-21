@@ -120,6 +120,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
 
+  virtual bool ShouldExportLocalCalls() override {
+    return true;
+  }
+
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 

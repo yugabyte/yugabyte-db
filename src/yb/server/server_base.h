@@ -203,6 +203,14 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual Status DisplayRpcIcons(std::stringstream* output);
 
+  // Local calls is an optimization used to directly handle the incoming
+  // TServer rpc calls locally without going through the rpc layer.
+  // This is used when a cql or a pg perform call performs a read/write
+  // call to the local TServer.
+  virtual bool ShouldExportLocalCalls() {
+    return false;
+  }
+
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 
