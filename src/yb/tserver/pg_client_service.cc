@@ -1390,6 +1390,7 @@ class PgClientServiceImpl::Impl {
     for (const auto& call : conn.calls_in_flight()) {
       if (ShouldIgnoreCall(req, call)) {
         VLOG(3) << "Ignoring " << call.wait_state().DebugString();
+        continue;
       }
       auto* wait_state = resp->add_wait_states();
       wait_state->CopyFrom(call.wait_state());
