@@ -18,7 +18,7 @@ type: docs
 
 ## Replace a live or unreachable node
 
-To replace a live node for extended maintenance or replace an unhealthy node, do the following: 
+To replace a live node for extended maintenance or replace an unhealthy node, do the following:
 
 1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
 1. Click the associated node **Actions > Replace Node**.
@@ -86,14 +86,13 @@ If a node needs to be briefly taken out of service (for example, to perform a qu
 
 After the YB-TServer and (where applicable) YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
-Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
+Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never under-replicated.
 
-In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor 3.
+In general, you shouldn't stop more than one node at a time. For example, two stopped nodes might share a common tablet. This could cause unavailability on a universe with replication factor of 3.
 
 ### Start a process
 
 You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
-
 
 ## Remove node
 
@@ -104,7 +103,6 @@ There are no values in the **Master** and **TServer** columns for the **yb-15-aw
 The action to remove a node is available from the following internal states of the node:
 
 - ToJoinCluster
-
 - Live
 - Stopped
 - ToBeRemoved
@@ -134,21 +132,21 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 1. Select a node in the same availability zone as the removed node.
 
-2. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
+1. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
 
    This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
 
-![Start master](/images/yp/start-master.png)
+    ![Start master](/images/yp/start-master.png)
 
-When you execute the start Master action, YugabyteDB Anywhere performs the following:
+   When you execute the start Master action, YugabyteDB Anywhere performs the following:
 
 1. Configures the Master on the subject node.
 
-2. Starts a new Master process on the subject node (in Shell mode).
+1. Starts a new Master process on the subject node (in Shell mode).
 
-3. Adds the new Master to the existing Master quorum.
+1. Adds the new Master to the existing Master quorum.
 
-4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
+1. Updates the Master addresses flag on all other nodes to inform them of the new Master.
 
 ## Release node instance
 
@@ -161,11 +159,11 @@ The action to release a node instance is available from the Removed internal sta
 Taking this action transfers the node to a BeingDecommissioned and then Decommissioned internal state, as follows:
 
 1. There is a wait for Master leader.
-2. This server is removed from blacklist on Master leader (blacklisting is described in [Remove node](#remove-node)).
-3. The Master and TServer server tasks are stopped, if they have not been stopped already.
-4. The instance is destroyed.
-5. DNS entries are updated.
-6. Prometheus rules are updated and instructed to stop gathering metrics from this instance.
+1. This server is removed from blacklist on Master leader (blacklisting is described in [Remove node](#remove-node)).
+1. The Master and TServer server tasks are stopped, if they have not been stopped already.
+1. The instance is destroyed.
+1. DNS entries are updated.
+1. Prometheus rules are updated and instructed to stop gathering metrics from this instance.
 
 You can recover a node whose **Status** column displays **Decommissioned** by following instructions provided in [Recover a node](#recover-a-node).
 
@@ -183,7 +181,7 @@ The action to delete a node is available from the following internal states of t
 Taking this action completely eliminates the node, as follows:
 
 1. Removes the node record from the universe metadata.
-2. Updates metadata in the database only.
+1. Updates metadata in the database only.
 
 Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
