@@ -1012,16 +1012,15 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
   ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsNewInstallFlagName, kTrue));
 
-  ExternalMaster* new_master = nullptr;
-  cluster_->StartShellMaster(&new_master);
+  auto new_master = ASSERT_RESULT(cluster_->StartShellMaster());
 
   OpIdPB op_id;
   ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
 
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, new_master));
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, new_master.get()));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kTrue, new_master.get()));
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
@@ -1085,25 +1084,24 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_EQ(GetAutoFlagConfigVersion(new_tserver), 0);
 
   // Add a new master
-  ExternalMaster* new_master = nullptr;
-  cluster_->StartShellMaster(&new_master);
+  auto new_master = ASSERT_RESULT(cluster_->StartShellMaster());
 
   OpIdPB op_id;
   ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
-  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master));
-  ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master.get()));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master.get()));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master.get()));
+  ASSERT_EQ(GetAutoFlagConfigVersion(new_master.get()), 0);
 
   // Restart the master
   new_master->Shutdown();
   ASSERT_OK(new_master->Restart());
-  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
-  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master));
-  ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master.get()));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master.get()));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsNewInstallFlagName, kFalse, new_master.get()));
+  ASSERT_EQ(GetAutoFlagConfigVersion(new_master.get()), 0);
 
   // Remove disable_auto_flag_management from each process config and restart
   for (auto* master : cluster_->master_daemons()) {

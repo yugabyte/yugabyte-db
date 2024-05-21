@@ -89,6 +89,7 @@ class HybridTime;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
+using ExternalMasterPtr = scoped_refptr<ExternalMaster>;
 
 namespace pgwrapper {
 class PGConn;
@@ -295,9 +296,6 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerHTTPAddresses() const;
 
-  // Start a new master with `peer_addrs` as the master_addresses parameter.
-  Result<ExternalMaster *> StartMasterWithPeers(const std::string& peer_addrs);
-
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   Status PingMaster(const ExternalMaster* master) const;
 
@@ -315,16 +313,20 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Empty blacklist.
   Status ClearBlacklist(ExternalMaster* master);
 
-  // Starts a new master and returns the handle of the new master object on success.  Not thread
-  // safe for now. We could move this to a static function outside External Mini Cluster, but
-  // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
-  // errors and if a new master could not be spawned, it will crash internally.
-  void StartShellMaster(ExternalMaster** new_master);
+  // Start a new master with `peer_addrs` as the master_addresses parameter.
+  // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
+  // cluster.
+  Result<ExternalMasterPtr> StartMaster(
+      const std::string& peer_addrs, uint16_t rpc_port = 0, bool shell_mode = false);
+
+  // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
+  // cluster.
+  Result<ExternalMasterPtr> StartShellMaster();
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
   // When use_hostport is true, the master is deemed as dead and its UUID is not used.
-  Status ChangeConfig(ExternalMaster* master,
-      ChangeConfigType type,
+  Status ChangeConfig(
+      const ExternalMasterPtr& master, ChangeConfigType type,
       consensus::PeerMemberType member_type = consensus::PeerMemberType::PRE_VOTER,
       bool use_hostport = false);
 
@@ -581,8 +583,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetPeerMasterIndex(bool is_leader);
 
   // API to help update the cluster state (rpc ports)
-  Status AddMaster(ExternalMaster* master);
-  Status RemoveMaster(ExternalMaster* master);
+  Status AddMaster(const ExternalMasterPtr& master);
+  Status RemoveMaster(const ExternalMasterPtr& master);
 
   // Get the index of this master in the vector of masters. This might not be the insertion order as
   // we might have removed some masters within the vector.
@@ -610,7 +612,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // This variable is incremented every time a new master is spawned (either in shell mode or create
   // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
-  size_t add_new_master_at_;
+  size_t add_new_master_at_ = 0;
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
@@ -1025,16 +1027,14 @@ class ExternalTabletServer : public ExternalDaemon {
 
 // Custom functor for predicate based comparison with the master list.
 struct MasterComparator {
-  explicit MasterComparator(ExternalMaster* master) : master_(master) { }
+  explicit MasterComparator(const ExternalMasterPtr& master) : master_(master) {}
 
   // We look for the exact master match. Since it is possible to stop/restart master on a given
   // host/port, we do not want a stale master pointer input to match a newer master.
-  bool operator()(const scoped_refptr<ExternalMaster>& other) const {
-    return master_ == other.get();
-  }
+  bool operator()(const ExternalMasterPtr& other) const { return master_.get() == other.get(); }
 
  private:
-  const ExternalMaster* master_;
+  const ExternalMasterPtr& master_;
 };
 
 template <class T>
