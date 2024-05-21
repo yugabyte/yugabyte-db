@@ -155,4 +155,4 @@ The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-opera
     anab-test-restore   Ready   2.21.1.0-b269
     ```
 
-For more details, see [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
+For more information, see [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
