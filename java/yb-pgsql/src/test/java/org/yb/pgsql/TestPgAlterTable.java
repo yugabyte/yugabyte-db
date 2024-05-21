@@ -17,17 +17,20 @@ import static org.yb.pgsql.IsolationLevel.SERIALIZABLE;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.google.common.net.HostAndPort;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBDaemon;
 
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RunWith(value = YBTestRunner.class)
 public class TestPgAlterTable extends BasePgSQLTest {
@@ -545,6 +548,14 @@ public class TestPgAlterTable extends BasePgSQLTest {
         statement,
         "ALTER TABLE test_table REPLICA IDENTITY INVALID_REPLICA_IDENTITY;",
         "syntax error");
+
+      // Test the behaviour of the flag ysql_yb_default_replica_identity.
+      Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_default_replica_identity", "DEFAULT");
+      }
+      statement.execute("CREATE TABLE test_table_2 (id int primary key, name text);");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table_2"), new Row("default"));
     }
   }
 

@@ -240,6 +240,13 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
     "Enable replica identity command for Alter Table query");
 
+DEFINE_RUNTIME_PG_FLAG(
+    string, yb_default_replica_identity, "CHANGE",
+    "The default replica identity to be assigned to user defined tables at the time of creation. "
+    "The flag is case sensitive and can take four possible values, 'FULL', 'DEFAULT', 'NOTHING' "
+    "and 'CHANGE'. If any value other than these is assigned to the flag, the replica identity "
+    "CHANGE will be used as default at the time of table creation.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
     "The number of rows to plan per parallel worker, zero disables the feature");
 

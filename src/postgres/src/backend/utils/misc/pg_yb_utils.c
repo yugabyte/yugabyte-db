@@ -1331,6 +1331,8 @@ char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";
 
+char* yb_default_replica_identity = "CHANGE";
+
 bool yb_test_fail_table_rewrite_after_creation = false;
 
 bool yb_test_stay_in_global_catalog_version_mode = false;
