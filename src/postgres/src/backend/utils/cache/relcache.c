@@ -5271,7 +5271,7 @@ RelationBuildLocalRelation(const char *relname,
 	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
-	
+
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
 	 * places.  For a mapped relation, we set relfilenode to zero and rely on
@@ -5655,7 +5655,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) && 
+		needNewCacheFile = !load_relcache_init_file(true) &&
 			!YbNeedAdditionalCatalogTables() &&
 			*YBCGetGFlags()->ysql_use_relcache_file;
 	}
@@ -5697,7 +5697,7 @@ RelationCacheInitializePhase3(void)
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
 		bool preload_rel_cache =
-			needNewCacheFile || 
+			needNewCacheFile ||
 			YBCIsInitDbModeEnvVarSet() ||
 			YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file;
@@ -7582,7 +7582,7 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() || 
+		(YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 

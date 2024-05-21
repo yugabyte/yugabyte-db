@@ -383,9 +383,7 @@ typedef struct YbSeqScan
 {
 	Scan		scan;
 	PushdownExprs yb_pushdown;
-	double		yb_estimated_num_nexts;
-	double		yb_estimated_num_seeks;
-	int 		yb_estimated_docdb_result_width;
+	YbPlanInfo	yb_plan_info;
 } YbSeqScan;
 
 /* ----------------
@@ -449,9 +447,7 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	PushdownExprs yb_idx_pushdown;
 	PushdownExprs yb_rel_pushdown;
-	double		yb_estimated_num_nexts;
-	double		yb_estimated_num_seeks;
-	int 		yb_estimated_docdb_result_width;
+	YbPlanInfo	yb_plan_info;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
@@ -488,10 +484,8 @@ typedef struct IndexOnlyScan
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
-	double		yb_estimated_num_nexts;
-	double		yb_estimated_num_seeks;
-	int 		yb_estimated_docdb_result_width;
-	int         yb_distinct_prefixlen; /* distinct index scan prefix */
+	YbPlanInfo	yb_plan_info;
+	int			yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -546,6 +540,7 @@ typedef struct YbBitmapIndexScan
 	List	   *indexqualorig;	/* the same in original form */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	PushdownExprs yb_idx_pushdown;
+	YbPlanInfo	yb_plan_info;
 } YbBitmapIndexScan;
 
 /* ----------------
@@ -582,6 +577,7 @@ typedef struct YbBitmapTableScan
 	List		 *recheck_local_quals;	/* non-pushable index quals */
 	PushdownExprs fallback_pushdown;	/* all pushable quals */
 	List		 *fallback_local_quals;	/* all non-pushable quals */
+	YbPlanInfo	  yb_plan_info;
 } YbBitmapTableScan;
 
 /* ----------------
