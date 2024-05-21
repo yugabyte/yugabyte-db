@@ -1754,6 +1754,8 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	/* Update constraint/default info */
 	if (attp->attnotnull)
 		processing->constr->has_not_null = true;
+	if (attp->attgenerated == ATTRIBUTE_GENERATED_STORED)
+		processing->constr->has_generated_stored = true;
 
 	if (attp->atthasdef)
 	{

@@ -467,7 +467,8 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 			{
 				Bitmapset  *attrs_used = NULL;
 
-				pull_varattnos((Node *) expr, 1, &attrs_used);
+				pull_varattnos_min_attr((Node *) expr, 1, &attrs_used,
+										YBGetFirstLowInvalidAttributeNumber(rel) + 1);
 
 				if (!bms_overlap(updatedCols, attrs_used))
 					continue;	/* need not update this column */
@@ -480,7 +481,7 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 			/* And mark this column in rextra->ri_extraUpdatedCols */
 			rextra->ri_extraUpdatedCols =
 				bms_add_member(rextra->ri_extraUpdatedCols,
-							   i + 1 - FirstLowInvalidHeapAttributeNumber);
+							   i + 1 - YBGetFirstLowInvalidAttributeNumber(rel));
 		}
 	}
 
@@ -2510,6 +2511,20 @@ yb_lreplace:;
 		}
 	}
 
+	Bitmapset *extraGeneratedCols = NULL;
+	if (resultRelInfo->ri_NumGeneratedNeeded > 0)
+	{
+		/*
+		 * Include any affected generated columns. Note that generated columns
+		 * are, conceptually, updated after BEFORE triggers have run.
+		 */
+		Bitmapset *generatedCols =
+			ExecGetExtraUpdatedCols(resultRelInfo, estate);
+		Assert(!bms_is_empty(generatedCols));
+		extraGeneratedCols = bms_union(actualUpdatedCols, generatedCols);
+		actualUpdatedCols = extraGeneratedCols;
+	}
+
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
 	bool	   is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
 
@@ -2533,6 +2548,7 @@ yb_lreplace:;
 											? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 									 actualUpdatedCols, canSetTag);
 
+	bms_free(extraGeneratedCols);
 	bms_free(extraUpdatedCols);
 	return row_found;
 }

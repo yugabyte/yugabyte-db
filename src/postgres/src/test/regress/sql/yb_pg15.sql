@@ -544,3 +544,39 @@ update return_test set c = c returning *;
 update return_test set c = c returning c;
 update return_test set c = c returning a,b;
 -- YB_TODO: end
+
+-- YB_TODO: begin: remove after generated is tracked
+CREATE TABLE sales (
+    id SERIAL PRIMARY KEY,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    price_per_unit NUMERIC(10, 2) NOT NULL,
+    total_price NUMERIC GENERATED ALWAYS AS (quantity * price_per_unit) STORED
+);
+INSERT INTO sales (product_id, quantity, price_per_unit) VALUES (1, 10, 100), (2, 10, 200);
+SELECT * FROM SALES;
+UPDATE sales set quantity = quantity + 1;
+SELECT * FROM SALES;
+UPDATE sales set price_per_unit = price_per_unit + 100;
+SELECT * FROM SALES;
+UPDATE sales SET total_price = 0;
+UPDATE sales SET product_id = product_id + 10;
+SELECT * FROM SALES;
+
+CREATE OR REPLACE FUNCTION update_count() RETURNS trigger LANGUAGE plpgsql AS
+$func$
+BEGIN
+   NEW.count := NEW.count+1;
+   RETURN NEW;
+END
+$func$;
+CREATE TABLE test(a int, b int, count int, double_count int GENERATED ALWAYS AS (2 * count) STORED);
+CREATE TRIGGER update_count_test_trig BEFORE UPDATE OF a ON test FOR ROW EXECUTE PROCEDURE update_count();
+INSERT INTO test(a, b, count) values (1, 1, 1), (2, 2, 1);
+SELECT * FROM test;
+UPDATE test set a = a + 5;
+SELECT * FROM test;
+UPDATE test set b = b + 5;
+SELECT * FROM test;
+
+-- YB_TODO: end
