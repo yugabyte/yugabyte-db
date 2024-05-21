@@ -1,13 +1,13 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
-  awscloudwatchlogs/AWS: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
+  awscloudwatchlogs/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
     endpoint: endpoint
     log_group_name: logGroup
     log_stream_name: logStream
     region: us-west2
     retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
     sending_queue: {enabled: false, storage: file_storage/queue}
-  googlecloud/GCP: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$GCPCloudMonitoringExporter
+  googlecloud/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$GCPCloudMonitoringExporter
     log: {default_log_name: YugabyteDB}
     project: project
     sending_queue: {enabled: true, storage: file_storage/queue}
@@ -17,12 +17,12 @@ extensions:
       rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
-  attributes/AWS: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
     - {action: upsert, key: host.name, value: test-node}
-  attributes/GCP: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: tag, value: value1}
     - {action: upsert, key: additionalTag, value: yetAnotherValue}
@@ -61,13 +61,13 @@ receivers:
 service:
   extensions: [file_storage/queue]
   pipelines:
-    logs/GCP:
-      exporters: [googlecloud/GCP]
-      processors: [attributes/GCP]
+    logs/00000000-0000-0000-0000-000000000000:
+      exporters: [awscloudwatchlogs/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000]
       receivers: [filelog/ysql, filelog/ycql]
-    logs/AWS:
-      exporters: [awscloudwatchlogs/AWS]
-      processors: [attributes/AWS]
+    logs/11111111-1111-1111-1111-111111111111:
+      exporters: [googlecloud/11111111-1111-1111-1111-111111111111]
+      processors: [attributes/11111111-1111-1111-1111-111111111111]
       receivers: [filelog/ysql, filelog/ycql]
   telemetry:
     logs:

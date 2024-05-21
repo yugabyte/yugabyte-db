@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.telemetry.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -87,6 +88,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   @Test
   public void generateOtelColConfigYsqlPlusDatadog() {
     TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
     telemetryProvider.setCustomerUUID(customer.getUuid());
     telemetryProvider.setName("DD");
     telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -130,6 +132,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   @Test
   public void generateOtelColConfigYcqlPlusSplunk() {
     TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
     telemetryProvider.setCustomerUUID(customer.getUuid());
     telemetryProvider.setName("Splunk");
     telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -177,6 +180,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   @Test
   public void generateMultiConfig() {
     TelemetryProvider awsTelemetryProvider = new TelemetryProvider();
+    awsTelemetryProvider.setUuid(new UUID(0, 0));
     awsTelemetryProvider.setCustomerUUID(customer.getUuid());
     awsTelemetryProvider.setName("AWS");
     awsTelemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -192,6 +196,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     telemetryProviderService.save(awsTelemetryProvider);
 
     TelemetryProvider gcpTelemetryProvider = new TelemetryProvider();
+    gcpTelemetryProvider.setUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
     gcpTelemetryProvider.setCustomerUUID(customer.getUuid());
     gcpTelemetryProvider.setName("GCP");
     gcpTelemetryProvider.setTags(ImmutableMap.of("tag", "value1"));
