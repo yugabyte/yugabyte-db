@@ -25,6 +25,37 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
+  private void runBasicChecks(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (currentNode.isMaster || currentNode.isTserver) {
+      String msg = "Cannot reprovision " + taskParams().nodeName + " while it is not stopped";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(getUniverse());
+    if (!instanceExists(taskParams())) {
+      String msg = "No instance exists for " + taskParams().nodeName;
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
   @Override
   public void run() {
     log.info(
@@ -39,25 +70,9 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-      if (!instanceExists(taskParams())) {
-        String msg = "No instance exists for " + taskParams().nodeName;
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      if (currentNode.isMaster || currentNode.isTserver) {
-        String msg = "Cannot reprovision " + taskParams().nodeName + " while it is not stopped";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       preTaskActions();
 
