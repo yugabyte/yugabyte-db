@@ -2340,7 +2340,7 @@ TEST_F(
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
-  int expected_count[] = {1, 3, 0, 0, 0, 0, 2, 2};
+  int expected_count[] = {0, 3, 0, 0, 0, 0, 2, 2};
 
   ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
 
@@ -2406,13 +2406,6 @@ TEST_F(
   ASSERT_TRUE(has_records_from_test1 && has_records_from_test2);
 
   for (int i = 0; i < 8; i++) {
-    // This is because in TSAN builds, the records of txn 2 are received by the VWAL in two
-    // GetChanges calls instead of one. As a result VWAL does not ship a DDL record for txn 2 in
-    // TSAN builds.
-    if (IsTsan() && i == 0) {
-      ASSERT_EQ(0, count[i]);
-      continue;
-    }
     ASSERT_EQ(expected_count[i], count[i]);
   }
 }
@@ -2427,7 +2420,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierRaceWithUpdat
   SyncPoint::GetInstance()->LoadDependency(
       {{"SetupCDCSDKRetentionOnNewTablet::End", "UpdatePeersAndMetrics::Start"},
        {"UpdateTabletPeersWithMaxCheckpoint::Done",
-        "PopulateCDCStateTableOnNewTableCreation::Start"}});
+        "PopulateCDCStateTableOnNewTableCreation::Start"},
+       {"ProcessNewTablesForCDCSDKStreams::Start",
+        "PopulateCDCStateTableOnNewTableCreation::End"}});
   SyncPoint::GetInstance()->EnableProcessing();
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
