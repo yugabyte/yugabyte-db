@@ -21,7 +21,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressBufferingWithSQLErrors extends BasePgSQLTest {
+public class TestPgRegressBufferingWithSQLErrors extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();

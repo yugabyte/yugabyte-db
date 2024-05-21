@@ -21,7 +21,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 // Disable in TSAN since it times out on pg_cron exist #22295.
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgSQLTest {
+public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

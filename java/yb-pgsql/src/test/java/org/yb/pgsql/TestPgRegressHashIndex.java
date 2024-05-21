@@ -51,7 +51,7 @@ import static org.yb.AssertionWrappers.*;
 //                                        coordinates, ident, name);
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressHashIndex extends BasePgSQLTest {
+public class TestPgRegressHashIndex extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressHashIndex.class);
 
   @Override

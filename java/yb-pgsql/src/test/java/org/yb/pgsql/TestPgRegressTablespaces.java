@@ -36,7 +36,7 @@ import com.google.common.collect.ImmutableMap;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressTablespaces extends BasePgSQLTest {
+public class TestPgRegressTablespaces extends BasePgRegressTest {
 
   private List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
       ImmutableMap.of(

@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
 import java.io.File;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressContribPgCrypto extends BasePgSQLTest {
+public class TestPgRegressContribPgCrypto extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

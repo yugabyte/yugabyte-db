@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
 import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgWithoutWaitQueuesIsolationRegress extends BasePgSQLTest {
+public class TestPgRegressIsolationWithoutWaitQueues extends BasePgRegressTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -36,7 +36,7 @@ public class TestPgWithoutWaitQueuesIsolationRegress extends BasePgSQLTest {
   }
 
   @Test
-  public void runPgWithoutWaitQueuesRegressTest() throws Exception {
+  public void testPgRegress() throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR, "yb_without_wait_queues_schedule",
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
