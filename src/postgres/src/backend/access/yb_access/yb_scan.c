@@ -468,20 +468,20 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 										 &syscols,
 										 &has_data);
 
-		if (IsolationIsSerializable())
-			HandleYBStatus(status);
-		else if (status)
+		if (status && !IsolationIsSerializable())
 		{
-			if (ybScan->exec_params != NULL &&
-				YBCIsTxnConflictError(YBCStatusTransactionError(status)))
+			const uint16_t txn_error = YBCStatusTransactionError(status);
+			if (ybScan->exec_params != NULL && YBCIsTxnConflictError(txn_error))
 			{
 				elog(DEBUG2, "Error when trying to lock row. "
 					 "pg_wait_policy=%d docdb_wait_policy=%d "
 					 "txn_errcode=%d message=%s",
 					 ybScan->exec_params->pg_wait_policy,
 					 ybScan->exec_params->docdb_wait_policy,
-					 YBCStatusTransactionError(status),
+					 txn_error,
 					 YBCStatusMessageBegin(status));
+				YBCFreeStatus(status);
+				status = NULL;
 				if (ybScan->exec_params->pg_wait_policy == LockWaitError)
 					ereport(ERROR,
 							(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
@@ -493,12 +493,16 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 							 errmsg("could not serialize access due to concurrent update"),
 							 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
 			}
-			else if (YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+			else if (YBCIsTxnSkipLockingError(txn_error))
+			{
 				/* For skip locking, it's correct to simply return no results. */
 				has_data = false;
-			else
-				HandleYBStatus(status);
+				YBCFreeStatus(status);
+				status = NULL;
+			}
 		}
+
+		HandleYBStatus(status);
 
 		if (has_data)
 		{
