@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,20 +14,12 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-/**
- * Runs the pg_regress test suite on YB code.
- */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressFeaturePartition extends BasePgRegressTest {
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
+@RunWith(value=YBTestRunner.class)
+public class TestPgRegressPercentile extends BasePgRegressTest {
   @Test
-  public void testPgRegressFeaturePartition() throws Exception {
-    runPgRegressTest("yb_feature_partition_serial_schedule");
+  public void testPgRegress() throws Exception {
+    runPgRegressTest("yb_percentile_schedule");
   }
 }

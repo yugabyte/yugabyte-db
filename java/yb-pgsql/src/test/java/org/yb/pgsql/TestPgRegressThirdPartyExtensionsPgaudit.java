@@ -21,7 +21,7 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgSQLTest {
+public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTest {
 
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";

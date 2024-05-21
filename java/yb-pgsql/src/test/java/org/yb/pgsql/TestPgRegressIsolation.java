@@ -21,7 +21,7 @@ import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgIsolationRegress extends BasePgSQLTest {
+public class TestPgRegressIsolation extends BasePgRegressTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -42,12 +42,12 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
   }
 
   @Test
-  public void isolationRegress() throws Exception {
+  public void testPgRegress() throws Exception {
     runIsolationRegressTest();
   }
 
   @Test
-  public void withDelayedTxnApply() throws Exception {
+  public void testPgRegressWithDelayedTxnApply() throws Exception {
     // The reason for running all tests in the schedule again with
     // TEST_inject_sleep_before_applying_intents_ms is the following: our tests usually have very
     // small transactions such that the step of applying intents to regular db after commit is

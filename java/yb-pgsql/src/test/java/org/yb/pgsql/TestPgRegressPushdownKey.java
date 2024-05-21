@@ -49,7 +49,7 @@ import static org.yb.AssertionWrappers.*;
 //                                               coordinates, ident, name);
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressPushdownKey extends BasePgSQLTest {
+public class TestPgRegressPushdownKey extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressPushdownKey.class);
 
   @Override

@@ -10,36 +10,41 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 package org.yb.pgsql;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
-/**
- * Runs the pg_regress test suite on YB code.
- */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressPgMiscIndependent extends BasePgRegressTest {
+public class TestPgRegressWaitQueues extends BasePgRegressTest {
 
-  private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("enable_wait_queues", "true");
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    /*
+     * Setting yb_max_query_layer_retries allows to reliably test wait queue semantics in
+     * isolation by avoiding query layer retries of serialization errors.
+     */
+    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(0));
+    return flagMap;
+  }
 
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
-    return flagMap;
-  }
-
   @Test
-  public void testPgRegressPgMiscIndependent() throws Exception {
-    runPgRegressTest("yb_pg_misc_independent_serial_schedule");
+  public void testPgRegress() throws Exception {
+    runPgRegressTest(
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_wait_queues_schedule",
+        0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
   }
 }

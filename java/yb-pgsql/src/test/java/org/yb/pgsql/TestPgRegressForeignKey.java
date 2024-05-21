@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -10,29 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 package org.yb.pgsql;
 
-import java.util.Collections;
 import java.util.Map;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgWaitQueuesRegress extends BasePgSQLTest {
-
+public class TestPgRegressForeignKey extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_wait_queues", "true");
-    flagMap.put("yb_enable_read_committed_isolation", "true");
-    /*
-     * Setting yb_max_query_layer_retries allows to reliably test wait queue semantics in
-     * isolation by avoiding query layer retries of serialization errors.
-     */
-    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(0));
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    flagMap.putAll(FailOnConflictTestGflags);
     return flagMap;
   }
 
@@ -42,9 +34,7 @@ public class TestPgWaitQueuesRegress extends BasePgSQLTest {
   }
 
   @Test
-  public void runPgWaitQueuesRegressTest() throws Exception {
-    runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_wait_queues_schedule",
-        0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+  public void testPgRegress() throws Exception {
+    runPgRegressTest("yb_foreign_key_serial_schedule");
   }
 }

@@ -27,7 +27,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressCursor extends BasePgSQLTest {
+public class TestPgRegressCursor extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
