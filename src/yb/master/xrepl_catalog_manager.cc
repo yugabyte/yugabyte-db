@@ -1481,6 +1481,7 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     return status;
   }
 
+  TEST_SYNC_POINT("PopulateCDCStateTableOnNewTableCreation::End");
   return Status::OK();
 }
 
@@ -1894,49 +1895,50 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
                  "process the reamining tables in the next iteration.";
       break;
     }
+
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     Status s;
-    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
-      req.mutable_table()->set_table_id(table_id);
-      req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-      req.set_require_tablets_running(true);
-      req.set_include_inactive(false);
+    req.mutable_table()->set_table_id(table_id);
+    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+    req.set_require_tablets_running(true);
+    req.set_include_inactive(false);
 
-      s = GetTableLocations(&req, &resp);
+    s = GetTableLocations(&req, &resp);
 
-      if (!s.ok()) {
-        if (s.IsNotFound()) {
-          // The table has been deleted. We will remove the table's entry from the stream's
-          // metadata.
-          RemoveTableFromCDCSDKUnprocessedMap(table_id, streams.begin()->get()->namespace_id());
-          VLOG(1) << "Removed table: " << table_id
-                  << ", from namespace_to_cdcsdk_unprocessed_table_map_ , beacuse table not found";
-        } else {
-          LOG(WARNING) << "Encountered error calling: 'GetTableLocations' for table: " << table_id
-                       << "while trying to add tablet details to cdc_state table. Error: " << s;
-        }
-        continue;
+    TEST_SYNC_POINT("ProcessNewTablesForCDCSDKStreams::Start");
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        // The table has been deleted. We will remove the table's entry from the stream's
+        // metadata.
+        RemoveTableFromCDCSDKUnprocessedMap(table_id, streams.begin()->get()->namespace_id());
+        VLOG(1) << "Removed table: " << table_id
+                << ", from namespace_to_cdcsdk_unprocessed_table_map_ , beacuse table not found";
+      } else {
+        LOG(WARNING) << "Encountered error calling: 'GetTableLocations' for table: " << table_id
+                      << "while trying to add tablet details to cdc_state table. Error: " << s;
       }
-
-      if (!resp.IsInitialized()) {
-        VLOG(2) << "The table: " << table_id
-                << ", is not initialised yet. Will add entries for tablets to cdc_state table once "
-                   "all tablets are up and running";
-        continue;
-      }
+      continue;
+    }
+    if (!resp.IsInitialized()) {
+      VLOG(2) << "The table: " << table_id
+              << ", is not initialised yet. Will add entries for tablets to cdc_state table once "
+                  "all tablets are up and running";
+      continue;
     }
 
-    // Set the WAL retention for this new table
-    // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
-    AlterTableRequestPB alter_table_req;
-    alter_table_req.mutable_table()->set_table_id(table_id);
-    alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
-    AlterTableResponsePB alter_table_resp;
-    s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr, epoch);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
-      continue;
+    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      // Set the WAL retention for this new table
+      // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
+      AlterTableRequestPB alter_table_req;
+      alter_table_req.mutable_table()->set_table_id(table_id);
+      alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
+      AlterTableResponsePB alter_table_resp;
+      s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr, epoch);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
+        continue;
+      }
     }
 
     NamespaceId namespace_id;
