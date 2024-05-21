@@ -370,7 +370,9 @@ create table foo (i int primary key, j int) split into 10 tablets;
 ERROR:  Invalid table definition: Error creating table yugabyte.foo on the master: The requested number of tablet replicas (30) would cause the total running tablet replica count (102) to exceed the safe system maximum (93)
 ```
 
-As a best practice, YugabyteDB has pre-computed sensible defaults for the memory limiting flags. By setting the [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag to true, the [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is set with a sensible default as well. So, to use the memory limits, the only flag that needs to be set is [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits).
+### Best practices
+
+YugabyteDB has pre-computed sensible defaults for the memory limiting flags. By setting the [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag to true, the [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is set with a sensible default as well. So, to use the memory limits, the only flag that needs to be set is [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits).
 
 It is recommended to use the pre-computed memory defaults. Setting `use_memory_defaults_optimized_for_ysql` reserves memory for PostgreSQL, which is wasteful if not using YSQL. In this case, set the `tablet_overhead_size_percentage` flag to 10 on all YB-TServers.
 
