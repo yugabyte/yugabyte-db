@@ -60,7 +60,6 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
  * to the generated value.
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
-                         HeapTuple tuple,
                          YBCPgStatement blockInsertStmt,
                          EState *estate);
 
@@ -73,13 +72,11 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
  * to the generated value.
  */
 extern Oid YBCExecuteInsert(Relation rel,
-                            TupleDesc tupleDesc,
-                            HeapTuple tuple,
+							TupleTableSlot *slot,
                             OnConflictAction onConflictAction);
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
-                                 TupleDesc tupleDesc,
-                                 HeapTuple tuple,
+								 TupleTableSlot *slot,
                                  OnConflictAction onConflictAction,
                                  Datum *ybctid,
                                  YBCPgTransactionSetting transaction_setting);
@@ -95,13 +92,11 @@ extern void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation);
  * to the generated value.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
-                                  TupleDesc tupleDesc,
-                                  HeapTuple tuple,
+								  TupleTableSlot *slot,
                                   OnConflictAction onConflictAction);
 extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                        Relation rel,
-                                       TupleDesc tupleDesc,
-                                       HeapTuple tuple,
+									   TupleTableSlot *slot,
                                        OnConflictAction onConflictAction,
                                        Datum *ybctid);
 
@@ -188,7 +183,6 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple,
 								   EState *estate);
 
 //------------------------------------------------------------------------------

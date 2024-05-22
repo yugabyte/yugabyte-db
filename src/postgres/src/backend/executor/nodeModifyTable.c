@@ -560,7 +560,7 @@ ExecInsert(ModifyTableState *mtstate,
 				 * locked and released in this call.
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
-				newId = YBCHeapInsert(slot, tuple, blockInsertStmt, estate);
+				newId = YBCHeapInsert(slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
@@ -629,7 +629,7 @@ ExecInsert(ModifyTableState *mtstate,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				newId = YBCHeapInsert(slot, tuple, blockInsertStmt, estate);
+				newId = YBCHeapInsert(slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -1573,7 +1573,8 @@ ExecUpdate(ModifyTableState *mtstate,
 		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate);
+			slot->tts_tuple->t_ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+			YBCExecuteUpdateReplace(resultRelationDesc, slot, estate);
 			row_found = true;
 		}
 		else
