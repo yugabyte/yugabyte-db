@@ -3082,15 +3082,13 @@ CopyFrom(CopyState cstate)
 							if (useNonTxnInsert)
 							{
 								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
-													   tupDesc,
-													   tuple,
+													   slot,
 													   cstate->on_conflict_action);
 							}
 							else
 							{
 								YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
-												 tupDesc,
-												 tuple,
+												 slot,
 												 cstate->on_conflict_action);
 							}
 						}

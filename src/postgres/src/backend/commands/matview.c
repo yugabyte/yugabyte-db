@@ -486,8 +486,7 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (IsYBRelation(myState->transientrel))
 	{
 		YBCExecuteInsert(myState->transientrel,
-						 RelationGetDescr(myState->transientrel),
-						 tuple,
+						 slot,
 						 ONCONFLICT_NONE);
 	}
 	else

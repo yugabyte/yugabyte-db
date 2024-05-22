@@ -288,7 +288,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 	{
 		/* Keep ybctid consistent across all databases. */
 		Datum ybctid = 0;
-
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRel));
+		ExecStoreHeapTuple(tup, slot, false);
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -304,16 +305,17 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
 				YBCExecuteInsertForDb(
-						dboid, heapRel, RelationGetDescr(heapRel), tup, ONCONFLICT_NONE, &ybctid,
+						dboid, heapRel, slot, ONCONFLICT_NONE, &ybctid,
 						YB_TRANSACTIONAL);
 			}
 			YB_FOR_EACH_DB_END;
 		}
 		oid = YBCExecuteInsertForDb(
-				YBCGetDatabaseOid(heapRel), heapRel, RelationGetDescr(heapRel), tup, ONCONFLICT_NONE,
+				YBCGetDatabaseOid(heapRel), heapRel, slot, ONCONFLICT_NONE,
 				&ybctid, YB_TRANSACTIONAL);
 		/* Update the local cache automatically */
 		YbSetSysCacheTuple(heapRel, tup);
+		ExecDropSingleTupleTableSlot(slot);
 	}
 	else
 	{
@@ -351,7 +353,8 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 	{
 		/* Keep ybctid consistent across all databases. */
 		Datum ybctid = 0;
-
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRel));
+		ExecStoreHeapTuple(tup, slot, false);
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -367,16 +370,17 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
 				YBCExecuteInsertForDb(
-						dboid, heapRel, RelationGetDescr(heapRel), tup, ONCONFLICT_NONE, &ybctid,
+						dboid, heapRel, slot, ONCONFLICT_NONE, &ybctid,
 						YB_TRANSACTIONAL);
 			}
 			YB_FOR_EACH_DB_END;
 		}
 		oid = YBCExecuteInsertForDb(
-				YBCGetDatabaseOid(heapRel), heapRel, RelationGetDescr(heapRel), tup, ONCONFLICT_NONE,
+				YBCGetDatabaseOid(heapRel), heapRel, slot, ONCONFLICT_NONE,
 				&ybctid, YB_TRANSACTIONAL);
 		/* Update the local cache automatically */
 		YbSetSysCacheTuple(heapRel, tup);
+		ExecDropSingleTupleTableSlot(slot);
 	}
 	else
 	{
