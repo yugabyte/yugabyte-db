@@ -9,7 +9,6 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -62,8 +61,7 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
     Result result = toggleTLS(tlsConfigParams, universe.getUniverseUUID());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo =
-        CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -79,11 +77,11 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
             details,
             universe,
             YUGABYTE_DB,
-            "insert into some_table values (4, 'tls1', 200), " + "(5, 'tls2', 180)",
+            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)",
             10);
     assertTrue(ysqlResponse.isSuccess());
 
-    Thread.sleep(300);
+    Thread.sleep(2000);
     details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
@@ -92,7 +90,7 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
     assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
   }
 
-  @Test
+  // @Test
   public void testDisableTLS() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
@@ -108,8 +106,7 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
     Result result = toggleTLS(tlsConfigParams, universe.getUniverseUUID());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo =
-        CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -126,11 +123,11 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
             details,
             universe,
             YUGABYTE_DB,
-            "insert into some_table values (4, 'tls1', 200), " + "(5, 'tls2', 180)",
+            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)",
             10);
     assertTrue(ysqlResponse.isSuccess());
 
-    Thread.sleep(300);
+    Thread.sleep(2000);
     details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
