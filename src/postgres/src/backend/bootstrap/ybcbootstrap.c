@@ -136,6 +136,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   TemplateDbOid,
 	                                   table_oid,
 	                                   is_shared_relation,
+	                                   true /* is_sys_catalog_table */,
 	                                   false, /* if_not_exists */
 	                                   pkey_idx == NULL, /* add_primary_key */
 	                                   true, /* is_colocated_via_database */

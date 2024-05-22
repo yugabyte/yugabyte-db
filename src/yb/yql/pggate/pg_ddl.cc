@@ -174,6 +174,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *table_name,
                              const PgObjectId& table_id,
                              bool is_shared_table,
+                             bool is_sys_catalog_table,
                              bool if_not_exist,
                              bool add_primary_key,
                              bool is_colocated_via_database,
@@ -189,8 +190,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_database_name(database_name);
   req_.set_table_name(table_name);
   req_.set_num_tablets(-1);
-  req_.set_is_pg_catalog_table(strcmp(schema_name, "pg_catalog") == 0 ||
-                               strcmp(schema_name, "information_schema") == 0);
+  req_.set_is_pg_catalog_table(is_sys_catalog_table);
   req_.set_is_shared_table(is_shared_table);
   req_.set_if_not_exist(if_not_exist);
   req_.set_is_colocated_via_database(is_colocated_via_database);
