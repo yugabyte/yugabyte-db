@@ -63,4 +63,8 @@ extern Oid YbGetColocationIdFromRelOptions(List *relOptions);
 
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
 
+extern bool YbIsSysCatalogTabletRelation(Relation rel);
+extern bool YbIsSysCatalogTabletRelationByIds(Oid relationId, Oid namespaceId,
+											  char *namespace_name);
+
 #endif							/* CATALOG_H */

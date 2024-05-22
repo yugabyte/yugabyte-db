@@ -470,7 +470,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 static void
 CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 							  OptSplit *split_options, Constraint *primary_key,
-							  Oid namespaceId, const bool colocated,
+							  bool is_sys_catalog_table, const bool colocated,
 							  const bool is_tablegroup)
 {
 	/* Address both types of split options */
@@ -492,13 +492,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 					hashable = false;
 			} else {
 				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
-				bool is_pg_catalog_table_ =
-					IsSystemNamespace(namespaceId) && IsToastNamespace(namespaceId);
-				/*
-				 * Checking if  table_oid is valid simple means if the table is
-				 * part of a tablegroup.
-				 */
-				hashable = !is_pg_catalog_table_ && !colocated;
+				hashable = !is_sys_catalog_table && !colocated;
 			}
 
 			if (!hashable)
@@ -783,12 +777,16 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
 	}
 
+	bool is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
+																  namespaceId,
+																  schema_name);
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   tableName,
 									   databaseId,
 									   relationId,
 									   is_shared_relation,
+									   is_sys_catalog_table,
 									   false, /* if_not_exists */
 									   primary_key == NULL /* add_primary_key */,
 									   is_colocated_via_database,
@@ -813,7 +811,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot create colocated table with split option")));
 		CreateTableHandleSplitOptions(
-			handle, desc, split_options, primary_key, namespaceId,
+			handle, desc, split_options, primary_key, is_sys_catalog_table,
 			is_colocated_via_database,
 			OidIsValid(tablegroupId) /* is_tablegroup */);
 	}
@@ -1111,8 +1109,12 @@ YBCCreateIndex(const char *indexName,
 			   Oid pgTableId,
 			   Oid oldRelfileNodeId)
 {
+	Oid namespaceId = RelationGetNamespace(rel);
 	char *db_name	  = get_database_name(YBCGetDatabaseOid(rel));
-	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
+	char *schema_name = get_namespace_name(namespaceId);
+	bool is_sys_catalog_index = YbIsSysCatalogTabletRelationByIds(indexId,
+																  namespaceId,
+																  schema_name);
 
 	if (!IsBootstrapProcessingMode())
 		YBC_LOG_INFO("Creating index %s.%s.%s",
@@ -1129,6 +1131,7 @@ YBCCreateIndex(const char *indexName,
 									   indexId,
 									   YbGetRelfileNodeId(rel),
 									   rel->rd_rel->relisshared,
+									   is_sys_catalog_index,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
 									   false /* if_not_exists */,

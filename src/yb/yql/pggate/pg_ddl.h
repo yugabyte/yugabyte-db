@@ -143,6 +143,7 @@ class PgCreateTable : public PgDdl {
                 const char *table_name,
                 const PgObjectId& table_id,
                 bool is_shared_table,
+                bool is_sys_catalog_table,
                 bool if_not_exist,
                 bool add_primary_key,
                 bool is_colocated_via_database,

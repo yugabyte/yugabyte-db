@@ -61,6 +61,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */,
+                                       false /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
                                        false /* add_primary_key */,
                                        true /* is_colocated_via_database */,
