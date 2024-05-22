@@ -4,6 +4,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -42,6 +44,7 @@ import play.mvc.Result;
 public class ImageBundleController extends AuthenticatedController {
 
   @Inject ImageBundleHandler imageBundleHandler;
+  @Inject RuntimeConfGetter confGetter;
 
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change.",
@@ -189,6 +192,7 @@ public class ImageBundleController extends AuthenticatedController {
       UUID providerUUID, UUID imageBundleUUID, ImageBundle bundle) {
     ImageBundle iBundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
     long universeCount = iBundle.getUniverseCount();
+    boolean allowInUseBundleEdit = confGetter.getGlobalConf(GlobalConfKeys.allowUsedBundleEdit);
 
     if (universeCount > 0 && bundle == null) {
       throw new PlatformServiceException(
@@ -196,7 +200,9 @@ public class ImageBundleController extends AuthenticatedController {
           String.format(
               "There %s %d universe%s using this imageBundle, cannot delete",
               universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
-    } else if (universeCount > 0 && !bundle.allowUpdateDuringUniverseAssociation(iBundle)) {
+    } else if (universeCount > 0
+        && !bundle.allowUpdateDuringUniverseAssociation(iBundle)
+        && !allowInUseBundleEdit) {
       throw new PlatformServiceException(
           FORBIDDEN,
           String.format(

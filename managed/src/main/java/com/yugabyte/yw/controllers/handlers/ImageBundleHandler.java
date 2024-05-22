@@ -114,6 +114,7 @@ public class ImageBundleHandler {
       }
       oBundle.setUseAsDefault(bundle.getUseAsDefault());
     }
+    oBundle.setName(bundle.getName());
     oBundle.setDetails(bundle.getDetails());
     oBundle.save();
     return oBundle;
