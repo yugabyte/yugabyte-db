@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
-import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTask;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.junit.Assert.assertEquals;
 import static play.test.Helpers.contentAsString;
@@ -74,7 +73,7 @@ public class CertRotationLocalTest extends LocalProviderUniverseTestBase {
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyYCQL(universe, true, "Pass@123");
 
@@ -82,7 +81,7 @@ public class CertRotationLocalTest extends LocalProviderUniverseTestBase {
     result = updateTLSConfig(universe2, formData);
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     verifyYCQL(universe2, true, "Pass@123");
   }
 
@@ -110,7 +109,7 @@ public class CertRotationLocalTest extends LocalProviderUniverseTestBase {
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyYSQL(universe);
   }

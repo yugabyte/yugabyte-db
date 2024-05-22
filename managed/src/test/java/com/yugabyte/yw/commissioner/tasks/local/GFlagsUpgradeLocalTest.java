@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
-import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTask;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
@@ -287,7 +286,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             upgradeUniverseHandler.upgradeGFlags(
                 gFlagsUpgradeParams,
                 customer,
-                Universe.getOrBadRequest(universe.getUniverseUUID())));
+                Universe.getOrBadRequest(universe.getUniverseUUID())),
+            universe);
     assertEquals(expectedState, taskInfo.getTaskState());
     if (expectedFailMessage != null) {
       assertThat(getAllErrorsStr(taskInfo), containsString(expectedFailMessage));

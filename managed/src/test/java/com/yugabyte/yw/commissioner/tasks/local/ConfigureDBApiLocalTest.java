@@ -67,8 +67,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     Result result = configureYSQL(formData, universe.getUniverseUUID());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo =
-        CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     initYSQL(universe, "", true);
@@ -80,7 +79,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     result = configureYSQL(formData, universe.getUniverseUUID());
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYSQL(universe);
@@ -93,7 +92,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     result = configureYSQL(formData, universe.getUniverseUUID());
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYSQL(universe);
@@ -122,8 +121,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     Result result = configureYCQL(formData, universe.getUniverseUUID());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    TaskInfo taskInfo =
-        CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     initYCQL(universe, true, YCQL_PASSWORD);
@@ -135,7 +133,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     result = configureYCQL(formData, universe.getUniverseUUID());
     assertOk(result);
     json = Json.parse(contentAsString(result));
-    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYCQL(universe);

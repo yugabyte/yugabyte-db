@@ -6,7 +6,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -48,7 +47,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -76,7 +75,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -103,7 +102,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -139,7 +138,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -162,7 +161,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 
@@ -183,7 +182,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -228,7 +227,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UUID taskID =
         universeCRUDHandler.update(
             customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -264,7 +263,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UUID taskID =
         universeCRUDHandler.update(
             customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -306,7 +305,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UUID taskID =
         universeCRUDHandler.update(
             customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -353,7 +352,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
     assertThat(error, containsString("Unexpected MASTER: "));
@@ -374,7 +373,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
@@ -413,7 +412,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
     assertThat(error, containsString("There are leaderless tablets"));
@@ -452,7 +451,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             customer,
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     assertThat(
         taskInfo.getSubTasks().stream()
