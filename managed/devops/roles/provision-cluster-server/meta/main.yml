@@ -31,7 +31,11 @@ dependencies:
   - role: swamper
     prometheus_components:
       - node_exporter
+    use_sudo: True
     tags: yb-prebuilt-ami
+    # todo: change this only for new universes.
+    when: ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
 
   - role: install_backup_util
     when: ansible_architecture != "aarch64"
