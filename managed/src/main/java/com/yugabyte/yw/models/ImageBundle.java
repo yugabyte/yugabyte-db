@@ -207,7 +207,8 @@ public class ImageBundle extends Model {
         || !Objects.equals(this.getDetails(), bundle.getDetails())
         || (this.getDetails().getRegions() != null
             && bundle.getDetails().getRegions() != null
-            && !this.getDetails().getRegions().equals(bundle.getDetails().getRegions()));
+            && !this.getDetails().getRegions().equals(bundle.getDetails().getRegions()))
+        || !this.getName().equals(bundle.getName());
   }
 
   @JsonIgnore

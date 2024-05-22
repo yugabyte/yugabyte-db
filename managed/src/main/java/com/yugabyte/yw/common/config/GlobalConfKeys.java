@@ -1304,4 +1304,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowUsedBundleEdit =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.allow_used_bundle_edit",
+          ScopeType.GLOBAL,
+          "Allow Editing of in-use Linux Versions",
+          "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the"
+              + " bundle, without propagating it to the in-use Universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

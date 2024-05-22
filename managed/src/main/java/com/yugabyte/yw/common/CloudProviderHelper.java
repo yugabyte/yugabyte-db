@@ -893,7 +893,7 @@ public class CloudProviderHelper {
         editProviderReq.getImageBundles().stream()
             .filter(iB -> iB.getUuid() != null)
             .collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
-
+    boolean allowInUseBundleEdit = confGetter.getGlobalConf(GlobalConfKeys.allowUsedBundleEdit);
     existingImageBundles.forEach(
         (uuid, imageBundle) -> {
           if (!currentImageBundles.containsKey(uuid) && imageBundle.getUniverseCount() > 0) {
@@ -905,7 +905,8 @@ public class CloudProviderHelper {
           }
           ImageBundle currentImageBundle = currentImageBundles.get(uuid);
           if (imageBundle.getUniverseCount() > 0
-              && !currentImageBundle.allowUpdateDuringUniverseAssociation(imageBundle)) {
+              && !currentImageBundle.allowUpdateDuringUniverseAssociation(imageBundle)
+              && !allowInUseBundleEdit) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
