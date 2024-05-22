@@ -145,6 +145,11 @@
 | "Verbose Backup Log" | "yb.backup.log.verbose" | "UNIVERSE" | "Enable verbose backup logging" | "Boolean" |
 | "Wait for LB for Added Nodes" | "yb.wait_for_lb_for_added_nodes" | "UNIVERSE" | "Wait for Load Balancer for added nodes" | "Boolean" |
 | "Wait For master Leader timeout" | "yb.wait_for_master_leader_timeout" | "UNIVERSE" | "Time in seconds to wait for master leader before timeout for List tables API" | "Duration" |
+| "Slow Queries Limit" | "yb.query_stats.slow_queries.limit" | "UNIVERSE" | "The number of queries to fetch." | "Integer" |
+| "Slow Queries Order By Key" | "yb.query_stats.slow_queries.order_by" | "UNIVERSE" | "We sort queries by this metric. Possible values: total_time, max_time, mean_time, rows, calls" | "String" |
+| "Turn off batch nest loop for running slow sql queries" | "yb.query_stats.slow_queries.set_enable_nestloop_off" | "UNIVERSE" | "This config turns off and on batch nestloop during running the join statement for slow queries. If true, it will be turned off and we expect better performance." | "Boolean" |
+| "Excluded Queries" | "yb.query_stats.excluded_queries" | "UNIVERSE" | "List of queries to exclude from slow queries." | "String List" |
+| "Query character limit" | "yb.query_stats.slow_queries.query_length" | "UNIVERSE" | "Query character limit in slow queries." | "Integer" |
 | "Ansible Strategy" | "yb.ansible.strategy" | "UNIVERSE" | "strategy can be linear, mitogen_linear or debug" | "String" |
 | "Ansible Connection Timeout Duration" | "yb.ansible.conn_timeout_secs" | "UNIVERSE" | "This is the default timeout for connection plugins to use." | "Integer" |
 | "Ansible Verbosity Level" | "yb.ansible.verbosity" | "UNIVERSE" | "verbosity of ansible logs, 0 to 4 (more verbose)" | "Integer" |

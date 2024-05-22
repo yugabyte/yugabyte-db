@@ -328,25 +328,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time in seconds to wait for master leader before timeout for List tables API",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Integer> slowQueryLimit =
       new ConfKeyInfo<>(
           "yb.query_stats.slow_queries.limit",
           ScopeType.UNIVERSE,
           "Slow Queries Limit",
-          "TODO - Leave this for feature owners to fill in",
+          "The number of queries to fetch.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
-  // TODO(Shashank): Add correct metadata
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> slowQueryOrderByKey =
       new ConfKeyInfo<>(
           "yb.query_stats.slow_queries.order_by",
           ScopeType.UNIVERSE,
           "Slow Queries Order By Key",
-          "TODO - Leave this for feature owners to fill in",
+          "We sort queries by this metric. Possible values: total_time, max_time, mean_time, rows,"
+              + " calls",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
-  // TODO(Shashank): Add correct metadata
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> setEnableNestloopOff =
       new ConfKeyInfo<>(
           "yb.query_stats.slow_queries.set_enable_nestloop_off",
@@ -356,16 +354,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "for slow queries. If true, it will be turned off and we expect better "
               + "performance.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-  // TODO(Shashank)
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> excludedQueries =
       new ConfKeyInfo<>(
           "yb.query_stats.excluded_queries",
           ScopeType.UNIVERSE,
           "Excluded Queries",
-          "TODO - Leave this for feature owners to fill in",
+          "List of queries to exclude from slow queries.",
           ConfDataType.StringListType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> slowQueryLength =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.query_length",
+          ScopeType.UNIVERSE,
+          "Query character limit",
+          "Query character limit in slow queries.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ansibleStrategy =
       new ConfKeyInfo<>(
           "yb.ansible.strategy",

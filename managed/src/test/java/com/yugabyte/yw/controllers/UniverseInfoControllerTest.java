@@ -403,6 +403,8 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
+    when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LENGTH_KEY))
+        .thenReturn(1024);
     Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
         universe.getUniverseUUID(),
@@ -417,12 +419,11 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "/*+ Leading((d pg_stat_statements))  */ "
-            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
-            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
-            + "s.local_blks_hit, s.local_blks_written "
-            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
-            + " ORDER BY s.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements))  */ SELECT s.userid::regrole as rolname, d.datname,"
+            + " s.queryid, LEFT(s.query, 1024) as query, s.calls, s.total_time, s.rows, s.min_time,"
+            + " s.max_time, s.mean_time, s.stddev_time, s.local_blks_hit, s.local_blks_written FROM"
+            + " pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER BY s.total_time"
+            + " DESC LIMIT 200",
         actualSql);
   }
 
@@ -431,6 +432,8 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
+    when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LENGTH_KEY))
+        .thenReturn(1024);
     Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
         universe.getUniverseUUID(),
@@ -445,12 +448,11 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ "
-            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
-            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
-            + "s.local_blks_hit, s.local_blks_written "
-            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
-            + " ORDER BY s.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ SELECT s.userid::regrole"
+            + " as rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query, s.calls,"
+            + " s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time,"
+            + " s.local_blks_hit, s.local_blks_written FROM pg_stat_statements s JOIN pg_database d"
+            + " ON d.oid = s.dbid ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 

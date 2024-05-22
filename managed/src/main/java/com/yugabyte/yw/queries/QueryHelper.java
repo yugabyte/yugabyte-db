@@ -46,9 +46,9 @@ import play.libs.ws.WSClient;
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
-      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, s.total_time,"
-          + " s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
-          + "s.local_blks_hit, s.local_blks_written ";
+      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, LEFT(s.query, %d) as query,"
+          + " s.calls, s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time,"
+          + " s.local_blks_hit, s.local_blks_written ";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
       "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
   private static final String HISTOGRAM_QUERY = ", s.yb_latency_histogram ";
@@ -56,6 +56,8 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
+  public static final String QUERY_STATS_SLOW_QUERIES_LENGTH_KEY =
+      "yb.query_stats.slow_queries.query_length";
   public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "Set(enable_nestloop off)";
   public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
       "yb.query_stats.slow_queries.set_enable_nestloop_off";
@@ -406,6 +408,7 @@ public class QueryHelper {
       Config config, Universe universe, Boolean supportsLatencyHistogram) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
+    int length = config.getInt(QUERY_STATS_SLOW_QUERIES_LENGTH_KEY);
     String setEnableNestloopOffStatementOptional =
         runtimeConfigFactory.forUniverse(universe).getBoolean(SET_ENABLE_NESTLOOP_OFF_KEY)
             ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
@@ -413,7 +416,7 @@ public class QueryHelper {
     return String.format(
         "/*+ Leading((d pg_stat_statements)) %s */ %s ORDER BY s.%s DESC LIMIT %d",
         setEnableNestloopOffStatementOptional,
-        SLOW_QUERY_STATS_UNLIMITED_SQL_1
+        String.format(SLOW_QUERY_STATS_UNLIMITED_SQL_1, length)
             + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
             + SLOW_QUERY_STATS_UNLIMITED_SQL_2,
         orderBy,
@@ -433,10 +436,7 @@ public class QueryHelper {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
     final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
-        || queryStatement.contains(
-            SLOW_QUERY_STATS_UNLIMITED_SQL_1
-                + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
-                + SLOW_QUERY_STATS_UNLIMITED_SQL_2)
+        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL_2)
         || queryStatement.contains(LIST_USER_DATABASES_SQL)
         || excludedPerfAdvisorQueries.contains(queryStatement);
   }
