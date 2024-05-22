@@ -1,5 +1,5 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, MenuItem, Typography, makeStyles } from "@material-ui/core";
+import { Box, Divider, MenuItem, TablePagination, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBAccordion, YBCodeBlock, YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
@@ -59,8 +59,8 @@ export const MigrationUnsupportedRefactoring: FC<MigrationUnsupportedRefactoring
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [page, setPage] = React.useState<number>(1);
-  const perPage = 5;
+  const [page, setPage] = React.useState<number>(0);
+  const [perPage, setPerPage] = React.useState<number>(5);
 
   const [search, setSearch] = React.useState<string>("");
   const [selectedAck, setSelectedAck] = React.useState<string>("");
@@ -76,9 +76,8 @@ export const MigrationUnsupportedRefactoring: FC<MigrationUnsupportedRefactoring
   }, [data, search, selectedAck]);
 
   const filteredPaginatedData = useMemo(() => {
-    const start = (page - 1) * perPage;
-    return filteredData?.slice(start, start + perPage);
-  }, [filteredData, page]);
+    return filteredData?.slice(page * perPage, page * perPage + perPage);
+  }, [filteredData, page, perPage]);
 
   return (
     <YBModal
@@ -155,12 +154,16 @@ export const MigrationUnsupportedRefactoring: FC<MigrationUnsupportedRefactoring
               }
               preClassName={classes.queryCodeBlock}
             />
-            <Box mt={2} ml="auto">
-              {/* <YBPagination
-                currentPage={page}
-                pageCount={5}
-                onPageSelect={(pageNumber) => setPage(pageNumber)}
-              /> */}
+            <Box ml="auto">
+              <TablePagination
+                component="div"
+                count={filteredData?.length || 0}
+                page={page}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPage={perPage}
+                onRowsPerPageChange={(e) => setPerPage(parseInt(e.target.value, 10))}
+              />
             </Box>
           </Box>
         </YBAccordion>
