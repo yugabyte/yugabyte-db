@@ -470,7 +470,10 @@ class PgClientServiceImpl::Impl {
   Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     if (req.invalidate_cache_time_us()) {
-      table_cache_.InvalidateAll(CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
+      const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
+      std::unordered_set<uint32_t> db_oids_updated = { db_oid };
+      table_cache_.InvalidateDbTables(db_oids_updated, {} /* db_oids_deleted */,
+          CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
     }
     if (req.reopen()) {
       table_cache_.Invalidate(req.table_id());
@@ -1534,6 +1537,12 @@ class PgClientServiceImpl::Impl {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
   }
 
+  void InvalidateTableCache(
+      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_set<uint32_t>& db_oids_deleted) {
+    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted, CoarseMonoClock::Now());
+  }
+
   // Return the TabletServer hosting the specified status tablet.
   std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
       const TabletId& status_tablet_id, CoarseTimePoint deadline) {
@@ -1916,6 +1925,12 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+void PgClientServiceImpl::InvalidateTableCache(
+    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_set<uint32_t>& db_oids_deleted) {
+  impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {
