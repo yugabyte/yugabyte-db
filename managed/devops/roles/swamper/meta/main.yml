@@ -19,7 +19,7 @@ dependencies:
     prometheus_use_service: true
     prometheus_node_exporter_version: 1.7.0
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
-                                    --collector.textfile.directory={{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
+                                    --collector.textfile.directory={{ yb_home_dir }}/metrics"
     prometheus_node_exporter_use_systemd: true
     prometheus_platform_suffix: "{{ 'linux-arm64' if ansible_architecture == 'aarch64' \
                                     else 'linux-amd64'}}"
