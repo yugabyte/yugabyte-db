@@ -372,14 +372,13 @@ class RpcClient(object):
     def _handle_rpc_error(self, e):
         logging.error(str(e))
         if isinstance(e, RpcError):
-            rpc_error = RpcError(e)
             if e.code() == StatusCode.DEADLINE_EXCEEDED:
                 return YBOpsRuntimeError("Timed out while connecting to node agent at {}:{}"
                                          .format(self.ip, self.port))
-            if rpc_error.code() == StatusCode.UNAVAILABLE:
+            if e.code() == StatusCode.UNAVAILABLE:
                 return YBOpsRuntimeError("Node agent is unreachable at {}:{}"
                                          .format(self.ip, self.port))
             return YBOpsRuntimeError("RPC error while connecting to node agent at {}:{} - {}"
-                                     .format(self.ip, self.port, rpc_error.code()))
+                                     .format(self.ip, self.port, e.code()))
         return YBOpsRuntimeError("Unknown error while connecting to node agent at {}:{} - {}"
                                  .format(self.ip, self.port, str(e)))
