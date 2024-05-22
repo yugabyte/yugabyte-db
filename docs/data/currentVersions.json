@@ -5,9 +5,9 @@
       "series": "v2.21",
       "alias": "preview",
       "display": "v2.21 (Preview)",
-      "version": "2.21.0.1",
-      "versionShort": "2.21.0",
-      "appVersion": "2.21.0.1-b1",
+      "version": "2.21.1.0",
+      "versionShort": "2.21.1",
+      "appVersion": "2.21.1.0-b269",
       "isStable": false,
       "initialRelease": "2024-03-26"
     },
