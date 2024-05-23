@@ -9,6 +9,7 @@ aliases:
   - /preview/architecture/concepts
   - /preview/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
+  - /preview/key-concepts/
 menu:
   preview:
     identifier: architecture-concepts-universe
