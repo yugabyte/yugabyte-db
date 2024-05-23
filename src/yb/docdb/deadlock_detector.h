@@ -15,6 +15,7 @@
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
@@ -31,23 +32,29 @@ namespace tablet {
 
 // Structure holding the required data of each blocker transaction blocking the waiter request.
 struct BlockerTransactionInfo {
-  TransactionId id;
+  TransactionId id = TransactionId::Nil();
   TabletId status_tablet;
-  std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+  // Using shared ptr here avoids SubtxnSet copy in WaiterInfoEntry::UpdateBlockingData.
+  std::shared_ptr<const SubtxnSet> blocking_subtxn_set;
 
-  bool operator==(const BlockerTransactionInfo& info) const {
+  bool operator==(const BlockerTransactionInfo& rhs) const {
     // Multiple requests of a waiter transaction could be blocked on different subtxn(s) of
     // a blocker transaction. Additionally a blocker transaction could be simultaneously
     // active at two status tablets in case of txn promotion. Hence compare all fields.
-    return id == info.id &&
-           blocking_subtxn_info->set() == info.blocking_subtxn_info->set() &&
-           status_tablet == info.status_tablet;
+    const auto& lhs = *this;
+    return YB_STRUCT_EQUALS(id, status_tablet) && *blocking_subtxn_set == *rhs.blocking_subtxn_set;
+  }
+
+  size_t hash_value() const {
+    size_t seed = 0;
+    boost::hash_combine(seed, id);
+    boost::hash_combine(seed, status_tablet);
+    boost::hash_combine(seed, *blocking_subtxn_set);
+    return seed;
   }
 
   std::string ToString() const {
-    return Format(
-        "blocker id: $0, status tablet: $1, blocking subtxn info: $2",
-        id.ToString(), status_tablet, blocking_subtxn_info->ToString());
+    return YB_STRUCT_TO_STRING(id, status_tablet, *blocking_subtxn_set);
   }
 };
 
@@ -57,16 +64,14 @@ struct WaitingRequestsInfo {
   std::unordered_map<int64_t, HybridTime> waiting_requests;
 
   std::string ToString() const {
-    return Format("waiting_requests (id, start_time): $0", waiting_requests);
+    return YB_STRUCT_TO_STRING(waiting_requests);
   }
 
   void UpdateRequests(const WaitingRequestsInfo& old_info) {
     for (const auto& [id, start_time] : old_info.waiting_requests) {
       // Ignore updating start time of exisiting request ids, since they are expected to be
       // the newer ones.
-      if (waiting_requests.find(id) == waiting_requests.end()) {
-        waiting_requests.emplace(id, start_time);
-      }
+      waiting_requests.try_emplace(id, start_time);
     }
   }
 };
@@ -83,14 +88,31 @@ struct WaitingRequestsInfo {
 struct BlockingInfo {
   BlockerTransactionInfo blocker_txn_info;
   WaitingRequestsInfo waiting_requests_info;
+  // Indicates whether the blocker is still active i.e. if the blocker txn and the involved
+  // subtxn(s) are still active.
+  mutable std::atomic<bool> is_active{true};
+
+  BlockingInfo(
+      BlockerTransactionInfo&& blocker_txn_info_, WaitingRequestsInfo&& waiting_requests_info_)
+          : blocker_txn_info(std::move(blocker_txn_info_)),
+            waiting_requests_info(std::move(waiting_requests_info_)) {}
+
+  BlockingInfo(const BlockingInfo& other) {
+    blocker_txn_info = other.blocker_txn_info;
+    waiting_requests_info = other.waiting_requests_info;
+    is_active.store(other.is_active);
+  }
 
   bool operator==(const BlockingInfo& info) const {
     return blocker_txn_info == info.blocker_txn_info;
   }
 
+  size_t hash_value() const {
+    return blocker_txn_info.hash_value();
+  }
+
   std::string ToString() const {
-    return Format(
-        "$0, $1", blocker_txn_info.ToString(), waiting_requests_info.ToString());
+    return YB_STRUCT_TO_STRING(blocker_txn_info, waiting_requests_info, is_active);
   }
 
   void UpdateWaitingRequestsInfo(const WaitingRequestsInfo& info) {
@@ -98,15 +120,17 @@ struct BlockingInfo {
   }
 };
 
-struct BlockingInfoHash {
-  size_t operator()(const BlockingInfo& info) const {
-    return yb::hash_value(info.blocker_txn_info.id.ToString() +
-                          info.blocker_txn_info.blocking_subtxn_info->ToString() +
-                          info.blocker_txn_info.status_tablet);
-  }
-};
+inline std::size_t hash_value(const BlockerTransactionInfo& blocker_txn_info) noexcept {
+  return blocker_txn_info.hash_value();
+}
 
-using BlockingData = std::unordered_set<BlockingInfo, BlockingInfoHash>;
+using BlockingData = boost::multi_index_container<BlockingInfo,
+    boost::multi_index::indexed_by <
+        boost::multi_index::hashed_unique <
+            BOOST_MULTI_INDEX_MEMBER(BlockingInfo, BlockerTransactionInfo, blocker_txn_info)
+        >
+    >
+>;
 using BlockingDataPtr = std::shared_ptr<BlockingData>;
 
 // WaiterInfoEntry stores the wait-for dependencies of a waiter transaction received from a
@@ -116,7 +140,7 @@ class WaiterInfoEntry {
  public:
   WaiterInfoEntry(
       const TransactionId& txn_id, const std::string& tserver_uuid,
-      const std::shared_ptr<BlockingData>& blocking_data) :
+      const BlockingDataPtr& blocking_data) :
     txn_id_(txn_id), tserver_uuid_(tserver_uuid), blocking_data_(blocking_data) {}
 
   const TransactionId& txn_id() const {
@@ -131,31 +155,18 @@ class WaiterInfoEntry {
     return std::pair<const TransactionId, const std::string>(txn_id_, tserver_uuid_);
   }
 
-  const std::shared_ptr<BlockingData>& blocking_data() const {
+  const BlockingDataPtr& blocking_data() const {
     return blocking_data_;
   }
 
-  void ResetBlockingData(const std::shared_ptr<BlockingData>& blocking_data) {
+  void ResetBlockingData(const BlockingDataPtr& blocking_data) {
     blocking_data_ = blocking_data;
   }
 
-  void UpdateBlockingData(const BlockingDataPtr& old_blocking_data) {
-    for (auto blocking_info : *old_blocking_data) {
-      auto it = blocking_data_->find(blocking_info);
-      if (it == blocking_data_->end()) {
-        blocking_data_->insert(blocking_info);
-        continue;
-      }
-      auto info = std::move(*it);
-      blocking_data_->erase(it);
-      info.UpdateWaitingRequestsInfo(blocking_info.waiting_requests_info);
-      blocking_data_->insert(info);
-    }
-  }
+  void UpdateBlockingData(const BlockingDataPtr& old_blocking_data);
 
   std::string ToString() const {
-    return Format("txn_id_: $0, tserver_uuid_: $1, waiter_data_: $2",
-                  txn_id_.ToString(), tserver_uuid_, yb::ToString(*blocking_data_));
+    return YB_CLASS_TO_STRING(txn_id, tserver_uuid, *blocking_data);
   }
 
   const TransactionId txn_id_;
@@ -208,9 +219,12 @@ typedef boost::multi_index_container<WaiterInfoEntry,
 class TransactionStatusController {
  public:
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
-  virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
-                                 const SubtxnSet& subtxn_set) = 0;
+  // Returns Aborted status if the blocking probe isn't active anymore, and need not be forwarded.
+  // Else, returns Status::OK().
+  virtual Status CheckProbeActive(
+      const TransactionId& transaction_id, const SubtxnSet& subtxn_set) = 0;
   virtual std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) = 0;
+  virtual const std::string& LogPrefix() = 0;
   virtual ~TransactionStatusController() = default;
 };
 
