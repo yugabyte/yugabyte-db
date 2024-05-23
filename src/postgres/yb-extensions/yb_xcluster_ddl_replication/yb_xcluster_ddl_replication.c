@@ -202,7 +202,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
 	(void) AddStringJsonEntry(state, "command_tag", trig_data->tag);
 
-	const char *current_user = GetUserNameFromId(GetUserId(), false);
+	const char *current_user = GetUserNameFromId(save_userid, false);
 	if (current_user)
 		(void) AddStringJsonEntry(state, "user", current_user);
 
