@@ -1,3 +1,4 @@
+DROP EXTENSION IF EXISTS pg_stat_statements;
 CREATE EXTENSION pg_stat_statements;
 
 --
@@ -101,26 +102,9 @@ SELECT * FROM test ORDER BY a;
 SELECT * FROM test WHERE a IN (1, 2, 3, 4, 5);
 
 -- MERGE
+-- YB note: ERROR: MERGE not supported yet hence failing. Check after support added.
 MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
  WHEN MATCHED THEN UPDATE SET b = st.b || st.a::text;
-MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
- WHEN MATCHED THEN UPDATE SET b = test.b || st.a::text;
-MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
- WHEN MATCHED AND length(st.b) > 1 THEN UPDATE SET b = test.b || st.a::text;
-MERGE INTO test USING test st ON (st.a = test.a)
- WHEN NOT MATCHED THEN INSERT (a, b) VALUES (0, NULL);
-MERGE INTO test USING test st ON (st.a = test.a)
- WHEN NOT MATCHED THEN INSERT VALUES (0, NULL);	-- same as above
-MERGE INTO test USING test st ON (st.a = test.a)
- WHEN NOT MATCHED THEN INSERT (b, a) VALUES (NULL, 0);
-MERGE INTO test USING test st ON (st.a = test.a)
- WHEN NOT MATCHED THEN INSERT (a) VALUES (0);
-MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
- WHEN MATCHED THEN DELETE;
-MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
- WHEN MATCHED THEN DO NOTHING;
-MERGE INTO test USING test st ON (st.a = test.a AND st.a >= 4)
- WHEN NOT MATCHED THEN DO NOTHING;
 
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
 
@@ -141,6 +125,8 @@ DROP TABLE pgss_test;
 SET pg_stat_statements.track_utility = FALSE;
 
 -- Check WAL is generated for the above statements
+-- YB Note: PG WAL not used in YB, out might differ from correct one
+-- in pg_stat_statements.out.
 SELECT query, calls, rows,
 wal_bytes > 0 as wal_bytes_generated,
 wal_records > 0 as wal_records_generated,
@@ -289,7 +275,8 @@ COPY pgss_ctas (a, b) FROM STDIN;
 CREATE MATERIALIZED VIEW pgss_matv AS SELECT * FROM pgss_ctas;
 REFRESH MATERIALIZED VIEW pgss_matv;
 BEGIN;
-DECLARE pgss_cursor CURSOR FOR SELECT * FROM pgss_matv;
+-- YB note: added order by a to correct sorted order for cursor.
+DECLARE pgss_cursor CURSOR FOR SELECT * FROM pgss_matv ORDER BY a;
 FETCH NEXT pgss_cursor;
 FETCH FORWARD 5 pgss_cursor;
 FETCH FORWARD ALL pgss_cursor;
@@ -413,6 +400,7 @@ $$ LANGUAGE plpgsql;
 SELECT query, toplevel, plans, calls FROM pg_stat_statements WHERE query LIKE '%DELETE%' ORDER BY query COLLATE "C", toplevel;
 
 -- FROM [ONLY]
+-- YB note: ERROR:  INHERITS not supported yet, re-enable when fixed, see issue #5956
 CREATE TABLE tbl_inh(id integer);
 CREATE TABLE tbl_inh_1() INHERITS (tbl_inh);
 INSERT INTO tbl_inh_1 SELECT 1;

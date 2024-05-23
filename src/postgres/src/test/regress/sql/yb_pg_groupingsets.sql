@@ -2,6 +2,7 @@
 -- grouping sets
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- test data sources
 
 create temp view gstest1(a,b,v)

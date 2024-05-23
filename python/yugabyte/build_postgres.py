@@ -810,6 +810,7 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/earthdistance'),
             os.path.join(self.pg_build_root, 'contrib/intarray'),
             os.path.join(self.pg_build_root, 'contrib/isn'),
+            os.path.join(self.pg_build_root, 'contrib/pg_stat_statements'),
             # YB_TODO: end
         ] + external_extension_dirs
 

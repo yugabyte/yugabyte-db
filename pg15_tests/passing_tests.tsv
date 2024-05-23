@@ -3,6 +3,7 @@ JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOn
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestBatchCopyFrom
+JAVA	org.yb.pgsql.TestHdr
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestPg15Regress
@@ -62,6 +63,7 @@ JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
+JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
@@ -121,7 +123,7 @@ JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[1]
-JAVA	org.yb.pgsql.TestYsqlMetrics#testMetrics
+JAVA	org.yb.pgsql.TestYsqlMetrics
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser

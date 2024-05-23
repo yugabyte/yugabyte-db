@@ -670,7 +670,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
         value.count += ysqlStat.calls;
-        value.value += ysqlStat.total_time;
+        value.value += ysqlStat.total_exec_time;
         value.rows += ysqlStat.rows;
       }
       scanner.close();

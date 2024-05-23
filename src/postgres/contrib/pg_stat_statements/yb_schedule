@@ -1,3 +1,4 @@
 # contrib/pg_stat_statements/yb_schedule
 
-test: pg_stat_statements
+test: yb_pg_pg_stat_statements
+test: yb_pg_stat_statements
