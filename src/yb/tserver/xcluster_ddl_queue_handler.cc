@@ -175,16 +175,19 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 
 Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) {
   std::stringstream setup_query;
+  setup_query << "SET ROLE NONE;";
+
+  // Set session variables in order to pass the key to the replicated_ddls table.
+  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
+  setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
+
+  // Set schema and role after setting the superuser extension variables.
   if (!query_info.schema.empty()) {
     setup_query << Format("SET SCHEMA '$0';", query_info.schema);
   }
   if (!query_info.user.empty()) {
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
-
-  // Set session variables in order to pass the key to the replicated_ddls table.
-  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
-  setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
@@ -253,8 +256,8 @@ Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
-  RETURN_NOT_OK(
-      pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
+  RETURN_NOT_OK(pg_conn_->ExecuteFormat(
+      "SET ROLE NONE; SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
   // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
   // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
