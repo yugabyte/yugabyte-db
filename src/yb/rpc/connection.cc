@@ -82,6 +82,8 @@ DEFINE_test_flag(double, simulated_failure_to_send_call_probability, 0.0,
     "Probability of a simulated failure to send a call's data, which should result in connection "
     "being closed.");
 
+DEFINE_test_flag(bool, disable_connection_timeout, false,
+    "If true, disable connection timeout handling.");
 
 namespace yb {
 namespace rpc {
@@ -239,6 +241,9 @@ Status Connection::OutboundQueued() {
 }
 
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
+  if (PREDICT_FALSE(FLAGS_TEST_disable_connection_timeout)) {
+    return;
+  }
   DVLOG_WITH_PREFIX(5) << "Connection::HandleTimeout revents: " << revents
                        << " connected: " << stream_->IsConnected();
 

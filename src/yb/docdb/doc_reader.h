@@ -76,7 +76,7 @@ class PackedRowData;
 struct DocDBTableReaderData {
   // Owned by caller.
   IntentAwareIterator* iter;
-  DeadlineInfo deadline_info;
+  DeadlineInfo& deadline_info;
   const dockv::ReaderProjection* projection;
   const TableType table_type;
   const dockv::SchemaPackingStorage& schema_packing_storage;
@@ -88,7 +88,7 @@ struct DocDBTableReaderData {
   dockv::Expiration table_expiration;
 
   DocDBTableReaderData(
-      IntentAwareIterator* iter_, CoarseTimePoint deadline,
+      IntentAwareIterator* iter_, DeadlineInfo& deadline,
       const dockv::ReaderProjection* projection_,
       TableType table_type_,
       std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
