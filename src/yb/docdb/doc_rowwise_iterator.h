@@ -21,6 +21,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -157,6 +158,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
 
   const DocDBStatistics* statistics_;
+
+  DeadlineInfo deadline_info_;
 };
 
 }  // namespace docdb

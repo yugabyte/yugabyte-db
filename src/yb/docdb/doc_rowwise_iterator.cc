@@ -65,7 +65,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::DocRowwiseIterator(
@@ -79,7 +80,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -251,6 +253,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
   bool first_iteration = true;
   for (;;) {
+    RETURN_NOT_OK(deadline_info_.CheckDeadlinePassed());
+
     if (scan_choices_->Finished()) {
       done_ = true;
       return false;
@@ -304,7 +308,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
+          db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(row_key))));
