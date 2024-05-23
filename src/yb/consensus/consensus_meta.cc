@@ -57,6 +57,9 @@ DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
               "Fraction of the time when the server will crash just before flushing "
               "consensus metadata. (For testing only!)");
 
+DEFINE_test_flag(bool, error_before_flushing_consensus_metadata, false,
+                 "Whether to return error at beginning of ConsensusMetadata::Flush");
+
 namespace yb {
 namespace consensus {
 
@@ -312,6 +315,10 @@ void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& c
 
 Status ConsensusMetadata::Flush() {
   MAYBE_FAULT(FLAGS_TEST_fault_crash_before_cmeta_flush);
+  if (PREDICT_FALSE(FLAGS_TEST_error_before_flushing_consensus_metadata)) {
+    return STATUS(
+        IOError, "Failed to flush due to FLAGS_TEST_error_before_flushing_consensus_metadata");
+  }
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500, LogPrefix(), "flushing consensus metadata");
   // Sanity test to ensure we never write out a bad configuration.
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),
