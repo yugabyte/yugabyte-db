@@ -41,6 +41,7 @@
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
@@ -67,6 +68,8 @@ DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
+DECLARE_bool(TEST_disable_connection_timeout);
+DECLARE_uint32(TEST_read_deadline_check_granularity);
 
 namespace yb {
 
@@ -392,6 +395,61 @@ TEST_F(CqlTest, TestTruncateTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+// This test ensure that read correctly timeout under the scenarios where many rows
+// skipped. This was previously causing unexpected long-running read.
+TEST_F(CqlTest, ReadTimeoutTest) {
+  constexpr auto kNumRows = 30000;
+  constexpr auto kNumWriteThreads = 10;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE test_t (custid text, acctid int, roletitle text, "
+      "PRIMARY KEY(custid, acctid, roletitle) )"));
+
+  auto starting_time = CoarseMonoClock::now();
+  ASSERT_OK(session.ExecuteQuery(
+      "INSERT INTO test_t (custid, acctid, roletitle) VALUES ('123', 0, 'Manager')"));
+
+  // Insert many rows which will be skipped during read as HybridScanChoices::InterestedInRow
+  // returns false.
+  std::atomic<int> acctid = 1;
+  auto writer = [&acctid, this]() -> void {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    int prev_acctid;
+    while (true) {
+      prev_acctid = acctid.fetch_add(1);
+      if (prev_acctid > kNumRows) {
+        break;
+      }
+      ASSERT_OK(session.ExecuteQuery(Format(
+          "INSERT INTO test_t (custid, acctid, roletitle) VALUES ('123', $0, 'Developer')",
+          prev_acctid)));
+    }
+  };
+  TestThreadHolder writers;
+  for (int i = 0; i < kNumWriteThreads; ++i) {
+    writers.AddThreadFunctor(writer);
+  }
+  writers.JoinAll();
+  LOG(INFO) << "Time taken for INSERTs: "
+            << MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds() << "ms";
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
+  starting_time = CoarseMonoClock::now();
+  auto result = session.ExecuteAndRenderToString(
+      "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+  ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
+      FLAGS_client_read_write_timeout_ms);
+  // Verify that read operation failed due to passed deadline.
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
 }
 
 TEST_F(CqlTest, CompactDeleteMarkers) {

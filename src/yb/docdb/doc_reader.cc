@@ -262,8 +262,9 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   const Schema schema;
+  auto deadline_info = DeadlineInfo(read_operation_data.deadline);
   DocDBTableReader doc_reader(
-      iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
+      iter.get(), deadline_info, projection, TableType::YQL_TABLE_TYPE,
       schema_packing_storage, schema);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
@@ -399,14 +400,14 @@ class PackedRowData {
 };
 
 DocDBTableReaderData::DocDBTableReaderData(
-    IntentAwareIterator* iter_, CoarseTimePoint deadline,
+    IntentAwareIterator* iter_, DeadlineInfo& deadline_info_,
     const dockv::ReaderProjection* projection_,
     TableType table_type_,
     std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
     std::reference_wrapper<const Schema> schema_,
     bool use_fast_backward_scan_)
     : iter(iter_),
-      deadline_info(deadline),
+      deadline_info(deadline_info_),
       projection(projection_),
       table_type(table_type_),
       schema_packing_storage(schema_packing_storage_),
