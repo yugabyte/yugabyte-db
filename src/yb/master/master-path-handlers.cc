@@ -3132,15 +3132,15 @@ void MasterPathHandlers::HandlePrettyLB(
 
   // Get the TServerTree.
   // A map of tserver -> all tables with their tablets.
-  TServerTree tserver_tree;
-  Status s = CalculateTServerTree(&tserver_tree, 4 /* max_table_count */);
-  if (!s.ok()) {
+  auto tserver_tree_result = CalculateTServerTree(4 /* max_table_count */);
+  if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"
             << "Current placement has more than 4 tables. Not recommended"
             << " to view this pretty display as it might not be rendered properly."
             << "</div>";
     return;
   }
+  auto& tserver_tree = *tserver_tree_result;
 
   auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
   BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
@@ -3269,16 +3269,15 @@ void MasterPathHandlers::HandleLoadBalancer(
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
-  TServerTree tserver_tree;
-  Status s = CalculateTServerTree(&tserver_tree, -1 /* max_table_count */);
-  if (!s.ok()) {
+  auto tserver_tree_result = CalculateTServerTree(-1 /* max_table_count */);
+  if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"
             << "Cannot Calculate TServer Tree."
             << "</div>";
     return;
   }
 
-  RenderLoadBalancerViewPanel(tserver_tree, descs, tables, output);
+  RenderLoadBalancerViewPanel(*tserver_tree_result, descs, tables, output);
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
@@ -3495,7 +3494,9 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   }
 }
 
-Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int max_table_count) {
+Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree(
+    int max_table_count) {
+  TServerTree tserver_tree;
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   if (max_table_count != -1) {
@@ -3526,7 +3527,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int m
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replica_locations) {
-        (*tserver_tree)[replica.first][tablet->table()->id()].emplace_back(
+        tserver_tree[replica.first][tablet->table()->id()].emplace_back(
           replica.second.role,
           tablet->tablet_id()
         );
@@ -3534,7 +3535,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int m
     }
   }
 
-  return Status::OK();
+  return tserver_tree;
 }
 
 void MasterPathHandlers::RenderLoadBalancerViewPanel(
@@ -3553,10 +3554,10 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
              "rowspan='2'>Tablet Count</th>";
   for (const auto& desc : descs) {
     const auto& reg = desc->GetRegistration();
-    const string& uuid = desc->permanent_uuid();
-    string host_port = GetHttpHostPortFromServerRegistration(reg.common());
-    *output << Format("<th>$0<br>$1</th>",
-                          RegistrationToHtml(reg.common(), host_port), uuid);
+    *output << Format(
+        "<th>$0<br>$1</th>",
+        RegistrationToHtml(reg.common(), GetHttpHostPortFromServerRegistration(reg.common())),
+        desc->permanent_uuid());
   }
   *output << "</tr>";
 
@@ -3594,18 +3595,15 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
         UrlEncodeToString(table_id),
         EscapeForHtmlToString(table_name),
         tablet_count);
-    for (auto& tserver_desc : descs) {
-      const string& tserver_id = tserver_desc->permanent_uuid();
+    for (auto& desc : descs) {
       uint64 num_replicas = 0;
       uint64 num_leaders = 0;
-
-      const auto& tserver_table_to_replicas_mapping = tserver_tree.at(tserver_id);
-      auto it = tserver_table_to_replicas_mapping.find(table_id);
-      if (it != tserver_table_to_replicas_mapping.end()) {
-        auto replicas = it->second;
-        num_replicas = replicas.size();
+      const auto* table_tree = FindOrNull(tserver_tree, desc->permanent_uuid());
+      const auto* replicas = table_tree != nullptr ? FindOrNull(*table_tree, table_id) : nullptr;
+      if (replicas != nullptr) {
+        num_replicas = replicas->size();
         num_leaders = std::count_if(
-            replicas.begin(), replicas.end(),
+            replicas->begin(), replicas->end(),
             [](const ReplicaInfo& replicate) { return replicate.role == LEADER; });
       }
       *output << Format("<td>$0/$1</td>", num_replicas, num_leaders);
