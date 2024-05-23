@@ -9,6 +9,8 @@ menu:
     parent: alert
     weight: 40
 type: docs
+aliases:
+  - preview/yugabyte-platform/configure-yugabyte-platform/alert-policy-templates
 rightNav:
   hideH4: true
 ---
