@@ -18,7 +18,7 @@ The packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0, and for 
 
 ## Overview
 
-A row corresponding to the user table is stored as multiple key-value pairs in DocDB. For example, a row with one primary key `K` and `n` non-key columns, that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key-value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
+A row corresponding to the user table is stored as multiple key-value pairs in DocDB. For example, a row with one primary key `K` and `n` non-key columns, that is, `K (primary key)  |  C1 (column)  | C2  | ……  | Cn`, would be stored as `n` key-value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
 With packed row format, it would be stored as a single key-value pair: `<K, packed {C1, C2...Cn}>`.
 
