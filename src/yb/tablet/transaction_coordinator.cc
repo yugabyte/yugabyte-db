@@ -1115,25 +1115,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
   }
 
-  // Note: IsAnySubtxnActive returns the result from a consistent state of the transaction, and does
-  // not reflect real time status. It could happen that the function returns true and the txn gets
-  // aborted/removed just after that. The subsequent call to IsAnySubtxnActive would return false.
-  bool IsAnySubtxnActive(const TransactionId& transaction_id,
-                         const SubtxnSet& subtxn_set) override {
-    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info;
+  // Note: CheckProbeActive returns the result from a consistent state of the transaction, and does
+  // not reflect real time status. It could happen that the function returns ok and the txn gets
+  // resolved just after that. The subsequent call to CheckProbeActive would return Aborted.
+  Status CheckProbeActive(
+      const TransactionId& transaction_id, const SubtxnSet& subtxn_set) override {
+    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info = nullptr;
     {
       std::lock_guard lock(managed_mutex_);
       auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        return false;
+      if (it != managed_transactions_.end() && it->IsRunning()) {
+        aborted_subtxn_info = it->GetAbortedSubtxnInfo();
       }
-      if (!it->IsRunning()) {
-        return false;
-      }
-      aborted_subtxn_info = it->GetAbortedSubtxnInfo();
     }
-
-    return !aborted_subtxn_info->set().Contains(subtxn_set);
+    if (aborted_subtxn_info && !aborted_subtxn_info->set().Contains(subtxn_set)) {
+      return Status::OK();
+    }
+    return STATUS(Aborted,
+                  Format("txn: $0, subtxn_set: $1 is inactive", transaction_id, subtxn_set));
   }
 
   std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) override {
@@ -1555,7 +1554,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   // Returns logs prefix for this transaction coordinator.
-  const std::string& LogPrefix() {
+  const std::string& LogPrefix() override {
     return log_prefix_;
   }
 
