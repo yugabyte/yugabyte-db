@@ -402,7 +402,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         false /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 2: In SELECT func()
@@ -417,7 +417,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         false /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 3: Prepared statement
@@ -436,7 +436,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       }
     }.runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     try (Statement stmt = cb.connect().createStatement()) {
@@ -459,7 +459,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         true /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 2: In SELECT func()
@@ -474,7 +474,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         true /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 3: Prepared statement
@@ -492,7 +492,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       }
     }.runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
   }
 
