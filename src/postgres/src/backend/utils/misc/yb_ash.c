@@ -52,7 +52,8 @@
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
-#define set_query_id() (nested_level == 0 || yb_ash_track_nested_queries())
+#define set_query_id() (nested_level == 0 || \
+	(yb_ash_track_nested_queries != NULL && yb_ash_track_nested_queries()))
 
 /* GUC variables */
 bool yb_ash_enable_infra;
@@ -423,8 +424,6 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void
 YbAshSetQueryId(uint64 query_id)
 {
-	Assert(yb_ash_track_nested_queries != NULL);
-
 	if (set_query_id())
 	{
 		if (YbAshNestedQueryIdStackPush(MyProc->yb_ash_metadata.query_id))
@@ -439,8 +438,6 @@ YbAshSetQueryId(uint64 query_id)
 static void
 YbAshResetQueryId(void)
 {
-	Assert(yb_ash_track_nested_queries != NULL);
-
 	if (set_query_id())
 	{
 		uint64 prev_query_id = YbAshNestedQueryIdStackPop();
