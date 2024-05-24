@@ -197,7 +197,7 @@ libraryDependencies ++= Seq(
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
-  "org.apache.directory.api" % "api-all" % "2.1.0",
+  "org.apache.directory.api" % "api-all" % "2.1.6",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
