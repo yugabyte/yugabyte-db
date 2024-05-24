@@ -23,6 +23,8 @@
 IsMetadataCoordinator_HookType is_metadata_coordinator_hook = NULL;
 RunCommandOnMetadataCoordinator_HookType run_command_on_metadata_coordinator_hook = NULL;
 RunQueryWithCommutativeWrites_HookType run_query_with_commutative_writes_hook = NULL;
+RunQueryWithSequentialModification_HookType
+	run_query_with_sequential_modification_mode_hook = NULL;
 DistributePostgresTable_HookType distribute_postgres_table_hook = NULL;
 ModifyCreateTableSchema_HookType modify_create_table_schema_hook = NULL;
 PostProcessCreateTable_HookType post_process_create_table_hook = NULL;
@@ -120,6 +122,24 @@ RunMultiValueQueryWithNestedDistribution(const char *query, int nArgs, Oid *argT
 			query, nArgs, argTypes, argDatums, argNulls,
 			readOnly, expectedSPIOK, datums, isNull, numValues);
 	}
+}
+
+
+/*
+ * Hook to run a query with sequential shard distribution for DDLs writes.
+ * In single node all writes are sequential shard distribution, so it just calls SPI directly with the args specified.
+ */
+Datum
+RunQueryWithSequentialModification(const char *query, int expectedSPIOK, bool *isNull)
+{
+	if (run_query_with_sequential_modification_mode_hook != NULL)
+	{
+		return run_query_with_sequential_modification_mode_hook(query, expectedSPIOK,
+																isNull);
+	}
+
+	bool readOnly = false;
+	return ExtensionExecuteQueryViaSPI(query, readOnly, expectedSPIOK, isNull);
 }
 
 

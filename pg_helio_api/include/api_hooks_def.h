@@ -51,6 +51,16 @@ typedef Datum (*RunQueryWithCommutativeWrites_HookType)(const char *query, int n
 extern RunQueryWithCommutativeWrites_HookType run_query_with_commutative_writes_hook;
 
 
+/*
+ * Runs a query via SPI with sequential shard execution for distributed scenarios
+ * Returns the Datum returned by the executed query.
+ */
+typedef Datum (*RunQueryWithSequentialModification_HookType)(const char *query, int
+															 expectedSPIOK, bool *isNull);
+extern RunQueryWithSequentialModification_HookType
+	run_query_with_sequential_modification_mode_hook;
+
+
 /* Section: Create Table Extension points */
 
 /*

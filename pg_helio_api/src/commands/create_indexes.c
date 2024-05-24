@@ -311,9 +311,10 @@ static LOCKTAG LockTagForInProgressIndexBuild(int indexId);
 static TryCreateIndexesResult * TryCreateCollectionIndexes(uint64 collectionId,
 														   List *indexDefList,
 														   List *indexIdList,
+														   bool isUnsharded,
 														   MemoryContext retValueContext);
 static void TryCreateInvalidCollectionIndexes(uint64 collectionId, List *indexDefList,
-											  List *indexIdList);
+											  List *indexIdList, bool isUnsharded);
 static TryReIndexesResult * TryReIndexCollectionIndexesConcurrently(uint64 collectionId,
 																	List *
 																	indexesDetailList,
@@ -323,7 +324,8 @@ static TryReIndexesResult * TryReIndexCollectionIndexesConcurrently(uint64 colle
 static void TryDropFailedCollectionIndexesAfterReIndex(uint64 collectionId,
 													   IndexDetails *failedIndexd);
 static void CreatePostgresIndex(uint64 collectionId, IndexDef *indexDef, int indexId,
-								bool concurrently, bool isTempCollection);
+								bool concurrently, bool isTempCollection,
+								bool isUnsharded);
 static void ReIndexPostgresIndex(uint64 collectionId, IndexDetails *indexDetail,
 								 bool concurrently);
 static WildcardProjectionPathOps * ResolveWPPathOpsFromTree(const
@@ -490,6 +492,7 @@ command_create_temp_indexes_non_concurrently(PG_FUNCTION_ARGS)
 																	AccessShareLock);
 
 	uint64 collectionId = collection->collectionId;
+	bool isUnsharded = collection->shardKey == NULL;
 
 	/* create indexes on data table and record them in metadata */
 	ListCell *indexDefCell = NULL;
@@ -500,7 +503,7 @@ command_create_temp_indexes_non_concurrently(PG_FUNCTION_ARGS)
 		bool createIndexesConcurrently = false;
 		bool isTempCollection = true;
 		CreatePostgresIndex(collectionId, indexDef, i++, createIndexesConcurrently,
-							isTempCollection);
+							isTempCollection, isUnsharded);
 	}
 
 	PG_RETURN_POINTER(MakeCreateIndexesMsg(&result));
@@ -651,6 +654,7 @@ create_indexes_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexesArg
 	}
 
 	uint64 collectionId = collection->collectionId;
+	bool isUnsharded = collection->shardKey == NULL;
 	AcquireAdvisoryExclusiveLockForCreateIndexes(collectionId);
 
 	/*
@@ -759,7 +763,7 @@ create_indexes_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexesArg
 
 	TryCreateIndexesResult *tryResult =
 		TryCreateCollectionIndexes(collectionId, createIndexesArg.indexDefList,
-								   indexIdList, procMemContext);
+								   indexIdList, isUnsharded, procMemContext);
 
 	if (!tryResult->ok)
 	{
@@ -869,6 +873,7 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 	}
 
 	uint64 collectionId = collection->collectionId;
+	bool isUnsharded = collection->shardKey == NULL;
 	AcquireAdvisoryExclusiveLockForCreateIndexes(collectionId);
 
 	/*
@@ -948,7 +953,7 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 		bool createIndexesConcurrently = false;
 		bool isTempCollection = false;
 		CreatePostgresIndex(collectionId, indexDef, indexId, createIndexesConcurrently,
-							isTempCollection);
+							isTempCollection, isUnsharded);
 	}
 
 	/*
@@ -4123,7 +4128,8 @@ LockTagForInProgressIndexBuild(int indexId)
  */
 static TryCreateIndexesResult *
 TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
-						   List *indexIdList, MemoryContext retValueContext)
+						   List *indexIdList, bool isUnsharded,
+						   MemoryContext retValueContext)
 {
 	TryCreateIndexesResult *result = MemoryContextAllocZero(retValueContext,
 															sizeof(TryCreateIndexesResult));
@@ -4143,7 +4149,7 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 								"invalid metadata records for them")));
 
 		TryCreateInvalidCollectionIndexes(collectionId, indexDefList,
-										  indexIdList);
+										  indexIdList, isUnsharded);
 
 		createdInvalidIndexes = true;
 	}
@@ -4239,7 +4245,7 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
  */
 static void
 TryCreateInvalidCollectionIndexes(uint64 collectionId, List *indexDefList,
-								  List *indexIdList)
+								  List *indexIdList, bool isUnsharded)
 {
 	ListCell *indexDefCell = NULL;
 	ListCell *indexIdCell = NULL;
@@ -4266,7 +4272,7 @@ TryCreateInvalidCollectionIndexes(uint64 collectionId, List *indexDefList,
 		bool createIndexesConcurrently = true;
 		bool isTempCollection = false;
 		CreatePostgresIndex(collectionId, indexDef, indexId, createIndexesConcurrently,
-							isTempCollection);
+							isTempCollection, isUnsharded);
 	}
 }
 
@@ -4456,12 +4462,13 @@ MakeIndexSpecForIndexDef(IndexDef *indexDef)
  */
 static void
 CreatePostgresIndex(uint64 collectionId, IndexDef *indexDef, int indexId,
-					bool concurrently, bool isTempCollection)
+					bool concurrently, bool isTempCollection, bool isUnsharded)
 {
 	char *cmd = CreatePostgresIndexCreationCmd(collectionId, indexDef, indexId,
 											   concurrently, isTempCollection);
 	const Oid userOid = InvalidOid;
-	ExecuteCreatePostgresIndexCmd(cmd, concurrently, userOid);
+	bool useSerialExecution = isUnsharded;
+	ExecuteCreatePostgresIndexCmd(cmd, concurrently, userOid, useSerialExecution);
 }
 
 
@@ -4697,11 +4704,12 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
  * ExecuteCreatePostgresIndexCmd executes the index creation postgres command.
  */
 void
-ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid)
+ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid,
+							  bool useSerialExecution)
 {
 	if (concurrently)
 	{
-		ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(cmd, userOid);
+		ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(cmd, userOid, useSerialExecution);
 	}
 	else
 	{
@@ -4714,7 +4722,15 @@ ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid)
 
 		bool readOnly = false;
 		bool isNull = false;
-		ExtensionExecuteQueryViaSPI(cmd, readOnly, SPI_OK_UTILITY, &isNull);
+		if (useSerialExecution)
+		{
+			RunQueryWithSequentialModification(cmd, SPI_OK_UTILITY, &isNull);
+		}
+		else
+		{
+			ExtensionExecuteQueryViaSPI(cmd, readOnly, SPI_OK_UTILITY, &isNull);
+		}
+
 		Assert(isNull);
 	}
 }

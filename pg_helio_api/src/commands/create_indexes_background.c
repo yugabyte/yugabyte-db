@@ -263,6 +263,13 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	MarkIndexRequestStatus(indexCmdRequest->indexId, CREATE_INDEX_COMMAND_TYPE,
 						   IndexCmdStatus_Inprogress, emptyComment, opId, attemptCount);
 
+	StringInfo queryStringInfo = makeStringInfo();
+	appendStringInfo(queryStringInfo,
+					 "SELECT shard_key FROM %s.collections WHERE collection_id = %lu",
+					 ApiCatalogSchemaName, collectionId);
+	char *shardKeyStr = ExtensionExecuteQueryOnLocalhostViaLibPQ(queryStringInfo->data);
+	bool useSerialExecution = shardKeyStr == NULL || strlen(shardKeyStr) == 0;
+
 	/* In case of abrupt kill of the cron job running this, we may end up with the state as "InProgress" for index.
 	 * To handle such request, we are cleaning the partial index state first.
 	 */
@@ -306,15 +313,16 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 		set_indexsafe_procflags();
 
 		ereport(LOG, (errmsg(
-						  "Trying to create index for index_id: %d and collectionId: "
-						  UINT64_FORMAT,
+						  "Trying to create index with serial %d for index_id: %d and collectionId: "
+						  UINT64_FORMAT, useSerialExecution,
 						  indexCmdRequest->indexId, collectionId),
 					  errhint(
-						  "Trying to create index for index_id: %d and collectionId: "
-						  UINT64_FORMAT,
+						  "Trying to create index with serial %d for index_id: %d and collectionId: "
+						  UINT64_FORMAT, useSerialExecution,
 						  indexCmdRequest->indexId, collectionId)));
 		bool concurrently = true;
-		ExecuteCreatePostgresIndexCmd(cmd, concurrently, indexCmdRequest->userOid);
+		ExecuteCreatePostgresIndexCmd(cmd, concurrently, indexCmdRequest->userOid,
+									  useSerialExecution);
 		indexCreated = true;
 	}
 	PG_CATCH();

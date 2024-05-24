@@ -97,7 +97,8 @@ char * ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query);
 /*
  * Same as ExtensionExecuteQueryOnLocalhostViaLibPQ, but connects as specific user.
  */
-char * ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid);
+char * ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid,
+													  bool useSerialExecution);
 
 /* Same as ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ, but it allows to execute parameterized query */
 char * ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(char *query, const Oid

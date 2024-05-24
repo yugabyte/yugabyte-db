@@ -57,6 +57,14 @@ void RunMultiValueQueryWithNestedDistribution(const char *query, int nargs, Oid 
 
 
 /*
+ * Sets up the system to allow sequential execution for commands the current
+ * transaction scope.
+ * Note: This should be used for DDL commands.
+ */
+Datum RunQueryWithSequentialModification(const char *query, int expectedSPIOK,
+										 bool *isNull);
+
+/*
  * Whether or not the the base tables have sharding with distribution (true if DistributePostgreTable
  * is run).
  * the documents table name and the substring where the collectionId was found is provided as an input.

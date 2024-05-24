@@ -27,6 +27,9 @@
 
 extern char *LocalhostConnectionString;
 
+/* Optional flags for running LibPQ on serial execution mode. */
+char *SerialExecutionFlags = NULL;
+
 static Datum SPIReturnDatum(bool *isNull, int position);
 static char * ExtensionExecuteQueryViaLibPQ(char *query, char *connStr);
 static char * ExtensionExecuteQueryWithArgsViaLibPQ(char *query, char *connStr, int
@@ -36,7 +39,7 @@ static void PGConnFinishConnectionEstablishment(PGconn *conn);
 static void PGConnFinishIO(PGconn *conn);
 static char * PGConnReturnFirstField(PGconn *conn);
 static void PGConnReportError(PGconn *conn, PGresult *result, int elevel);
-static char * GetLocalhostConnStr(const Oid userOid);
+static char * GetLocalhostConnStr(const Oid userOid, bool useSerialExecution);
 
 /*
  * ExtensionExecuteQueryViaSPI executes given query via SPI and returns first
@@ -343,7 +346,9 @@ SPIReturnDatum(bool *isNull, int position)
 char *
 ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query)
 {
-	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(InvalidOid));
+	bool useSerialExecution = false;
+	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(InvalidOid,
+																	useSerialExecution));
 }
 
 
@@ -351,9 +356,11 @@ ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query)
  * Same as ExtensionExecuteQueryOnLocalhostViaLibPQ, but connects as specific user.
  */
 char *
-ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid)
+ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid, bool
+											   useSerialExecution)
 {
-	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(userOid));
+	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(userOid,
+																	useSerialExecution));
 }
 
 
@@ -363,7 +370,9 @@ ExtensionExecuteQueryWithArgsAsUserOnLocalhostViaLibPQ(char *query, const Oid us
 													   nParams, Oid *paramTypes, const
 													   char **parameterValues)
 {
-	return ExtensionExecuteQueryWithArgsViaLibPQ(query, GetLocalhostConnStr(userOid),
+	bool useSerialExecution = false;
+	return ExtensionExecuteQueryWithArgsViaLibPQ(query, GetLocalhostConnStr(userOid,
+																			useSerialExecution),
 												 nParams, paramTypes, parameterValues);
 }
 
@@ -786,7 +795,7 @@ PGConnReportError(PGconn *conn, PGresult *result, int elevel)
  * If userOid is InvalidOid, falls back to authenticated userId.
  */
 static char *
-GetLocalhostConnStr(const Oid userOid)
+GetLocalhostConnStr(const Oid userOid, bool useSerialExecution)
 {
 	const char *user_name;
 	const bool no_err = false;
@@ -813,6 +822,11 @@ GetLocalhostConnStr(const Oid userOid)
 					 user_name,
 					 get_database_name(MyDatabaseId),
 					 applicationName);
+
+	if (useSerialExecution && SerialExecutionFlags != NULL)
+	{
+		appendStringInfoString(localhostConnStr, SerialExecutionFlags);
+	}
 
 	return localhostConnStr->data;
 }
