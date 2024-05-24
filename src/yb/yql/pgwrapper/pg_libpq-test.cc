@@ -4007,6 +4007,33 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
     ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(rows.get(), i, 0)), i + 4);
 }
 
+class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--TEST_create_namespace_if_not_exist_inject_delay_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) {
+  // Make two connections to two different nodes so that they can have a race.
+  // Both will try to create the YB specific system sequence table. The race
+  // is created via --TEST_create_namespace_if_not_exist_inject_delay_ms=5000.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn1 = ASSERT_RESULT(Connect());
+  pg_ts = cluster_->tablet_server(2);
+  auto conn2 = ASSERT_RESULT(Connect());
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
+  });
+  thread_holder.AddThreadFunctor([&conn2]() -> void {
+    ASSERT_OK(conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)"));
+    ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
+  });
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+
 class PgBackendsSessionExpireTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
