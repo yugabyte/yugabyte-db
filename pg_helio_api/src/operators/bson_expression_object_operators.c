@@ -42,9 +42,7 @@ static void TraverseTreeAndWrite(const BsonIntermediatePathNode *parentNode,
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
 static AggregationExpressionData * PerformConstantFolding(
-	AggregationExpressionData *expressionData, const bson_value_t *value, const
-	ExpressionVariableContext *
-	variableContext);
+	AggregationExpressionData *expressionData, const bson_value_t *value);
 
 /*
  * Evaluates the output of an $mergeObjects expression.
@@ -131,7 +129,6 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 
 		/* Expressions are already evaluated (this will change once we move this to the new framework. )*/
 		bool treatLeafDataAsConstant = true;
-		const ExpressionVariableContext *variableContext = NULL;
 
 		while (bson_iter_next(&docIter))
 		{
@@ -142,7 +139,7 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 			const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
 				&pathView, docValue,
 				tree, BsonDefaultCreateLeafNode,
-				treatLeafDataAsConstant, variableContext, &nodeCreated);
+				treatLeafDataAsConstant, &nodeCreated);
 
 			/* if the node already exists we need to update the value
 			 * as $mergeObjects has the behavior that the last path spec
@@ -150,7 +147,7 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 			if (!nodeCreated)
 			{
 				ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
-								   treatLeafDataAsConstant, variableContext);
+								   treatLeafDataAsConstant);
 			}
 		}
 	}
@@ -378,8 +375,7 @@ HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
  * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
  */
 void
-ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data, const
-					ExpressionVariableContext *variableContext)
+ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bson_value_t input = { 0 };
 	bson_value_t field = { 0 };
@@ -465,14 +461,14 @@ ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *dat
 	/* Optimize, if input, field and value are constants, we can calculate the result at this parse phase,
 	 * and have resolved already if the input was null to a return NULL expression as a rewrite. */
 
-	ParseAggregationExpressionData(&arguments->field, &field, variableContext);
-	ParseAggregationExpressionData(&arguments->value, &value, variableContext);
+	ParseAggregationExpressionData(&arguments->field, &field);
+	ParseAggregationExpressionData(&arguments->value, &value);
 
 	/* The following will Constant Fold expressions... */
-	PerformConstantFolding(&arguments->value, &value, variableContext);
-	PerformConstantFolding(&arguments->field, &field, variableContext);
+	PerformConstantFolding(&arguments->value, &value);
+	PerformConstantFolding(&arguments->field, &field);
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
 
 	/* The following will optimize out NULL as Constant Fold expressions... */
 	if (expressionHasNullArgument ||
@@ -571,8 +567,7 @@ ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *dat
  * short circuit to null by definitions; for field and value we look for constants to fold. */
 static AggregationExpressionData *
 PerformConstantFolding(AggregationExpressionData *expressionData,
-					   const bson_value_t *value,
-					   const ExpressionVariableContext *variableContext)
+					   const bson_value_t *value)
 {
 	switch (expressionData->kind)
 	{
@@ -602,13 +597,11 @@ PerformConstantFolding(AggregationExpressionData *expressionData,
 					.value_type = BSON_TYPE_NULL
 				};
 
-				ParseAggregationExpressionData(expressionData, &valueLiteral,
-											   variableContext);
+				ParseAggregationExpressionData(expressionData, &valueLiteral);
 			}
 			else
 			{
-				ParseAggregationExpressionData(expressionData, &evaluatedInputArg,
-											   variableContext);
+				ParseAggregationExpressionData(expressionData, &evaluatedInputArg);
 			}
 
 			return expressionData;

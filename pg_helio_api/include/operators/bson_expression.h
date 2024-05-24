@@ -209,6 +209,7 @@ void EvaluateAggregationExpressionDataToWriter(const
 											   variableContext,
 											   bool isNullOnEmpty);
 void ParseAggregationExpressionData(AggregationExpressionData *expressionData,
-									const bson_value_t *value,
-									const ExpressionVariableContext *variableContext);
+									const bson_value_t *value);
+void ParseVariableSpec(const bson_value_t *variableSpec,
+					   ExpressionVariableContext *variableContext);
 #endif

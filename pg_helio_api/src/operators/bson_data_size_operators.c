@@ -52,8 +52,7 @@ HandlePreParsedDollarBsonSize(pgbson *doc, void *arguments,
  * This object can be any expression as long as it can be resolved to document or null.
  */
 void
-ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data, const
-					ExpressionVariableContext *variableContext)
+ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int numOfReqArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -61,8 +60,7 @@ ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *dat
 																			 "$bsonSize",
 																			 &data->
 																			 operator.
-																			 argumentsKind,
-																			 variableContext);
+																			 argumentsKind);
 
 	if (IsAggregationExpressionConstant(parsedData))
 	{
@@ -107,8 +105,7 @@ HandlePreParsedDollarBinarySize(pgbson *doc, void *arguments,
  * This object can be any expression as long as it can be resolved to string or binary data.
  */
 void
-ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data, const
-					  ExpressionVariableContext *variableContext)
+ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int numOfReqArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -116,8 +113,7 @@ ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *d
 																			 "$binarySize",
 																			 &data->
 																			 operator.
-																			 argumentsKind,
-																			 variableContext);
+																			 argumentsKind);
 
 	if (IsAggregationExpressionConstant(parsedData))
 	{

@@ -37,7 +37,7 @@ HandleDollarRand(pgbson *doc, const bson_value_t *operatorValue,
 	if (operatorValue->value_type != BSON_TYPE_DOCUMENT &&
 		operatorValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoDollarRandInvalidArg),
+		ereport(ERROR, (errcode(MongoLocation10065),
 						errmsg("invalid parameter: expected an object ($rand)")));
 	}
 	else if ((operatorValue->value_type == BSON_TYPE_DOCUMENT &&

@@ -42,8 +42,7 @@ BsonPathNode * TraverseDottedPathAndGetNode(const StringView *path,
 											bool *alreadyExists);
 bool ValidateAndSetLeafNodeData(BsonPathNode *childNode, const bson_value_t *value,
 								const StringView *relativePath,
-								bool treatAsConstantExpression,
-								const ExpressionVariableContext *variableContext);
+								bool treatAsConstantExpression);
 bool TrySetIntermediateNodeData(BsonPathNode *node, const StringView *relativePath,
 								bool hasFields);
 void AddChildToTree(ChildNodeData *childData, BsonPathNode *childNode);

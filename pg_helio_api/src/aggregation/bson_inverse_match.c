@@ -288,9 +288,7 @@ ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter)
 	 * as lookup does too much, rewrites the document and that adds overhead in perf.
 	 * Once we support specifying a from collection in the inverse match spec, remove this support.
 	 */
-	const ExpressionVariableContext *variableContext = NULL;
-	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput,
-								   variableContext);
+	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput);
 
 	AggregationExpressionKind expressionKind = args->queryInputExpression.kind;
 	if (expressionKind != AggregationExpressionKind_Constant &&

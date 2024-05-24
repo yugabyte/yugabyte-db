@@ -456,10 +456,8 @@ PopulateDollarReplaceRootState(const bson_value_t *replaceRootValue,
 	GetBsonValueForReplaceRoot(&replaceRootSpec, &bsonValue);
 	ValidateReplaceRootElement(&bsonValue);
 
-	/* TODO VARIABLE take as argument. */
-	const ExpressionVariableContext *variableContext = NULL;
-	ParseAggregationExpressionData(&aggregationSpec->expressionData, &bsonValue,
-								   variableContext);
+	/* TODO VARIABLE flow variable from update spec. */
+	ParseAggregationExpressionData(&aggregationSpec->expressionData, &bsonValue);
 	aggregationSpec->isExpression = true;
 }
 
@@ -473,10 +471,8 @@ PopulateDollarReplaceWithState(const bson_value_t *replaceRootValue,
 {
 	ValidateReplaceRootElement(replaceRootValue);
 
-	/* TODO VARIABLE take as argument. */
-	const ExpressionVariableContext *variableContext = NULL;
-	ParseAggregationExpressionData(&aggregationSpec->expressionData, replaceRootValue,
-								   variableContext);
+	/* TODO VARIABLE flow variable from update spec. */
+	ParseAggregationExpressionData(&aggregationSpec->expressionData, replaceRootValue);
 	aggregationSpec->isExpression = true;
 }
 

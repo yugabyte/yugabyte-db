@@ -4,7 +4,6 @@
  * src/bson/bson_expression.c
  *
  * Operator expression implementations of BSON.
- * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
  *
  *-------------------------------------------------------------------------
  */
@@ -41,9 +40,7 @@
 /* --------------------------------------------------------- */
 
 typedef void (*ParseAggregationExpressionFunc)(const bson_value_t *argument,
-											   AggregationExpressionData *data,
-											   const ExpressionVariableContext *
-											   variableContext);
+											   AggregationExpressionData *data);
 
 /*
  * The declaration of an operator used in OperatorExpressions[] below.
@@ -123,16 +120,13 @@ static void EvaluateAggregationExpressionSystemVariable(const
 														bool isNullOnEmpty);
 static void ParseDocumentAggregationExpressionData(const bson_value_t *value,
 												   AggregationExpressionData *
-												   expressionData,
-												   const ExpressionVariableContext *
-												   variableContext);
+												   expressionData);
 static void ParseArrayAggregationExpressionData(const bson_value_t *value,
-												AggregationExpressionData *expressionData,
-												const ExpressionVariableContext *
-												variableContext);
+												AggregationExpressionData *expressionData);
 static bool GetVariableValueFromData(const VariableData *variable,
 									 pgbson *currentDocument,
 									 ExpressionResult *parentExpressionResult,
+									 const ExpressionVariableContext *variableContext,
 									 bson_value_t *variableValue);
 static bool ExpressionResultGetVariable(StringView variableName,
 										ExpressionResult *expressionResult,
@@ -143,6 +137,12 @@ static void InsertVariableToContextTable(const VariableData *variableElement,
 static bool IsOverridableSystemVariable(StringView *name);
 static void VariableContextSetVariableData(ExpressionVariableContext *variableContext,
 										   const VariableData *variableData);
+static void VariableContextSetVariableExpression(
+	ExpressionVariableContext *variableContext,
+	const StringView *name,
+	AggregationExpressionData *
+	variableExpression);
+static void ValidateVariableNameCore(StringView name, bool allowStartWithUpper);
 
 static void ReportOperatorExpressonSyntaxError(const char *fieldA,
 											   bson_iter_t *fieldBIter, bool
@@ -246,7 +246,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$last", &HandleDollarLast, NULL, NULL, FEATURE_AGG_OPERATOR_LAST },
 	{ "$lastN", NULL, &ParseDollarLastN, &HandlePreParsedDollarLastN,
 	  FEATURE_AGG_OPERATOR_LASTN },
-	{ "$let", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_LET },
+	{ "$let", NULL, &ParseDollarLet, &HandlePreParsedDollarLet,
+	  FEATURE_AGG_OPERATOR_LET },
 	{ "$literal", NULL, &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_LITERAL },
 	{ "$ln", &HandleDollarLn, NULL, NULL, FEATURE_AGG_OPERATOR_LN },
 	{ "$log", &HandleDollarLog, NULL, NULL, FEATURE_AGG_OPERATOR_LOG },
@@ -493,13 +494,11 @@ bson_expression_get(PG_FUNCTION_ARGS)
 		AggregationExpressionData,
 		argPosition,
 		ParseAggregationExpressionData,
-		&expressionElement.bsonValue,
-		variableContext);
+		&expressionElement.bsonValue);
 
 	if (state == NULL)
 	{
-		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue,
-									   variableContext);
+		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
 		state = &expressionData;
 	}
 
@@ -587,13 +586,11 @@ bson_expression_map(PG_FUNCTION_ARGS)
 		AggregationExpressionData,
 		argPosition,
 		ParseAggregationExpressionData,
-		&expressionElement.bsonValue,
-		variableContext);
+		&expressionElement.bsonValue);
 
 	if (state == NULL)
 	{
-		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue,
-									   variableContext);
+		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
 		state = &expressionData;
 	}
 
@@ -1041,9 +1038,30 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 }
 
 
+/* This evaluates the varaible data and sets the result into the variableValue pointer.
+ * We need to get an expressionResult to create a child expression and track the memory the evaluated document owns so that
+ * it is not reused.
+ * However, we can't use the variable context from the given parentExpressionResult since the variable data context is higher on the stack than the actual
+ * expression result we're given for the expression we're evaluating. Here is an example, given the following let we will have this expression result tree:
+ * ExpressionResult (N1): { variableContext = .vars = {}, .parent = NULL }
+ *  $let: { vars: {"a": 1}, "in": { "$let": { vars: { "b": $$a }, "in": { "$add": [ "$$b", "$$a" ] } } } } } }
+ *
+ *      ChildExprResult (N2): ($let)
+ *           variableContext = .vars = { "a": 1 }, .parent: N1
+ *              ChildExprResult: ($let) N3
+ *                  variableContext: = { .vars = { "b": "$$a" }, .parent = N2
+ *                      ChildExprResult: ($add) N4
+ *                          variableContext: {}, .parent = N3
+ *
+ *                              GetVariableValue("b") -> N4 (not found)
+ *                                          -> N3 -> $$a
+ *
+ * The given expressionResult in this case would be N4, and the variableData lives in N3, so when we evaluate "$$a" expression we need to use N2 as its variable context.
+ */
 static bool
 GetVariableValueFromData(const VariableData *variable, pgbson *currentDocument,
 						 ExpressionResult *parentExpressionResult,
+						 const ExpressionVariableContext *variableContext,
 						 bson_value_t *variableValue)
 {
 	if (variable->isConstant)
@@ -1055,6 +1073,11 @@ GetVariableValueFromData(const VariableData *variable, pgbson *currentDocument,
 		bool isNullOnEmpty = false;
 		ExpressionResult childExpressionResult = ExpressionResultCreateChild(
 			parentExpressionResult);
+
+		/* Override the parent here as we need the parent for variable expressions to be the context's parent where it was defined. */
+		childExpressionResult.expressionResultPrivate.variableContext.parent =
+			variableContext;
+
 		EvaluateAggregationExpressionData(variable->expression, currentDocument,
 										  &childExpressionResult, isNullOnEmpty);
 		*variableValue = childExpressionResult.value;
@@ -1087,7 +1110,7 @@ ExpressionResultGetVariable(StringView variableName,
 			{
 				return GetVariableValueFromData(&current->context.variable,
 												currentDocument, expressionResult,
-												variableValue);
+												current->parent, variableValue);
 			}
 		}
 		else if (current->context.table != NULL)
@@ -1103,7 +1126,8 @@ ExpressionResultGetVariable(StringView variableName,
 			if (found)
 			{
 				return GetVariableValueFromData(hashEntry, currentDocument,
-												expressionResult, variableValue);
+												expressionResult, current->parent,
+												variableValue);
 			}
 		}
 
@@ -1162,6 +1186,25 @@ ExpressionResultSetConstantVariable(ExpressionResult *expressionResult, const
 
 
 /*
+ * Function to add a variable expression to the given context
+ */
+static void
+VariableContextSetVariableExpression(ExpressionVariableContext *variableContext,
+									 const StringView *name,
+									 AggregationExpressionData *variableExpression)
+{
+	VariableData newVariable =
+	{
+		.isConstant = false,
+		.expression = variableExpression,
+		.name = *name
+	};
+
+	VariableContextSetVariableData(variableContext, &newVariable);
+}
+
+
+/*
  * Sets a variable into the expression result's variable context, with the given name and value.
  */
 static void
@@ -1204,9 +1247,12 @@ VariableContextSetVariableData(ExpressionVariableContext *variableContext, const
 }
 
 
-/* Helper function that validates variable name */
-void
-ValidateVariableName(StringView name)
+/* Core helper function to validate a variable name which allows to configure if it can start with upper case or not.
+ * Defining variables can't start with upper case.
+ * Referencing a variable can start with upper case.
+ */
+static void
+ValidateVariableNameCore(StringView name, bool allowStartWithUpper)
 {
 	if (name.length <= 0)
 	{
@@ -1219,7 +1265,8 @@ ValidateVariableName(StringView name)
 	{
 		char current = name.string[i];
 		if (i == 0 && isascii(current) && !islower(current) &&
-			!IsOverridableSystemVariable(&name))
+			!IsOverridableSystemVariable(&name) &&
+			(!isupper(current) || !allowStartWithUpper))
 		{
 			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
 								"'%s' starts with an invalid character for a user variable name",
@@ -1231,6 +1278,49 @@ ValidateVariableName(StringView name)
 			ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
 								"'%s' contains an invalid character for a variable name: '%c'",
 								name.string, current)));
+		}
+	}
+}
+
+
+/* Helper function that validates variable name */
+void
+ValidateVariableName(StringView name)
+{
+	bool allowStartWithUpper = false;
+	ValidateVariableNameCore(name, allowStartWithUpper);
+}
+
+
+/* Helper function that parses a variable spec and adds them to the given expression context. */
+void
+ParseVariableSpec(const bson_value_t *variableSpec,
+				  ExpressionVariableContext *variableContext)
+{
+	Assert(variableSpec->value_type == BSON_TYPE_DOCUMENT);
+
+	bson_iter_t varsIter;
+	BsonValueInitIterator(variableSpec, &varsIter);
+	while (bson_iter_next(&varsIter))
+	{
+		StringView varName = bson_iter_key_string_view(&varsIter);
+		ValidateVariableName(varName);
+
+		const bson_value_t *varValue = bson_iter_value(&varsIter);
+
+		AggregationExpressionData *variableExpression = palloc0(
+			sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(variableExpression, varValue);
+
+		/* if no context is provided, we just perform validation. */
+		if (variableContext == NULL)
+		{
+			pfree(variableExpression);
+		}
+		else
+		{
+			VariableContextSetVariableExpression(variableContext, &varName,
+												 variableExpression);
 		}
 	}
 }
@@ -1340,9 +1430,7 @@ GetAndEvaluateOperator(pgbson *document,
 		AggregationExpressionData *expressionData =
 			palloc0(sizeof(AggregationExpressionData));
 		expressionData->kind = AggregationExpressionKind_Operator;
-		pItem->parseAggregationExpressionFunc(operatorValue, expressionData,
-											  &expressionResult->expressionResultPrivate.
-											  variableContext);
+		pItem->parseAggregationExpressionFunc(operatorValue, expressionData);
 
 		/* If it was not optimized to a constant when parsing, call the handler and free the arguments allocated memory. */
 		if (expressionData->kind == AggregationExpressionKind_Operator)
@@ -1521,8 +1609,11 @@ EvaluateFieldPathAndWrite(bson_value_t *value, const
 						  uint32_t dottedPathExpressionLength,
 						  pgbson_element_writer *writer, bool isNullOnEmpty)
 {
-	check_stack_depth();
-	CHECK_FOR_INTERRUPTS();
+	if (value->value_type != BSON_TYPE_DOCUMENT &&
+		value->value_type != BSON_TYPE_ARRAY)
+	{
+		return false;
+	}
 
 	/*
 	 * If the variable is matches into an array,
@@ -2115,8 +2206,7 @@ ProcessFourArgumentElement(bson_value_t *result, const
  * expressionData with the expression information. */
 void
 ParseAggregationExpressionData(AggregationExpressionData *expressionData,
-							   const bson_value_t *value, const
-							   ExpressionVariableContext *variableContext)
+							   const bson_value_t *value)
 {
 	/* Specific operators' parse functions will call into this function recursively to parse its arguments. */
 	check_stack_depth();
@@ -2124,11 +2214,11 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 	if (value->value_type == BSON_TYPE_DOCUMENT)
 	{
-		ParseDocumentAggregationExpressionData(value, expressionData, variableContext);
+		ParseDocumentAggregationExpressionData(value, expressionData);
 	}
 	else if (value->value_type == BSON_TYPE_ARRAY)
 	{
-		ParseArrayAggregationExpressionData(value, expressionData, variableContext);
+		ParseArrayAggregationExpressionData(value, expressionData);
 	}
 	else
 	{
@@ -2140,10 +2230,17 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				StringView expressionView = {
 					.string = value->value.v_utf8.str, .length = value->value.v_utf8.len
 				};
+
 				StringView dottedSuffix = StringViewFindSuffix(&expressionView, '.');
 				if (dottedSuffix.length > 0)
 				{
 					expressionView = StringViewFindPrefix(&expressionView, '.');
+				}
+				else if (StringViewEndsWith(&expressionView, '.'))
+				{
+					/* We got a $$var. expression which is invalid. */
+					ereport(ERROR, (errcode(MongoFailedToParse),
+									errmsg("FieldPath must not end with a '.'.")));
 				}
 
 				if (StringViewEqualsCString(&expressionView, "$$NOW"))
@@ -2218,6 +2315,11 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				}
 				else
 				{
+					/* Remove the $$ prefx. */
+					StringView variableName = StringViewSubstring(&expressionView, 2);
+
+					bool allowStartWithUpper = true;
+					ValidateVariableNameCore(variableName, allowStartWithUpper);
 					expressionData->kind = AggregationExpressionKind_Variable;
 					expressionData->value = *value;
 				}
@@ -2498,8 +2600,7 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 void *
 ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 								 numberOfExpectedArgs, const char *operatorName,
-								 AggregationExpressionArgumentsKind *argumentsKind,
-								 const ExpressionVariableContext *variableContext)
+								 AggregationExpressionArgumentsKind *argumentsKind)
 {
 	Assert(numberOfExpectedArgs > 0);
 
@@ -2512,7 +2613,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, argumentValue, variableContext);
+		ParseAggregationExpressionData(argumentData, argumentValue);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -2544,7 +2645,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 		const bson_value_t *arg = bson_iter_value(&arrayIterator);
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, arg, variableContext);
+		ParseAggregationExpressionData(argumentData, arg);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -2556,7 +2657,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 			const bson_value_t *arg = bson_iter_value(&arrayIterator);
 			AggregationExpressionData *argData = palloc0(
 				sizeof(AggregationExpressionData));
-			ParseAggregationExpressionData(argData, arg, variableContext);
+			ParseAggregationExpressionData(argData, arg);
 			arguments = lappend(arguments, argData);
 		}
 
@@ -2776,8 +2877,7 @@ EvaluateAggregationExpressionArrayToWriter(const AggregationExpressionData *data
 /* Parses an expression specified as a bson_value_t document into the specified expressionData. */
 static void
 ParseDocumentAggregationExpressionData(const bson_value_t *value,
-									   AggregationExpressionData *expressionData,
-									   const ExpressionVariableContext *variableContext)
+									   AggregationExpressionData *expressionData)
 {
 	Assert(value->value_type == BSON_TYPE_DOCUMENT);
 
@@ -2823,8 +2923,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (pItem->parseAggregationExpressionFunc != NULL)
 		{
-			pItem->parseAggregationExpressionFunc(argument, expressionData,
-												  variableContext);
+			pItem->parseAggregationExpressionFunc(argument, expressionData);
 
 			if (expressionData->kind == AggregationExpressionKind_Operator)
 			{
@@ -2868,7 +2967,6 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
-	context.variableContext = variableContext;
 	BsonIntermediatePathNode *treeNode = BuildBsonPathTree(&docIter, &context,
 														   forceLeafExpression,
 														   &hasFields);
@@ -2942,8 +3040,7 @@ VariableHashEntryHashFunc(const void *obj, size_t objsize)
 /* Parses an expression specified as a bson_value_t array into the specified expressionData. */
 static void
 ParseArrayAggregationExpressionData(const bson_value_t *value,
-									AggregationExpressionData *expressionData,
-									const ExpressionVariableContext *variableContext)
+									AggregationExpressionData *expressionData)
 {
 	Assert(value->value_type == BSON_TYPE_ARRAY);
 
@@ -2957,7 +3054,7 @@ ParseArrayAggregationExpressionData(const bson_value_t *value,
 	BsonLeafArrayWithFieldPathNode *arrayNode =
 		TraverseDottedPathAndAddLeafArrayNode(&arrayPath, root,
 											  BsonDefaultCreateIntermediateNode,
-											  treatLeafDataAsConstant, variableContext);
+											  treatLeafDataAsConstant);
 
 	/* If the expression is an array we must evaluate all the nested items in case we have
 	 * a nested expression i.e: [1, 2, {$add: [1, 1]]}, "$b"]. In order to achieve this, we
@@ -2976,8 +3073,7 @@ ParseArrayAggregationExpressionData(const bson_value_t *value,
 																		   bson_iter_value(
 																			   &arrayIter),
 																		   BsonDefaultCreateLeafNode,
-																		   treatLeafDataAsConstant,
-																		   variableContext);
+																		   treatLeafDataAsConstant);
 		isConstantArray = isConstantArray &&
 						  IsAggregationExpressionConstant(&newNode->fieldData);
 		index++;
@@ -3022,8 +3118,7 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 								 int minRequiredArgs,
 								 int maxRequiredArgs,
 								 const char *operatorName,
-								 AggregationExpressionArgumentsKind *argumentsKind,
-								 const ExpressionVariableContext *variableContext)
+								 AggregationExpressionArgumentsKind *argumentsKind)
 {
 	Assert(maxRequiredArgs > minRequiredArgs);
 	if (argumentValue->value_type != BSON_TYPE_ARRAY)
@@ -3036,7 +3131,7 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, argumentValue, variableContext);
+		ParseAggregationExpressionData(argumentData, argumentValue);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -3066,7 +3161,7 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 			const bson_value_t *arg = bson_iter_value(&arrayIterator);
 			AggregationExpressionData *argData = palloc0(
 				sizeof(AggregationExpressionData));
-			ParseAggregationExpressionData(argData, arg, variableContext);
+			ParseAggregationExpressionData(argData, arg);
 			arguments = lappend(arguments, argData);
 		}
 
@@ -3087,10 +3182,124 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
  * target writer.
  */
 void
-ParseDollarLiteral(const bson_value_t *inputDocument,
-				   AggregationExpressionData *data,
-				   const ExpressionVariableContext *variableContext)
+ParseDollarLiteral(const bson_value_t *inputDocument, AggregationExpressionData *data)
 {
 	data->kind = AggregationExpressionKind_Constant;
 	data->value = *inputDocument;
+}
+
+
+/*
+ * Evaluates the output of a $let expression.
+ * $let is expressed as: { $let: { vars: {var1: <expression>, var2: <expression> }, in: <expression> }}
+ */
+void
+ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation16874), errmsg(
+							"$let only supports an object as its argument")));
+	}
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t vars = { 0 };
+	bson_value_t in = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "vars") == 0)
+		{
+			vars = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "in") == 0)
+		{
+			in = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation16875), errmsg(
+								"Unrecognized parameter to $let: %s", key),
+							errhint(
+								"Unrecognized parameter to $let, unexpected key")));
+		}
+	}
+
+	if (vars.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation16876), errmsg(
+							"Missing 'vars' parameter to $let")));
+	}
+
+	if (in.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation16876), errmsg(
+							"Missing 'in' parameter to $let")));
+	}
+
+	if (vars.value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation10065), errmsg(
+							"invalid parameter: expected an object (vars)")));
+	}
+
+	AggregationExpressionData *inData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(inData, &in);
+
+	bool isInConstant = inData->kind == AggregationExpressionKind_Constant;
+
+	/* if in is constant, there's no point on creating the hashtable, we just parse for validity. */
+	ExpressionVariableContext *inputVariableContext =
+		isInConstant ? NULL : palloc0(sizeof(ExpressionVariableContext));
+
+	ParseVariableSpec(&vars, inputVariableContext);
+
+	if (isInConstant)
+	{
+		data->kind = AggregationExpressionKind_Constant;
+		data->value = in;
+		pfree(inData);
+		return;
+	}
+
+	data->operator.arguments = list_make2(inData, inputVariableContext);
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+}
+
+
+/* Handles a pre parsed $let aggregation operator.
+ * The arguments is a list(2) where:
+ *    list[0] is the in argument to evaluate with the given variables.
+ *    list[1] is the parsed variable context for in.
+ *
+ * We evaluate in with the given variable context and return the result of that evaluation. */
+void
+HandlePreParsedDollarLet(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	List *argList = (List *) arguments;
+
+	AggregationExpressionData *inExpression = list_nth(argList, 0);
+	const ExpressionVariableContext *inputVariableContext = list_nth(argList, 1);
+
+	/* let is a special aggregator operator which needs to insert a variable context,
+	 * but it is not ideal to expose a shared API to modify the variable context for the expression result, as it could lead to wrong usage.
+	 * instead do it inline. */
+	ExpressionResult childExpressionResult = ExpressionResultCreateWithTracker(
+		expressionResult->expressionResultPrivate.tracker);
+	childExpressionResult.expressionResultPrivate.variableContext = *inputVariableContext;
+	childExpressionResult.expressionResultPrivate.variableContext.parent =
+		&expressionResult->expressionResultPrivate.variableContext;
+
+	bool isNullOnEmpty = false;
+	EvaluateAggregationExpressionData(inExpression, doc, &childExpressionResult,
+									  isNullOnEmpty);
+
+	/* If the result is a not existing path we should not set it. */
+	if (childExpressionResult.value.value_type != BSON_TYPE_EOD)
+	{
+		ExpressionResultSetValue(expressionResult, &childExpressionResult.value);
+	}
 }

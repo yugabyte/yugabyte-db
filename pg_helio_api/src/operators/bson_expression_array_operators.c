@@ -194,7 +194,6 @@ static void ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedIn
 static void ProcessDollarConcatArraysResult(bson_value_t *result, void *state);
 static void ParseDollarMaxMinN(const bson_value_t *argument,
 							   AggregationExpressionData *data,
-							   const ExpressionVariableContext *variableContext,
 							   bool isMaxN);
 static pgbsonelement ParseElementFromObjectForArrayToObject(const bson_value_t *element);
 static pgbsonelement ParseElementFromArrayForArrayToObject(const bson_value_t *element);
@@ -212,11 +211,9 @@ static int32_t GetStartValueForDollarRange(bson_value_t *startValue);
 static int32_t GetEndValueForDollarRange(bson_value_t *endValue);
 static int32_t GetStepValueForDollarRange(bson_value_t *stepValue);
 static void HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
-									AggregationExpressionData *data,
-									const ExpressionVariableContext *variableContext);
+									AggregationExpressionData *data);
 static void HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
-									AggregationExpressionData *data,
-									const ExpressionVariableContext *variableContext);
+									AggregationExpressionData *data);
 static void SetResultArrayForDollarRange(int32_t startValue, int32_t endValue,
 										 int32_t stepValue, bson_value_t *result);
 static void ValidateArraySizeLimit(int32_t startValue, int32_t endValue,
@@ -1328,8 +1325,7 @@ HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
  * $filter is expressed as { "$filter": { input: <array-expression>, cond: <expression>, as: <string>, limit: <num-expression> } }.
  */
 void
-ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data, const
-				  ExpressionVariableContext *variableContext)
+ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -1422,9 +1418,9 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 	}
 
 	/* TODO: optimize, if input, limit and cond are constants, we can calculate the result at this phase. */
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->limit, &limit, variableContext);
-	ParseAggregationExpressionData(&arguments->cond, &cond, variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->limit, &limit);
+	ParseAggregationExpressionData(&arguments->cond, &cond);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -1434,9 +1430,7 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
  * Parses the input document for FirstN and extracts the value for input and n.
  */
 void
-ParseDollarFirstN(const bson_value_t *inputDocument,
-				  AggregationExpressionData *data,
-				  const ExpressionVariableContext *variableContext)
+ParseDollarFirstN(const bson_value_t *inputDocument, AggregationExpressionData *data)
 {
 	bson_value_t input = { 0 };
 	bson_value_t elementsToFetch = { 0 };
@@ -1448,9 +1442,8 @@ ParseDollarFirstN(const bson_value_t *inputDocument,
 
 	DollarFirstNLastNArguments *arguments = palloc0(sizeof(DollarFirstNLastNArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->elementsToFetch, &elementsToFetch,
-								   variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->elementsToFetch, &elementsToFetch);
 
 	if (IsAggregationExpressionConstant(&arguments->input) &&
 		IsAggregationExpressionConstant(&arguments->elementsToFetch))
@@ -1516,9 +1509,7 @@ HandlePreParsedDollarFirstN(pgbson *doc, void *arguments,
  * Parses the input document for LastN and extracts the value for input and n.
  */
 void
-ParseDollarLastN(const bson_value_t *inputDocument,
-				 AggregationExpressionData *data,
-				 const ExpressionVariableContext *variableContext)
+ParseDollarLastN(const bson_value_t *inputDocument, AggregationExpressionData *data)
 {
 	bson_value_t input = { 0 };
 	bson_value_t elementsToFetch = { 0 };
@@ -1530,9 +1521,8 @@ ParseDollarLastN(const bson_value_t *inputDocument,
 
 	DollarFirstNLastNArguments *arguments = palloc0(sizeof(DollarFirstNLastNArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->elementsToFetch, &elementsToFetch,
-								   variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->elementsToFetch, &elementsToFetch);
 	if (IsAggregationExpressionConstant(&arguments->input) &&
 		IsAggregationExpressionConstant(&arguments->elementsToFetch))
 	{
@@ -1822,8 +1812,7 @@ HandlePreParsedDollarRange(pgbson *doc, void *arguments,
  * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
  */
 void
-ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data, const
-				 ExpressionVariableContext *variableContext)
+ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int minRequiredArgs = 2;
 	int maxRequiredArgs = 3;
@@ -1832,8 +1821,7 @@ ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data, 
 													 maxRequiredArgs,
 													 "$range",
 													 &data->operator.
-													 argumentsKind,
-													 variableContext);
+													 argumentsKind);
 
 	AggregationExpressionData *first = list_nth(argList, 0);
 	AggregationExpressionData *second = list_nth(argList, 1);
@@ -2137,14 +2125,12 @@ HandlePreParsedDollarReverseArray(pgbson *doc, void *state,
  * $reverseArray function takes in the desired input array and gives the output array which is reversed.
  */
 void
-ParseDollarReverseArray(const bson_value_t *argument, AggregationExpressionData *data,
-						const ExpressionVariableContext *variableContext)
+ParseDollarReverseArray(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	data->operator.arguments = ParseFixedArgumentsForExpression(argument, 1,
 																"$reverseArray",
 																&data->operator.
-																argumentsKind,
-																variableContext);
+																argumentsKind);
 	data->operator.returnType = BSON_TYPE_ARRAY;
 }
 
@@ -2286,15 +2272,13 @@ HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
  * Start and end can be expressions which are optional
  */
 void
-ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData *data,
-						const ExpressionVariableContext *variableContext)
+ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int minRequiredArgs = 2;
 	int maxRequiredArgs = 4;
 	List *argsList = ParseRangeArgumentsForExpression(argument, minRequiredArgs,
 													  maxRequiredArgs, "$indexOfArray",
-													  &data->operator.argumentsKind,
-													  variableContext);
+													  &data->operator.argumentsKind);
 
 	/*This function checks if all elements in list are constant for optimization*/
 	if (AreElementsInListConstant(argsList))
@@ -2482,11 +2466,10 @@ HandlePreParsedDollarMax(pgbson *doc, void *arguments,
  * In case the expression is an array it gives the maximum element in array otherwise returns the resolved expression as it is.
  */
 void
-ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data, const
-			   ExpressionVariableContext *variableContext)
+ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isMax = true;
-	HandlerForParsingMinMax(isMax, argument, data, variableContext);
+	HandlerForParsingMinMax(isMax, argument, data);
 }
 
 
@@ -2517,11 +2500,10 @@ HandlePreParsedDollarMin(pgbson *doc, void *arguments,
  * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
  */
 void
-ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data, const
-			   ExpressionVariableContext *variableContext)
+ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isMax = false;
-	HandlerForParsingMinMax(isMax, argument, data, variableContext);
+	HandlerForParsingMinMax(isMax, argument, data);
 }
 
 
@@ -2531,11 +2513,10 @@ ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data, co
  * In case the expression is an array it gives the sum of elements in array.
  */
 void
-ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data, const
-			   ExpressionVariableContext *variableContext)
+ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isSum = true;
-	HandlerForParsingSumAvg(isSum, argument, data, variableContext);
+	HandlerForParsingSumAvg(isSum, argument, data);
 }
 
 
@@ -2545,11 +2526,10 @@ ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data, co
  * In case the expression is an array it gives the sum of elements in array.
  */
 void
-ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data, const
-			   ExpressionVariableContext *variableContext)
+ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isSum = false;
-	HandlerForParsingSumAvg(isSum, argument, data, variableContext);
+	HandlerForParsingSumAvg(isSum, argument, data);
 }
 
 
@@ -2601,8 +2581,7 @@ HandlePreParsedDollarAvg(pgbson *doc, void *arguments,
  */
 static void
 HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
-						AggregationExpressionData *data,
-						const ExpressionVariableContext *variableContext)
+						AggregationExpressionData *data)
 {
 	char *opName = isMax ? "$max" : "$min";
 	AggregationExpressionData *argumentData = palloc0(
@@ -2619,12 +2598,11 @@ HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
 														1,
 														opName,
 														&argumentData->operator.
-														argumentsKind,
-														variableContext);
+														argumentsKind);
 	}
 	else
 	{
-		ParseAggregationExpressionData(argumentData, argument, variableContext);
+		ParseAggregationExpressionData(argumentData, argument);
 	}
 
 	if (IsAggregationExpressionConstant(argumentData))
@@ -2646,8 +2624,7 @@ HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
  */
 static void
 HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
-						AggregationExpressionData *data,
-						const ExpressionVariableContext *variableContext)
+						AggregationExpressionData *data)
 {
 	char *opName = isSum ? "$sum" : "$avg";
 	AggregationExpressionData *argumentData = palloc0(
@@ -2664,11 +2641,11 @@ HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
 														1,
 														opName,
 														&argumentData->operator.
-														argumentsKind, variableContext);
+														argumentsKind);
 	}
 	else
 	{
-		ParseAggregationExpressionData(argumentData, argument, variableContext);
+		ParseAggregationExpressionData(argumentData, argument);
 	}
 
 	if (IsAggregationExpressionConstant(argumentData))
@@ -2908,8 +2885,7 @@ HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 /* Parses the $map expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data, const
-			   ExpressionVariableContext *variableContext)
+ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -2990,8 +2966,8 @@ ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data, co
 	DollarMapArguments *arguments = palloc0(sizeof(DollarMapArguments));
 	arguments->as.value = aliasValue;
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->in, &in, variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->in, &in);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -3093,8 +3069,7 @@ HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
 /* Parses the $reduce expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data, const
-				  ExpressionVariableContext *variableContext)
+ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -3154,10 +3129,9 @@ ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
 
 	DollarReduceArguments *arguments = palloc0(sizeof(DollarReduceArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->in, &in, variableContext);
-	ParseAggregationExpressionData(&arguments->initialValue, &initialValue,
-								   variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->in, &in);
+	ParseAggregationExpressionData(&arguments->initialValue, &initialValue);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 }
@@ -3190,8 +3164,7 @@ HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
  * Parses the $sortArray expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data,
-					 const ExpressionVariableContext *variableContext)
+ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -3244,7 +3217,7 @@ ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *da
 
 	DollarSortArrayArguments *arguments = palloc0(sizeof(DollarSortArrayArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
 
 	/* Validate $sort spec, and all nested values if value is object */
 	SortContext sortContext;
@@ -3362,22 +3335,20 @@ HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
 /* Parses the $maxN expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data,
-				const ExpressionVariableContext *variableContext)
+ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isMaxN = true;
-	ParseDollarMaxMinN(argument, data, variableContext, isMaxN);
+	ParseDollarMaxMinN(argument, data, isMaxN);
 }
 
 
 /* Parses the $minN expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data,
-				const ExpressionVariableContext *variableContext)
+ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isMaxN = false;
-	ParseDollarMaxMinN(argument, data, variableContext, isMaxN);
+	ParseDollarMaxMinN(argument, data, isMaxN);
 }
 
 
@@ -3516,9 +3487,8 @@ ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
  * $minN is expressed as { "$minN": { n : <numeric-expression>, input: <array-expression> } }
  */
 static void
-ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data,
-				   const ExpressionVariableContext *variableContext,
-				   bool isMaxN)
+ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data, bool
+				   isMaxN)
 {
 	const char *operatorName = isMaxN == true ? "$maxN" : "$minN";
 
@@ -3573,8 +3543,8 @@ ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data
 
 	DollarMaxMinNArguments *arguments = palloc0(sizeof(DollarMaxMinNArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input, variableContext);
-	ParseAggregationExpressionData(&arguments->n, &count, variableContext);
+	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->n, &count);
 
 	arguments->isMaxN = isMaxN;
 
@@ -3664,8 +3634,7 @@ HandlePreParsedDollarZip(pgbson *doc, void *arguments,
  * useLongestLength must be true if defaults is specified.
  */
 void
-ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
-			   const ExpressionVariableContext *variableContext)
+ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -3733,8 +3702,8 @@ ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 	DollarZipArguments *arguments = palloc0(sizeof(DollarZipArguments));
 
 	arguments->useLongestLength.value = useLongestLength;
-	ParseAggregationExpressionData(&arguments->inputs, &inputs, variableContext);
-	ParseAggregationExpressionData(&arguments->defaults, &defaults, variableContext);
+	ParseAggregationExpressionData(&arguments->inputs, &inputs);
+	ParseAggregationExpressionData(&arguments->defaults, &defaults);
 
 	if (IsAggregationExpressionConstant(&arguments->inputs) &&
 		IsAggregationExpressionConstant(&arguments->defaults))

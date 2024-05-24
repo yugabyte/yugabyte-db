@@ -939,8 +939,6 @@ BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
 	context.allowInclusionExclusion = projectionContext->allowInclusionExclusion;
 
-	/* TODO VARIABLE: take it as an argument. */
-	context.variableContext = NULL;
 	BuildBsonPathTreeForDollarProjectCore(state, projectionContext, &context);
 }
 
@@ -956,9 +954,6 @@ BuildBsonPathTreeForDollarProjectFind(BsonProjectionQueryState *state,
 	BuildBsonPathTreeContext context = { 0 };
 	context.pathTreeState = GetPathTreeStateForFind(projectionContext->querySpec);
 	context.allowInclusionExclusion = projectionContext->allowInclusionExclusion;
-
-	/* TODO VARIABLE: take it as an argument. */
-	context.variableContext = NULL;
 
 	/* Set the necessary function hooks for find projection */
 	context.buildPathTreeFuncs = &FindPathTreeFunctions;
@@ -996,7 +991,9 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 	state->hasInclusion = pathTreeContext->hasInclusion;
 	state->hasExclusion = pathTreeContext->hasExclusion;
 	state->projectNonMatchingFields = pathTreeContext->hasExclusion;
-	state->variableContext = pathTreeContext->variableContext;
+
+	/* TODO VARIABLE parse variable spec and set from there */
+	state->variableContext = NULL;
 }
 
 
@@ -1014,9 +1011,6 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
 
-	/* TODO VARIABLE take as an argument*/
-	context.variableContext = NULL;
-
 	bool hasFields = false;
 	bool forceLeafExpression = true;
 	BsonIntermediatePathNode *root = BuildBsonPathTree(projectionSpecIter, &context,
@@ -1026,7 +1020,9 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	state->hasInclusion = context.hasInclusion;
 	state->hasExclusion = context.hasExclusion;
 	state->projectNonMatchingFields = true;
-	state->variableContext = context.variableContext;
+
+	/* TODO VARIABLE take as an argument and parse. */
+	state->variableContext = NULL;
 }
 
 
@@ -1174,14 +1170,12 @@ BsonLookUpProject(pgbson *sourceDocument, int numMatched, Datum *matchedDocument
 	StringView matchedDocsView = CreateStringViewFromString(matchedDocsFieldName);
 
 	bool treatLeafDataAsConstant = true;
-	const ExpressionVariableContext *variableContext = NULL;
 	BsonLeafArrayWithFieldPathNode *matchedDocsNode =
 		TraverseDottedPathAndAddLeafArrayNode(
 			&matchedDocsView,
 			root,
 			BsonDefaultCreateIntermediateNode,
-			treatLeafDataAsConstant,
-			variableContext);
+			treatLeafDataAsConstant);
 
 	for (int i = 0; i < numMatched; i++)
 	{
@@ -1192,8 +1186,7 @@ BsonLookUpProject(pgbson *sourceDocument, int numMatched, Datum *matchedDocument
 		AddValueNodeToLeafArrayWithField(matchedDocsNode, relativePath, i,
 										 &documentBsonValue,
 										 BsonDefaultCreateLeafNode,
-										 treatLeafDataAsConstant,
-										 variableContext);
+										 treatLeafDataAsConstant);
 	}
 
 
@@ -1372,7 +1365,6 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 	excludeValue.value_type = BSON_TYPE_INT32;
 	excludeValue.value.v_int32 = 0;
 	bool treatLeafDataAsConstant = true;
-	const ExpressionVariableContext *variableContext = NULL;
 
 	BsonIntermediatePathNode *tree = MakeRootNode();
 	if (pathSpecification->value_type == BSON_TYPE_UTF8)
@@ -1386,8 +1378,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 											  tree,
 											  BsonDefaultCreateLeafNode,
 											  BsonDefaultCreateIntermediateNode,
-											  treatLeafDataAsConstant,
-											  variableContext);
+											  treatLeafDataAsConstant);
 	}
 	else if (pathSpecification->value_type == BSON_TYPE_ARRAY)
 	{
@@ -1408,8 +1399,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 													  tree,
 													  BsonDefaultCreateLeafNode,
 													  BsonDefaultCreateIntermediateNode,
-													  treatLeafDataAsConstant,
-													  variableContext);
+													  treatLeafDataAsConstant);
 			}
 			else
 			{
@@ -1456,13 +1446,12 @@ AdjustPathProjectionsForId(BsonIntermediatePathNode *tree,
 	includedValue.value.v_int32 = 1;
 	includedValue.value_type = BSON_TYPE_INT32;
 	bool treatLeafDataAsConstant = true;
-	const ExpressionVariableContext *variableContext = NULL;
 	if (idField == NULL)
 	{
 		TraverseDottedPathAndAddLeafValueNode(
 			&IdFieldStringView, &includedValue, tree,
 			BsonDefaultCreateLeafNode, BsonDefaultCreateIntermediateNode,
-			treatLeafDataAsConstant, variableContext);
+			treatLeafDataAsConstant);
 	}
 	else
 	{
@@ -1905,9 +1894,7 @@ PopulateReplaceRootExpressionDataFromSpec(AggregationExpressionData *expressionD
 	bson_value_t bsonValue;
 	GetBsonValueForReplaceRoot(&pathSpecIter, &bsonValue);
 
-	/* TODO VARIABLE take as argument */
-	const ExpressionVariableContext *variableContext = NULL;
-	ParseAggregationExpressionData(expressionData, &bsonValue, variableContext);
+	ParseAggregationExpressionData(expressionData, &bsonValue);
 }
 
 
@@ -1980,7 +1967,6 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 	BsonIntermediatePathNode *root = MakeRootNode();
 	bool nodeCreated = false;
 	bool treatLeafDataAsConstant = true;
-	const ExpressionVariableContext *variableContext = NULL;
 
 	/*
 	 * Add location to the document first if distance and loc fields are same then loc field gets the priority
@@ -1998,7 +1984,6 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 			BsonDefaultCreateIntermediateNode,
 			BsonDefaultCreateLeafNode,
 			treatLeafDataAsConstant,
-			variableContext,
 			NULL,
 			&nodeCreated
 			);
@@ -2012,7 +1997,6 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 		BsonDefaultCreateIntermediateNode,
 		BsonDefaultCreateLeafNode,
 		treatLeafDataAsConstant,
-		variableContext,
 		NULL,
 		&nodeCreated
 		);

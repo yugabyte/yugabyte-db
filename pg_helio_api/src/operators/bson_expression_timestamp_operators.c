@@ -51,8 +51,7 @@ HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
  * This expression should be a timestamp.
  */
 void
-ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data, const
-					ExpressionVariableContext *variableContext)
+ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int numOfReqArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -60,8 +59,7 @@ ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *dat
 																			 "$tsSecond",
 																			 &data->
 																			 operator.
-																			 argumentsKind,
-																			 variableContext);
+																			 argumentsKind);
 
 	if (IsAggregationExpressionConstant(parsedData))
 	{
@@ -128,8 +126,7 @@ HandlePreParsedDollarTsIncrement(pgbson *doc, void *arguments,
 
 
 void
-ParseDollarTsIncrement(const bson_value_t *argument, AggregationExpressionData *data,
-					   const ExpressionVariableContext *variableContext)
+ParseDollarTsIncrement(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	int numOfReqArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -137,8 +134,7 @@ ParseDollarTsIncrement(const bson_value_t *argument, AggregationExpressionData *
 																			 "$tsIncrement",
 																			 &data->
 																			 operator.
-																			 argumentsKind,
-																			 variableContext);
+																			 argumentsKind);
 
 	if (IsAggregationExpressionConstant(parsedData))
 	{

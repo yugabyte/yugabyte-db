@@ -35,8 +35,6 @@ static const BsonPathNode * ResetNodeWithValueOrField(const
 													  CreateLeafNodeFunc createFunc,
 													  bool forceLeafExpression,
 													  bool treatLeafDataAsConstant,
-													  const ExpressionVariableContext *
-													  variableContext,
 													  void *nodeCreationState);
 static BsonPathNode * TraverseDottedPathAndGetOrAddNodeCore(const StringView *path,
 															const bson_value_t *value,
@@ -46,9 +44,6 @@ static BsonPathNode * TraverseDottedPathAndGetOrAddNodeCore(const StringView *pa
 															createIntermediateFunc,
 															bool forceLeafExpression,
 															bool treatNodeDataAsConstant,
-															const
-															ExpressionVariableContext *
-															variableContext,
 															void *nodeCreationState,
 															bool *nodeCreated);
 static void FreeBsonPathNode(BsonPathNode *node);
@@ -107,8 +102,6 @@ TraverseDottedPathAndGetOrAddLeafFieldNode(const StringView *path,
 										   BsonIntermediatePathNode *tree,
 										   CreateLeafNodeFunc createFunc,
 										   bool treatLeafDataAsConstant,
-										   const ExpressionVariableContext *
-										   variableContext,
 										   bool *nodeCreated)
 {
 	bool forceLeafExpression = true;
@@ -118,7 +111,6 @@ TraverseDottedPathAndGetOrAddLeafFieldNode(const StringView *path,
 																	BsonDefaultCreateIntermediateNode,
 																	forceLeafExpression,
 																	treatLeafDataAsConstant,
-																	variableContext,
 																	nodeCreationState,
 																	nodeCreated);
 	return CastAsLeafNode(childNode);
@@ -132,7 +124,6 @@ TraverseDottedPathAndGetOrAddField(const StringView *path, const bson_value_t *v
 								   createIntermediateFunc,
 								   CreateLeafNodeFunc createLeafFunc,
 								   bool treatLeafNodeAsConstant,
-								   const ExpressionVariableContext *variableContext,
 								   void *nodeCreationState, bool *nodeCreated)
 {
 	bool forceLeafExpression = true;
@@ -141,7 +132,6 @@ TraverseDottedPathAndGetOrAddField(const StringView *path, const bson_value_t *v
 												 createIntermediateFunc,
 												 forceLeafExpression,
 												 treatLeafNodeAsConstant,
-												 variableContext,
 												 nodeCreationState,
 												 nodeCreated);
 }
@@ -154,7 +144,6 @@ TraverseDottedPathAndGetOrAddValue(const StringView *path, const bson_value_t *v
 								   createIntermediateFunc,
 								   CreateLeafNodeFunc createLeafFunc,
 								   bool treatLeafNodeAsConstant,
-								   const ExpressionVariableContext *variableContext,
 								   void *nodeCreationState, bool *nodeCreated)
 {
 	bool forceLeafExpression = false;
@@ -163,7 +152,6 @@ TraverseDottedPathAndGetOrAddValue(const StringView *path, const bson_value_t *v
 												 createIntermediateFunc,
 												 forceLeafExpression,
 												 treatLeafNodeAsConstant,
-												 variableContext,
 												 nodeCreationState,
 												 nodeCreated);
 }
@@ -180,8 +168,7 @@ TraverseDottedPathAndAddLeafFieldNode(const StringView *path,
 									  const bson_value_t *value,
 									  BsonIntermediatePathNode *tree,
 									  CreateLeafNodeFunc createFunc,
-									  bool treatLeafDataAsConstant,
-									  const ExpressionVariableContext *variableContext)
+									  bool treatLeafDataAsConstant)
 {
 	bool hasField = true;
 	NodeType leafNodeType = NodeType_LeafField;
@@ -195,8 +182,7 @@ TraverseDottedPathAndAddLeafFieldNode(const StringView *path,
 														   replaceExistingNodes,
 														   nodeCreationState,
 														   &alreadyExistsIgnore);
-	ValidateAndSetLeafNodeData(childNode, value, path, treatLeafDataAsConstant,
-							   variableContext);
+	ValidateAndSetLeafNodeData(childNode, value, path, treatLeafDataAsConstant);
 	return CastAsLeafNode(childNode);
 }
 
@@ -213,8 +199,7 @@ TraverseDottedPathAndAddLeafValueNode(const StringView *path,
 									  BsonIntermediatePathNode *tree,
 									  CreateLeafNodeFunc createFunc,
 									  CreateIntermediateNodeFunc intermediateFunc,
-									  bool treatLeafDataAsConstant,
-									  const ExpressionVariableContext *variableContext)
+									  bool treatLeafDataAsConstant)
 {
 	bool hasField = false;
 	bool forceLeafExpression = false;
@@ -229,8 +214,7 @@ TraverseDottedPathAndAddLeafValueNode(const StringView *path,
 														   replaceExistingNodes,
 														   nodeCreationState,
 														   &alreadyExistsIgnore);
-	ValidateAndSetLeafNodeData(childNode, value, path, treatLeafDataAsConstant,
-							   variableContext);
+	ValidateAndSetLeafNodeData(childNode, value, path, treatLeafDataAsConstant);
 	return CastAsLeafNode(childNode);
 }
 
@@ -244,8 +228,7 @@ BsonLeafArrayWithFieldPathNode *
 TraverseDottedPathAndAddLeafArrayNode(const StringView *path,
 									  BsonIntermediatePathNode *tree,
 									  CreateIntermediateNodeFunc intermediateFunc,
-									  bool treatLeafDataAsConstant,
-									  const ExpressionVariableContext *variableContext)
+									  bool treatLeafDataAsConstant)
 {
 	bson_value_t includeValue = { 0 };
 	includeValue.value_type = BSON_TYPE_INT32;
@@ -264,8 +247,7 @@ TraverseDottedPathAndAddLeafArrayNode(const StringView *path,
 														   nodeCreationState,
 														   &alreadyExistsIgnore);
 
-	ValidateAndSetLeafNodeData(childNode, &includeValue, path, treatLeafDataAsConstant,
-							   variableContext);
+	ValidateAndSetLeafNodeData(childNode, &includeValue, path, treatLeafDataAsConstant);
 	return (BsonLeafArrayWithFieldPathNode *) childNode;
 }
 
@@ -279,8 +261,7 @@ AddValueNodeToLeafArrayWithField(BsonLeafArrayWithFieldPathNode *leafArrayField,
 								 char *relativePath, int index, const
 								 bson_value_t *leafValue,
 								 CreateLeafNodeFunc createFunc,
-								 bool treatLeafDataAsConstant,
-								 const ExpressionVariableContext *variableContext)
+								 bool treatLeafDataAsConstant)
 {
 	NodeType leafNodeType = NodeType_LeafField;
 	StringView indexFieldPath = Uint32ToStringView(index);
@@ -288,7 +269,7 @@ AddValueNodeToLeafArrayWithField(BsonLeafArrayWithFieldPathNode *leafArrayField,
 															 &indexFieldPath, createFunc,
 															 leafNodeType);
 	ValidateAndSetLeafNodeData(&childNode->baseNode, leafValue, &indexFieldPath,
-							   treatLeafDataAsConstant, variableContext);
+							   treatLeafDataAsConstant);
 	return childNode;
 }
 
@@ -300,14 +281,13 @@ AddValueNodeToLeafArrayWithField(BsonLeafArrayWithFieldPathNode *leafArrayField,
 void
 ResetNodeWithField(const BsonLeafPathNode *baseLeafNode, const char *relativePath, const
 				   bson_value_t *value, CreateLeafNodeFunc createFunc, bool
-				   treatLeafDataAsConstant, const
-				   ExpressionVariableContext *variableContext)
+				   treatLeafDataAsConstant)
 {
 	bool forceLeafExpression = true;
 	void *nodeCreationState = NULL;
 	ResetNodeWithValueOrField(baseLeafNode, relativePath, value, createFunc,
 							  forceLeafExpression, treatLeafDataAsConstant,
-							  variableContext, nodeCreationState);
+							  nodeCreationState);
 }
 
 
@@ -322,10 +302,9 @@ ResetNodeWithValue(const BsonLeafPathNode *baseLeafNode, const char *relativePat
 {
 	bool forceLeafExpression = false;
 	void *nodeCreationState = NULL;
-	const ExpressionVariableContext *variableContext = NULL;
 	ResetNodeWithValueOrField(baseLeafNode, relativePath, value, createFunc,
 							  forceLeafExpression, treatLeafDataAsConstant,
-							  variableContext, nodeCreationState);
+							  nodeCreationState);
 }
 
 
@@ -340,13 +319,12 @@ ResetNodeWithFieldAndState(const BsonLeafPathNode *baseLeafNode,
 						   const bson_value_t *value,
 						   CreateLeafNodeFunc createFunc,
 						   bool treatLeafDataAsConstant,
-						   const ExpressionVariableContext *variableContext,
 						   void *leafState)
 {
 	bool forceLeafExpression = true;
 	return ResetNodeWithValueOrField(baseLeafNode, relativePath, value, createFunc,
 									 forceLeafExpression, treatLeafDataAsConstant,
-									 variableContext, leafState);
+									 leafState);
 }
 
 
@@ -364,10 +342,8 @@ ResetNodeWithValueAndState(const BsonLeafPathNode *baseLeafNode,
 						   void *leafState)
 {
 	bool forceLeafExpression = false;
-	const ExpressionVariableContext *variableContext = NULL;
 	return ResetNodeWithValueOrField(baseLeafNode, relativePath, value, createFunc,
 									 forceLeafExpression, treatLeafDataAsConstant,
-									 variableContext,
 									 leafState);
 }
 
@@ -545,8 +521,7 @@ TraverseDottedPathAndGetNode(const StringView *path,
  */
 bool
 ValidateAndSetLeafNodeData(BsonPathNode *childNode, const bson_value_t *value,
-						   const StringView *relativePath, bool treatAsConstantExpression,
-						   const ExpressionVariableContext *variableContext)
+						   const StringView *relativePath, bool treatAsConstantExpression)
 {
 	if (childNode->nodeType == NodeType_Intermediate)
 	{
@@ -568,7 +543,7 @@ ValidateAndSetLeafNodeData(BsonPathNode *childNode, const bson_value_t *value,
 	}
 	else
 	{
-		ParseAggregationExpressionData(&leafPathNode->fieldData, value, variableContext);
+		ParseAggregationExpressionData(&leafPathNode->fieldData, value);
 	}
 
 	return leafPathNode->baseNode.nodeType == NodeType_LeafField ||
@@ -903,7 +878,6 @@ static const BsonPathNode *
 ResetNodeWithValueOrField(const BsonLeafPathNode *baseLeafNode, const char *relativePath,
 						  const bson_value_t *value, CreateLeafNodeFunc createFunc,
 						  bool forceLeafExpression, bool treatLeafDataAsConstant,
-						  const ExpressionVariableContext *variableContext,
 						  void *nodeCreationState)
 {
 	NodeType leafNodeType = DetermineChildNodeType(value, forceLeafExpression);
@@ -914,7 +888,7 @@ ResetNodeWithValueOrField(const BsonLeafPathNode *baseLeafNode, const char *rela
 		nodeCreationState);
 	SetBasePathNodeData(leafPathNode, leafNodeType, &baseNode->field, baseNode->parent);
 	ValidateAndSetLeafNodeData(leafPathNode, value, &baseNode->field,
-							   treatLeafDataAsConstant, variableContext);
+							   treatLeafDataAsConstant);
 
 	/* now fix up the child nodes */
 	BsonPathNode *previousNode = NULL;
@@ -953,7 +927,6 @@ TraverseDottedPathAndGetOrAddNodeCore(const StringView *path,
 									  createIntermediateFunc,
 									  bool forceLeafExpression,
 									  bool treatNodeDataAsConstant,
-									  const ExpressionVariableContext *variableContext,
 									  void *nodeCreationState,
 									  bool *nodeCreated)
 {
@@ -970,8 +943,7 @@ TraverseDottedPathAndGetOrAddNodeCore(const StringView *path,
 														   &alreadyExists);
 	if (!alreadyExists)
 	{
-		ValidateAndSetLeafNodeData(childNode, value, path, treatNodeDataAsConstant,
-								   variableContext);
+		ValidateAndSetLeafNodeData(childNode, value, path, treatNodeDataAsConstant);
 	}
 
 	if (nodeCreated)

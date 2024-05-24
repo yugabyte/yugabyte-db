@@ -220,8 +220,7 @@ BuildBsonPathTreeCore(bson_iter_t *pathSpecification, BsonIntermediatePathNode *
 			bool treatLeafDataAsConstant = isFindOperator ||
 										   context->skipParseAggregationExpressions;
 			childHasField = ValidateAndSetLeafNodeData(childNode, value,
-													   &path, treatLeafDataAsConstant,
-													   context->variableContext);
+													   &path, treatLeafDataAsConstant);
 
 			context->buildPathTreeFuncs->postProcessLeafNodeFunc(
 				context->pathTreeState, &path, childNode,
