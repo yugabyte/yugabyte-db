@@ -1370,10 +1370,12 @@ Default: `100`
 
 ## Metric export flags
 
+YB-TServer metrics are available in Prometheus format atmax_prometheus_metric_entries
+`http://localhost:9000/prometheus-metrics`.
+
 ##### --export_help_and_type_in_prometheus_metrics
 
-YB-TServer metrics are available in Prometheus format at
-`http://localhost:9000/prometheus-metrics`.  This flag controls whether
+This flag controls whether
 #TYPE and #HELP information is included as part of the Prometheus
 metrics output by default.
 
@@ -1384,6 +1386,15 @@ help information.  For example, querying
 type and help information regardless of the setting of this flag.
 
 Default: `true`
+
+##### --max_prometheus_metric_entries
+
+Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter
+`max_metric_entries`.
+
+Default: `UINT32_MAX`
 
 ## Catalog flags
 
