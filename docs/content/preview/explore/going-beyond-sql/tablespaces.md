@@ -1,7 +1,7 @@
 ---
 title: Tablespaces
-headerTitle: Geo-distribution with Tablespaces
-linkTitle: Geo-distribution
+headerTitle: Geo-placement with Tablespaces
+linkTitle: Geo-placement
 description: Control the placement of data using tablespaces in YSQL
 headcontent: Control the placement of data using tablespaces
 menu:

@@ -7,15 +7,15 @@ menu:
   preview:
     identifier: going-beyond-sql
     parent: explore
-    weight: 210
+    weight: 150
 type: indexpage
 ---
 
-In today's digital landscape, businesses demand more from their data infrastructure than traditional databases can provide. They need databases that can seamlessly scale, deliver high performance, and ensure data resilience across geographical regions. While SQL compliance is a fundamental aspect, YugabyteDB goes further, offering a suite of advanced functionalities that address modern data challenges. In this article, we delve into some of YugabyteDB's cutting-edge capabilities and their implications for scalable, distributed applications.
+While embracing PostgreSQL is a fundamental aspect of YugabyteDB, it extends PostgreSQL by offering a suite of advanced functionalities that address challenges in today's distributed applications like native asynchronous replication,  lowered read latency by reading from closer replicas, extending tablespaces to place data in a specific geography, configurable data distribution, built-in connection pooling, and so on. Let's explore some of these features in detail.
 
 ## Read from followers
 
-Use follower Reads to spread the read workload across all replicas in the primary cluster. For applications that don't require the latest data or are working with unchanging data, follower reads provide low-latency reads from the primary cluster. However, because data changes are still replicated from the leader, there is a chance of stale reads.
+Use follower reads to spread the read workload across all replicas in the primary cluster. For applications that don't require the latest data or are working with unchanging data, follower reads provide low-latency reads from the primary cluster. However, because data changes are still replicated from the leader, there is a chance of stale reads.
 
 {{<tip>}}
 To learn more about how follower reads work, see [Follower Reads](./follower-reads-ysql).
