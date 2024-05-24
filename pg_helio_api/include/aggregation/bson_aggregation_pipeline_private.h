@@ -13,6 +13,7 @@
 #include <nodes/makefuncs.h>
 
 #include "metadata/collection.h"
+#include <utils/version_utils.h>
 
 #ifndef BSON_AGGREGATION_PIPELINE_PRIVATE_H
 #define BSON_AGGREGATION_PIPELINE_PRIVATE_H
@@ -180,6 +181,14 @@ MakeFloat8Const(float8 floatValue)
 {
 	return makeConst(FLOAT8OID, -1, InvalidOid, sizeof(float8),
 					 Float8GetDatum(floatValue), false, true);
+}
+
+
+inline static Oid
+GetMergeDocumentsFunctionOid(void)
+{
+	return IsClusterVersionAtleastThis(1, 18, 0) ?
+		   BsonDollaMergeDocumentsFunctionOid() : BsonDollarAddFieldsFunctionOid();
 }
 
 

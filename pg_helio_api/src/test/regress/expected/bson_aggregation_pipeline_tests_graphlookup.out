@@ -55,7 +55,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_9200 collection
-   Output: helio_api_catalog.bson_dollar_add_fields(collection.document, COALESCE((SubPlan 2), '{ "reportingHierarchy" : [  ] }'::bson))
+   Output: helio_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "reportingHierarchy" : [  ] }'::bson))
    Recheck Cond: (collection.shard_key_value = '9200'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '9200'::bigint)
@@ -156,7 +156,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_9202 collection
-   Output: helio_api_catalog.bson_dollar_add_fields(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
+   Output: helio_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
    Recheck Cond: (collection.shard_key_value = '9202'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '9202'::bigint)
@@ -207,15 +207,15 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_9202 collection
-   Output: helio_api_catalog.bson_dollar_add_fields(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
+   Output: helio_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
    Recheck Cond: (collection.shard_key_value = '9202'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '9202'::bigint)
    SubPlan 2
      ->  Aggregate
-           Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_catalog.bson_dollar_add_fields("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), 'destinations'::text), '{ "destinations" : [  ] }'::bson)
+           Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), 'destinations'::text), '{ "destinations" : [  ] }'::bson)
            ->  Unique
-                 Output: (helio_api_catalog.bson_dollar_add_fields("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                 Output: (helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
                  CTE graphLookupRecurseStage
                    ->  Recursive Union
                          ->  Bitmap Heap Scan on helio_data.documents_9201 collection_0_2
@@ -238,10 +238,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
                                            ->  Bitmap Index Scan on _id_
                                                  Index Cond: (collection_0_2_1.shard_key_value = '9201'::bigint)
                  ->  Sort
-                       Output: (helio_api_catalog.bson_dollar_add_fields("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       Output: (helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
                        Sort Key: "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
                        ->  CTE Scan on "graphLookupRecurseStage" "graphLookup_stage_2"
-                             Output: helio_api_catalog.bson_dollar_add_fields("graphLookup_stage_2".document, "graphLookup_stage_2".depth), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                             Output: helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
 (36 rows)
 
 -- $graphLookup inside $facet

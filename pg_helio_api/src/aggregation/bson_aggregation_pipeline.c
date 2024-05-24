@@ -1501,7 +1501,8 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	PgbsonWriterAppendDouble(&addFieldsWriter, "ok", 2, 1);
 	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
 	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
-	query = HandleAddFields(&addFieldsValue, query, &context);
+	query = HandleSimpleProjectionStage(&addFieldsValue, query, &context, "$addFields",
+										GetMergeDocumentsFunctionOid());
 
 	return query;
 }

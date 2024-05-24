@@ -249,6 +249,7 @@ Oid ApiCatalogAggregationFindFunctionId(void);
 Oid ApiCatalogAggregationCountFunctionId(void);
 Oid ApiCatalogAggregationDistinctFunctionId(void);
 Oid BsonDollarAddFieldsFunctionOid(void);
+Oid BsonDollaMergeDocumentsFunctionOid(void);
 Oid BsonDollarProjectGeonearFunctionOid(void);
 Oid BsonDollarInverseMatchFunctionId(void);
 Oid BsonDollarProjectFunctionOid(void);

@@ -1671,7 +1671,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	}
 
 	List *addFieldArgs = list_make2(leftOutput, rightOutputExpr);
-	FuncExpr *addFields = makeFuncExpr(BsonDollarAddFieldsFunctionOid(), BsonTypeId(),
+	FuncExpr *addFields = makeFuncExpr(GetMergeDocumentsFunctionOid(), BsonTypeId(),
 									   addFieldArgs, InvalidOid, InvalidOid,
 									   COERCE_EXPLICIT_CALL);
 
@@ -2193,7 +2193,7 @@ ProcessGraphLookupCore(Query *query, AggregationPipelineBuildContext *context,
 								0);
 
 	FuncExpr *addFieldsExpr = makeFuncExpr(
-		BsonDollarAddFieldsFunctionOid(), BsonTypeId(),
+		GetMergeDocumentsFunctionOid(), BsonTypeId(),
 		list_make2(documentVar, addFieldsVar),
 		InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 	TargetEntry *finalTargetEntry = makeTargetEntry((Expr *) addFieldsExpr, 1, "document",
@@ -2693,7 +2693,7 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	/* If there is a depth-field, add it into the original doc */
 	if (args->depthField.length > 0)
 	{
-		simpleTargetEntry->expr = (Expr *) makeFuncExpr(BsonDollarAddFieldsFunctionOid(),
+		simpleTargetEntry->expr = (Expr *) makeFuncExpr(GetMergeDocumentsFunctionOid(),
 														BsonTypeId(),
 														list_make2(simpleVar,
 																   finalDepthVar),

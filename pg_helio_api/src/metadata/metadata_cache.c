@@ -543,8 +543,11 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_add_fields function */
 	Oid ApiCatalogBsonDollarAddFieldsFunctionOid;
 
-	/* OID of the bson_dollar_add_fields function */
+	/* OID of the bson_dollar_inverse_match function */
 	Oid ApiCatalogBsonDollarInverseMatchFunctionOid;
+
+	/* OID OF the bson_dollar_merge_documents function */
+	Oid ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid;
 
 	/* OID of the bson_dollar_project function */
 	Oid ApiCatalogBsonDollarProjectFunctionOid;
@@ -2637,6 +2640,18 @@ BsonDollarAddFieldsFunctionOid(void)
 	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonDollarAddFieldsFunctionOid,
 									   "bson_dollar_add_fields", BsonTypeId(),
 									   BsonTypeId());
+}
+
+
+Oid
+BsonDollaMergeDocumentsFunctionOid(void)
+{
+	bool missingOk = false;
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid,
+		"bson_dollar_merge_documents",
+		BsonTypeId(),
+		BsonTypeId(), missingOk);
 }
 
 

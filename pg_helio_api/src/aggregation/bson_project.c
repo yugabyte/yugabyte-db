@@ -130,7 +130,8 @@ static void PopulateReplaceRootExpressionDataFromSpec(
 static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
-												bson_iter_t *addFieldsSpec);
+												bson_iter_t *addFieldsSpec,
+												bool skipParseAggregationExpressions);
 static void BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
 											const bson_value_t *unsetValue,
 											bool forceProjectId);
@@ -157,6 +158,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_add_fields);
 PG_FUNCTION_INFO_V1(bson_dollar_set);
 PG_FUNCTION_INFO_V1(bson_dollar_unset);
 PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_documents);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_array);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_project);
@@ -342,6 +344,7 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 
 	int argPosition = 1;
 
+	bool skipParseAggregationExpressions = false;
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
 	SetCachedFunctionState(
@@ -349,12 +352,59 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 		BsonProjectionQueryState,
 		argPosition,
 		BuildBsonPathTreeForDollarAddFields,
-		&pathSpecIter);
+		&pathSpecIter,
+		skipParseAggregationExpressions);
 
 	if (state == NULL)
 	{
 		BsonProjectionQueryState projectionState = { 0 };
-		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter);
+		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
+											skipParseAggregationExpressions);
+		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
+	}
+	else
+	{
+		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
+	}
+}
+
+
+/*
+ * This is similar to the behavior of $addFields except it doesn't
+ * consider any values as operators/expressions. Simply as Field constants.
+ */
+Datum
+bson_dollar_merge_documents(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *pathSpec = PG_GETARG_PGBSON(1);
+
+	/* bson_dollar_add_fields with empty projection spec is a no-op */
+	if (IsPgbsonEmptyDocument(pathSpec))
+	{
+		PG_RETURN_POINTER(document);
+	}
+
+	const BsonProjectionQueryState *state;
+
+	int argPosition = 1;
+
+	bool skipParseAggregationExpressions = true;
+	bson_iter_t pathSpecIter;
+	PgbsonInitIterator(pathSpec, &pathSpecIter);
+	SetCachedFunctionState(
+		state,
+		BsonProjectionQueryState,
+		argPosition,
+		BuildBsonPathTreeForDollarAddFields,
+		&pathSpecIter,
+		skipParseAggregationExpressions);
+
+	if (state == NULL)
+	{
+		BsonProjectionQueryState projectionState = { 0 };
+		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
+											skipParseAggregationExpressions);
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
 	}
 	else
@@ -372,8 +422,10 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 const BsonProjectionQueryState *
 GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter)
 {
+	bool skipParseAggregationExpressions = false;
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
-	BuildBsonPathTreeForDollarAddFields(projectionState, projectionSpecIter);
+	BuildBsonPathTreeForDollarAddFields(projectionState, projectionSpecIter,
+										skipParseAggregationExpressions);
 	return projectionState;
 }
 
@@ -1006,10 +1058,12 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
  */
 static void
 BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
-									bson_iter_t *projectionSpecIter)
+									bson_iter_t *projectionSpecIter,
+									bool skipParseAggregationExpressions)
 {
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
+	context.skipParseAggregationExpressions = skipParseAggregationExpressions;
 
 	bool hasFields = false;
 	bool forceLeafExpression = true;
