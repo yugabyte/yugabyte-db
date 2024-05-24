@@ -159,6 +159,7 @@ static Query * HandleGeoNear(const bson_value_t *existingValue, Query *query,
 static bool RequiresPersistentCursorFalse(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorLimit(const bson_value_t *pipelineValue);
+static bool RequiresPersistentCursorSkip(const bson_value_t *pipelineValue);
 
 static bool CanInlineLookupStageProjection(const bson_value_t *stageValue, const
 										   StringView *lookupPath);
@@ -522,7 +523,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	{
 		.stage = "$skip",
 		.mutateFunc = &HandleSkip,
-		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+		.requiresPersistentCursor = &RequiresPersistentCursorSkip,
 
 		/* Cannot be inlined - needs to happen *after* the join */
 		.canInlineLookupStageFunc = NULL,
@@ -1282,15 +1283,19 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	/* TODO: In cases that need persisted cursors, we can't allow querying base table directly
 	 * until we find a solution for persisted cursors here.
 	 */
-	if (sort.value_type != BSON_TYPE_EOD ||
-		skip.value_type != BSON_TYPE_EOD)
+	if (sort.value_type != BSON_TYPE_EOD)
 	{
 		context.allowShardBaseTable = false;
 		context.requiresPersistentCursor = true;
 	}
 
-	if (limit.value_type != BSON_TYPE_EOD &&
-		RequiresPersistentCursorLimit(&limit))
+	if (RequiresPersistentCursorSkip(&skip))
+	{
+		context.allowShardBaseTable = false;
+		context.requiresPersistentCursor = true;
+	}
+
+	if (RequiresPersistentCursorLimit(&limit))
 	{
 		context.allowShardBaseTable = false;
 		context.requiresPersistentCursor = true;
@@ -3855,10 +3860,27 @@ RequiresPersistentCursorLimit(const bson_value_t *pipelineValue)
 		BsonValueIsNumber(pipelineValue))
 	{
 		int32_t limit = BsonValueAsInt32(pipelineValue);
-		return limit != 1;
+		return limit != 1 && limit != 0;
 	}
 
-	return true;
+	return pipelineValue->value_type != BSON_TYPE_EOD;
+}
+
+
+/*
+ * Checks that the skip stage requires persistence (true if it's not skip 0).
+ */
+static bool
+RequiresPersistentCursorSkip(const bson_value_t *pipelineValue)
+{
+	if (pipelineValue->value_type != BSON_TYPE_EOD &&
+		BsonValueIsNumber(pipelineValue))
+	{
+		int32_t skip = BsonValueAsInt32(pipelineValue);
+		return skip != 0;
+	}
+
+	return pipelineValue->value_type != BSON_TYPE_EOD;
 }
 
 
