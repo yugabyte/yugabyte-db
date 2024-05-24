@@ -470,8 +470,8 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 static void
 CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 							  OptSplit *split_options, Constraint *primary_key,
-							  bool is_sys_catalog_table, const bool colocated,
-							  const bool is_tablegroup)
+							  const bool colocated, const bool is_tablegroup,
+							  YBCPgYbrowidMode ybrowid_mode)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -480,7 +480,8 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 		{
 			/* Make sure we have HASH columns */
 			bool hashable = true;
-			if (primary_key) {
+			if (primary_key)
+			{
 				/* If a primary key exists, we utilize it to check its ordering */
 				ListCell *head = list_head(primary_key->yb_index_params);
 				IndexElem *index_elem = (IndexElem*) lfirst(head);
@@ -490,10 +491,9 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 								   is_tablegroup,
 								   true /* is_first_key */) != SORTBY_HASH)
 					hashable = false;
-			} else {
-				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
-				hashable = !is_sys_catalog_table && !colocated;
 			}
+			else
+				hashable = ybrowid_mode == PG_YBROWID_MODE_HASH;
 
 			if (!hashable)
 				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -780,6 +780,20 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	bool is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																  namespaceId,
 																  schema_name);
+	const bool is_tablegroup = OidIsValid(tablegroupId);
+	/*
+	 * The hidden ybrowid column is added when there is no primary key.  This
+	 * column is HASH or ASC sorted depending on certain criteria.
+	 */
+	YBCPgYbrowidMode ybrowid_mode;
+	if (primary_key)
+		ybrowid_mode = PG_YBROWID_MODE_NONE;
+	else if (is_colocated_via_database || is_tablegroup ||
+			 is_sys_catalog_table)
+		ybrowid_mode = PG_YBROWID_MODE_RANGE;
+	else
+		ybrowid_mode = PG_YBROWID_MODE_HASH;
+
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   tableName,
@@ -788,7 +802,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   is_shared_relation,
 									   is_sys_catalog_table,
 									   false, /* if_not_exists */
-									   primary_key == NULL /* add_primary_key */,
+									   ybrowid_mode,
 									   is_colocated_via_database,
 									   tablegroupId,
 									   colocationId,
@@ -800,7 +814,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
-						  OidIsValid(tablegroupId) /* is_tablegroup */);
+						  is_tablegroup);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
@@ -811,9 +825,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot create colocated table with split option")));
 		CreateTableHandleSplitOptions(
-			handle, desc, split_options, primary_key, is_sys_catalog_table,
-			is_colocated_via_database,
-			OidIsValid(tablegroupId) /* is_tablegroup */);
+			handle, desc, split_options, primary_key,
+			is_colocated_via_database, is_tablegroup, ybrowid_mode);
 	}
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));

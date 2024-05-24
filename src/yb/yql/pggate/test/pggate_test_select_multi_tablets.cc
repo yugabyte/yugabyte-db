@@ -44,7 +44,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
                                        false /* is_shared_table */,
                                        false /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,

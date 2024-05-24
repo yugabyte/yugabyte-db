@@ -307,7 +307,7 @@ class PgApiImpl {
                         bool is_shared_table,
                         bool is_sys_catalog_table,
                         bool if_not_exist,
-                        bool add_primary_key,
+                        PgYbrowidMode ybrowid_mode,
                         bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const ColocationId colocation_id,
