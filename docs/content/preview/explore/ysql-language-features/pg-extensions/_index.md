@@ -41,6 +41,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [fuzzystrmatch](extension-fuzzystrmatch/) | Provides several functions to determine similarities and distance between strings. |
 | hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value.<br/>For more information, see [hstore](https://www.postgresql.org/docs/11/hstore.html) in the PostgreSQL documentation. |
 | [passwordcheck](extension-passwordcheck/) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
+| [pg_cron](extension-pgcron/) | Provides a simple cron-based job scheduler that runs inside the database. |
 | [pgcrypto](extension-pgcrypto/) | Provides various cryptographic functions. |
 | [pg_stat_statements](extension-pgstatstatements/) | Provides a means for tracking execution statistics of all SQL statements executed by a server. |
 | pg_trgm | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
