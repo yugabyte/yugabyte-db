@@ -85,6 +85,8 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.mapstruct.ap.internal.util.Strings;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import play.libs.Json;
 
 /** This class contains all the methods required to communicate to a node agent server. */
@@ -360,12 +362,14 @@ public class NodeAgentClient {
   }
 
   static class ExecuteCommandResponseObserver extends BaseResponseObserver<ExecuteCommandResponse> {
+    private final boolean logOutput;
     private final StringBuilder stdOut;
     private final StringBuilder stdErr;
     private final AtomicInteger exitCode;
 
-    ExecuteCommandResponseObserver(String id) {
+    ExecuteCommandResponseObserver(String id, boolean logOutput) {
       super(id);
+      this.logOutput = logOutput;
       this.stdOut = new StringBuilder();
       this.stdErr = new StringBuilder();
       this.exitCode = new AtomicInteger();
@@ -373,16 +377,25 @@ public class NodeAgentClient {
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
+      Marker fileMarker = MarkerFactory.getMarker("fileOnly");
       if (response.hasError()) {
         exitCode.set(response.getError().getCode());
-        stdErr.append(response.getError().getMessage());
+        String errMsg = response.getError().getMessage();
+        if (logOutput) {
+          log.debug(fileMarker, errMsg);
+        }
+        stdErr.append(errMsg);
         onError(
             new RuntimeException(
                 String.format(
                     "Error(%d) %s",
                     response.getError().getCode(), response.getError().getMessage())));
       } else {
-        stdOut.append(response.getOutput());
+        String msg = response.getOutput();
+        if (logOutput) {
+          log.debug(fileMarker, msg);
+        }
+        stdOut.append(msg);
       }
     }
 
@@ -555,27 +568,42 @@ public class NodeAgentClient {
   }
 
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, null, null);
+    return executeCommand(nodeAgent, command, ShellProcessContext.DEFAULT);
   }
 
   public ShellResponse executeCommand(
-      NodeAgent nodeAgent, List<String> command, String user, Duration timeout) {
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
-    ExecuteCommandResponseObserver responseObserver = new ExecuteCommandResponseObserver(id);
+    ExecuteCommandResponseObserver responseObserver =
+        new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
         ExecuteCommandRequest.newBuilder().addAllCommand(command);
-    if (StringUtils.isNotBlank(user)) {
-      builder.setUser(user);
+    builder.setUser(context.getSshUserOrDefault());
+    if (context.getTimeoutSecs() > 0L) {
+      stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
     }
-    if (timeout != null && !timeout.isZero()) {
-      stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    List<String> redactedCommand = context.redactCommand(command);
+    String description =
+        context.getDescription() == null
+            ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)
+            : context.getDescription();
+    String logMsg = String.format("Starting proc (abbrev cmd) - %s", description);
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.info(logMsg);
     }
     try {
+      if (context.isLogCmdOutput()) {
+        log.debug("Proc stdout for '{}' :", description);
+      }
       stub.executeCommand(builder.build(), responseObserver);
       responseObserver.waitFor(false);
-      return responseObserver.getResponse();
+      ShellResponse response = responseObserver.getResponse();
+      response.setDescription(description);
+      return response;
     } catch (Throwable e) {
       log.error("Error in running command. Error: {}", responseObserver.stdErr);
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
@@ -583,7 +611,7 @@ public class NodeAgentClient {
   }
 
   public ShellResponse executeScript(
-      NodeAgent nodeAgent, Path scriptPath, List<String> params, String user, Duration timeout) {
+      NodeAgent nodeAgent, Path scriptPath, List<String> params, ShellProcessContext context) {
     try {
       byte[] bytes = Files.readAllBytes(scriptPath);
       ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
@@ -593,7 +621,7 @@ public class NodeAgentClient {
               "/bin/bash -s %s <<'EOF'\n%s\nEOF",
               Strings.join(params, " "), new String(bytes, StandardCharsets.UTF_8)));
       List<String> command = commandBuilder.build();
-      return executeCommand(nodeAgent, command, user, timeout);
+      return executeCommand(nodeAgent, command, context);
     } catch (Exception e) {
       log.error("Error in running script {}", scriptPath, e);
       if (e instanceof RuntimeException) {
