@@ -1,4 +1,8 @@
-title: Universe Create Spec
+title: UniverseCreateSpec
+description: |
+  UniverseCreateSpec
+
+  Universe create time properties. This is used to create a new Universe.
 type: object
 required:
   - spec

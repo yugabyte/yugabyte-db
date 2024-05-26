@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
-import com.yugabyte.yba.v2.client.models.YBPTask;
+import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -83,7 +83,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
-    YBPTask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     UUID universeUUID = createTask.getResourceUuid();
     Universe dbUniverse = Universe.getOrBadRequest(universeUUID, customer);
 
@@ -106,7 +106,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
-    YBPTask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     UUID universeUUID = createTask.getResourceUuid();
     Universe dbUniverse = Universe.getOrBadRequest(universeUUID, customer);
 

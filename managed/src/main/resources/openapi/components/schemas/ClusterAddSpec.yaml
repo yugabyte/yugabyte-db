@@ -1,4 +1,8 @@
-title: Add a Cluster to an existing Universe
+title: ClusterAddSpec
+description: |
+  ClusterAddSpec
+
+  Request payload to add a new cluster to an existing YugabyteDB Universe.
 type: object
 required:
   - cluster_type

@@ -1,4 +1,5 @@
-title: YCQL Spec for the Universe
+title: YCQLSpec
+description: YCQL Spec for the Universe. Part of UniverseSpec.
 type: object
 properties:
   enable:

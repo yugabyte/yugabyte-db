@@ -1,4 +1,5 @@
-title: Region in a cloud provider
+title: RegionCloudInfo
+description: Region in a cloud provider. Part of RegionDetails.
 type: object
 properties:
   aws:

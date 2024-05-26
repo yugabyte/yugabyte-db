@@ -50,9 +50,9 @@ import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.XClusterInfo;
 import com.yugabyte.yba.v2.client.models.YCQLAuditConfig;
+import com.yugabyte.yba.v2.client.models.YCQLSpec;
 import com.yugabyte.yba.v2.client.models.YSQLAuditConfig;
-import com.yugabyte.yba.v2.client.models.YcqlSpec;
-import com.yugabyte.yba.v2.client.models.YsqlSpec;
+import com.yugabyte.yba.v2.client.models.YSQLSpec;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -321,8 +321,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     universeSpec.setYbSoftwareVersion("2.20.0.0-b123");
     universeSpec.setUseTimeSync(true);
     universeSpec.setUseSystemd(true);
-    universeSpec.ysql(new YsqlSpec().enable(true).enableAuth(false));
-    universeSpec.ycql(new YcqlSpec().enable(true).enableAuth(false));
+    universeSpec.ysql(new YSQLSpec().enable(true).enableAuth(false));
+    universeSpec.ycql(new YCQLSpec().enable(true).enableAuth(false));
     universeSpec.networkingSpec(
         new UniverseNetworkingSpec()
             .assignPublicIp(true)
@@ -552,7 +552,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
   }
 
-  private void validateYsqlSpec(YsqlSpec ysql, UniverseDefinitionTaskParams dbUniv) {
+  private void validateYsqlSpec(YSQLSpec ysql, UniverseDefinitionTaskParams dbUniv) {
     if (ysql != null) {
       assertThat(ysql.getEnable(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQL));
       assertThat(ysql.getEnableAuth(), is(dbUniv.getPrimaryCluster().userIntent.enableYSQLAuth));
@@ -562,7 +562,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
   }
 
-  private void validateYcqlSpec(YcqlSpec ycql, UniverseDefinitionTaskParams dbUniv) {
+  private void validateYcqlSpec(YCQLSpec ycql, UniverseDefinitionTaskParams dbUniv) {
     if (ycql != null) {
       assertThat(ycql.getEnable(), is(dbUniv.getPrimaryCluster().userIntent.enableYCQL));
       assertThat(ycql.getEnableAuth(), is(dbUniv.getPrimaryCluster().userIntent.enableYCQLAuth));

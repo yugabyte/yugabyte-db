@@ -1,4 +1,5 @@
-title: System generated Universe Info
+title: UniverseInfo
+description: These are read-only system generated properties of a Universe. Returned as part of a Universe resource.
 type: object
 properties:
   universe_uuid:

@@ -11,8 +11,8 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSpec;
-import api.v2.models.YcqlSpec;
-import api.v2.models.YsqlSpec;
+import api.v2.models.YCQLSpec;
+import api.v2.models.YSQLSpec;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -145,16 +145,16 @@ public interface UniverseDefinitionTaskParamsMapper {
         .clientRootCa(universeDetails.getClientRootCA());
   }
 
-  default YsqlSpec toV2YsqlSpec(UniverseDefinitionTaskParams universeDetails) {
+  default YSQLSpec toV2YsqlSpec(UniverseDefinitionTaskParams universeDetails) {
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    return new YsqlSpec()
+    return new YSQLSpec()
         .enable(primaryUserIntent.enableYSQL)
         .enableAuth(primaryUserIntent.enableYSQLAuth);
   }
 
-  default YcqlSpec toV2YcqlSpec(UniverseDefinitionTaskParams universeDetails) {
+  default YCQLSpec toV2YcqlSpec(UniverseDefinitionTaskParams universeDetails) {
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    return new YcqlSpec()
+    return new YCQLSpec()
         .enable(primaryUserIntent.enableYCQL)
         .enableAuth(primaryUserIntent.enableYCQLAuth);
   }

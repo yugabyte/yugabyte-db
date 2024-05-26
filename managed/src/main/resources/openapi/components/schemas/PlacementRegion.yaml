@@ -1,4 +1,5 @@
-title: YBA Placement Region
+title: PlacementRegion
+description: YBA Placement Region. Part of PlacementCloud.
 type: object
 properties:
   uuid:

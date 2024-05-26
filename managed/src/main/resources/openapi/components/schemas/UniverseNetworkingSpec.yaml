@@ -1,4 +1,5 @@
-title: Networking specification that is used for nodes in this Universe
+title: UniverseNetworkingSpec
+description: Networking specification that is used for nodes in this Universe. Part of UniverseSpec.
 type: object
 properties:
   communication_ports:

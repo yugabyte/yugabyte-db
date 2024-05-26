@@ -55,7 +55,7 @@
       $ref: "../components/requestBodies/UniverseEditReq.yaml"
     responses:
       '202':
-        $ref: "../components/responses/YBPTaskResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
       '500':
@@ -98,7 +98,7 @@
       $ref: "../components/requestBodies/UniverseCreateReq.yaml"
     responses:
       '202':
-        $ref: "../components/responses/YBPTaskResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
       '500':
@@ -150,7 +150,7 @@
       $ref: "../components/requestBodies/ClusterAddReq.yaml"
     responses:
       '202':
-        $ref: "../components/responses/YBPTaskResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
       '500':
@@ -216,7 +216,7 @@
       - Universe
     responses:
       '202':
-        $ref: "../components/responses/YBPTaskResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
       '500':
@@ -268,7 +268,7 @@
       $ref: "../components/requestBodies/UniverseEditGFlagsReq.yaml"
     responses:
       '202':
-        $ref: "../components/responses/YBPTaskResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
       '500':

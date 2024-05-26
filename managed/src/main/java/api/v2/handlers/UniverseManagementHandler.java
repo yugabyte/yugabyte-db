@@ -11,7 +11,7 @@ import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseSpec;
-import api.v2.models.YBPTask;
+import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -53,7 +53,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return v2Response;
   }
 
-  public YBPTask createUniverse(UUID cUUID, UniverseCreateSpec universeSpec) {
+  public YBATask createUniverse(UUID cUUID, UniverseCreateSpec universeSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     log.info(
         "Create Universe with v2 spec: {}",
@@ -78,7 +78,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
     com.yugabyte.yw.forms.UniverseResp universeResp =
         universeCRUDHandler.createUniverse(customer, v1Params);
-    return new YBPTask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
+    return new YBATask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
   }
 
   private UniverseEditSpec inheritFromPrimaryBeforeMapping(
@@ -102,7 +102,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return universeEditSpec;
   }
 
-  public YBPTask editUniverse(UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
+  public YBATask editUniverse(UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
     log.info(
@@ -169,10 +169,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         uniUUID,
         dbUniverse.getName(),
         taskUUID);
-    return new YBPTask().resourceUuid(uniUUID).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
-  public YBPTask addCluster(UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
+  public YBATask addCluster(UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
     log.info(
@@ -196,15 +196,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     universeCRUDHandler.configure(customer, v1Params);
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
-    return new YBPTask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
   }
 
-  public YBPTask deleteReadReplicaCluster(
+  public YBATask deleteReadReplicaCluster(
       UUID cUUID, UUID uniUUID, UUID clsUUID, Boolean forceDelete) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     UUID taskUUID = universeCRUDHandler.clusterDelete(customer, universe, clsUUID, forceDelete);
-    return new YBPTask().resourceUuid(uniUUID).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 }
