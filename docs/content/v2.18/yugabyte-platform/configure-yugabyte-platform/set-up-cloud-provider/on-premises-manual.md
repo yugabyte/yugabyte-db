@@ -864,7 +864,7 @@ To reconfigure a node for use in a different provider, do the following:
     For example, if you run the following:
 
     ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u https://10.98.0.42:9000
     ```
 
     ```output

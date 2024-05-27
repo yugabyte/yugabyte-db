@@ -124,7 +124,7 @@ To confirm communication between the active and standby, you can do the followin
 
     ![Make Active](/images/yp/high-availability/ha-make-active.png)
 
-- Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
+- Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `https://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
 
