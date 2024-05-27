@@ -15867,7 +15867,7 @@
             }
           }
         },
-        "summary" : "Authenticate user and return api token",
+        "summary" : "Authenticate user using email and password",
         "tags" : [ "Session management" ]
       }
     },
@@ -17535,6 +17535,48 @@
         } ],
         "summary" : "Acknowledge an alert",
         "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/api_token" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "api_token",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "format" : "int64",
+          "in" : "query",
+          "name" : "apiTokenVersion",
+          "required" : false,
+          "type" : "integer"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
+        "summary" : "Regenerate and fetch API token",
+        "tags" : [ "Session management" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups" : {
