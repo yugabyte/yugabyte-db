@@ -18,7 +18,7 @@ The [pg_cron](https://github.com/citusdata/pg_cron) extension provides a cron-ba
 
 As pg_cron is in tech preview, you must first enable the feature by setting the `enable_pg_cron` preview flag to true, and adding it to the `allowed_preview_flags_csv` flag, for both YB-Master and TB-TServer.
 
-For example, to create a single-node cluster with pg_cron enabled using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
+For example, to create a single-node cluster with pg_cron enabled using [yugabyted](../../../../reference/configuration/yugabyted/), use the following  command:
 
 ```sh
 ./bin/yugabyted start --master_flags "enable_pg_cron=true,allowed_preview_flags_csv=enable_pg_cron" --tserver_flags "enable_pg_cron=true,allowed_preview_flags_csv=enable_pg_cron" --ui false
@@ -32,4 +32,4 @@ After the flags are set, run the following command on the cron database with sup
 CREATE EXTENSION pg_cron;
 ```
 
-For information on how to schedule jobs, refer to the [pg_cron readme](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_cron/README.md).
+For information on how to schedule jobs, refer to the [pg_cron](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_cron/README.md) documentation.
