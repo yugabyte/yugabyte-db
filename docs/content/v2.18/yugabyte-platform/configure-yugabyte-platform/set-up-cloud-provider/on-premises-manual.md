@@ -732,7 +732,7 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
    For example, if you run the following:
 
    ```sh
-   ./installer.sh  -c install -u http://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   ./installer.sh  -c install -u https://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
    ```
 
    You should get output similar to the following:
