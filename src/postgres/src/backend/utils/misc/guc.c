@@ -123,6 +123,7 @@
 #include "tcop/pquery.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -4728,6 +4729,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_parallel_range_size,
 		1024 * 1024, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_query_diagnostics_bg_worker_interval_ms", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Time (in milliseconds) for which the query diagnostic's background worker sleeps"),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_query_diagnostics_bg_worker_interval_ms,
+		1000, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

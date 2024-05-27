@@ -117,9 +117,21 @@ VOLATILE
 SECURITY DEFINER
 SET yb_non_ddl_txn_for_sys_tables_allowed = ON;
 
+CREATE OR REPLACE FUNCTION
+  yb_query_diagnostics(query_id int8, diagnostics_interval_sec int8 DEFAULT 300,
+                       explain_sample_rate int8 DEFAULT 1, explain_analyze bool DEFAULT false,
+                       explain_dist bool DEFAULT false, explain_debug bool DEFAULT false,
+                       bind_var_query_min_duration_ms int8 DEFAULT 10)
+RETURNS text
+LANGUAGE INTERNAL
+VOLATILE STRICT PARALLEL SAFE
+AS 'yb_query_diagnostics';
+
 --
 -- Grant and revoke statements on YB objects.
 --
 REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) FROM public;
+GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;
