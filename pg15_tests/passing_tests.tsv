@@ -16,11 +16,12 @@ JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConfiguration
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgConnection#testConnectionKillsAndRestarts
-JAVA	org.yb.pgsql.TestPgCostModelSeekNextEstimation#testSeekNextEstimationBitmapScan
+JAVA	org.yb.pgsql.TestPgCostModelSeekNextEstimation
 JAVA	org.yb.pgsql.TestPgDepend#testForSuperfluousEntries
 JAVA	org.yb.pgsql.TestPgDepend#testSequenceDeletionWithCascade
 JAVA	org.yb.pgsql.TestPgDepend#testTableWithSequenceDeletion
 JAVA	org.yb.pgsql.TestPgDepend#testViewDeletionWithCascade
+JAVA	org.yb.pgsql.TestPgExplainAnalyze
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeColocated
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
@@ -87,6 +88,7 @@ JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 JAVA	org.yb.pgsql.TestPgRegressPushdownKey
 JAVA	org.yb.pgsql.TestPgRegressReplicaIdentity
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
+JAVA	org.yb.pgsql.TestPgRegressTAQO
 JAVA	org.yb.pgsql.TestPgRegressTable
 JAVA	org.yb.pgsql.TestPgRegressTablegroup
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
