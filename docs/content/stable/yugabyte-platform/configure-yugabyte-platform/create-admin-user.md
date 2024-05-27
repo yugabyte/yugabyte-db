@@ -15,10 +15,10 @@ YugabyteDB Anywhere allows you to create an admin account and manage your user p
 
 ## Create admin account
 
-You can create an admin account via `http://<yugabytedbanywhere-host-ip>/register`, replacing *yugabytedbanywhere-host-ip* with the IP address hosting your YugabyteDB Anywhere instance, as per the following example:
+You can create an admin account via `https://<yugabytedbanywhere-host-ip>/register`, replacing *yugabytedbanywhere-host-ip* with the IP address hosting your YugabyteDB Anywhere instance, as per the following example:
 
 ```output
-http://10.170.1.192/register
+https://10.170.1.192/register
 ```
 
 The following illustration shows the admin console:
@@ -34,7 +34,7 @@ You proceed with the account creation as follows:
 - Confirm the user agreement.
 - Click **Register**.
 
-You are now redirected to the sign in page located at `http://<yugabydbanywhere-host-ip>/login`. This page allows you to sign in to YugabyteDB Anywhere using your new credentials.
+You are now redirected to the sign in page located at `https://<yugabydbanywhere-host-ip>/login`. This page allows you to sign in to YugabyteDB Anywhere using your new credentials.
 
 ## Change your account information
 
