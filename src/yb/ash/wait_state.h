@@ -214,6 +214,7 @@ struct AshMetadata {
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
   uint64_t query_id = 0;
   uint64_t session_id = 0;
+  uint32_t database_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
@@ -234,6 +235,9 @@ struct AshMetadata {
     }
     if (other.session_id != 0) {
       session_id = other.session_id;
+    }
+    if (other.database_id != 0) {
+      database_id = other.database_id;
     }
     if (other.rpc_request_id != 0) {
       rpc_request_id = other.rpc_request_id;
@@ -267,6 +271,11 @@ struct AshMetadata {
       pb->set_session_id(session_id);
     } else { // valid PgClient session id cannot be zero
       pb->clear_session_id();
+    }
+    if (database_id != 0) {
+      pb->set_database_id(database_id);
+    } else {
+      pb->clear_database_id();
     }
     if (rpc_request_id != 0) {
       pb->set_rpc_request_id(rpc_request_id);
@@ -308,6 +317,7 @@ struct AshMetadata {
         yql_endpoint_tserver_uuid,             // yql_endpoint_tserver_uuid
         pb.query_id(),                         // query_id
         pb.session_id(),                       // session_id
+        pb.database_id(),                      // database_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
         static_cast<uint8_t>(pb.addr_family()) // addr_family

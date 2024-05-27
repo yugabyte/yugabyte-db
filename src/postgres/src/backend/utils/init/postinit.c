@@ -1042,6 +1042,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	MyProc->databaseId = MyDatabaseId;
 
+	/* YB: Set the dbid in ASH metadata */
+	if (IsYugaByteEnabled() && yb_ash_enable_infra)
+		YbAshSetDatabaseId(MyDatabaseId);
+
 	/*
 	 * We established a catalog snapshot while reading pg_authid and/or
 	 * pg_database; but until we have set up MyDatabaseId, we won't react to
