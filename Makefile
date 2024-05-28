@@ -88,6 +88,7 @@ DATA_built = $(age_sql)
 REGRESS = scan \
           graphid \
           agtype \
+          agtype_hash_cmp \
           catalog \
           cypher \
           expr \

@@ -725,7 +725,7 @@ SELECT drop_graph('for_isEmpty', true);
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (u)
 	RETURN DISTINCT u.id
-$$) AS (i agtype);
+$$) AS (i agtype) ORDER BY i;
 
 SELECT * FROM cypher('cypher_match', $$
 	CREATE (u:duplicate)-[:dup_edge {id:1 }]->(:other_v)
@@ -744,7 +744,7 @@ $$) AS (i agtype);
 SELECT * FROM cypher('cypher_match', $$
 	MATCH p=(:duplicate)-[]-(:other_v)
 	RETURN DISTINCT p
-$$) AS (i agtype);
+$$) AS (i agtype) ORDER BY i;
 
 --
 -- Limit

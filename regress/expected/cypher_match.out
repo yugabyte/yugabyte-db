@@ -1520,13 +1520,13 @@ NOTICE:  graph "for_isEmpty" has been dropped
 SELECT * FROM cypher('cypher_match', $$
 	MATCH (u)
 	RETURN DISTINCT u.id
-$$) AS (i agtype);
+$$) AS (i agtype) ORDER BY i;
      i     
 -----------
- 
  "end"
  "initial"
  "middle"
+ 
 (4 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -1556,7 +1556,7 @@ $$) AS (i agtype);
 SELECT * FROM cypher('cypher_match', $$
 	MATCH p=(:duplicate)-[]-(:other_v)
 	RETURN DISTINCT p
-$$) AS (i agtype);
+$$) AS (i agtype) ORDER BY i;
                                                                                                                                                 i                                                                                                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  [{"id": 3377699720527873, "label": "duplicate", "properties": {}}::vertex, {"id": 3659174697238529, "label": "dup_edge", "end_id": 3940649673949185, "start_id": 3377699720527873, "properties": {"id": 1}}::edge, {"id": 3940649673949185, "label": "other_v", "properties": {}}::vertex]::path
