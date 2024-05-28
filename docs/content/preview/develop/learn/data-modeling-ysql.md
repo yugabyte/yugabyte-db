@@ -15,40 +15,13 @@ type: docs
 
 Data modeling involves designing the database schema for efficient storage and access. In a distributed SQL database like YugabyteDB, table data is split into tablets and distributed across multiple nodes within the cluster, allowing applications to connect to any node for storing and retrieving data. Reads and writes can span multiple nodes, so it's crucial to consider how table data is partitioned and distributed when modeling your data.
 
-## Data Organization
+In YugabyteDB, data is stored as rows and columns in tables which are organized under schemas and databases.
 
-In YugabyteDB, there are 3 concepts fundamental to organizing and managing data. Let us quickly go over them.
-
-### Table
-
-A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns.
-Tables are created within a specific schema and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
-
-{{<lead link="../../../explore/ysql-language-features/databases-schemas-tables/#tables">}}
-To understand more about creating and managing tables, see [Tables](../../../explore/ysql-language-features/databases-schemas-tables/#tables)
+{{<lead link="../../../explore/ysql-language-features/databases-schemas-tables">}}
+To understand more about creating and managing tables, schemas and databases, see [Schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables)
 {{</lead>}}
 
-### Schema
-
-A schema is a logical container within a database that groups related database objects, such as tables, views, functions, data types, and sequences. Schemas serve as a way to organize and separate objects, providing a namespace to avoid naming conflicts. Each database has at least one schema, typically named `public`, which is the default schema for objects created without specifying a schema name.
-
-{{<lead link="../../../explore/ysql-language-features/databases-schemas-tables/#schemas">}}
-To understand more about creating and managing schemas, see [Tables](../../../explore/ysql-language-features/databases-schemas-tables/#schemas)
-{{</lead>}}
-
-### Database
-
-The database is the highest level of data organization and serves as a container for all objects such as tables, views, indexes, functions, and schemas. Each YugabyteDB cluster can manage multiple databases.
-
-Data modeling is a vast topic. Here we will discuss the details of the basics of modeling your data for a distributed database.
-
-{{<lead link="../../../explore/ysql-language-features/databases-schemas-tables/#databases">}}
-To understand more about creating and managing databases, see [Tables](../../../explore/ysql-language-features/databases-schemas-tables/#databases)
-{{</lead>}}
-
-## Data distribution
-
-When modeling your data for a distributed SQL database, you must understand the 2 [data distribution](../../../explore/going-beyond-sql/data-sharding) schemes, Hash and Range sharding in detail. This is very significant for designing your tables and indexes for fast retrieval and storage.
+When modeling your data for YugabyteDB, you must understand the 2 [data distribution](../../../explore/going-beyond-sql/data-sharding) schemes, Hash and Range sharding in detail. This is very significant for designing your tables and indexes for fast retrieval and storage.
 
 In YugabyteDB the sharding and ordering of data in the tables and indexes is governed by the primary key of the table and index respectively. Let us dig deeper into designing the primary keys with some examples.
 

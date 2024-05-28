@@ -92,7 +92,7 @@ yugabyte=# \du
 
 ```output
                                      List of roles
-  Role name   |                         Attributes                         | Member of 
+  Role name   |                         Attributes                         | Member of
 --------------+------------------------------------------------------------+-----------
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yb_db_admin  | No inheritance, Cannot login                               | {}
@@ -103,7 +103,7 @@ yugabyte=# \du
 
 ## Databases
 
-YSQL supports databases and schemas, much like PostgreSQL.
+A database is the highest level of data organization and serves as a container for all objects such as tables, views, indexes, functions, and schemas. A YugabyteDB cluster can manage multiple databases and each database is isolated from the others, ensuring data integrity and security.
 
 To create a new database `testdb`, run the following statement:
 
@@ -189,6 +189,9 @@ yugabyte=# \l
 
 ## Tables
 
+A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns.
+Tables are created within a specific schema and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries. Tables are created within a specific schema (by default public) and contain the data that applications and users interact with.
+
 Create a table using the CREATE TABLE statement.
 
 ```sql
@@ -251,7 +254,7 @@ Indexes:
 
 ## Schemas
 
-A schema is a named collection of tables, views, indexes, sequences, data types, operators, and functions.
+A schema is a logical container within a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts.
 
 To create the schema with name `myschema`, run the following command:
 
@@ -271,7 +274,7 @@ yugabyte=# \dn
 
 ```output
    List of schemas
-   Name   |  Owner   
+   Name   |  Owner
 ----------+----------
  myschema | yugabyte
  public   | postgres
