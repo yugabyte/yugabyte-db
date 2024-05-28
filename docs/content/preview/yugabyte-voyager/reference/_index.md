@@ -29,18 +29,6 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="data-modeling/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/sharding.png" aria-hidden="true" />
-        <div class="title">Data modeling</div>
-      </div>
-      <div class="body">
-        Learn about the sharding strategies to use when migrating using YugabyteDB Voyager.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="datatype-mapping-mysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
