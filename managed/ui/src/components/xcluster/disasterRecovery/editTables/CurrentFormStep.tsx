@@ -31,7 +31,7 @@ export const CurrentFormStep = ({
       return (
         <>
           <Typography variant="body1">
-            {t(`instruction.${isDrInterface ? 'dr' : 'xCluster'}`)}
+            {t(`step.selectTables.instruction.${isDrInterface ? 'dr' : 'xCluster'}`)}
           </Typography>
           <TableSelect {...tableSelectProps} />
         </>

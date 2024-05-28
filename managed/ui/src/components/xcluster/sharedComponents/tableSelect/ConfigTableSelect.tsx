@@ -12,11 +12,21 @@ import { Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
-import { api, metricQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
+import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey
+} from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
-import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../ReplicationUtils';
+import {
+  formatBytes,
+  augmentTablesWithXClusterDetails,
+  tableSort,
+  getStrictestReplicationLagAlertThreshold
+} from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder } from '../../../../redesign/helpers/constants';
@@ -27,6 +37,9 @@ import {
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import { getTableUuid } from '../../../../utils/tableUtils';
+import { getAlertConfigurations } from '../../../../actions/universe';
+import { AlertTemplate } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
 
 import {
   MetricsQueryParams,
@@ -37,7 +50,6 @@ import {
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 import { NodeAggregation, SplitType } from '../../../metrics/dtos';
-import { ExpandColumnComponent } from './ExpandColumnComponent';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -120,6 +132,13 @@ export const ConfigTableSelect = ({
     {
       enabled: !!sourceUniverseQuery.data
     }
+  );
+  const alertConfigFilter = {
+    template: AlertTemplate.REPLICATION_LAG,
+    targetUuid: xClusterConfig.sourceUniverseUUID
+  };
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+    getAlertConfigurations(alertConfigFilter)
   );
 
   if (
@@ -207,10 +226,15 @@ export const ConfigTableSelect = ({
     toggleTableGroup(isSelected, row.xClusterTables);
   };
 
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
+  );
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
-    tableReplicationLagQuery.data?.async_replication_sent_lag?.data
+    maxAcceptableLag,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
+    { includeDroppedTables: false }
   );
 
   const tablesForSelection = tablesInConfig.filter(
