@@ -7,13 +7,13 @@ aliases:
   - /develop/learn/data-modeling/
 menu:
   preview:
-    identifier: data-modeling-1-ycql
+    identifier: data-modeling-ycql
     parent: learn
-    weight: 100
+    weight: 110
 type: docs
 ---
 
-{{<api-tabs list="ycql">}}
+{{<api-tabs>}}
 
 Data modeling is a process that involves identifying the entities (items to be stored) and the relationships between entities. To create your data model, identify the patterns used to access data and the types of queries to be performed. These two ideas inform the organization and structure of the data, and the design and creation of the database's tables.
 
