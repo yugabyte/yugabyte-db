@@ -9,6 +9,7 @@
 #ifndef OUTPUT_PLUGIN_H
 #define OUTPUT_PLUGIN_H
 
+#include "postgres_ext.h"
 #include "replication/reorderbuffer.h"
 
 struct LogicalDecodingContext;
@@ -211,6 +212,12 @@ typedef void (*LogicalDecodeStreamTruncateCB) (struct LogicalDecodingContext *ct
 											   ReorderBufferChange *change);
 
 /*
+ * Called to let the output plugin know about the schema change of a Relation.
+ */
+typedef void (*YBLogicalDecodeSchemaChangeCB) (struct LogicalDecodingContext *ctx,
+											   Oid relid);
+
+/*
  * Output plugin callbacks
  */
 typedef struct OutputPluginCallbacks
@@ -240,6 +247,8 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeStreamChangeCB stream_change_cb;
 	LogicalDecodeStreamMessageCB stream_message_cb;
 	LogicalDecodeStreamTruncateCB stream_truncate_cb;
+
+	YBLogicalDecodeSchemaChangeCB yb_schema_change_cb;
 } OutputPluginCallbacks;
 
 /* Functions in replication/logical/logical.c */

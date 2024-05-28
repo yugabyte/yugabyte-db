@@ -161,7 +161,7 @@ Default: `""`
 
 ##### --defer_index_backfill
 
-If enabled, yb-master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.  
+If enabled, yb-master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
 You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
 See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
 
@@ -351,7 +351,7 @@ Default: The default value in `2.18.1` is `-1` - feature is disabled by default.
 
 ## Load balancing flags
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
+For information on YB-Master load balancing, see [Tablet assignments](../../../architecture/yb-master#tablet-assignments).
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
@@ -520,13 +520,13 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
 
-Default: `8`
+Default: `1`
 
 ##### --tablet_split_low_phase_size_threshold_bytes
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `512_MB`
+Default: `128_MB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -574,7 +574,7 @@ Default: `0`
 
 Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
-Default: `1`
+Default: `0`
 
 ##### --outstanding_tablet_split_limit_per_tserver
 
@@ -765,9 +765,79 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Catalog flags
+
+##### ysql_enable_db_catalog_version_mode
+
+Enable the per database catalog version mode. A DDL statement that
+affects the current database can only increment catalog version for
+that database.
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+Previously, after a DDL statement is executed, if the DDL statement increments the catalog
+version, then all the existing connections need to refresh catalog caches before
+they execute the next statement. When per database catalog version mode is
+enabled, multiple DDL statements can be concurrently executed if each DDL only
+affects its current database and is executed in a separate database. Existing
+connections only need to refresh their catalog caches if they are connected to
+the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
+{{< /note >}}
+
+If you encounter any issues caused by per database catalog version mode, you can disable per database catalog version mode using the following steps:
+
+1. Shut down the cluster.
+
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(false);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+To re-enable the per database catalog version mode, use the following steps:
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(true);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+1. Shut down the cluster.
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+
+##### enable_heartbeat_pg_catalog_versions_cache
+
+Whether to enable the use of heartbeat catalog versions cache for the
+`pg_yb_catalog_version` table which can help to reduce the number of reads
+from the table. This is beneficial when there are many databases and/or
+many yb-tservers in the cluster.
+
+Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
+
+Default: `false`
+
+{{< note title="Important" >}}
+
+Each yb-tserver regularly sends a heartbeat request to the yb-master
+leader. As part of the heartbeat response, yb-master leader reads all the rows
+in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
+response. As there is one row in the table `pg_yb_catalog_version` for each
+database, the cost of reading `table pg_yb_catalog_version` becomes more
+expensive when the number of yb-tservers, or the number of databases goes up.
+
+{{< /note >}}
+
 ## Advanced flags
 
-#### ysql_index_backfill_rpc_timeout_ms
+##### ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 

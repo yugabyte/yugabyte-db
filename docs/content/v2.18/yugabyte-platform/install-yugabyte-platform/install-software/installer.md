@@ -80,7 +80,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ sudo ./yba-ctl preflight
     ```
 
-1. If there are no issues, using sudo, install the software, providing your license.
+1. If there are no issues (aside from the lack of a license), using sudo, install the software, providing your license.
 
     ```sh
     $ sudo ./yba-ctl install -l /path/to/license
@@ -419,6 +419,7 @@ Http and Https proxy settings are described in the following table.
 | `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus. |
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
+| `retentionTime` | How long Prometheus retains the database metrics. |
 
 ### Configure PostgreSQL
 

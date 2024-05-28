@@ -207,7 +207,7 @@ bool Base64Decode(const string& in, string* out) {
   return true;
 }
 
-void EscapeForHtml(const string& in, std::stringstream* out) {
+void EscapeForHtml(const string& in, std::ostream* out) {
   auto ss = std::istringstream(in);
   EscapeForHtml(&ss, out);
 }

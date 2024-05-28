@@ -226,6 +226,10 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
 
+	/* Database is dropped */
+	if (yb_is_route_invalid(route))
+		goto expire_server;
+
 	if (!server->offline) {
 		/* advance idle time for 1 sec */
 		if (server_life < lifetime &&
@@ -249,6 +253,7 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 			return 0;
 	} // else remove server because we are forced to
 
+expire_server:
 	/* remove server for server pool */
 	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
 
@@ -351,6 +356,13 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	/* match route */
 	assert(startup->database.value_len);
 	assert(startup->user.value_len);
+	assert(client->yb_db_oid >= 0);
+
+	/* yb_db_oid for external client's can't be equal to 0 */
+	if (client->type != OD_POOL_CLIENT_INTERNAL)
+	{
+		assert(client->yb_db_oid > YB_CTRL_CONN_OID);
+	}
 
 	od_router_lock(router);
 
@@ -372,17 +384,13 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	}
 
 	/* force settings required by route */
-	od_route_id_t id = { .database = startup->database.value,
+	od_route_id_t id = { .yb_db_oid = client->yb_db_oid,
 			     .user = startup->user.value,
-			     .database_len = startup->database.value_len,
 			     .user_len = startup->user.value_len,
 			     .physical_rep = false,
 			     .logical_rep = false,
-			     .yb_stats_index = -1};
-	if (rule->storage_db) {
-		id.database = rule->storage_db;
-		id.database_len = strlen(rule->storage_db) + 1;
-	}
+			     .yb_stats_index = -1 };
+
 	if (rule->storage_user) {
 		id.user = rule->storage_user;
 		id.user_len = strlen(rule->storage_user) + 1;
@@ -459,7 +467,6 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	route = od_route_pool_match(&router->route_pool, &id, rule);
 	if (route == NULL) {
 		route = od_route_pool_new(&router->route_pool, &id, rule);
-		//od_debug()
 		if (route == NULL) {
 			od_router_unlock(router);
 			return OD_ROUTER_ERROR;

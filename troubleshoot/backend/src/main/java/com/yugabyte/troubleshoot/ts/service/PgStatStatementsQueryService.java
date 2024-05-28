@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -28,11 +30,11 @@ public class PgStatStatementsQueryService
 
   @Override
   public List<PgStatStatementsQuery> listByIds(Collection<PgStatStatementsQueryId> ids) {
-    Map<UUID, List<Long>> universeToQueryId =
+    Map<Pair<UUID, String>, List<Long>> universeToQueryId =
         ids.stream()
             .collect(
                 Collectors.groupingBy(
-                    PgStatStatementsQueryId::getUniverseId,
+                    qid -> ImmutablePair.of(qid.getUniverseId(), qid.getDbId()),
                     Collectors.mapping(PgStatStatementsQueryId::getQueryId, Collectors.toList())));
     return universeToQueryId.entrySet().stream()
         .map(
@@ -40,13 +42,31 @@ public class PgStatStatementsQueryService
                 new QPgStatStatementsQuery()
                     .id
                     .universeId
-                    .eq(entry.getKey())
+                    .eq(entry.getKey().getKey())
+                    .id
+                    .dbId
+                    .eq(entry.getKey().getValue())
                     .id
                     .queryId
                     .in(entry.getValue())
                     .findList())
         .flatMap(List::stream)
         .toList();
+  }
+
+  public List<PgStatStatementsQuery> listByDatabaseId(UUID universeUuid, String dbId) {
+    return new QPgStatStatementsQuery().id.universeId.eq(universeUuid).id.dbId.eq(dbId).findList();
+  }
+
+  public List<PgStatStatementsQuery> listByQueryId(UUID universeUuid, Long queryId) {
+    return new QPgStatStatementsQuery()
+        .id
+        .universeId
+        .eq(universeUuid)
+        .id
+        .queryId
+        .eq(queryId)
+        .findList();
   }
 
   public List<PgStatStatementsQuery> listByUniverseId(UUID universeUuid) {

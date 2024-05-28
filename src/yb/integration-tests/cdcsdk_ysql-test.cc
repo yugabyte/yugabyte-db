@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gtest/gtest.h>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -423,7 +425,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Perform sql operations.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 10 WHERE key = 2"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
 
@@ -448,10 +450,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
   uint32_t records_missed_by_stream_2 = 3;
 
   // Perform sql operations.
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 1 WHERE key = 4"));
 
   ExpectedRecord expected_records_3[] = {{0, 0}, {4, 1}};
@@ -1003,22 +1002,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   DropTable(&test_cluster_, kTableName);
 
-  // Drop table will trigger the background thread to start the stream metadata cleanup, here
-  // test case wait for the metadata cleanup to finish by the background thread.
+  // Drop table will trigger the background thread to start the stream metadata update.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         while (true) {
           auto resp = GetDBStreamInfo(stream_id);
-          if (resp.ok() && resp->has_error()) {
+          if (resp.ok() && !resp->has_error() && resp->table_info_size() == 0) {
             return true;
           }
           continue;
         }
         return false;
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
   // Deleting the created DB Stream ID.
-  ASSERT_EQ(DeleteCDCStream(stream_id), false);
+  ASSERT_EQ(DeleteCDCStream(stream_id), /*force_delete=*/ true);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
@@ -1178,49 +1176,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
   LOG(INFO) << "tablets found: " << AsString(tablets_found)
             << ", expected tablets: " << AsString(expected_tablet_ids);
   ASSERT_EQ(expected_tablet_ids, tablets_found);
-}
-
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
-  // Setup cluster.
-  ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-  // Drop table on YSQL tables deletes associated xCluster streams.
-  DropTable(&test_cluster_, kTableName);
-
-  // Wait for bg thread to cleanup entries from cdc_state.
-  CDCStateTable cdc_state_table(test_client());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        Status s;
-        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
-                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
-          RETURN_NOT_OK(row_result);
-          auto& row = *row_result;
-          if (row.key.stream_id.ToString() == create_resp.stream_id()) {
-            return false;
-          }
-        }
-        RETURN_NOT_OK(s);
-        return true;
-      },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
-
-  // This should fail now as the stream is deleted.
-  ASSERT_EQ(
-      DeleteCDCStream(ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id()))), false);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
@@ -1875,9 +1830,8 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -1885,14 +1839,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
             << change_resp_1.cdc_sdk_proto_records_size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;
@@ -1967,14 +1918,11 @@ void CDCSDKYsqlTest::TestHighIntentCountPersistencyAllNodesRestart(
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 1 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(1, 75, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2022,9 +1970,9 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -2042,9 +1990,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   }
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
+  int64_t before_fetch_num_intents;
+  PollForIntentCount(0, 0, IntentCountCompareOption::GreaterThan, &before_fetch_num_intents);
 
   ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   // Shutdown tserver hosting tablet initial leader, now it is a follower.
@@ -2057,16 +2007,24 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
-  int64 last_seen_num_intents = -1;
+  int64_t expected_num_intents =
+      checkpoint_type == cdc::CDCCheckpointType::EXPLICIT ? before_fetch_num_intents
+                                                          : before_fetch_num_intents / 2;
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     auto tablet_peer_result =
         test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
     if (!tablet_peer_result.ok()) {
       continue;
     }
+
+    int64_t num_intents;
+    PollForIntentCount(
+        expected_num_intents, i, IntentCountCompareOption::EqualTo, &num_intents);
+    ASSERT_EQ(expected_num_intents, num_intents);
+    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
+
     auto tablet_peer = std::move(*tablet_peer_result);
 
     OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
@@ -2076,17 +2034,6 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
     } else {
       ASSERT_EQ(last_seen_checkpoint_op_id, checkpoint);
     }
-
-    int64 num_intents;
-    if (last_seen_num_intents == -1) {
-      PollForIntentCount(0, i, IntentCountCompareOption::GreaterThan, &num_intents);
-      last_seen_num_intents = num_intents;
-    } else {
-      PollForIntentCount(
-          last_seen_num_intents, i, IntentCountCompareOption::GreaterThanOrEqualTo, &num_intents);
-      ASSERT_EQ(last_seen_num_intents, num_intents);
-    }
-    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
   }
 }
 
@@ -2260,6 +2207,75 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   }
 
   ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPopulationOfDDLRecordUponCacheMiss)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 3;
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  GetChangesResponsePB change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size_1 = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_1, 1 + 1 + insert_count + 1 /* DDL + BEGIN + 3 INSERTS + COMMIT */);
+
+  // Drop table now and recreate the setup - it will cause in recreation of another enum
+  // type with the same name (the previous will not exist), but since the previous one is stored
+  // in the cache, the logic will not enum labels again unless it hits a cache miss error.
+  DropTable(&test_cluster_, kTableName);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TYPE $0", kEnumTypeName));
+
+  auto table_2 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets_2.size(), num_tablets);
+
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets_2));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(WaitForFlushTables(
+      {table_2.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Setting need_schema_info to true to mimic the connector/client behaviour in case
+  // where it hasn't received the DDL record yet.
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets_2, nullptr, 0,
+                                      -1 /* safe_hybrid_time */, 0 /* wal_Segment_index */,
+                                      true /* populate_checkpoint */, true /* should_retry */,
+                                      true /* need_schema_info */));
+  uint32_t record_size_2 = change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size_2, 1 + 1 + insert_count + 1 /* DDL + BEGIN + 3 INSERTS + COMMIT */);
+
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(),
+            RowMessage::Op::RowMessage_Op_DDL);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeType)) {
@@ -2568,18 +2584,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(100, 500, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(400, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2625,22 +2639,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;
@@ -2695,6 +2705,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCr
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 10;
+
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
 
@@ -3024,8 +3035,6 @@ TEST_F(CDCSDKYsqlTest, TestGetTabletListToPollForCDCWithConsistentSnapshot) {
 }
 
 // Here creating a single table inside a namespace and a CDC stream on top of the namespace.
-// Deleting the table should clean every thing from master cache as well as the system
-// catalog.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropTable)) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -3044,13 +3053,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropT
       [&]() -> Result<bool> {
         while (true) {
           auto get_resp = GetDBStreamInfo(stream_id);
-          // Wait until the background thread cleanup up the stream-id.
-          if (get_resp.ok() && get_resp->has_error() && get_resp->table_info_size() == 0) {
-            return true;
+          if (!get_resp.ok()) {
+            continue;
           }
+          if (get_resp->has_error()) {
+            LOG(INFO) << "GetDBStreamInfo response = " << get_resp.ToString();
+            RETURN_NOT_OK(StatusFromPB(get_resp->error().status()));
+          }
+          return (get_resp->table_info_size() == 0);
         }
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update."));
 }
 
 // Here we are creating multiple tables and a CDC stream on the same namespace.
@@ -3280,7 +3293,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && false == get_resp->has_error()) {
+          if (idx == 1 && get_resp->table_info_size() > 0) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
@@ -5205,6 +5218,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupport
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   const uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -5546,6 +5562,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -6005,8 +6025,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithDropColumns)) {
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test1", kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(10));
 
   // Call get changes.
@@ -6071,8 +6091,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddColumns)) {
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test2", kValue4ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6156,9 +6176,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithAddAndDropColum
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   SleepFor(MonoDelta::FromSeconds(30));
 
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -6241,9 +6261,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
           conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   // Call get changes.
   auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
@@ -6357,9 +6377,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithMultipleAlterAn
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ 30, /* is_compaction = */ false));
@@ -6481,9 +6501,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, "test1", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, "test2", kValue2ColumnName, &conn));
 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
@@ -7234,11 +7254,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   ASSERT_OK(WriteRowsHelper(0, 30, &test_cluster_, true));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_2;"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   ASSERT_OK(WriteRowsHelper(30, 80, &test_cluster_, true));
 
@@ -7278,9 +7295,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
-
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7293,13 +7307,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT;"));
+  ASSERT_NOK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
   ASSERT_OK(conn.Execute("BEGIN;"));
@@ -7330,7 +7345,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   }
 
   for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_count[i], count[i]);
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(expected_count_for_packed_row[i], count[i]);
+    } else {
+      ASSERT_EQ(expected_count[i], count[i]);
+    }
   }
 }
 
@@ -7483,7 +7502,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
 
   // Fail the ALTER TABLE DROP column
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
-  ASSERT_NOK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_NOK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   // Sleep to ensure that rollback has taken place
   SleepFor(MonoDelta::FromSeconds(10));
@@ -7492,7 +7511,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
 
   // Perform a successful ALTER TABLE DROP COLUMN
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_1;"));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(7,9));"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (10);"));
@@ -7554,32 +7573,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
+  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
-  // Verify alter primary key, column type operations are disallowed on the table.
+  // Verify rewrite operations are disallowed on the table.
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
   res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
   ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(
-      res.ToString(),
-      "cannot rewrite a table that is a part of CDC or XCluster replication");
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
-  FLAGS_catalog_manager_bg_task_wait_ms = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 50000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
 
@@ -7977,11 +7999,20 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
 
+  std::unordered_set<std::string> record_primary_key;
+  std::unordered_set<std::string> record_table_id;
+
   GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
     UpdateRecordCount(record, count);
   }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we updated the same row, the primary key received for both the DML records (INSERT &
+  // UPDATE) should be same.
+  ASSERT_EQ(record_primary_key.size(), 1);
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
@@ -8025,6 +8056,13 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
     UpdateRecordCount(record, count_2);
   }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we inserted a new row, the primary key should be different compared to the previous row
+  // that we had inserted. The UPDATE should have the same primary key as that of the INSERT record
+  // for this row. Therefore, in total the set should contain two entries.
+  ASSERT_EQ(record_primary_key.size(), 2);
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count_2[i], count_2[i]);
   }
@@ -8071,6 +8109,12 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
     UpdateRecordCount(record, count_3);
   }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // New row added, therefore, this should have a different primary key compared to the previous two
+  // rows.
+  ASSERT_EQ(record_primary_key.size(), 3);
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count_3[i], count_3[i]);
   }
@@ -8089,6 +8133,9 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
           record.row_message().new_tuple(3).column_type());
     }
   }
+
+  ASSERT_EQ(record_table_id.size(), 1);
+  ASSERT_EQ(*(record_table_id.begin()), table.table_id());
 }
 
 TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction) {
@@ -8123,17 +8170,29 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0($1, $2, $3, $5) VALUES (1, 2, '$4', '$6')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, text, kValue3ColumnName, text + text));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
+      kKeyColumnName));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+
+  std::unordered_set<std::string> record_primary_key;
+  std::unordered_set<std::string> record_table_id;
 
   GetChangesResponsePB get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {2, 1, 0, 0, 0, 0, 1, 1};
+  const int expected_count[] = {2, 1, 1, 0, 0, 0, 2, 2};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
   for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
     UpdateRecordCount(record, count);
   }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // Since we updated the same row, the primary key received for both the DML records (INSERT &
+  // UPDATE) should be same.
+  ASSERT_EQ(record_primary_key.size(), 1);
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
@@ -8148,6 +8207,11 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
       ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
       ASSERT_EQ(record.row_message().new_tuple(2).datum_string(), text);
       ASSERT_EQ(record.row_message().new_tuple(3).datum_string(), text + text);
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+      ASSERT_EQ(record.row_message().new_tuple(1).datum_string(), text + text);
     }
   }
 
@@ -8165,6 +8229,12 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
     UpdateRecordCount(record, count_2);
   }
+
+  VerifyTableIdAndPkInCDCRecords(&get_changes_resp, &record_primary_key, &record_table_id);
+  // New row added, therefore, this should have a different primary key compared to the previous
+  // row.
+  ASSERT_EQ(record_primary_key.size(), 2);
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count_2[i], count_2[i]);
   }
@@ -8184,6 +8254,128 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
           record.row_message().new_tuple(3).column_type());
     }
   }
+
+  ASSERT_EQ(record_table_id.size(), 1);
+  ASSERT_EQ(*(record_table_id.begin()), table.table_id());
+}
+
+void CDCSDKYsqlTest::TestTableIdAndPkInCDCRecords(bool colocated_db) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, colocated_db));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_tablets_per_table = 1;
+  std::string table1_name = "test_table_1";
+  std::string table2_name = "test_table_2";
+  std::string create_table_query = "CREATE TABLE $0 ($1 int primary key, $2 int, $3 int)";
+  if (!colocated_db) {
+    num_tablets_per_table = 3;
+    std::string split_tablet_query = Format("SPLIT INTO $0 TABLETS", num_tablets_per_table);
+    create_table_query += split_tablet_query;
+  }
+  ASSERT_OK(conn.ExecuteFormat(
+      create_table_query, table1_name, kKeyColumnName, kValueColumnName, kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      create_table_query, table2_name, kKeyColumnName, kValueColumnName, kValue2ColumnName));
+
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table1_name));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table2_name));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
+  ASSERT_EQ(table1_tablets.size(), num_tablets_per_table);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &table2_tablets, nullptr));
+  ASSERT_EQ(table2_tablets.size(), num_tablets_per_table);
+  if (colocated_db) {
+    ASSERT_EQ(table1_tablets[0].tablet_id(), table2_tablets[0].tablet_id());
+  }
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Perform DML in multi-shard & single-shard txns
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table_1 VALUES (1,1,1)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table_2 VALUES (10,10,10)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_1 SET $0 = 10 WHERE $1 = 1", kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_2 SET $0 = 100 WHERE $1 = 10", kValueColumnName, kKeyColumnName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_1 SET $0 = 10 WHERE $1 = 1", kValue2ColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table_2 SET $0 = 100 WHERE $1 = 10", kValue2ColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test_table_1 WHERE $0 = 1", kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test_table_2 WHERE $0 = 10", kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  std::unordered_map<TableId, std::set<string>> dml_records_primary_key_per_table;
+  std::unordered_map<TableId, vector<CDCSDKProtoRecordPB>> dml_records_per_table;
+  // 2 Inserts + 4 Updates + 2 Deletes
+  int expected_dml_records = 8;
+  int dml_records = 0;
+  auto process_table_changes = [&](const auto& tablets) {
+    for (int i = 0; i < tablets.size(); ++i) {
+      auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[i].tablet_id()));
+      cp_resp.set_write_id(0);
+      auto get_changes_resp = GetAllPendingChangesFromCdc(stream_id, tablets, &cp_resp, i);
+      LOG(INFO) << "Received " << get_changes_resp.records.size()
+                << " records on tablet: " << tablets[i].tablet_id();
+      for (const auto& record : get_changes_resp.records) {
+        if (IsDMLRecord(record)) {
+          ++dml_records;
+          ASSERT_TRUE(record.row_message().has_table_id());
+          ASSERT_TRUE(record.row_message().has_primary_key());
+          auto table_id = record.row_message().table_id();
+          auto pk = record.row_message().primary_key();
+          if (record.row_message().table() == table1.table_name()) {
+            ASSERT_EQ(table_id, table1.table_id());
+          } else {
+            ASSERT_EQ(table_id, table2.table_id());
+          }
+          dml_records_per_table[table_id].push_back(record);
+          dml_records_primary_key_per_table[table_id].insert(pk);
+        } else if (record.row_message().op() == RowMessage::DDL) {
+          ASSERT_TRUE(record.row_message().has_table_id());
+          ASSERT_FALSE(record.row_message().has_primary_key());
+        } else {
+          ASSERT_FALSE(record.row_message().has_table_id());
+          ASSERT_FALSE(record.row_message().has_primary_key());
+        }
+      }
+    }
+  };
+
+  process_table_changes(table1_tablets);
+  // For colocated tables, skip polling on 2nd table because in the previous call itself, we would
+  // have received records from both the tables.
+  if (!colocated_db) {
+    process_table_changes(table2_tablets);
+  }
+
+  ASSERT_EQ(dml_records, expected_dml_records);
+  for (const auto& entry : dml_records_per_table) {
+    ASSERT_EQ(entry.second.size(), 4);
+  }
+  // Since all the DMLs are performed on the same row of the table, we should have received the same
+  // primary key with each DML record. Therefore, the set should only contain 1 entry for primary
+  // key.
+  for (const auto& entry : dml_records_primary_key_per_table) {
+    ASSERT_EQ(entry.second.size(), 1);
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnNonColocatedTables) {
+  TestTableIdAndPkInCDCRecords(false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnColocatedTables) {
+  TestTableIdAndPkInCDCRecords(true);
 }
 
 }  // namespace cdc

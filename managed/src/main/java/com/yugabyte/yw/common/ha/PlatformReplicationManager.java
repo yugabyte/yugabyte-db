@@ -137,10 +137,19 @@ public class PlatformReplicationManager {
   public JsonNode stopAndDisable() {
     this.stop();
     replicationHelper.setBackupScheduleEnabled(false);
-    HA_LAST_BACKUP_TIME.clear();
-    HA_LAST_BACKUP_SIZE.clear();
+    this.clearMetrics();
 
     return this.getBackupInfo();
+  }
+
+  public void clearMetrics(PlatformInstance remoteInstance) {
+    replicationHelper.clearMetrics(remoteInstance.getConfig(), remoteInstance.getAddress());
+    this.clearMetrics();
+  }
+
+  public void clearMetrics() {
+    HA_LAST_BACKUP_TIME.clear();
+    HA_LAST_BACKUP_SIZE.clear();
   }
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
@@ -212,7 +221,12 @@ public class PlatformReplicationManager {
     config.updateLastFailover();
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
-    config.getRemoteInstances().forEach(replicationHelper::demoteRemoteInstance);
+    config
+        .getRemoteInstances()
+        .forEach(
+            instance -> {
+              replicationHelper.demoteRemoteInstance(instance, true);
+            });
     // Promote the new local leader.
     // we need to refresh because i.setIsLocalAndUpdate updated the underlying db bypassing
     // newLeader bean.
@@ -289,6 +303,8 @@ public class PlatformReplicationManager {
             .orElse(false);
     if (!result) {
       log.error("Error sending platform backup to " + remoteInstance.getAddress());
+      // Clear version mismatch metric
+      replicationHelper.clearMetrics(config, remoteInstance.getAddress());
     }
 
     return result;
@@ -331,35 +347,23 @@ public class PlatformReplicationManager {
                       .getLocal()
                       .ifPresent(
                           localInstance -> {
-                            localInstance.updateLastBackup();
-
-                            // Send the platform backup to all followers.
-                            Set<PlatformInstance> instancesToSync =
-                                remoteInstances.stream()
-                                    .filter(
-                                        instance -> {
-                                          try {
-                                            return sendBackup(instance);
-                                          } catch (Exception e) {
-                                            log.error(
-                                                "Exception {} sending back to instance {}",
-                                                e.getMessage(),
-                                                instance.getAddress());
-                                            return false;
-                                          }
-                                        })
-                                    .collect(Collectors.toSet());
-
-                            // Sync the HA cluster state to all followers that successfully received
-                            // a
-                            // backup.
-                            instancesToSync.forEach(
+                            remoteInstances.forEach(
                                 instance -> {
                                   try {
                                     Date lastLastBackup = instance.getLastBackup();
                                     instance.updateLastBackup(localInstance.getLastBackup());
-                                    if (!replicationHelper.syncToRemoteInstance(instance)) {
+                                    if (!sendBackup(instance)) {
                                       instance.updateLastBackup(lastLastBackup);
+                                    }
+                                  } catch (Exception e) {
+                                    log.error(
+                                        "Exception {} sending backup to instance {}",
+                                        e.getMessage(),
+                                        instance.getAddress());
+                                  }
+                                  try {
+                                    if (!replicationHelper.syncToRemoteInstance(instance)) {
+                                      replicationHelper.clearMetrics(config, instance.getAddress());
                                       log.error(
                                           "Error syncing config to remote instance {}",
                                           instance.getAddress());

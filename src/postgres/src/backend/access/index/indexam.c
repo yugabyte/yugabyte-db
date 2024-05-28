@@ -35,6 +35,7 @@
  *		index_getprocinfo - get a support procedure's lookup info
  *
  *		yb_index_might_recheck - could the scan possibly recheck indexquals?
+ *		yb_index_getbitmap - get all ybctids from a scan
  *
  * NOTES
  *		This file contains the index_ routines which used
@@ -778,6 +779,33 @@ index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap)
 	 * have the am's getbitmap proc do all the work.
 	 */
 	ntids = scan->indexRelation->rd_indam->amgetbitmap(scan, bitmap);
+
+	pgstat_count_index_tuples(scan->indexRelation, ntids);
+
+	return ntids;
+}
+
+/* ----------------
+ *		yb_index_getbitmap - get all tuples at once from an index scan
+ *
+ * Adds the ybctids of all tuples satisfying the scan keys to a bitmap.
+ *
+ * Returns the number of matching tuples found.  (Note: this might be only
+ * approximate, so it should only be used for statistical purposes.)
+ * ----------------
+ */
+int64
+yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
+{
+	int64		ntids;
+
+	SCAN_CHECKS;
+	CHECK_SCAN_PROCEDURE(yb_amgetbitmap);
+
+	/*
+	 * have the am's getbitmap proc do all the work.
+	 */
+	ntids = scan->indexRelation->rd_indam->yb_amgetbitmap(scan, ybtbm);
 
 	pgstat_count_index_tuples(scan->indexRelation, ntids);
 

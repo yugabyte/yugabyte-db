@@ -82,6 +82,8 @@ static void pgoutput_stream_commit(struct LogicalDecodingContext *ctx,
 static void pgoutput_stream_prepare_txn(LogicalDecodingContext *ctx,
 										ReorderBufferTXN *txn, XLogRecPtr prepare_lsn);
 
+static void yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
+
 static bool publications_valid;
 static bool in_streaming;
 
@@ -278,6 +280,8 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->stream_truncate_cb = pgoutput_truncate;
 	/* transaction streaming - two-phase commit */
 	cb->stream_prepare_cb = pgoutput_stream_prepare_txn;
+
+	cb->yb_schema_change_cb = yb_pgoutput_schema_change;
 }
 
 static void
@@ -1505,6 +1509,18 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 			maybe_send_schema(ctx, change, relation, relentry);
 
+			bool		*yb_old_is_omitted = NULL;
+			bool		*yb_new_is_omitted = NULL;
+			if (IsYugaByteEnabled())
+			{
+				yb_old_is_omitted =
+					(change->data.tp.oldtuple) ?
+						change->data.tp.oldtuple->yb_is_omitted :
+						NULL;
+
+				yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
+			}
+
 			OutputPluginPrepareWrite(ctx, true);
 
 			/*
@@ -1521,7 +1537,9 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				case REORDER_BUFFER_CHANGE_UPDATE:
 					logicalrep_write_update(ctx->out, xid, targetrel,
 											old_slot, new_slot, data->binary,
-											relentry->columns);
+											relentry->columns,
+											yb_old_is_omitted,
+											yb_new_is_omitted);
 					break;
 				case REORDER_BUFFER_CHANGE_DELETE:
 					logicalrep_write_delete(ctx->out, xid, targetrel,
@@ -1732,6 +1750,12 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 		hash_destroy(RelationSyncCache);
 		RelationSyncCache = NULL;
 	}
+}
+
+static void
+yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
+{
+	rel_sync_cache_relation_cb(0 /* unused */, relid);
 }
 
 /*

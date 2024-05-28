@@ -17,7 +17,11 @@ Use the `BEGIN` statement to start a transaction with the default (or specified)
 ## Syntax
 
 {{%ebnf%}}
-  begin
+  begin,
+  transaction_mode,
+  isolation_level,
+  read_write_mode,
+  deferrable_mode
 {{%/ebnf%}}
 
 ## Semantics
@@ -37,8 +41,9 @@ Add optional keyword — has no effect.
 Add optional keyword — has no effect.
 
 ### *transaction_mode*
+Supports isolation level, read write, and deferrable modes using the transaction mode syntax of `ISOLATION LEVEL`, `READ ONLY`, `READ WRITE`, and `[NOT] DEFERRABLE`.
 
-Supports Serializable, Snapshot, and Read Committed {{<badge/tp>}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
+For isolation level, you can specify Serializable, Snapshot, and Read Committed {{<badge/ea>}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
 Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
@@ -136,6 +141,14 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
   1 |  2 |  3 | a
   1 |  3 |  4 | b
 (2 rows)
+```
+
+Start a `READ WRITE` transaction using `SERIALIZABLE` isolation level and making foreign keys `DEFERRABLE`:
+
+```plpgsql
+yugabyte=# BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ WRITE DEFERRABLE;
+yugabyte=# -- run queries
+yugabyte=# COMMIT;
 ```
 
 ## See also

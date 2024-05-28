@@ -49,11 +49,11 @@ The valid *arguments* for import data file are described in the following table:
 | --target-db-user | Username of the target database. |
 | --target-db-host | Domain name or IP address of the machine on which the target database server is running. <br>Default: "127.0.0.1" |
 | --target-endpoints | Comma-separated list of node endpoints to use for parallel import of data.<br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag is ignored if this is used. |
-| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the SSL certificate revocation list (CRL).|
 | --target-ssl-mode | Specify the SSL mode for the target database as one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
-| [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--target-ssl-root-cert](../../yb-voyager-cli/#yugabytedb-options) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip | Use the node public IP addresses to distribute `--parallel-jobs` uniformly on data import. <br>Default: false<br> **Note** that you may need to configure the YugabyteDB cluster with public IP addresses by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Example: `yb-voyager import data status ... --use-public-ip true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes  | Answer yes to all prompts during the export schema operation. |
 

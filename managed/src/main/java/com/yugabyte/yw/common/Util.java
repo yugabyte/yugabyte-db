@@ -640,6 +640,35 @@ public class Util {
     return src.replaceAll("'", "''");
   }
 
+  public static void shutdownYbaProcess(int seconds) {
+    // Background thread to exit YBA process
+    Thread shutdownThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(seconds * 1000 /* ms */);
+                LOG.info("Shutting down via system exit.");
+                System.exit(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during system exit.");
+              }
+            });
+    // Watcher thread to forcibly halt JVM if exit hangs
+    Thread haltThread =
+        new Thread(
+            () -> {
+              try {
+                shutdownThread.join((seconds * 1000) + 30000 /* add 30 seconds */);
+                LOG.info("Shutting down via halt.");
+                Runtime.getRuntime().halt(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during wait for exit.");
+              }
+            });
+    shutdownThread.start();
+    haltThread.start();
+  }
+
   @VisibleForTesting
   public static String removeEnclosingDoubleQuotes(String src) {
     if (src != null && src.startsWith("\"") && src.endsWith("\"")) {

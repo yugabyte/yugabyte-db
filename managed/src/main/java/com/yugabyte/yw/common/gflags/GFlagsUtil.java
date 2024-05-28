@@ -216,6 +216,25 @@ public class GFlagsUtil {
           .build();
 
   /**
+   * Returns true if we should use secondary ip for node (in case of dual NIC)
+   *
+   * @param universe
+   * @param node
+   * @param cloudEnabled
+   * @return
+   */
+  public static boolean isUseSecondaryIP(
+      Universe universe, NodeDetails node, boolean cloudEnabled) {
+    boolean legacyNet =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
+    boolean isDualNet =
+        cloudEnabled
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    return isDualNet && !legacyNet;
+  }
+
+  /**
    * Return the map of default gflags which will be passed as extra gflags to the db nodes.
    *
    * @param taskParam
@@ -255,15 +274,18 @@ public class GFlagsUtil {
       extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
       extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
     }
-
+    // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
+    // make itests work.
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    boolean legacyNet =
-        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        cloudEnabled
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
-    boolean useSecondaryIp = isDualNet && !legacyNet;
+
+    boolean useSecondaryIp = isUseSecondaryIP(universe, node, cloudEnabled);
 
     if (node.dedicatedTo != null) {
       extra_gflags.put(

@@ -25,6 +25,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/tablet/tablet.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -97,6 +98,8 @@ service PgClientService {
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
 
+  rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
+
   // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
   // So GetReplicationSlot should be used everywhere.
   rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
@@ -108,6 +111,9 @@ service PgClientService {
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
+
+  rpc YCQLStatementStats(PgYCQLStatementStatsRequestPB)
+      returns (PgYCQLStatementStatsResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -169,6 +175,29 @@ message PgRenameTablePB {
   string table_name = 2;
 }
 
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentityType {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}
+
+message PgReplicaIdentityPB {
+  PgReplicaIdentityType replica_identity = 1;
+}
+
 message PgAlterTableRequestPB {
   uint64 session_id = 1;
   bool use_transaction = 2;
@@ -178,6 +207,7 @@ message PgAlterTableRequestPB {
   repeated string drop_columns = 6;
   PgRenameTablePB rename_table = 7;
   bool increment_schema_version = 8;
+  PgReplicaIdentityPB replica_identity = 9;
 }
 
 message PgAlterTableResponsePB {
@@ -281,6 +311,8 @@ message PgCreateTableRequestPB {
   // Used during a table rewrite operation to store the relfilenode OID that maps to the old
   // DocDB table.
   PgObjectIdPB old_relfilenode_oid = 22;
+  // Set to true when the table is being re-written as part of a TRUNCATE operation.
+  bool is_truncate = 23;
 }
 
 message PgCreateTableResponsePB {
@@ -486,6 +518,11 @@ message PgReplicationSlotInfoPB {
   uint64 confirmed_flush_lsn = 5;
   uint64 restart_lsn = 6;
   uint32 xmin = 7;
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_oid and the value is replica identity for that table.
+  map<uint32, PgReplicaIdentityPB> replica_identity_map = 8;
+  uint64 record_id_commit_time_ht = 9;
+  uint64 last_pub_refresh_time = 10;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -878,4 +915,32 @@ message PgFetchDataRequestPB {
 message PgFetchDataResponsePB {
   AppStatusPB status = 1;
   uint32 sidecar = 2;
+}
+
+message PgYCQLStatementStatsRequestPB {}
+
+message PgYCQLStatementStatsResponsePB {
+  AppStatusPB status = 1;
+  repeated YCQLStatementStatsPB statements = 2;
+}
+
+message YCQLStatementStatsPB {
+  int64 queryid = 1;
+  string query = 2;
+  bool is_prepared = 3;
+  int64 calls = 4;
+  // Time in ms
+  double total_time = 5;
+  double min_time = 6;
+  double max_time = 7;
+  double mean_time = 8;
+  double stddev_time = 9;
+}
+
+message PgTabletsMetadataRequestPB {
+}
+
+message PgTabletsMetadataResponsePB {
+  AppStatusPB status = 1;
+  repeated tablet.TabletStatusPB tablets = 2;
 }

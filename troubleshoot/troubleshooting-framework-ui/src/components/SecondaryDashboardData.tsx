@@ -1,27 +1,38 @@
 import { useEffect, useState, ChangeEvent } from 'react';
 import { usePrevious } from 'react-use';
 import { useMutation } from 'react-query';
+import { useUpdateEffect } from 'react-use';
 import { Box, Typography } from '@material-ui/core';
 import _ from 'lodash';
 import clsx from 'clsx';
-import { YBPanelItem } from '../common/YBPanelItem';
 import { SecondaryDashboardHeader } from './SecondaryDashboardHeader';
-import { SecondaryDashboard } from './SecondaryDashboard';
-import { CPU_USAGE_OUTLIER_DATA, SQL_QUERY_LATENCY_OUTLIER_DATA } from './GraphMockOutlierData';
-import { CPU_USAGE_OVERALL_DATA, SQL_QUERY_LATENCY_OVERALL_DATA } from './GraphMockOverallData';
+import { ASH_GROUPBY_VALUES, SecondaryDashboard } from './SecondaryDashboard';
 import { TroubleshootAPI } from '../api';
 import {
   Anomaly,
-  AnomalyCategory,
   AppName,
   GraphQuery,
   GraphResponse,
   GraphType,
   MetricMeasure,
+  SplitMode,
+  SplitType,
   TroubleshootingRecommendations,
   Universe
 } from '../helpers/dtos';
-import { isNonEmptyArray, isNonEmptyObject } from '../helpers/objectUtils';
+import {
+  YBPanelItem,
+  isEmptyArray,
+  isNonEmptyArray,
+  isNonEmptyObject,
+  isNonEmptyString
+} from '@yugabytedb/ui-components';
+// import {
+//   isEmptyArray,
+//   isNonEmptyArray,
+//   isNonEmptyObject,
+//   isNonEmptyString
+// } from '../helpers/objectUtils';
 import {
   getAnomalyMetricMeasure,
   getAnomalyOutlierType,
@@ -49,6 +60,7 @@ export interface SecondaryDashboardDataProps {
   graphParams: GraphQuery[] | null;
   timezone?: string;
   recommendationMetrics: any;
+  hostUrl?: string;
 }
 
 export const SecondaryDashboardData = ({
@@ -58,7 +70,8 @@ export const SecondaryDashboardData = ({
   graphParams,
   appName,
   timezone,
-  recommendationMetrics
+  recommendationMetrics,
+  hostUrl
 }: SecondaryDashboardDataProps) => {
   const classes = useHelperStyles();
   // Get default values to be populated on page
@@ -72,6 +85,7 @@ export const SecondaryDashboardData = ({
   yesterday.setDate(yesterday.getDate() - 1);
 
   // State variables
+  const [graphQueryParams, setGraphQueryParams] = useState<any>(graphParams);
   const [openTiles, setOpenTiles] = useState<string[]>([]);
   const [clusterRegionItem, setClusterRegionItem] = useState<string>(ALL_REGIONS);
   const [zoneNodeItem, setZoneNodeItem] = useState<string>(ALL_ZONES);
@@ -81,39 +95,85 @@ export const SecondaryDashboardData = ({
   const [zone, setZone] = useState<string>(ALL);
   const [node, setNode] = useState<string>(ALL);
   const [metricMeasure, setMetricMeasure] = useState<string>(anomalyMetricMeasure);
-  const [outlierType, setOutlierType] = useState<string>(anomalyOutlierType);
+  const [outlierType, setOutlierType] = useState<SplitMode>(anomalyOutlierType);
   const [filterDuration, setFilterDuration] = useState<string>(
     anomalyStartDate ? filterDurations[filterDurations.length - 1].label : filterDurations[0].label
   );
   const [numNodes, setNumNodes] = useState<number>(anomalyOutlierNumNodes);
   const [startDateTime, setStartDateTime] = useState<Date>(anomalyStartDate ?? yesterday);
   const [endDateTime, setEndDateTime] = useState<Date>(anomalyEndDate ?? today);
-  const [chartData, setChartData] = useState<any>(null);
   const [graphData, setGraphData] = useState<any>(null);
   // Check previous props
   const previousMetricMeasure = usePrevious(metricMeasure);
 
   // Make use of useMutation to call fetchGraphs and onSuccess of it, ensure to set setChartData
-  useEffect(() => {
+  useUpdateEffect(() => {
     if (previousMetricMeasure && previousMetricMeasure !== metricMeasure) {
-      setChartData(null);
+      setGraphData(null);
     }
-    if (previousMetricMeasure && metricMeasure === MetricMeasure.OUTLIER) {
-      if (anomalyData?.category === AnomalyCategory.NODE) setChartData(CPU_USAGE_OUTLIER_DATA);
-      if (anomalyData?.category === AnomalyCategory.SQL)
-        setChartData(SQL_QUERY_LATENCY_OUTLIER_DATA);
-    }
-    if (previousMetricMeasure && metricMeasure === MetricMeasure.OVERALL) {
-      if (anomalyData?.category === AnomalyCategory.NODE) {
-        setChartData(CPU_USAGE_OVERALL_DATA);
+
+    const graphParamsCopy = JSON.parse(JSON.stringify(graphQueryParams));
+
+    const formattedStartDate = startDateTime?.toISOString();
+    const formattedEndDate = endDateTime?.toISOString();
+
+    graphParamsCopy?.map((params: GraphQuery) => {
+      const settings = params.settings;
+      const filters = params.filters;
+      let start = params.start;
+      let end = params.end;
+
+      if (start !== formattedStartDate) {
+        params.start = formattedStartDate;
       }
-      if (anomalyData?.category === AnomalyCategory.SQL)
-        setChartData(SQL_QUERY_LATENCY_OVERALL_DATA);
-    }
-  }, [numNodes, metricMeasure, filterDuration, outlierType, node, zone, region, cluster]);
+
+      if (end !== formattedEndDate) {
+        params.end = formattedEndDate;
+      }
+      if (isNonEmptyString(cluster) && cluster !== ALL) {
+        filters.clusterUuid = [cluster];
+      }
+      if (isNonEmptyString(region) && region !== ALL) {
+        filters.regionCode = [region];
+      }
+      if (isNonEmptyString(zone) && zone !== ALL) {
+        filters.azCode = [zone];
+      }
+      if (isNonEmptyString(node) && node !== ALL) {
+        filters.instanceName = [node];
+      }
+      settings.returnAggregatedValue = metricMeasure !== MetricMeasure.OVERALL;
+      settings.splitType =
+        metricMeasure === MetricMeasure.OVERALL
+          ? SplitType.NONE
+          : metricMeasure === MetricMeasure.OUTLIER
+          ? SplitType.NODE
+          : SplitType.TABLE;
+      settings.splitMode = metricMeasure === MetricMeasure.OVERALL ? SplitMode.NONE : outlierType;
+      settings.splitCount = numNodes;
+      return settings;
+    });
+
+    const actualQueryParams = graphParamsCopy ?? graphQueryParams;
+    setGraphQueryParams(actualQueryParams);
+    fetchAnomalyGraphs.mutate(actualQueryParams);
+  }, [
+    numNodes,
+    metricMeasure,
+    filterDuration,
+    outlierType,
+    node,
+    zone,
+    region,
+    cluster,
+    endDateTime,
+    startDateTime,
+    anomalyData?.graphStartTime,
+    anomalyData?.graphEndTime
+  ]);
 
   const fetchAnomalyGraphs = useMutation(
-    () => TroubleshootAPI.fetchGraphs(universeUuid, graphParams),
+    (params: any) => TroubleshootAPI.fetchGraphs(universeUuid, params, hostUrl),
     {
       onSuccess: (graphData: GraphResponse[]) => {
         setGraphData(graphData);
@@ -124,26 +184,40 @@ export const SecondaryDashboardData = ({
     }
   );
 
-  useEffect(() => {
-    // TODO: Call the useMutation API call during onMount
-    // TODO: Then pass the response to MetricsPanel
-    let data = null;
-    if (anomalyData?.category === AnomalyCategory.NODE) {
-      data = CPU_USAGE_OUTLIER_DATA;
+  const onSelectAshLabel = (groupByLabel: string) => {
+    let groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_COMPONENT;
+    if (groupByLabel === 'Class') {
+      groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT_CLASS;
+    } else if (groupByLabel === 'Event') {
+      groupBy = ASH_GROUPBY_VALUES.WAIT_EVENT;
     }
 
-    if (anomalyData?.category === AnomalyCategory.SQL) {
-      data = SQL_QUERY_LATENCY_OVERALL_DATA;
+    const graphParamsCopy = JSON.parse(JSON.stringify(graphQueryParams));
+    const ashGraph = graphParamsCopy?.find(
+      (queryParams: GraphQuery) => queryParams.name === 'active_session_history'
+    );
+    if (ashGraph) {
+      ashGraph.groupBy = groupBy;
     }
-    fetchAnomalyGraphs.mutate();
-    setChartData(data);
+    graphParamsCopy.map((obj: any) => {
+      if (obj.name === 'active_session_history') {
+        return ashGraph;
+      }
+      return obj;
+    });
+    setGraphQueryParams(graphParamsCopy);
+    fetchAnomalyGraphs.mutate(graphParamsCopy);
+  };
+
+  useEffect(() => {
+    fetchAnomalyGraphs.mutate(graphQueryParams);
   }, []);
 
   const onSplitTypeSelected = (metricMeasure: string) => {
     setMetricMeasure(metricMeasure);
   };
 
-  const onOutlierTypeSelected = (outlierType: string) => {
+  const onOutlierTypeSelected = (outlierType: SplitMode) => {
     setOutlierType(outlierType);
   };
 
@@ -190,12 +264,12 @@ export const SecondaryDashboardData = ({
 
       if (isCluster) {
         setCluster(selectedOption);
-        setRegion(ALL);
+        setRegion('');
       }
 
       if (isRegion) {
         setRegion(selectedOption);
-        setCluster(ALL);
+        setCluster('');
       }
     }
   };
@@ -209,7 +283,16 @@ export const SecondaryDashboardData = ({
 
     if (isZone || isNode) {
       setZoneNodeItem(selectedOption);
-      isZone ? setZone(selectedOption) : setNode(selectedOption);
+
+      if (isZone) {
+        setZone(selectedOption);
+        setNode('');
+      }
+
+      if (isNode) {
+        setZone('');
+        setNode(selectedOption);
+      }
     }
   };
 
@@ -252,9 +335,30 @@ export const SecondaryDashboardData = ({
           appName={appName}
           timezone={timezone}
           graphType={graphType}
+          onSelectAshLabel={onSelectAshLabel}
         />
       </Box>
     );
+  };
+
+  const getOperations = (metricData: any) => {
+    let uniqueOperations: any = new Set();
+    if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
+      metricData.data.forEach((metricItem: any) => {
+        uniqueOperations.add(metricItem.name);
+      });
+    } else if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
+      metricData.layout.metadata?.supportedGroupBy?.map((groupByLabel: any) => {
+        uniqueOperations.add(groupByLabel.name);
+      });
+    }
+    uniqueOperations = Array.from(uniqueOperations);
+
+    if (metricData?.layout?.title === 'ASH' && isNonEmptyObject(metricData)) {
+      uniqueOperations = uniqueOperations.reverse();
+    }
+
+    return uniqueOperations;
   };
 
   return (
@@ -289,18 +393,11 @@ export const SecondaryDashboardData = ({
       <YBPanelItem
         body={
           <>
-            {isNonEmptyArray(chartData) &&
+            {isNonEmptyArray(graphData) &&
               isNonEmptyArray(anomalyData?.mainGraphs) &&
               anomalyData?.mainGraphs.map((graph: any, graphIdx: number) => {
-                const metricData = chartData.find((data: any) => data.name === graph.name);
-                let uniqueOperations: any = new Set();
-
-                if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
-                  metricData.data.forEach((metricItem: any) => {
-                    uniqueOperations.add(metricItem.name);
-                  });
-                }
-                uniqueOperations = Array.from(uniqueOperations);
+                const metricData = graphData.find((data: any) => data.name === graph.name);
+                const operations = getOperations(metricData);
 
                 return (
                   <Box className={classes.secondaryDashboard}>
@@ -311,90 +408,121 @@ export const SecondaryDashboardData = ({
                         </span>
                       </Box>
                     )}
-                    {renderSupportingGraphs(metricData, uniqueOperations, GraphType.MAIN)}
+                    {renderSupportingGraphs(metricData, operations, GraphType.MAIN)}
                   </Box>
                 );
               })}
-            {isNonEmptyArray(chartData) &&
+            {isNonEmptyArray(graphData) &&
               // Display metrics in the same order based on request params tp graph
               // This will help us to group metrics together based on RCA Guidelines
               recommendationMetrics?.map((reason: any, reasonIdx: number) => {
                 let renderItems: any = [];
-                return reason?.name?.map((metricName: string, idx: number) => {
-                  let uniqueOperations: any = new Set();
-                  const numReasons = reason.name.length - 1;
-                  const metricData = chartData.find((data: any) => data.name === metricName);
-
-                  if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
-                    metricData.data.forEach((metricItem: any) => {
-                      uniqueOperations.add(metricItem.name);
-                    });
-                  }
-                  uniqueOperations = Array.from(uniqueOperations);
+                if (isEmptyArray(reason?.name)) {
                   return (
-                    <>
-                      {idx === 0 && reasonIdx === 0 && (
-                        <Box mt={2} mb={2}>
-                          <Typography variant="h4">{'Possible Causes'}</Typography>
+                    <Box
+                      onClick={() => handleOpenBox(reason.cause)}
+                      className={classes.secondaryDashboard}
+                      key={reason.causee}
+                    >
+                      <Box>
+                        <span className={classes.smallBold}>{reason.cause}</span>
+                      </Box>
+                      <Box mt={1}>
+                        <span className={classes.mediumNormal}>{reason.description}</span>
+                      </Box>
+                      {openTiles.includes(reason.cause) ? (
+                        <img src={TraingleDownIcon} alt="expand" className={classes.arrowIcon} />
+                      ) : (
+                        <img src={TraingleUpIcon} alt="shrink" className={classes.arrowIcon} />
+                      )}
+                      {openTiles.includes(reason.cause) && (
+                        <Box mt={3}>
+                          <span className={classes.smallNormal}>
+                            {'THERE ARE NO SUPPORTING METRICS'}
+                          </span>
                         </Box>
                       )}
-                      {isNonEmptyObject(metricData) && (
+                    </Box>
+                  );
+                } else {
+                  return reason?.name?.map((metricName: string, idx: number) => {
+                    const numReasons = reason.name.length - 1;
+                    const isOnlyReason = reason.name.length === 1;
+                    const metricData = graphData.find((data: any) => data.name === metricName);
+
+                    if (isNonEmptyString(metricData?.errorMessage)) {
+                      return <Box>{'No data'}</Box>;
+                    } else {
+                      const operations = getOperations(metricData);
+
+                      return (
                         <>
-                          <Box hidden={true}>
-                            {renderItems.push(
-                              renderSupportingGraphs(
-                                metricData,
-                                uniqueOperations,
-                                GraphType.SUPPORTING
-                              )
-                            )}
-                          </Box>
-                          {idx === numReasons && (
-                            <Box
-                              onClick={() => handleOpenBox(metricData.name)}
-                              className={classes.secondaryDashboard}
-                              key={metricData.name}
-                            >
-                              <Box>
-                                <span className={classes.smallBold}>{reason.cause}</span>
-                              </Box>
-                              <Box mt={1}>
-                                <span className={classes.mediumNormal}>{reason.description}</span>
-                              </Box>
-                              {openTiles.includes(metricData.name) ? (
-                                <img
-                                  src={TraingleDownIcon}
-                                  alt="expand"
-                                  className={classes.arrowIcon}
-                                />
-                              ) : (
-                                <img
-                                  src={TraingleUpIcon}
-                                  alt="shrink"
-                                  className={classes.arrowIcon}
-                                />
-                              )}
-                              {openTiles.includes(metricData.name) && (
-                                <Box mt={3}>
-                                  <span className={classes.smallNormal}>
-                                    {'SUPPORTING METRICS'}
-                                  </span>
-                                </Box>
-                              )}
-                              {openTiles.includes(metricData.name) && (
-                                <Box className={clsx(classes.metricGroupItems)}>
-                                  {renderItems?.map((item: any) => {
-                                    return item;
-                                  })}
-                                </Box>
-                              )}
+                          {idx === 0 && reasonIdx === 0 && (
+                            <Box mt={2} mb={2}>
+                              <Typography variant="h4">{'Possible Causes'}</Typography>
                             </Box>
                           )}
+                          {isNonEmptyObject(metricData) && (
+                            <>
+                              <Box hidden={true}>
+                                {renderItems.push(
+                                  renderSupportingGraphs(
+                                    metricData,
+                                    operations,
+                                    isOnlyReason ? GraphType.MAIN : GraphType.SUPPORTING
+                                  )
+                                )}
+                              </Box>
+                              {idx === numReasons && (
+                                <Box
+                                  onClick={() => handleOpenBox(metricData.name)}
+                                  className={classes.secondaryDashboard}
+                                  key={metricData.name}
+                                >
+                                  <Box>
+                                    <span className={classes.smallBold}>{reason.cause}</span>
+                                  </Box>
+                                  <Box mt={1}>
+                                    <span className={classes.mediumNormal}>
+                                      {reason.description}
+                                    </span>
+                                  </Box>
+                                  {openTiles.includes(metricData.name) ? (
+                                    <img
+                                      src={TraingleDownIcon}
+                                      alt="expand"
+                                      className={classes.arrowIcon}
+                                    />
+                                  ) : (
+                                    <img
+                                      src={TraingleUpIcon}
+                                      alt="shrink"
+                                      className={classes.arrowIcon}
+                                    />
+                                  )}
+                                  {openTiles.includes(metricData.name) && (
+                                    <Box mt={3}>
+                                      <span className={classes.smallNormal}>
+                                        {'SUPPORTING METRICS'}
+                                      </span>
+                                    </Box>
+                                  )}
+                                  {openTiles.includes(metricData.name) && (
+                                    <Box className={clsx(classes.metricGroupItems)}>
+                                      {renderItems?.map((item: any) => {
+                                        return item;
+                                      })}
+                                    </Box>
+                                  )}
+                                </Box>
+                              )}
+                            </>
+                          )}
                         </>
-                      )}
-                    </>
-                  );
-                });
+                      );
+                    }
+                  });
+                }
               })}
           </>
         }

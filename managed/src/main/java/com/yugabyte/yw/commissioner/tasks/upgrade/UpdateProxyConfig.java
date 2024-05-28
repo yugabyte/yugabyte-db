@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -46,6 +47,11 @@ public class UpdateProxyConfig extends UpgradeTaskBase {
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
     taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return new MastersAndTservers(Collections.emptyList(), Collections.emptyList());
   }
 
   // Should add Node Precheck tasks later.

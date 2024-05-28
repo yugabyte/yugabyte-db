@@ -24,9 +24,9 @@ Use the `DROP TABLESPACE` statement to remove a tablespace from the cluster.
 
 ## Semantics
 
-- Only the owner or a superuser can drop a tablespace. 
-- Before dropping it, ensure that the tablespace is devoid of all database objects. 
-- Be aware that even if the current database isn't using the tablespace, objects from other databases might still occupy it. 
+- Only the owner or a superuser can drop a tablespace.
+- Before dropping it, ensure that the tablespace is devoid of all database objects.
+- Be aware that even if the current database isn't using the tablespace, objects from other databases might still occupy it.
 - Additionally, the DROP operation may encounter issues if the tablespace is specified in the `temp_tablespaces` setting of any active session, as there could be temporary files or objects present in the tablespace.
 
 ### *if_exists*
@@ -39,7 +39,7 @@ Specify the name of the tablespace to be dropped.
 
 ## Example
 
-See [Tablespaces](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) and [Row Level Geo Partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) for full guides.
+See [Tablespaces](../../../../../explore/going-beyond-sql/tablespaces/) and [Row Level Geo Partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) for full guides.
 
 ## See also
 

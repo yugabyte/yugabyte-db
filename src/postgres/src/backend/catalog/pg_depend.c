@@ -23,14 +23,16 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/extension.h"
-#include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+/* YB includes. */
 #include "utils/syscache.h"
 #include "pg_yb_utils.h"
+#include "miscadmin.h"
 
 static bool isObjectPinned(const ObjectAddress *object);
 
@@ -243,56 +245,6 @@ recordDependencyOnCurrentExtension(const ObjectAddress *object,
 }
 
 /*
- * Record a DEPENDENCY_PIN for the given referenced object.
- * This is the only dependency created for system relations and their rowtypes.
- * Note that this is not used during initdb.
- *
- * shared_insert means that the record will be inserted in ALL databases.
- */
-void
-YbRecordPinDependency(const ObjectAddress *referenced, bool shared_insert)
-{
-	Relation	dependDesc;
-	CatalogIndexState indstate;
-	HeapTuple	tup;
-	bool		nulls[Natts_pg_depend];
-	Datum		values[Natts_pg_depend];
-
-	Assert(!IsBootstrapProcessingMode());
-
-	dependDesc = table_open(DependRelationId, RowExclusiveLock);
-
-	memset(nulls, false, sizeof(nulls));
-
-	values[Anum_pg_depend_classid - 1]  = InvalidOid;
-	values[Anum_pg_depend_objid - 1]    = InvalidOid;
-	values[Anum_pg_depend_objsubid - 1] = InvalidOid;
-
-	values[Anum_pg_depend_refclassid - 1]  = ObjectIdGetDatum(referenced->classId);
-	values[Anum_pg_depend_refobjid - 1]    = ObjectIdGetDatum(referenced->objectId);
-	values[Anum_pg_depend_refobjsubid - 1] = Int32GetDatum(referenced->objectSubId);
-
-	/* TODO(alex@yugabyte): DEPENDENCY_PIN is no longer available.
-	   values[Anum_pg_depend_deptype - 1] = CharGetDatum(DEPENDENCY_PIN);
-	*/
-
-	tup = heap_form_tuple(dependDesc->rd_att, values, nulls);
-
-	indstate = CatalogOpenIndexes(dependDesc);
-
-	CatalogTupleInsertWithInfo(dependDesc, tup, indstate, shared_insert);
-
-	heap_freetuple(tup);
-
-	CatalogCloseIndexes(indstate);
-
-	table_close(dependDesc, RowExclusiveLock);
-
-	YbPinObjectIfNeeded(referenced->classId, referenced->objectId,
-						false /* shared_dependency */);
-}
-
-/*
  * If we are executing a CREATE EXTENSION operation, check that the given
  * object is a member of the extension, and throw an error if it isn't.
  * Otherwise, do nothing.
@@ -386,6 +338,40 @@ deleteDependencyRecordsFor(Oid classId, Oid objectId,
 	table_close(depRel, RowExclusiveLock);
 
 	return count;
+}
+
+/*
+ * tablegroupHasDependents -- check if the specified tablegroup has any dependents
+ */
+bool
+tablegroupHasDependents(Oid tablegroupId)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		found = false;
+
+	depRel = table_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tablegroupId));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	found = HeapTupleIsValid(tup = systable_getnext(scan));
+
+	systable_endscan(scan);
+	table_close(depRel, RowExclusiveLock);
+
+	return found;
 }
 
 /*

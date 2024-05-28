@@ -10,7 +10,7 @@
 import { FC, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Control, useFieldArray, useWatch } from 'react-hook-form';
-import { find, findIndex } from 'lodash';
+import { find, findIndex, isEmpty, split } from 'lodash';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 
@@ -27,15 +27,18 @@ import { AddLinuxVersionModal } from './AddLinuxVersionModal';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
+import { YBPopover } from '../../../../../redesign/components/YBPopover/YBPopover';
 import { ArchitectureType, ProviderCode } from '../../constants';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { ValidationErrMsgDelimiter } from '../../forms/utils';
 
 import styles from '../RegionList.module.scss';
 
 import { Delete, Edit, Flag } from '@material-ui/icons';
 import MoreIcon from '../../../../../redesign/assets/ellipsis.svg';
+import ErrorIcon from '../../../../../redesign/assets/error.svg';
 
 interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;
@@ -121,6 +124,8 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
     ImageBundle | undefined
   >();
 
+  const errors = control?._formState?.errors.imageBundles;
+
   return (
     <>
       <LinuxVersionsCard
@@ -134,6 +139,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
           setDeleteImageBundleDetails(img);
         }}
         viewMode={viewMode}
+        errors={errors as any}
       />
       <div style={{ marginTop: '24px' }} />
       {providerType === ProviderCode.AWS && (
@@ -148,6 +154,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
             setDeleteImageBundleDetails(img);
           }}
           viewMode={viewMode}
+          errors={errors as any}
         />
       )}
 
@@ -206,6 +213,12 @@ const LinuxVersionCardStyles = makeStyles((theme) => ({
     textDecoration: 'underline',
     marginTop: '16px',
     cursor: 'pointer'
+  },
+  actionButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'right',
+    gap: '8px'
   }
 }));
 
@@ -218,6 +231,7 @@ interface LinuxVersionCardProps {
   onDelete: (img: ImageBundle) => void;
   showMoreActions?: boolean;
   showTitle?: boolean;
+  errors?: any[];
 }
 
 export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
@@ -228,97 +242,105 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
   onDelete,
   showMoreActions = true,
   showTitle = true,
-  viewMode
+  viewMode,
+  errors = []
 }) => {
   const classes = LinuxVersionCardStyles();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
 
   const [showRetiredVersions, toggleShowRetiredVersions] = useToggle(false);
 
-  const formatActions = (image: ImageBundle) => {
+  const formatActions = (image: ImageBundle, index: number) => {
     return (
-      <MoreActionsMenu
-        menuOptions={[
-          {
-            text: t('edit'),
-            callback: () => {
-              setEditDetails(image);
-            },
-            icon: <Edit />,
-            menuItemWrapper(elem) {
-              return (
-                <RbacValidator
-                  accessRequiredOn={
-                    viewMode === 'CREATE'
-                      ? ApiPermissionMap.CREATE_PROVIDER
-                      : ApiPermissionMap.MODIFY_PROVIDER
-                  }
-                  isControl
-                  overrideStyle={{ display: 'block' }}
-                >
-                  {elem}
-                </RbacValidator>
-              );
-            }
-          },
-          {
-            text: t('setDefault'),
-            callback: () => {
-              setImageAsDefault(image);
-            },
-            disabled: image.useAsDefault,
-            menuItemWrapper(elem) {
-              if (!image.useAsDefault) return elem;
-              return (
-                <RbacValidator
-                  accessRequiredOn={
-                    viewMode === 'CREATE'
-                      ? ApiPermissionMap.CREATE_PROVIDER
-                      : ApiPermissionMap.MODIFY_PROVIDER
-                  }
-                  isControl
-                  overrideStyle={{ display: 'block' }}
-                >
-                  <Tooltip
-                    title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
-                    placement="top"
-                    arrow
+      <div className={classes.actionButtons}>
+        {
+          !isEmpty(errors[index]) ? <YBPopover hoverMsg={<div> {split(errors[index]?.message, ValidationErrMsgDelimiter).map(msg => <div>{msg}</div>)}</div>}>
+            <img src={ErrorIcon} />
+          </YBPopover> : null
+        }
+        <MoreActionsMenu
+          menuOptions={[
+            {
+              text: t('edit'),
+              callback: () => {
+                setEditDetails(image);
+              },
+              icon: <Edit />,
+              menuItemWrapper(elem) {
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
                   >
-                    <span>{elem}</span>
-                  </Tooltip>
-                </RbacValidator>
-              );
+                    {elem}
+                  </RbacValidator>
+                );
+              }
             },
-            icon: <Flag />
-          },
-          {
-            text: t('delete'),
-            callback: () => {
-              onDelete(image);
+            {
+              text: t('setDefault'),
+              callback: () => {
+                setImageAsDefault(image);
+              },
+              disabled: image.useAsDefault,
+              menuItemWrapper(elem) {
+                if (!image.useAsDefault) return elem;
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
+                  >
+                    <Tooltip
+                      title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
+                      placement="top"
+                      arrow
+                    >
+                      <span>{elem}</span>
+                    </Tooltip>
+                  </RbacValidator>
+                );
+              },
+              icon: <Flag />
             },
-            icon: <Delete />,
-            menuItemWrapper(elem) {
-              return (
-                <RbacValidator
-                  accessRequiredOn={
-                    viewMode === 'CREATE'
-                      ? ApiPermissionMap.CREATE_PROVIDER
-                      : ApiPermissionMap.MODIFY_PROVIDER
-                  }
-                  isControl
-                  overrideStyle={{ display: 'block' }}
-                >
-                  {elem}
-                </RbacValidator>
-              );
+            {
+              text: t('delete'),
+              callback: () => {
+                onDelete(image);
+              },
+              icon: <Delete />,
+              menuItemWrapper(elem) {
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
+                  >
+                    {elem}
+                  </RbacValidator>
+                );
+              }
             }
-          }
-        ]}
-      >
-        <YBButton variant="secondary" className={classes.moreOptionsBut}>
-          <img alt="More" src={MoreIcon} width="20" />
-        </YBButton>
-      </MoreActionsMenu>
+          ]}
+        >
+          <YBButton variant="secondary" className={classes.moreOptionsBut}>
+            <img alt="More" src={MoreIcon} width="20" />
+          </YBButton>
+        </MoreActionsMenu>
+      </div>
     );
   };
 
@@ -360,7 +382,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
         {showMoreActions && (
           <TableHeaderColumn
             columnClassName={styles.regionActionsColumn}
-            dataFormat={(_, row) => formatActions(row)}
+            dataFormat={(_, row, _extra, index) => formatActions(row, index)}
             dataAlign="right"
           />
         )}

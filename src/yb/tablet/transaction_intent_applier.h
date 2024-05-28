@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <span>
 #include <type_traits>
 
 #include "yb/common/transaction.h"
@@ -40,6 +41,8 @@ class TransactionIntentApplier {
   virtual Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason,
       const TransactionIdSet& transactions) = 0;
+  virtual Status WritePostApplyMetadata(
+      std::span<const PostApplyTransactionMetadata> metadatas) = 0;
 
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 

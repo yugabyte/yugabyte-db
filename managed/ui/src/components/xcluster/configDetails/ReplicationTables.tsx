@@ -16,7 +16,12 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, augmentTablesWithXClusterDetails } from '../ReplicationUtils';
+import {
+  formatBytes,
+  augmentTablesWithXClusterDetails,
+  getStrictestReplicationLagAlertThreshold,
+  shouldAutoIncludeIndexTables
+} from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -30,11 +35,11 @@ import {
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
 import {
-  AlertName,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
+  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -59,6 +64,7 @@ import {
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -101,10 +107,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -136,7 +142,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     (replication: XClusterConfig) => {
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
-        : editXClusterConfigTables(replication.uuid, replication.tables);
+        : editXClusterConfigTables(replication.uuid, {
+            tables: replication.tables,
+            autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig)
+          });
     },
     {
       onSuccess: (response, xClusterConfig) => {
@@ -270,8 +279,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 tableReplicationLagQuery.isLoading ||
                 tableReplicationLagQuery.isIdle ||
-                maxAcceptableLagQuery.isLoading ||
-                maxAcceptableLagQuery.isIdle
+                alertConfigQuery.isLoading ||
+                alertConfigQuery.isIdle
               ) {
                 return <i className="fa fa-spinner fa-spin yb-spinner" />;
               }
@@ -279,15 +288,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               if (
                 BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfig.status) ||
                 tableReplicationLagQuery.isError ||
-                maxAcceptableLagQuery.isError
+                alertConfigQuery.isError
               ) {
                 return <span>-</span>;
               }
 
-              const maxAcceptableLag = Math.min(
-                ...maxAcceptableLagQuery.data.map(
-                  (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-                )
+              const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+                alertConfigQuery.data
               );
               const formattedLag = formatLagMetric(xClusterTable.replicationLag);
 
@@ -295,7 +302,8 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 return <span className="replication-lag-value warning">{formattedLag}</span>;
               }
 
-              const isReplicationUnhealthy = xClusterTable.replicationLag > maxAcceptableLag;
+              const isReplicationUnhealthy =
+                maxAcceptableLag && xClusterTable.replicationLag > maxAcceptableLag;
 
               return (
                 <Box

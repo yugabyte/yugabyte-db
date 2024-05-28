@@ -4,6 +4,8 @@
 
 package util
 
+import "strings"
+
 // Environment variable fields
 const (
 	// GCPCredentialsEnv env variable name for gcp provider/storage config/releases
@@ -53,7 +55,10 @@ const (
 
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
 	// required to fetch failed subtask message from YugabyteDB Anywhere
-	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
+	YBAAllowFailureSubTaskListMinVersion = "2.19.0.0-b68"
+
+	MinCLIStableVersion  = "2024.1.0.0-b4"
+	MinCLIPreviewVersion = "2.21.0.0-b545"
 )
 
 // UniverseStates
@@ -125,6 +130,24 @@ const (
 const (
 	// StorageCustomerConfigType field name to denote in request bodies
 	StorageCustomerConfigType = "STORAGE"
+)
+
+// Server Type values
+const (
+	// MasterServerType for master processes
+	MasterServerType = "MASTER"
+	// TserverServerType for tserver processes
+	TserverServerType = "TSERVER"
+	// ControllerServerType for YBC processes
+	ControllerServerType = "CONTROLLER"
+)
+
+// Operation Type
+const (
+	// UpgradeOperation type
+	UpgradeOperation = "Upgrade"
+	// EditOperation type
+	EditOperation = "Edit"
 )
 
 // Different resource types that are supported in CLI
@@ -199,4 +222,17 @@ func YBARestrictBackupVersions() []string {
 // version for of fetching failed subtask lists that would not support the operation
 func YBARestrictFailedSubtasksVersions() []string {
 	return []string{"2.19.0.0"}
+}
+
+var awsInstanceWithEphemeralStorageOnly = []string{"i3.", "c5d.", "c6gd."}
+
+// AwsInstanceTypesWithEphemeralStorageOnly returns true if the instance
+// type has only ephemeral storage
+func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
+	for _, prefix := range awsInstanceWithEphemeralStorageOnly {
+		if strings.HasPrefix(instanceType, prefix) {
+			return true
+		}
+	}
+	return false
 }

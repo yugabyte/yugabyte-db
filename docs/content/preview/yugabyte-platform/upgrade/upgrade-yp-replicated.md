@@ -44,7 +44,7 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 ## Upgrade using Replicated
 
-To start the upgrade, log in to the Replicated Admin Console via <https://:8800> and then perform the following:
+To start the upgrade, sign in to the Replicated Admin Console via <https://:8800> and then perform the following:
 
 1. Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:
 
@@ -72,7 +72,7 @@ If the required release version is in a different channel (for example, you want
 
 If you are performing an upgrade to YugabyteDB Anywhere version 2.14 or later, the process can take some time depending on the amount of data present in YugabyteDB Anywhere.
 
-If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
 ## Upgrade airgapped installation
 
@@ -90,7 +90,7 @@ You can upgrade your airgapped installation of YugabyteDB Anywhere to a newer ve
 
    Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="preview" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap` file into that directory.
 
-1. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
+1. Sign in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
 
    ![Airgap Settings](/images/yp/airgap-settings.png)
 

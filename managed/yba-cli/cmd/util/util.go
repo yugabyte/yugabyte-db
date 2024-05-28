@@ -18,6 +18,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"gopkg.in/yaml.v2"
 )
@@ -136,7 +137,6 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	operation string) error {
 	errorTag := fmt.Errorf("%s, Operation: %s - %w", entityName, operation, apiError)
 	if resp == nil {
-		logrus.Errorf("%s", errorTag.Error())
 		return errorTag
 	}
 	response := *resp
@@ -197,22 +197,6 @@ func ConfirmCommand(message string, bypass bool) error {
 		return errAborted
 	}
 	return nil
-}
-
-// IsVersionAllowed checks if a current version (>= Min version)
-// is equal to the restricted version for the operation.
-// Used in cases where certain preview build errors are not
-// resolved and need to be blocked on YugabyteDB Anywhere Terraform
-// provider
-func IsVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
-	compare, errCompare := CompareYbVersions(restrictedVersion, currentVersion)
-	if errCompare != nil {
-		return false, errCompare
-	}
-	if compare == 0 {
-		return false, nil
-	}
-	return true, nil
 }
 
 // CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
@@ -284,6 +268,16 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	return 0, errors.New("Unable to parse YB version strings")
 }
 
+func IsVersionStable(version string) bool {
+	v := strings.Split(version, ".")
+	v1, err := strconv.Atoi(v[1])
+	if err != nil {
+		logrus.Error("Unable to parse YB version strings")
+		return false
+	}
+	return v1%2 == 0 || len(v[0]) == 4
+}
+
 // IsYBVersion checks if the given string is a valid YB version string
 func IsYBVersion(v string) (bool, error) {
 	ybaVersionRegex := "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$"
@@ -311,7 +305,7 @@ func YAMLtoString(filePath string) string {
 			formatter.Colorize("Error reading YAML file: "+err.Error()+"\n",
 				formatter.RedColor))
 	}
-	var data map[string]interface{}
+	var data yaml.MapSlice
 
 	// Unmarshal the YAML content into the map
 	err = yaml.Unmarshal(yamlContent, &data)
@@ -329,4 +323,9 @@ func YAMLtoString(filePath string) string {
 	}
 	return string(contentBytes)
 
+}
+
+// IsOutputType check if the output type is t
+func IsOutputType(t string) bool {
+	return viper.GetString("output") == t
 }

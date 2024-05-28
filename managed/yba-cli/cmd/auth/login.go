@@ -27,10 +27,11 @@ var LoginCmd = &cobra.Command{
 	Long: "Connect to YugabyteDB Anywhere host machine using email and password." +
 		" If non-interactive mode is set, provide the host, email and password using flags. " +
 		"Default for host is \"http://localhost:9000\"",
+	Example: "yba login -f -e <email> -p <password> -H <host>",
 	Run: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		var email, password string
 		var host string
@@ -43,7 +44,8 @@ var LoginCmd = &cobra.Command{
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				logrus.Fatalln(
-					formatter.Colorize("Could not read host: "+err.Error(), formatter.RedColor))
+					formatter.Colorize("Could not read host: "+err.Error()+"\n",
+						formatter.RedColor))
 			}
 			// If the input is just a newline, use the default value
 			if input == "\n" {
@@ -52,7 +54,9 @@ var LoginCmd = &cobra.Command{
 			host = strings.TrimSpace(input)
 			if len(host) == 0 {
 				if len(strings.TrimSpace(hostConfig)) == 0 {
-					logrus.Fatalln(formatter.Colorize("Host cannot be empty.", formatter.RedColor))
+					logrus.Fatalln(
+						formatter.Colorize("Host cannot be empty.\n",
+							formatter.RedColor))
 				} else {
 					host = hostConfig
 				}
@@ -63,7 +67,8 @@ var LoginCmd = &cobra.Command{
 			_, err = fmt.Scanln(&email)
 			if err != nil {
 				logrus.Fatalln(
-					formatter.Colorize("Could not read email: "+err.Error(), formatter.RedColor))
+					formatter.Colorize("Could not read email: "+err.Error()+"\n",
+						formatter.RedColor))
 			}
 
 			// Prompt for the password
@@ -71,14 +76,15 @@ var LoginCmd = &cobra.Command{
 			data, err = term.ReadPassword(int(os.Stdin.Fd()))
 			if err != nil {
 				logrus.Fatalln(
-					formatter.Colorize("Could not read password: "+err.Error(), formatter.RedColor))
+					formatter.Colorize("Could not read password: "+err.Error()+"\n",
+						formatter.RedColor))
 			}
 			password = string(data)
 
 		} else {
 			hostFlag, err := cmd.Flags().GetString("host")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			// If the host is empty
 			if strings.Compare(hostFlag, "http://localhost:9000") == 0 {
@@ -92,33 +98,45 @@ var LoginCmd = &cobra.Command{
 			}
 			email, err = cmd.Flags().GetString("email")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			password, err = cmd.Flags().GetString("password")
 			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
 
 		viper.GetViper().Set("host", &host)
 		if strings.TrimSpace(email) == "" {
-			logrus.Fatalln(formatter.Colorize("Email cannot be empty.", formatter.RedColor))
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Email cannot be empty.\n",
+					formatter.RedColor))
 		}
 
 		if strings.TrimSpace(password) == "" {
-			logrus.Fatalln(formatter.Colorize("Password cannot be empty.", formatter.RedColor))
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Password cannot be empty.\n",
+					formatter.RedColor))
 		}
 
-		fmt.Println("\n")
+		logrus.Infoln("\n")
 
 		url, err := ybaAuthClient.ParseURL(host)
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(
+				formatter.Colorize(
+					err.Error()+"\n",
+					formatter.RedColor))
 		}
 
 		authAPI, err := ybaAuthClient.NewAuthAPIClientInitialize(url, "")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+			logrus.Fatal(
+				formatter.Colorize(
+					err.Error()+"\n",
+					formatter.RedColor))
 		}
 
 		req := ybaclient.CustomerLoginFormData{
@@ -145,11 +163,12 @@ func init() {
 	LoginCmd.Flags().SortFlags = false
 	LoginCmd.Flags().StringP("email", "e", "",
 		fmt.Sprintf(
-			"[Optional] Email or username for the user. %s",
+			"[Optional] Email or username for the user. %s.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().StringP("password", "p", "",
 		fmt.Sprintf(
-			"[Optional] Password for the user. %s",
+			"[Optional] Password for the user. %s. Use single quotes ('') to provide "+
+				"values with special characters.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
 	LoginCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")

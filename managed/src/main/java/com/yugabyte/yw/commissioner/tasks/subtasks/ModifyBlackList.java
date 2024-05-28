@@ -11,14 +11,18 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -77,7 +81,34 @@ public class ModifyBlackList extends UniverseTaskBase {
     try {
       log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
+
+      // Skip removing nodes from blacklist if they failed to be cleaned up properly.
+      // i.e. if node instance is in decommissioned state.
+      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      if (userIntent.providerType == Common.CloudType.onprem
+          && !taskParams().isLeaderBlacklist
+          && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
+        List<NodeDetails> modifiedRemoveNodes = new ArrayList<>(taskParams().removeNodes);
+        for (NodeDetails node : taskParams().removeNodes) {
+          Optional<NodeInstance> nodeInstanceOp = NodeInstance.maybeGet(node.getNodeUuid());
+          if (nodeInstanceOp.isPresent()) {
+            NodeInstance nodeInstance = nodeInstanceOp.get();
+            if (nodeInstance.getState().equals(NodeInstance.State.DECOMMISSIONED)) {
+              modifiedRemoveNodes.remove(node);
+            }
+          }
+        }
+        taskParams().removeNodes = modifiedRemoveNodes;
+      }
+
       List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
+      if (!taskParams().isLeaderBlacklist
+          && CollectionUtils.isEmpty(taskParams().addNodes)
+          && CollectionUtils.isEmpty(taskParams().removeNodes)) {
+        log.info("No nodes to be added or removed from blacklist");
+        return;
+      }
+
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
           new ModifyMasterClusterConfigBlacklist(

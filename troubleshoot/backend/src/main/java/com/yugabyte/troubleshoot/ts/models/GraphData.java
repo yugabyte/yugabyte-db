@@ -2,8 +2,11 @@ package com.yugabyte.troubleshoot.ts.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -12,6 +15,13 @@ import org.apache.commons.lang3.StringUtils;
 @Data
 @Accessors(chain = true)
 public class GraphData {
+  private static DecimalFormat DF =
+      new DecimalFormat("0", DecimalFormatSymbols.getInstance(Locale.ENGLISH));
+
+  {
+    DF.setMaximumFractionDigits(10);
+  }
+
   private String name;
   private String instanceName;
   private String tableName;
@@ -20,6 +30,9 @@ public class GraphData {
   private String namespaceId;
   private String nodePrefix;
   private String type;
+  private String waitEventComponent;
+  private String waitEventClass;
+  private String waitEvent;
   private Map<String, String> labels;
   @JsonIgnore private List<GraphPoint> points = new ArrayList<>();
 
@@ -30,7 +43,7 @@ public class GraphData {
 
   @JsonProperty("y")
   public List<String> getY() {
-    return points.stream().map(GraphPoint::getY).map(String::valueOf).toList();
+    return points.stream().map(GraphPoint::getY).map(DF::format).toList();
   }
 
   // TODO These methods are needed to properly parse mocked response.
@@ -65,5 +78,15 @@ public class GraphData {
   @JsonIgnore
   public String getNameOrEmpty() {
     return name != null ? name : StringUtils.EMPTY;
+  }
+
+  @JsonIgnore
+  public String getWaitEventClassOrEmpty() {
+    return waitEventClass != null ? waitEventClass : StringUtils.EMPTY;
+  }
+
+  @JsonIgnore
+  public String getWaitEventOrEmpty() {
+    return waitEvent != null ? waitEvent : StringUtils.EMPTY;
   }
 }

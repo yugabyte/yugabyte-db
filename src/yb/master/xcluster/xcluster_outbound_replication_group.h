@@ -37,9 +37,8 @@ class XClusterOutboundReplicationGroup
       public CatalogEntityWithTasks {
  public:
   struct HelperFunctions {
-    const std::function<Result<NamespaceId>(YQLDatabase, const NamespaceName&)>
-        get_namespace_id_func;
-    const std::function<Result<NamespaceName>(const NamespaceId&)> get_namespace_name_func;
+    const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>
+        get_namespace_func;
     const std::function<Result<std::vector<TableInfoPtr>>(const NamespaceId&)> get_tables_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
         const std::vector<TableId>&, const LeaderEpoch&)>
@@ -85,6 +84,9 @@ class XClusterOutboundReplicationGroup
   Status RemoveNamespace(const LeaderEpoch& epoch, const NamespaceId& namespace_id)
       EXCLUDES(mutex_);
 
+  Status RemoveStreams(const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
   Status Delete(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Returns std::nullopt if the namespace is not yet ready.
@@ -109,6 +111,8 @@ class XClusterOutboundReplicationGroup
 
   bool HasNamespace(const NamespaceId& namespace_id) const EXCLUDES(mutex_);
 
+  void StartPostLoadTasks(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
   friend class AddTableToXClusterSourceTask;
@@ -123,6 +127,10 @@ class XClusterOutboundReplicationGroup
   Result<XClusterOutboundReplicationGroupInfo::ReadLock> LockForRead() const
       REQUIRES_SHARED(mutex_);
   Result<XClusterOutboundReplicationGroupInfo::WriteLock> LockForWrite() REQUIRES(mutex_);
+
+  Result<scoped_refptr<NamespaceInfo>> GetYbNamespaceInfo(const NamespaceId& namespace_id) const;
+  Result<NamespaceId> GetNamespaceId(const NamespaceName& namespace_name) const;
+  Result<NamespaceName> GetNamespaceName(const NamespaceId& namespace_id) const;
 
   Result<NamespaceId> AddNamespaceInternal(
       const NamespaceName& namespace_name, XClusterOutboundReplicationGroupInfo::WriteLock& l,

@@ -61,7 +61,8 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(host) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid Host detected. Run `yba auth` to authenticate with YugabyteDB Anywhere.",
+				"No valid Host detected. "+
+					"Run \"yba auth\" or \"yba login\" to authenticate with YugabyteDB Anywhere.\n",
 				formatter.RedColor))
 	}
 	url, err := ParseURL(host)
@@ -75,7 +76,7 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 		logrus.Fatalln(
 			formatter.Colorize(
 				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
-					"authenticate with YugabyteDB Anywhere or run the command with -a flag.",
+					"authenticate with YugabyteDB Anywhere or run the command with -a flag.\n",
 				formatter.RedColor))
 	}
 
@@ -117,6 +118,7 @@ func NewAuthAPIClientAndCustomer() *AuthAPIClient {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
+	authAPI.IsCLISupported()
 	err = authAPI.GetCustomerUUID()
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -127,7 +129,11 @@ func NewAuthAPIClientAndCustomer() *AuthAPIClient {
 // ParseURL returns a URL if string is valid, or returns error
 func ParseURL(host string) (*url.URL, error) {
 	if strings.HasPrefix(strings.ToLower(host), "http://") {
-		logrus.Warnf("You are using insecure api endpoint %s\n", host)
+		warning := formatter.Colorize(
+			fmt.Sprintf("You are using insecure api endpoint %s\n", host),
+			formatter.YellowColor,
+		)
+		logrus.Debugf(warning)
 	} else if !strings.HasPrefix(strings.ToLower(host), "https://") {
 		host = "https://" + host
 	}
@@ -139,25 +145,60 @@ func ParseURL(host string) (*url.URL, error) {
 	return endpoint, err
 }
 
+type YBAMinimumVersion struct {
+	Stable  string
+	Preview string
+}
+
 // CheckValidYBAVersion allows operation if version is higher than listed versions
-func (a *AuthAPIClient) CheckValidYBAVersion(versions []string) (bool,
+// For releases older than 2024.1, keeping both stable and preview min version as the same
+// version would provide the correct result
+// For features on and after 2024.1, min stable and min preview must be different
+func (a *AuthAPIClient) CheckValidYBAVersion(versions YBAMinimumVersion) (bool,
 	string, error) {
 
-	r, response, err := a.GetAppVersion().Execute()
+	r, _, err := a.GetAppVersion().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"YBA Version", "Get App Version")
-		return false, "", errMessage
+		host := viper.GetString("host")
+		return false, "", fmt.Errorf("YugabyteDB Anywhere is not available at host %s", host)
 	}
 	currentVersion := r["version"]
-	for _, v := range versions {
-		check, err := util.CompareYbVersions(currentVersion, v)
-		if err != nil {
-			return false, "", err
-		}
-		if check == 0 || check == 1 {
-			return true, currentVersion, err
-		}
+	// check if current version is stable or preview
+	// if stable, check with stable release, else with preview release
+	var v string
+	if util.IsVersionStable(currentVersion) {
+		v = versions.Stable
+	} else {
+		v = versions.Preview
 	}
+	check, err := util.CompareYbVersions(currentVersion, v)
+	if err != nil {
+		return false, "", err
+	}
+	if check == 0 || check == 1 {
+		return true, currentVersion, err
+	}
+
 	return false, currentVersion, err
+}
+
+func (a *AuthAPIClient) IsCLISupported() {
+	allowedVersions := YBAMinimumVersion{
+		Stable:  util.MinCLIStableVersion,
+		Preview: util.MinCLIPreviewVersion,
+	}
+	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+
+	if !allowed {
+		errMessage := fmt.Sprintf(
+			"YugabyteDB Anywhere CLI is not supported for YugabyteDB Anywhere Host version %s. "+
+				"Please use a version greater than or equal to Stable: %s, Preview: %s\n",
+			version,
+			allowedVersions.Stable,
+			allowedVersions.Preview)
+		logrus.Fatalln(formatter.Colorize(errMessage, formatter.RedColor))
+	}
 }

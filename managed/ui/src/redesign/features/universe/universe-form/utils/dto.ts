@@ -724,6 +724,7 @@ export interface Provider {
   name: string;
   active: boolean;
   customerUUID: string;
+  details: Record<string, any>;
 }
 export interface RegionInfo {
   parentRegionId: string;
@@ -844,13 +845,14 @@ export interface ImageBundle {
     regions: {
       [key: string]: {
         ybImage: string;
-        sshUserOverride: string;
-        sshPortOverride: number;
       };
     };
+    sshUser: string;
+    sshPort: number;
+    useIMDSv2?: boolean;
   };
   useAsDefault: boolean;
-  metadata: {
+  metadata?: {
     type: ImageBundleType;
     version: string;
   };

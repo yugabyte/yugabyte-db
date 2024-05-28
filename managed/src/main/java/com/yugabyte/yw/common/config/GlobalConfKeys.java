@@ -264,6 +264,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleNodeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.node_check_timeout_sec",
+          ScopeType.GLOBAL,
+          "Node reachable check timeout in Support Bundle",
+          "This global config is a timeout after which the node is deemed unreachable when creating"
+              + " a support bundle.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -1064,6 +1073,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> destroyServerCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_ops.destroy_server_timeout",
+          ScopeType.GLOBAL,
+          "Node destroy command timeout",
+          "Timeout for node destroy command before failing.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -1151,7 +1168,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Operator owned resources api block",
           "A resource controlled by the kubernetes operator cannot be updated using the REST API",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> devTagsMap =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.dev_tags",
@@ -1177,14 +1194,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> releasesRedesign =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.releases_redesign",
-          ScopeType.GLOBAL,
-          "Enable the option to view new releases page",
-          "Enable the option to view new releases page",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Duration> replicationFrequency =
       new ConfKeyInfo<>(
           "yb.ha.replication_frequency",
@@ -1304,4 +1313,45 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Azure Provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> haShutdownLevel =
+      new ConfKeyInfo<>(
+          "yb.ha.shutdown_level",
+          ScopeType.GLOBAL,
+          "HA Shutdown Level",
+          "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGcpProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.gcp_provider_validation",
+          ScopeType.GLOBAL,
+          "GCP provider validation",
+          "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<String> ldapSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Search Filter",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcRefreshTokenEndpoint =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenEndpoint",
+          ScopeType.GLOBAL,
+          "Endpoint for fetching the access token",
+          "YBA will fetch the access token using the refresh token if specified from the endpoint",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> oidcRefreshTokenInterval =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenInterval",
+          ScopeType.GLOBAL,
+          "OIDC Refresh Access Token Interval",
+          "If configured, YBA will refresh the access token at the specified duration, defaulted to"
+              + " 5 minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

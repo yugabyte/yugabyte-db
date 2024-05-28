@@ -136,6 +136,7 @@ set(MASTER_SRCS
   util/yql_vtable_helpers.cc
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
+  xcluster/master_xcluster_util.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
@@ -170,7 +171,7 @@ set(MASTER_SRCS
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_ddl_handler.cc
-  ysql_transaction_ddl.cc)
+  ysql_ddl_verification_task.cc)
 
 set(MASTER_DEPS
   yb_common

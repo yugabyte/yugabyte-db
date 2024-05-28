@@ -159,7 +159,9 @@ public class TestMisc extends BaseYsqlConnMgr {
         "yb_use_tserver_key_auth", "true",
         "yb_is_client_ysqlconnmgr", "true"));
 
-    try (Connection conn = getConnectionBuilder().connect(props)) {
+    try (Connection conn =
+                getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                                      .connect(props)) {
       fail("Did not expected the connection to be successfully established");
     } catch (Exception e) {
       assertEquals("Got wrong error message",

@@ -116,6 +116,51 @@ TEST_F(UnsignedIntSetTest, Contains) {
   ASSERT_FALSE(other.Contains(set_));
 }
 
+TEST_F(UnsignedIntSetTest, Hash) {
+  std::unordered_set<UnsignedIntSet<uint32_t>> test_set;
+  ASSERT_OK(SetRange(1, 2));
+  ASSERT_EQ(test_set.find(set_), test_set.end());
+  ASSERT_TRUE(test_set.emplace(set_).second);
+  ASSERT_FALSE(test_set.emplace(set_).second);
+  ASSERT_NE(test_set.find(set_), test_set.end());
+  // test_set contains { [(1, 2)] }
+  ASSERT_EQ(test_set.size(), 1);
+
+  // set_ becomes - [(1, 2), (4, 4)]
+  ASSERT_OK(SetRange(4, 4));
+  ASSERT_EQ(test_set.find(set_), test_set.end());
+
+  UnsignedIntSet<uint32_t> tmp;
+  ASSERT_OK(tmp.SetRange(3, 4));
+  ASSERT_TRUE(test_set.emplace(tmp).second);
+  // test_set contains { [(1, 2)], [(3, 4)]}
+  ASSERT_EQ(test_set.size(), 2);
+
+  // set_ becomes - [(1, 4)]
+  ASSERT_OK(SetRange(3, 3));
+  ASSERT_TRUE(test_set.emplace(set_).second);
+  // test_set contains { [(1, 2)], [(3, 4)], [(1, 4)]}
+  ASSERT_EQ(test_set.size(), 3);
+
+  // tmp becomes - [(1, 1), (3, 4)]
+  ASSERT_OK(tmp.SetRange(1, 1));
+  ASSERT_TRUE(test_set.emplace(tmp).second);
+  // test_set contains { [(1, 2)], [(3, 4)], [(1, 4)], [(1, 1), (3, 4)]}
+  ASSERT_EQ(test_set.size(), 4);
+
+  // tmp becomes - [(1, 4)]
+  ASSERT_OK(tmp.SetRange(2, 2));
+  ASSERT_NE(test_set.find(tmp), test_set.end());
+  ASSERT_OK(tmp.SetRange(1, 3));
+  ASSERT_NE(test_set.find(tmp), test_set.end());
+
+  tmp = UnsignedIntSet<uint32_t>();
+  ASSERT_OK(tmp.SetRange(1, 4));
+  ASSERT_NE(test_set.find(set_), test_set.end());
+  test_set.erase(tmp);
+  ASSERT_EQ(test_set.find(set_), test_set.end());
+}
+
 class UnsignedIntSetEncodeDecodeTest : public UnsignedIntSetTest {
  protected:
   void VerifyCopy() const {

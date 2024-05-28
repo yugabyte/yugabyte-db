@@ -83,8 +83,8 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
   @Test
   public void testQueriesCreateGroups() {
     // ldapGroups: {A,B,C} dbStateUsers: {A,C,D, userOne, userThree} : Create groups B on DB
-    List<String> queriesYsql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), true);
-    List<String> queriesYcql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), false);
+    List<String> queriesYsql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), true, true);
+    List<String> queriesYcql = task.computeQueriesCreateGroups(dbStateUsers.keySet(), false, true);
 
     assertTrue(queriesYsql.get(0).contains("CREATE ROLE \"groupB\""));
     assertEquals(queriesYsql.size(), 1);
@@ -102,8 +102,10 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
     // only on right={userTwo=[B, C]}
     // value differences={userOne=([A, C], [A, B])}
     List<String> excludeUsers = new ArrayList<>();
-    List<String> queriesYsql = task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers);
-    List<String> queriesYcql = task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers);
+    List<String> queriesYsql =
+        task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers, true);
+    List<String> queriesYcql =
+        task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers, true);
 
     // queries: create userTwo, grant B to userTwo, grant C to userTwo, revoke C from userone, grant
     // B to userOne,
@@ -125,8 +127,8 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
     assertEquals(queriesYcql.get(6), "DROP ROLE IF EXISTS \"userThree\";");
 
     excludeUsers.add("userThree");
-    queriesYsql = task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers);
-    queriesYcql = task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers);
+    queriesYsql = task.computeQueriesViaDiffUsers(dbStateUsers, true, excludeUsers, true);
+    queriesYcql = task.computeQueriesViaDiffUsers(dbStateUsers, false, excludeUsers, true);
 
     assertFalse(queriesYsql.contains("DROP ROLE IF EXISTS \"userThree\";"));
     assertFalse(queriesYcql.contains("DROP ROLE IF EXISTS \"userThree\";"));

@@ -95,6 +95,16 @@ public class GCPUtil implements CloudUtil {
   private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
   private static final int DELETE_STORAGE_BATCH_REQUEST_SIZE = 100;
 
+  public static final String NETWORK_SELFLINK =
+      "https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s";
+
+  public static final List<String> YB_DEFAULT_INSTANCE_TAGS = Arrays.asList("cluster-server");
+
+  public static final String ENFORCEMENT_BEFORE_CLASSIC_FIREWALL = "BEFORE_CLASSIC_FIREWALL";
+  public static final String ENFORCEMENT_AFTER_CLASSIC_FIREWALL = "AFTER_CLASSIC_FIREWALL";
+
+  public static final String INSTANCE_LIST_PERMISSION = "compute.instances.list";
+
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
         location.startsWith(GS_PROTOCOL_PREFIX)

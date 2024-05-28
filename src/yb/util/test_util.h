@@ -202,6 +202,15 @@ std::string GetCertsDir();
 // If true, spawn YBC servers for backup operations.
 bool UseYbController();
 
+/*
+Returns true if YB_DISABLE_MINICLUSTER_TESTS is set true.
+We disable the Minicluster backup tests when we use YB Controller for backups.
+This is because the varz endpoint in MiniTabletServer is not functional currently which causes the
+backups to fail.
+TODO: Re-enable the tests once GH#21689 is done.
+*/
+bool DisableMiniClusterBackupTests();
+
 int CalcNumTablets(size_t num_tablet_servers);
 
 template<uint32_t limit>

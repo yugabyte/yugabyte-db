@@ -1754,6 +1754,8 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	/* Update constraint/default info */
 	if (attp->attnotnull)
 		processing->constr->has_not_null = true;
+	if (attp->attgenerated == ATTRIBUTE_GENERATED_STORED)
+		processing->constr->has_generated_stored = true;
 
 	if (attp->atthasdef)
 	{
@@ -5634,10 +5636,21 @@ RelationBuildLocalRelation(const char *relname,
 		(relkind == RELKIND_RELATION ||
 		 relkind == RELKIND_MATVIEW ||
 		 relkind == RELKIND_PARTITIONED_TABLE))
-		rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	{
+		/*
+		 * YB NOTE: The default replica identity in case of user defined tables is
+		 * set to 'CHANGE'. In all other cases the default behaviour of PG
+		 * is used, i.e. 'DEFAULT' for relations in information_schema and
+		 * 'NOTHING' for tables in pg_catalog and for non-table objects
+		 */
+		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
+			rel->rd_rel->relreplident = YB_REPLICA_IDENTITY_CHANGE;
+		else
+			rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
-
+	
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
 	 * places.  For a mapped relation, we set relfilenode to zero and rely on
@@ -5781,16 +5794,36 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 
 	if (IsYBRelation(relation))
 	{
-		/* Currently, this function is only used during reindex in YB. */
-		Assert(relation->rd_rel->relkind == RELKIND_INDEX);
 		/*
-		 * Drop the old DocDB table associated with this index.
-		 * Note: The drop isn't finalized until after the txn commits/aborts.
+		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
-		YBCDropIndex(relation);
-		/* Create a new DocDB table for the index. */
-		YbIndexSetNewRelfileNode(relation, newrelfilenode,
-								 yb_copy_split_options);
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
+			   relation->rd_rel->relkind == RELKIND_RELATION);
+
+		if (relation->rd_rel->relkind == RELKIND_INDEX &&
+			!relation->rd_index->indisprimary)
+			/*
+			 * Note: caller is responsible for dropping the old DocDB table
+			 * associated with the index, if required.
+			 * Create a new DocDB table for the secondary index.
+			 * This is not required for primary indexes, as they are
+			 * an implicit part of the base table.
+			 */
+			YbIndexSetNewRelfileNode(relation, newrelfilenode,
+									 yb_copy_split_options);
+		else if (relation->rd_rel->relkind == RELKIND_RELATION)
+		{
+			/*
+			 * Drop the old DocDB table associated with this relation.
+			 * Note: The drop isn't finalized until after the txn
+			 * commits/aborts.
+			 */
+			YBCDropTable(relation);
+			/* Create a new DocDB table for the relation. */
+			YbRelationSetNewRelfileNode(relation, newrelfilenode,
+										yb_copy_split_options,
+										true /* is_truncate */);
+		}
 	}
 	else
 	{

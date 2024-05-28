@@ -30,7 +30,7 @@ If you have upgraded YBA to version 2.12 or later and [xCluster replication](../
 
 {{< note title="Upgrading YBA on deprecated operating systems" >}}
 
-If you are running YugabyteDB Anywhere v2.20.x on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you will need to update your OS before you can upgrade YBA to the next major release.
+If you are running YBA v2.20 on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
 

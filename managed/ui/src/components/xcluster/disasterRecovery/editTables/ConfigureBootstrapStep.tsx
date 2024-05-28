@@ -59,7 +59,7 @@ export const ConfigureBootstrapStep = ({
       <div className={classes.formSectionDescription}>
         <Typography variant="body2">
           <Trans
-            i18nKey={`${TRANSLATION_KEY_PREFIX}.infoText`}
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.infoText.${isDrInterface ? 'dr' : 'xCluster'}`}
             components={{ bold: <b />, paragraph: <p /> }}
           />
         </Typography>

@@ -59,7 +59,7 @@ public class ConnectionBuilder implements Cloneable {
   private String sslcert = null;
   private String sslkey = null;
   private String sslrootcert = null;
-  private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
+  private IsolationLevel isolationLevel = null;
   private AutoCommit autoCommit = AutoCommit.DEFAULT;
   private ConnectionEndpoint connectionEndpoint = ConnectionEndpoint.DEFAULT;
   private String options = null;

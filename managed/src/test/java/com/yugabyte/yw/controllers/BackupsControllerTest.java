@@ -150,14 +150,14 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectMapper mapper = new ObjectMapper();
     JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
     TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup, null);
-    taskInfo.setDetails(bodyJson);
+    taskInfo.setTaskParams(bodyJson);
     taskInfo.setOwner("");
     UUID restoreTaskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(restoreTaskUUID);
     taskInfo.save();
 
     TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb, null);
-    taskInfoSub.setDetails(bodyJson);
+    taskInfoSub.setTaskParams(bodyJson);
     taskInfoSub.setOwner("");
     UUID taskUUIDSub = UUID.randomUUID();
     taskInfoSub.setTaskUUID(taskUUIDSub);
@@ -1347,7 +1347,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Util.setPID(defaultBackup.getBackupUUID(), process);
 
     taskInfo = new TaskInfo(TaskType.CreateTable, null);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.save();
@@ -1384,7 +1384,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Util.setPID(defaultBackup.getBackupUUID(), process);
 
     taskInfo = new TaskInfo(TaskType.CreateTable, null);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.save();
@@ -1430,7 +1430,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Util.setPID(defaultBackup.getBackupUUID(), process);
     when(mockBackupHelper.stopBackup(any(), any())).thenCallRealMethod();
     taskInfo = new TaskInfo(TaskType.CreateTable, null);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.save();
@@ -1940,7 +1940,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectMapper mapper = new ObjectMapper();
     JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
     TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup, null);
-    taskInfo.setDetails(bodyJson);
+    taskInfo.setTaskParams(bodyJson);
     taskInfo.setOwner("");
     taskInfo.setTaskState(TaskInfo.State.Success);
     UUID taskUUID = UUID.randomUUID();
@@ -1948,7 +1948,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfo.save();
 
     TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb, null);
-    taskInfoSub.setDetails(bodyJson);
+    taskInfoSub.setTaskParams(bodyJson);
     taskInfoSub.setOwner("");
     UUID taskUUIDSub = UUID.randomUUID();
     taskInfoSub.setTaskUUID(taskUUIDSub);
@@ -2041,7 +2041,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectMapper mapper = new ObjectMapper();
     JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
     TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup, null);
-    taskInfo.setDetails(bodyJson);
+    taskInfo.setTaskParams(bodyJson);
     taskInfo.setOwner("");
     taskInfo.setTaskState(TaskInfo.State.Success);
     UUID taskUUID = UUID.randomUUID();
@@ -2049,7 +2049,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfo.save();
 
     TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb, null);
-    taskInfoSub.setDetails(bodyJson);
+    taskInfoSub.setTaskParams(bodyJson);
     taskInfoSub.setOwner("");
     UUID taskUUIDSub = UUID.randomUUID();
     taskInfoSub.setTaskUUID(taskUUIDSub);

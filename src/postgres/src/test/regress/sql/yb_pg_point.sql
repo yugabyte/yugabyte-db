@@ -102,7 +102,6 @@ SET enable_seqscan TO false;
 SET enable_indexscan TO true;
 SET enable_bitmapscan TO true;
 SELECT COUNT(*) FROM point_gist_tbl WHERE f1 ~= '(0.0000009,0.0000009)'::point;
--- YB_TODO(#21435): should be count 1.
 SELECT COUNT(*) FROM point_gist_tbl WHERE f1 <@ '(0.0000009,0.0000009),(0.0000009,0.0000009)'::box;
 SELECT COUNT(*) FROM point_gist_tbl WHERE f1 ~= '(0.0000018,0.0000018)'::point;
 RESET enable_seqscan;

@@ -211,6 +211,7 @@ typedef struct IndexScanDescData
 	List *yb_aggrefs;				/* aggregate information for aggregate pushdown */
 	TupleTableSlot *yb_agg_slot;	/* scan slot used by aggregate pushdown */
 	int yb_distinct_prefixlen; /* prefix length, in columns, of a distinct index scan */
+	bool fetch_ybctids_only;
 }			IndexScanDescData;
 
 /* Generic structure for parallel scans */

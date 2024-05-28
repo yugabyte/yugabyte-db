@@ -3,7 +3,6 @@ package com.yugabyte.troubleshoot.ts.service.anomaly;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.Value;
 
 public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
@@ -15,15 +14,16 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
     super(graphService, metadataProvider, anomalyDetectionService);
   }
 
-  protected abstract List<GraphWithThreshold> getGraphsWithThresholds();
+  protected abstract List<GraphWithThreshold> getGraphsWithThresholds(
+      AnomalyDetectionContext context);
 
-  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+  protected AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
 
     List<GraphAnomaly> anomalies = new ArrayList<>();
     AnomalyDetectionContext.AnomalyDetectionContextBuilder contextWithUpdatedStep =
         context.toBuilder();
-    getGraphsWithThresholds()
+    getGraphsWithThresholds(context)
         .forEach(
             graphWithThreshold -> {
               GraphResponse response =
@@ -32,26 +32,26 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
                 return;
               }
 
-              long minAnomalySize =
-                  Math.max(response.getStepSeconds() * 1000, getMinAnomalySizeMillis());
+              long minAnomalyDurationMillis =
+                  Math.max(
+                      response.getStepSeconds() * 1000,
+                      context.getConfig().getDuration(getMinAnomalyDurationKey()).toMillis());
               contextWithUpdatedStep.stepSeconds(response.getStepSeconds());
               GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings =
                   new GraphAnomalyDetectionService.AnomalyDetectionSettings()
-                      .setMinimalAnomalyDurationMillis(minAnomalySize);
+                      .setMinimalAnomalyDurationMillis(minAnomalyDurationMillis);
               detectionSettings
                   .getIncreaseDetectionSettings()
-                  .setWindowMinSize(minAnomalySize)
-                  .setWindowMaxSize(minAnomalySize * 2);
+                  .setWindowMinSize(minAnomalyDurationMillis)
+                  .setWindowMaxSize(minAnomalyDurationMillis * 2);
               detectionSettings
                   .getThresholdExceedSettings()
                   .setThreshold(graphWithThreshold.getThreshold());
 
-              Map<String, List<GraphData>> graphsByLineName =
-                  response.getData().stream()
-                      .collect(Collectors.groupingBy(GraphData::getName, Collectors.toList()));
+              List<List<GraphData>> groupedLines = groupGraphLines(response.getData());
 
-              graphsByLineName.forEach(
-                  (mode, graphs) ->
+              groupedLines.forEach(
+                  graphs ->
                       anomalies.addAll(
                           anomalyDetectionService.getAnomalies(
                               GraphAnomaly.GraphAnomalyType.EXCEED_THRESHOLD,
@@ -63,8 +63,7 @@ public abstract class ThresholdExceedDetector extends AnomalyDetectorBase {
       return result;
     }
 
-    List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
-    createAnomalies(result, mergedAnomalies, contextWithUpdatedStep.build());
+    groupAndCreateAnomalies(contextWithUpdatedStep.build(), anomalies, result);
 
     return result;
   }

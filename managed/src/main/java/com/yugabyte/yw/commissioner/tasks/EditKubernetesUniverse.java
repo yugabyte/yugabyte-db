@@ -34,10 +34,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -49,6 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 @Abortable
@@ -449,7 +452,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
@@ -468,7 +472,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
-          universe.getUniverseDetails().getYbcSoftwareVersion());
+          universe.getUniverseDetails().getYbcSoftwareVersion(),
+          /* addDelayAfterStartup */ false);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -488,6 +493,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           newNamingStyle,
           universe.isYbcEnabled());
+      Duration sleepBeforeStart =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(universe, sleepBeforeStart)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
+
       createModifyBlackListTask(
               null /* addNodes */,
               new ArrayList<>(tserversToRemove) /* removeNodes */,
@@ -518,7 +531,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
     // TODO we should look for y(c)sql auth, gflags changes and so on.
     // Move this logic to UniverseDefinitionTaskBase.
-    if (newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
+    boolean isPrimaryCluster =
+        (newCluster.clusterType == curCluster.clusterType)
+            && (newCluster.clusterType == ClusterType.PRIMARY);
+    if (isPrimaryCluster
+        && newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
       String msg =
           String.format(
               "Replication factor can't be changed during the edit operation. "
@@ -843,5 +860,41 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public static boolean checkEditKubernetesRerunAllowed(TaskInfo placementModificationTaskInfo) {
+    UniverseDefinitionTaskParams placementTaskParams =
+        Json.fromJson(
+            placementModificationTaskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    Universe universe = Universe.getOrBadRequest(placementTaskParams.getUniverseUUID());
+    UniverseDefinitionTaskParams currentUniverseParams = universe.getUniverseDetails();
+    for (Cluster newCluster : placementTaskParams.clusters) {
+      Cluster currCluster = currentUniverseParams.getClusterByUuid(newCluster.uuid);
+
+      UserIntent newIntent = newCluster.userIntent, currIntent = currCluster.userIntent;
+      PlacementInfo newPI = newCluster.placementInfo, curPI = currCluster.placementInfo;
+
+      // Not allowing re-run if disk size change was attempted
+      if (newIntent.deviceInfo.volumeSize != currIntent.deviceInfo.volumeSize) {
+        return false;
+      }
+
+      // Not allowing re-run if any kind of Cluster configuration change was attempted
+      boolean isReadOnlyCluster = newCluster.clusterType.equals(ClusterType.ASYNC);
+      if (!isReadOnlyCluster) {
+        int numTotalMasters = newIntent.replicationFactor;
+        PlacementInfoUtil.selectNumMastersAZ(newPI, numTotalMasters);
+      }
+      KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
+          curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
+
+      boolean mastersChanged = !curPlacement.masters.equals(newPlacement.masters);
+      boolean tserversChanged = !curPlacement.tservers.equals(newPlacement.tservers);
+
+      if (mastersChanged || tserversChanged) {
+        return false;
+      }
+    }
+    return true;
   }
 }

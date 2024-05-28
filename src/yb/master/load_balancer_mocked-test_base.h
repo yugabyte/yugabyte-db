@@ -37,11 +37,10 @@ namespace master {
 // This class allows for testing the behavior of single tablet moves (adding / removing tablets and
 // leaders) without having to deal with the asynchronous nature of an actual cluster.
 class LoadBalancerMockedBase : public YBTest {
-  std::string kTableId = "my_table_id";
-
  public:
   LoadBalancerMockedBase()
-      : cb_(),
+      : kTableId("my_table_id"),
+        cb_(kTableId),
         blacklist_(cb_.blacklist_),
         leader_blacklist_(cb_.leader_blacklist_),
         ts_descs_(cb_.ts_descs_),
@@ -300,6 +299,7 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.state_->tablets_added_.clear();
   }
 
+  const TableId kTableId;
   ClusterLoadBalancerMocked cb_;
 
   int total_num_tablets_;
@@ -312,9 +312,9 @@ class LoadBalancerMockedBase : public YBTest {
   TabletInfoMap& tablet_map_;
   TableIndex& tables_;
   ReplicationInfoPB& replication_info_;
-  std::vector<TabletId>& pending_add_replica_tasks_;
-  std::vector<TabletId>& pending_remove_replica_tasks_;
-  std::vector<TabletId>& pending_stepdown_leader_tasks_;
+  TabletToTabletServerMap& pending_add_replica_tasks_;
+  TabletToTabletServerMap& pending_remove_replica_tasks_;
+  TabletToTabletServerMap& pending_stepdown_leader_tasks_;
 };
 
 } // namespace master

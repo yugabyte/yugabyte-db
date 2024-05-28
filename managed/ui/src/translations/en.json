@@ -9,6 +9,7 @@
       "continue": "Continue",
       "create": "Create",
       "disable": "Disable",
+      "enable": "Enable",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
@@ -632,8 +633,8 @@
           "viewTaskDetails": "View Details",
           "actionMenu": {
             "label": "Actions",
-            "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit DR configuration",
+            "deleteConfig": "Remove Disaster Recovery",
+            "editDrConfig": "Edit DR Configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select Database and Tables",
             "switchover": "Switchover",
@@ -841,7 +842,7 @@
               },
               "confirmAlert": {
                 "instruction": "Confirm alert threshold for acceptable replication lag",
-                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Learn More",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>",
                 "currentLowestReplicationLagLabel": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):",
                 "setUpReplicationLagAlertPrompt": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
                 "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
@@ -917,13 +918,19 @@
           },
           "editTablesModal": {
             "title": "Select Databases and Tables",
-            "instruction": "Select the databases to enable disaster recovery for",
+            "instruction": {
+              "dr": "Select the tables to enable disaster recovery for",
+              "xCluster": "Select the tables to enable xCluster replication for"
+            },
             "step": {
               "selectTables": {
                 "nextButton": "Next: Confirm Full Copy"
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": {
+                  "dr": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                  "xCluster": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold>. To enable xCluster replication for these databases and/or tables, a full copy will be required before aynchronous replication from the source universe to the target universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>"
+                },
                 "backupStorageConfig": {
                   "label": "Backup Storage Config"
                 },
@@ -957,6 +964,7 @@
           "createXClusterConfig": {
             "label": "Configure Replication",
             "tooltip": {
+              "universeUnavailable": "This universe is currently unavailable for setting up further xCluster replication configs.",
               "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
             }
           },
@@ -972,7 +980,7 @@
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
-              "body": "An error occured while verifying whether the selected tables require fully copying."
+              "body": "An error occured while verifying whether the selected tables require a full copy."
             },
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
@@ -1034,8 +1042,8 @@
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
-          "syncXClusterConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
-          "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncXClusterConfirmation": "If changes have been made to your xCluster configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the xCluster configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
+          "syncDrConfirmation": "If changes have been made to your disaster recovery configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the DR configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
             "requestFailureLabel": "Reconcile config with database request failed.",
@@ -1576,6 +1584,7 @@
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
+      "sshOverrideMsg": "You should configure or override the SSH user and port inside the Linux versions",
       "emptyCard": {
         "info": "Add Linux versions that you want to use to deploy universes using this provider"
       },
@@ -1593,9 +1602,12 @@
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
         "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
+        "sshUserPlaceholder": "ec2-user",
         "sshPort": "SSH Port",
-        "sshPortPlaceholder": "e.g. 22",
+        "sshPortPlaceholder": "22",
+        "otherConfiguration": "Other Configurations",
+        "useIMDSv2": "Use IMDSv2",
+        "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
@@ -1609,7 +1621,9 @@
           "globalYBImagenameRequired": "Machine Image ID is required",
           "amiRequired": "Ami ID is Required",
           "linuxVersionAlreadyExists": "Image bundle with same name exists",
-          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles"
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles",
+          "sshUserRequired": "SSH User is required",
+          "sshPortRequired": "SSH Port is required"
         }
       },
       "upgradeModal": {
@@ -1645,12 +1659,14 @@
       },
       "state": {
         "active": "Active",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "Incomplete": "Incomplete"
       },
       "type": {
         "STS": "STS",
         "LTS": "LTS",
-        "PREVIEW (DEFAULT)": "PREVIEW"
+        "PREVIEW (DEFAULT)": "PREVIEW",
+        "PREVIEW": "PREVIEW"
       },
       "fetchMetadata": "Fetch Metadata",
       "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
@@ -1684,6 +1700,7 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
+      "incompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",
@@ -1705,23 +1722,64 @@
         "upload": "Upload",
         "installerURL": "Database Installer(Linux) or helm chart (Kubernetes)",
         "uploadSignatureFile": "Upload signature file",
-        "signature": "Signature"
+        "signature": "Signature",
+        "extractMetadataUrlSuccess": "Extracted metadata from URL successfully"
       },
       "addReleaseModal": {
-        "addReleaseTag": "Add a release tag (optional)"
+        "addReleaseTag": "Add a release tag (optional)",
+        "uploadSuccess": "Uploaded file successfully",
+        "uploadFailure": "Not able to upload file, please try again",
+        "addReleaseSucess": "Added release successfully",
+        "addReleaseFailure": "Failed to add release",
+        "updateArtifactsSuccess": "Updated release artifacts successfully",
+        "updateArtifactsFailure": "Failed to update release artifacts",
+        "extractMetadataFileSuccess": "Extracted metadata from file successfully",
+        "extractMetadataFileFailure": "Failed to extract metadata from the file",
+        "extractMetadataUrlFailure": "Failed to extract metadata from URL"
       },
       "disableReleaseModal": {
-        "disableMessage": "Are you sure you want to disable the release {{release_version}}?",
+        "disableMessage": "Are you sure you want to {{release_status}} the release {{release_version}}?",
         "enableRelease": "Enable Release",
-        "disableRelease": "Disable Release"
+        "disableRelease": "Disable Release",
+        "enable": "enable",
+        "disable": "disable",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "releaseStateSuccess": "{{release_status}} release successfully",
+        "releaseStateFailure": "Failed to {{release_status}} release"
+      },
+      "editReleaseTagModal": {
+        "updateReleaseTagSuccess": "Updated release tag successfully",
+        "updateReleaseTagFailure": "Failed to update release tag"
       },
       "deleteReleaseModal": {
         "deleteMessage": "Are you sure you want to delete the release {{release_version}}?",
-        "modalTile": "Delete Release"
+        "modalTitle": "Delete Release",
+        "deleteReleaseSuccess": "Deleted release successfully",
+        "deleteReleaseFailure": "Failed to delete release"
       },
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning",
+          "StandbyConnected": "Standby Connected",
+          "StandbyDisconnected": "Standby Disconnected"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
       }
     }
   }

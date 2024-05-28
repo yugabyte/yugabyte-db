@@ -58,7 +58,7 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Check that we have inserted the dependency into pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
-                                  + "WHERE objid=" + oidIndex + "AND refobjid=" + oidTable);
+                                  + "WHERE objid=" + oidIndex + " AND refobjid=" + oidTable);
       assertTrue(rs.next());
     }
   }
@@ -83,19 +83,19 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Check that we have inserted into pg_index.
       rs = statement.executeQuery("SELECT * FROM pg_index "
-                                  + "WHERE indexrelid=" + oidIndex + "AND indrelid=" + oidTable);
+                                  + "WHERE indexrelid=" + oidIndex + " AND indrelid=" + oidTable);
       assertTrue(rs.next());
 
       statement.execute("DROP TABLE test");
 
       // Check that we have deleted the dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
-                                  + "WHERE objid=" + oidIndex + "and refobjid=" + oidTable);
+                                  + "WHERE objid=" + oidIndex + " and refobjid=" + oidTable);
       assertFalse(rs.next());
 
       // Check that we have deleted the index's entry in pg_index.
       rs = statement.executeQuery("SELECT * FROM pg_index "
-                                  + "WHERE indexrelid=" + oidIndex + "AND indrelid=" + oidTable);
+                                  + "WHERE indexrelid=" + oidIndex + " AND indrelid=" + oidTable);
       assertFalse(rs.next());
 
       // Check that we have deleted the index's entry in pg_class.
@@ -121,7 +121,7 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Get the parent sequence's oid.
       rs = statement.executeQuery("SELECT objid FROM pg_depend "
-                                  + "WHERE classid=" + PG_CLASS_OID + "AND refobjid=" + oidTable);
+                                  + "WHERE classid=" + PG_CLASS_OID + " AND refobjid=" + oidTable);
 
       rs.next();
       int oidSequence = rs.getInt("objid");
@@ -130,7 +130,7 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Check that we have deleted the dependency between the sequence and the table.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
-                                  + "WHERE objid=" + oidSequence + "AND refobjid=" + oidTable);
+                                  + "WHERE objid=" + oidSequence + " AND refobjid=" + oidTable);
       assertFalse(rs.next());
 
       // Check that we have deleted the sequence's entry from pg_class.
@@ -179,12 +179,12 @@ public class TestPgDepend extends BasePgSQLTest {
 
       // Check that we have deleted the view-table dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
-                                  + "WHERE objid=" + oidView + "and refobjid=" + oidTable);
+                                  + "WHERE objid=" + oidView + " and refobjid=" + oidTable);
       assertFalse(rs.next());
 
       // Check that we have deleted the index-table dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
-                                  + "WHERE objid=" + oidIndex + "and refobjid=" + oidTable);
+                                  + "WHERE objid=" + oidIndex + " and refobjid=" + oidTable);
       assertFalse(rs.next());
 
       // Check that we have deleted the views's entry in pg_class.

@@ -185,7 +185,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
 
   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {
     TaskInfo taskInfo = new TaskInfo(taskType, null);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("test-owner");
     if (parentUUID != null) {
       taskInfo.setParentUuid(parentUUID);

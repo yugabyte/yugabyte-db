@@ -121,6 +121,11 @@ service TabletServerService {
 
   rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
       returns (CheckTserverTabletHealthResponsePB);
+
+  rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
+      returns (ClearAllMetaCachesOnServerResponsePB);
+
+  rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -332,6 +337,7 @@ message UpdateTransactionWaitingForStatusRequestPB {
     optional bytes transaction_id = 1;
     repeated BlockingTransaction blocking_transaction = 2;
     optional fixed64 wait_start_time = 3;
+    optional int64 request_id = 4;
   }
 
   optional fixed64 propagated_hybrid_time = 1;
@@ -356,11 +362,11 @@ message ProbeTransactionDeadlockRequestPB {
 
   optional bytes tablet_id = 2;
 
-  optional bytes waiting_txn_id = 3;
+  optional bytes probe_origin_txn_id = 3;
 
   optional bytes blocking_txn_id = 4;
 
-  optional bytes detector_uuid = 5;
+  optional bytes detector_id = 5;
 
   optional fixed32 probe_num = 6;
 
@@ -377,7 +383,19 @@ message ProbeTransactionDeadlockResponsePB {
   // If empty, no deadlock was detected. Otherwise, includes reverse ordered list of the deadlock
   // participants detected by the probe recipient. The probe sender should append its own txn to
   // this list before responding to its own probe sender.
-  repeated bytes deadlocked_txn_ids = 3;
+  repeated bytes deadlocked_txn_ids = 3; // deprecated in favor of deadlock field below
+
+  message DeadlockedTxnInfo {
+    optional bytes id = 1;
+
+    optional bytes tablet_id = 2;
+
+    optional bytes detector_id = 3;
+
+    optional fixed64 txn_start_us = 4;
+  }
+
+  repeated DeadlockedTxnInfo deadlock = 4;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {

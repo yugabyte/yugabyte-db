@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.LdapUnivSync.Params;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,8 @@ public class QueryLdapServer extends AbstractTaskBase {
 
   // query the LDAP server, extract user and group data, and organize it into a user-to-group
   // mapping.
-  private void queryLdap(LdapNetworkConnection connection) throws LdapException, CursorException {
+  private void queryLdap(LdapNetworkConnection connection, boolean enabledDetailedLogs)
+      throws LdapException, CursorException {
     LdapUnivSyncFormData ldapUnivSyncFormData = taskParams().ldapUnivSyncFormData;
     EntryCursor cursor =
         connection.search(
@@ -61,6 +63,9 @@ public class QueryLdapServer extends AbstractTaskBase {
 
     while (cursor.next()) {
       Entry entry = cursor.get();
+      if (enabledDetailedLogs) {
+        log.debug("LDAP user entry retrieved: {}", entry.toString());
+      }
       String dn = entry.getDn().toString();
       String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
 
@@ -102,9 +107,20 @@ public class QueryLdapServer extends AbstractTaskBase {
 
       connection.bind(
           ldapUnivSyncFormData.getLdapBindDn(), ldapUnivSyncFormData.getLdapBindPassword());
+      boolean enableDetailedLogs = confGetter.getGlobalConf(GlobalConfKeys.enableDetailedLogs);
+      if (enableDetailedLogs) {
+        log.debug(
+            "Binding to LDAP Server with distinguishedName: {} and password: {}",
+            ldapUnivSyncFormData.getLdapBindDn(),
+            "********");
+      }
 
       // query ldap
-      queryLdap(connection);
+      queryLdap(connection, enableDetailedLogs);
+      if (enableDetailedLogs) {
+        log.debug("[LDAP state] groups: {}", taskParams().ldapGroups);
+        log.debug("[LDAP state] user-to-group mapping: {}", taskParams().userToGroup);
+      }
     } catch (Exception e) {
       log.error("Error connecting to the LDAP Server with error='{}'.", e.getMessage(), e);
 

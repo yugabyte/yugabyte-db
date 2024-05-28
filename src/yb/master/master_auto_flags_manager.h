@@ -14,7 +14,10 @@
 #pragma once
 
 #include "yb/server/auto_flags_manager_base.h"
+
 #include "yb/master/master_cluster.pb.h"
+#include "yb/util/flags/auto_flags_util.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 namespace master {
@@ -49,11 +52,9 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   virtual ~MasterAutoFlagsManager() {}
 
   Status Init(
-      const std::string& local_hosts, std::function<bool()> has_sys_catalog_func,
-      bool is_shell_mode);
+      rpc::Messenger* messenger, std::function<bool()> has_sys_catalog_func, bool is_shell_mode);
 
-  Status LoadFromMasterLeader(
-      const std::string& local_hosts, const server::MasterAddresses& master_addresses);
+  Status LoadFromMasterLeader(const server::MasterAddresses& master_addresses);
 
   Status ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB new_config) override;
 

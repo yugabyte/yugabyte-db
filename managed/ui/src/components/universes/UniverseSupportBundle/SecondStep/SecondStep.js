@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { find } from 'lodash';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { useEffectOnce } from 'react-use';
 import { Box, Typography } from '@material-ui/core';
 import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBLoading } from '../../../common/indicators';
@@ -94,6 +95,17 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res) => res.data)
   );
+
+  useEffectOnce(() => {
+    //This is to just check if selectiedOptions is intact with payload in universe Support bundle file
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom,
+      coreFileParams
+    );
+    onOptionsChange(changedOptions);
+  });
 
   if (isLoading)
     return (

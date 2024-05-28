@@ -917,6 +917,8 @@ struct IndexOptInfo
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
 
+	bool		yb_amhasgetbitmap; /* does AM have yb_amgetbitmap interface? */
+
 	/* Used for YB base scans cost model */
 	int32_t 	yb_cached_ybctid_size;
 };
@@ -1301,6 +1303,10 @@ typedef struct Path
  * index-checkable restriction, with implicit AND semantics across the list.
  * An empty list implies a full index scan.
  *
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ * These are extracted during bitmap planning and allow pushdowns that are not
+ * possible to determine at a later stage.
+ *
  * 'indexorderbys', if not NIL, is a list of ORDER BY expressions that have
  * been found to be usable as ordering operators for an amcanorderbyop index.
  * The list must match the path's pathkeys, ie, one expression per pathkey
@@ -1323,8 +1329,9 @@ typedef struct Path
  *
  * 'indextotalcost' and 'indexselectivity' are saved in the IndexPath so that
  * we need not recompute them when considering using the same index in a
- * bitmap index/heap scan (see BitmapHeapPath).  The costs of the IndexPath
- * itself represent the costs of an IndexScan or IndexOnlyScan plan type.
+ * bitmap index/heap scan (see BitmapHeapPath / YbBitmapTableScan).  The costs
+ * of the IndexPath itself represent the costs of an IndexScan or IndexOnlyScan
+ * plan type.
  *
  * 'yb_index_path_info' contains info propagated for YugabyteDB.
  *----------
@@ -1334,6 +1341,7 @@ typedef struct IndexPath
 	Path		path;
 	IndexOptInfo *indexinfo;
 	List	   *indexclauses;
+	List	   *yb_bitmap_idx_pushdowns;
 	List	   *indexorderbys;
 	List	   *indexorderbycols;
 	ScanDirection indexscandir;
@@ -1413,10 +1421,34 @@ typedef struct BitmapHeapPath
 } BitmapHeapPath;
 
 /*
+ * YbBitmapTablePath represents one or more indexscans that generate YbTID
+ * bitmaps instead of directly accessing the heap, followed by AND/OR
+ * combinations to produce a single bitmap, followed by a table scan that uses
+ * the bitmap. Note that the output is always considered unordered, since it
+ * will come out in physical heap order no matter what the underlying indexes
+ * did.
+ *
+ * The individual indexscans are represented by IndexPath nodes, and any
+ * logic on top of them is represented by a tree of BitmapAndPath and
+ * BitmapOrPath nodes.  Notice that we can use the same IndexPath node both
+ * to represent a regular (or index-only) index scan plan, and as the child
+ * of a YbBitmapTablePath that represents scanning the same index using a
+ * BitmapIndexScan.  The startup_cost and total_cost figures of an IndexPath
+ * always represent the costs to use it as a regular (or index-only)
+ * IndexScan.  The costs of a BitmapIndexScan can be computed using the
+ * IndexPath's indextotalcost and indexselectivity.
+ */
+typedef struct YbBitmapTablePath
+{
+	Path		path;
+	Path	   *bitmapqual;		/* IndexPath, BitmapAndPath, BitmapOrPath */
+} YbBitmapTablePath;
+
+/*
  * BitmapAndPath represents a BitmapAnd plan node; it can only appear as
- * part of the substructure of a BitmapHeapPath.  The Path structure is
- * a bit more heavyweight than we really need for this, but for simplicity
- * we make it a derivative of Path anyway.
+ * part of the substructure of a BitmapHeapPath or YbBitmapTablePath.  The Path
+ * structure is a bit more heavyweight than we really need for this, but for
+ * simplicity we make it a derivative of Path anyway.
  */
 typedef struct BitmapAndPath
 {
@@ -1427,9 +1459,9 @@ typedef struct BitmapAndPath
 
 /*
  * BitmapOrPath represents a BitmapOr plan node; it can only appear as
- * part of the substructure of a BitmapHeapPath.  The Path structure is
- * a bit more heavyweight than we really need for this, but for simplicity
- * we make it a derivative of Path anyway.
+ * part of the substructure of a BitmapHeapPath or YbBitmapTablePath.  The Path
+ * structure is a bit more heavyweight than we really need for this, but for
+ * simplicity we make it a derivative of Path anyway.
  */
 typedef struct BitmapOrPath
 {

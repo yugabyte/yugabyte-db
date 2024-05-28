@@ -5231,6 +5231,8 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		dpns->index_tlist = ((IndexOnlyScan *) plan)->indextlist;
 	else if (IsA(plan, IndexScan))
 		dpns->index_tlist = ((IndexScan *) plan)->indextlist;
+	else if (IsA(plan, YbBitmapIndexScan))
+		dpns->index_tlist = ((YbBitmapIndexScan *) plan)->indextlist;
 	else if (IsA(plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) plan)->fdw_scan_tlist;
 	else if (IsA(plan, CustomScan))
@@ -12601,7 +12603,7 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		 */
 		Assert(HeapTupleIsValid(pg_rewrite_tuple));
 
-		Form_pg_rewrite rewrite_form = 
+		Form_pg_rewrite rewrite_form =
 			(Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
 		view_oid = rewrite_form->ev_class;
 

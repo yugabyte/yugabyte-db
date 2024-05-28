@@ -656,10 +656,6 @@ BeginCopyTo(ParseState *pstate,
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->file_encoding);
 
 	cstate->copy_dest = COPY_FILE;	/* default */
-
-	/* YB_TODO(review) Stat for PROGRESS_COPY_STATUS comes from
-	 *   https://phabricator.dev.yugabyte.com/D17504
-	 */
 	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);
 
 	if (pipe)

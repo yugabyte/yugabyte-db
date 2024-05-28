@@ -617,6 +617,7 @@ export const GFlagsField = ({
                     <MenuItem
                       key={optionName + '-' + serverName}
                       onClick={() => handleSelectedOption(serverProps)}
+                      data-testid={optionName + '-' + serverName}
                     >
                       {label}
                     </MenuItem>

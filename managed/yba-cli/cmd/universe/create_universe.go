@@ -58,9 +58,10 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		if !allowed {
-			logrus.Fatalf(fmt.Sprintf("Creating universes below version %s (or on restricted"+
-				" versions) is not supported, currently on %s", util.YBAAllowUniverseMinVersion,
-				version))
+			logrus.Fatalf(formatter.Colorize(
+				fmt.Sprintf("Creating universes below version %s (or on restricted"+
+					" versions) is not supported, currently on %s\n", util.YBAAllowUniverseMinVersion,
+					version), formatter.RedColor))
 		}
 
 		enableYbc := true
@@ -76,11 +77,20 @@ var createUniverseCmd = &cobra.Command{
 		}
 		// find the root certficate UUID from the name
 		if len(clientRootCA) != 0 {
-			certUUID, response, err = authAPI.GetCertificate(clientRootCA).Execute()
+			certs, response, err := authAPI.GetListOfCertificates().Execute()
 			if err != nil {
 				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Certificates")
+					"Universe", "Create - List Certificates")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			for _, c := range certs {
+				if strings.Compare(c.GetLabel(), clientRootCA) == 0 {
+					certUUID = c.GetUuid()
+					logrus.Info("Using certificate: ",
+						fmt.Sprintf("%s %s",
+							clientRootCA,
+							formatter.Colorize(certUUID, formatter.GreenColor)), "\n")
+				}
 			}
 		}
 
@@ -112,6 +122,10 @@ var createUniverseCmd = &cobra.Command{
 						configUUID := metadata["configUUID"]
 						if configUUID != nil {
 							kmsConfigUUID = configUUID.(string)
+							logrus.Info("Using kms config: ",
+								fmt.Sprintf("%s %s",
+									kmsConfigName,
+									formatter.Colorize(kmsConfigUUID, formatter.GreenColor)), "\n")
 						}
 					}
 				}
@@ -149,8 +163,8 @@ var createUniverseCmd = &cobra.Command{
 
 		var universeData []ybaclient.UniverseResp
 
-		msg := fmt.Sprintf("The universe %s is being created",
-			formatter.Colorize(universeName, formatter.GreenColor))
+		msg := fmt.Sprintf("The universe %s (%s) is being created",
+			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
@@ -161,7 +175,7 @@ var createUniverseCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The universe %s (%s) has been created\n",
+			logrus.Infof("The universe %s (%s) has been created\n",
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
@@ -179,7 +193,7 @@ var createUniverseCmd = &cobra.Command{
 			universe.Write(universesCtx, universeData)
 
 		} else {
-			fmt.Println(msg)
+			logrus.Infoln(msg + "\n")
 		}
 
 	},
@@ -205,10 +219,10 @@ func init() {
 			"Run \"yba provider list --code <provider-code>\" "+
 			"to check the default provider for the given provider-code.")
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
-		"[Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, onprem."+
+		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
-		"[Optional] Add a read replica cluster to the universe, defaults to false.")
+		"[Optional] Add a read replica cluster to the universe. (default false)")
 
 	// Following fields are required individually for both primary and read replica cluster
 
@@ -222,7 +236,7 @@ func init() {
 		"[Optional] Number of nodes in the cluster. Provide no of nodes for each cluster "+
 			"as a separate flag. \"--num-nodes 3 --num-nodes 5\" "+
 			"OR \"--num-nodes 3,5\" "+
-			"refers to 3 nodes in the Primary cluster and 3 nodes in the Read Replica cluster"+
+			"refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster"+
 			". First flag always corresponds to"+
 			" the primry cluster.")
 	createUniverseCmd.Flags().StringArray("regions", []string{},
@@ -341,13 +355,15 @@ func init() {
 	createUniverseCmd.Flags().Bool("enable-ysql", true,
 		"[Optional] Enable YSQL endpoint.")
 	createUniverseCmd.Flags().String("ysql-password", "",
-		"[Optional] YSQL authentication password.")
+		"[Optional] YSQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-ycql", true,
 		"[Optional] Enable YCQL endpoint.")
 	createUniverseCmd.Flags().String("ycql-password", "",
-		"[Optional] YCQL authentication password.")
+		"[Optional] YCQL authentication password. Use single quotes ('') to provide "+
+			"values with special characters.")
 	createUniverseCmd.Flags().Bool("enable-yedis", false,
-		"[Optional] Enable YEDIS endpoint, defaults to false.")
+		"[Optional] Enable YEDIS endpoint. (default false)")
 
 	// Encryption fields
 
@@ -363,17 +379,17 @@ func init() {
 			" certificate for the universe if encryption in transit in enabled.")
 
 	createUniverseCmd.Flags().Bool("enable-volume-encryption", false,
-		"[Optional] Enable encryption for data stored on the tablet servers, defaults to false.")
+		"[Optional] Enable encryption for data stored on the tablet servers. (default false)")
 	createUniverseCmd.Flags().String("kms-config", "",
-		"[Optional] Key management service config. "+
+		"[Optional] Key management service config name. "+
 			formatter.Colorize("Required when enable-volume-encryption is set to true.",
 				formatter.GreenColor))
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
-			"only for Kubernetes universes defaults to false. ")
+			"only for Kubernetes universes (default false) ")
 	createUniverseCmd.Flags().String("yb-db-version", "",
-		"[Optional] YugabyteDB Software Version, defaults to the latest available version"+
+		"[Optional] YugabyteDB Software Version, defaults to the latest available version. "+
 			"Run \"yba yb-db-version list\" to find the latest version.")
 	createUniverseCmd.Flags().Bool("use-systemd", true,
 		"[Optional] Use SystemD.")
@@ -424,16 +440,4 @@ func init() {
 		"[Optional] YSQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
 		"[Optional] YSQL Server RPC Port.")
-
-	setDefaults()
-}
-
-func setDefaults() {
-	viper.SetDefault("dedicated-nodes", false)
-	viper.SetDefault("use-systemd", true)
-	viper.SetDefault("enable-ysql", true)
-	viper.SetDefault("enable-ycql", true)
-	viper.SetDefault("enable-volume-encryption", false)
-	viper.SetDefault("enable-node-to-node-encrypt", true)
-	viper.SetDefault("enable-client-to-node-encrypt", true)
 }

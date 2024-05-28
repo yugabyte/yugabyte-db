@@ -50,8 +50,11 @@ var listNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
 		}
 
 		if r[0].GetCode() != util.OnpremProviderType {
@@ -71,7 +74,11 @@ var listNodesCmd = &cobra.Command{
 			Format: onprem.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			fmt.Println("No node instances found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No node instances found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		universeList, response, err := authAPI.ListUniverses().Execute()

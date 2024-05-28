@@ -56,7 +56,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTransactionRollback() {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
-    taskInfo.setDetails(mapper.createObjectNode());
+    taskInfo.setTaskParams(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
@@ -80,7 +80,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTransactionCommit() {
     TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
-    taskInfo.setDetails(mapper.createObjectNode());
+    taskInfo.setTaskParams(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
@@ -127,7 +127,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> tasks = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
       TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
-      taskInfo.setDetails(mapper.createObjectNode());
+      taskInfo.setTaskParams(mapper.createObjectNode());
       taskInfo.setOwner("test" + i);
       taskInfo.setTaskState(State.Created);
       taskInfo.save();

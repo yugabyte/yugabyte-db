@@ -210,6 +210,7 @@ tserver_rpcs_per_sec_by_universe:
   group_by: "service_method, node_prefix"
   panel_group: "Tablet Server"
   layout:
+    title: "TServer Ops / Sec / Node"
     xaxis:
       type: "date"
 
@@ -255,5 +256,75 @@ disk_io_queue_depth:
   panel_group: "Node Metrics"
   layout:
     title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+lsm_rocksdb_compaction_tasks:
+  metric: "compaction_tasks"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "state_type"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction tasks"
+    xaxis:
+      type: "date"
+
+table_size:
+  metric: ""
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    saved_name: "rocksdb_current_version_sst_files_size|log_wal_size"
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table size"
+    xaxis:
+      type: "date"
+
+table_sst_size:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table SST size"
+    xaxis:
+      type: "date"
+
+table_wal_size:
+  metric: "log_wal_size"
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table WAL size"
     xaxis:
       type: "date"

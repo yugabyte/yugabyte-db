@@ -33,12 +33,14 @@ import {
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import {
+  UseProviderValidationEnabled,
   addItem,
   constructAccessKeysCreatePayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
   getIsFormDisabled,
+  handleFormSubmitServerError,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -57,18 +59,19 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { GCPCreateFormErrFields } from './constants';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
   onBack: () => void;
 }
 
-interface GCPProviderCreateFormFieldValues {
+export interface GCPProviderCreateFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   destVpcId: string;
   gceProject: string;
@@ -161,7 +164,11 @@ export const GCPProviderCreateForm = ({
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
-  if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+  const { isLoading: isProviderValidationLoading, isValidationEnabled } = UseProviderValidationEnabled(CloudType.gcp);
+
+  if (hostInfoQuery.isLoading || hostInfoQuery.isIdle || isProviderValidationLoading) {
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
@@ -201,7 +208,7 @@ export const GCPProviderCreateForm = ({
     try {
       sshPrivateKeyContent =
         formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+          formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
     } catch (error) {
@@ -213,32 +220,32 @@ export const GCPProviderCreateForm = ({
     const vpcConfig =
       formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
         ? {
-            useHostVPC: true
-          }
+          useHostVPC: true
+        }
         : formValues.vpcSetupType === VPCSetupType.EXISTING
-        ? {
+          ? {
             useHostVPC: true,
             destVpcId: formValues.destVpcId
           }
-        : formValues.vpcSetupType === VPCSetupType.NEW
-        ? {
-            useHostVPC: false,
-            destVpcId: formValues.destVpcId
-          }
-        : assertUnreachableCase(formValues.vpcSetupType);
+          : formValues.vpcSetupType === VPCSetupType.NEW
+            ? {
+              useHostVPC: false,
+              destVpcId: formValues.destVpcId
+            }
+            : assertUnreachableCase(formValues.vpcSetupType);
 
     const gcpCredentials =
       formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
         ? {
-            useHostCredentials: true
-          }
+          useHostCredentials: true
+        }
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-        ? {
+          ? {
             gceApplicationCredentials: googleServiceAccount,
             gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
-        : assertUnreachableCase(formValues.providerCredentialType);
+          : assertUnreachableCase(formValues.providerCredentialType);
 
     const allAccessKeysPayload = constructAccessKeysCreatePayload(
       formValues.sshKeypairManagement,
@@ -288,7 +295,13 @@ export const GCPProviderCreateForm = ({
       imageBundles
     };
     try {
-      await createInfraProvider(providerPayload);
+      await createInfraProvider(providerPayload,
+        {
+          shouldValidate: isValidationEnabled,
+          mutateOptions: {
+            onError: err => handleFormSubmitServerError((err as any)?.response?.data, formMethods, GCPCreateFormErrFields)
+          }
+        });
     } catch (_) {
       // Request errors are handled by the onError callback
     }
@@ -473,6 +486,7 @@ export const GCPProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -486,12 +500,13 @@ export const GCPProviderCreateForm = ({
               viewMode="CREATE"
             />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -502,7 +517,7 @@ export const GCPProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>

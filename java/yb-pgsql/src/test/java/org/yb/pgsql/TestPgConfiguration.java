@@ -18,10 +18,12 @@ import static org.yb.AssertionWrappers.*;
 import java.io.File;
 import java.nio.file.Files;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
@@ -308,10 +310,14 @@ public class TestPgConfiguration extends BasePgSQLTest {
       );
 
       // Root setting value was set properly, but was overridden by JDBC client.
+      // With YSQL Connection Manager, certain SET statements are executed before the transaction
+      // begins. This causes changing the "source" value of the TimeZone session parameter
+      // in pg_settings.
+
       assertQuery(
           statement,
           "SELECT source, boot_val FROM pg_settings WHERE name='TimeZone'",
-          new Row("client", "GMT")
+          new Row(isTestRunningWithConnectionManager() ? "session":"client", "GMT")
       );
     }
   }
@@ -536,6 +542,18 @@ public class TestPgConfiguration extends BasePgSQLTest {
       assertQuery(statement, "SHOW statement_timeout", new Row("1s"));
       runInvalidQuery(statement, "SELECT pg_sleep(5);",
                       "ERROR: canceling statement due to statement timeout");
+    }
+  }
+
+  @Test
+  public void testShowAll() throws Exception {
+    int tserver = spawnTServer();
+
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SHOW ALL;");
+      List<Row> rows = getRowList(rs);
+      assertGreaterThan(rows.size(), 0);
     }
   }
 

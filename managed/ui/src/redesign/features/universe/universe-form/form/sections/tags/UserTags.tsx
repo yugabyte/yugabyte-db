@@ -15,11 +15,14 @@ export const UserTags: FC = () => {
   const { t } = useTranslation();
 
   //form context
-  const { clusterType, mode, isViewMode } = useContext(UniverseFormContext)[0];
+  const { clusterType, mode, isViewMode, universeConfigureTemplate } = useContext(
+    UniverseFormContext
+  )[0];
   const isAsyncCluster = clusterType === ClusterType.ASYNC;
   const isEditMode = mode === ClusterModes.EDIT;
 
-  const { userTagsDisable } = useVolumeControls(isEditMode);
+  const updateOptions = universeConfigureTemplate?.updateOptions;
+  const { userTagsDisable } = useVolumeControls(isEditMode, updateOptions);
   //form Data
   const { getValues } = useFormContext<Partial<UniverseFormData>>();
   const userTagsValue = getValues(USER_TAGS_FIELD);

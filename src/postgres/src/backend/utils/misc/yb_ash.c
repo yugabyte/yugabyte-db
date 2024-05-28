@@ -41,6 +41,7 @@
 #include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
@@ -555,7 +556,11 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	int			i;
-#define ACTIVE_SESSION_HISTORY_COLS 12
+	static int  ncols = 0;
+#define ACTIVE_SESSION_HISTORY_COLS 13
+
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
 	if (!yb_ash)
@@ -595,8 +600,8 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < yb_ash->max_entries; ++i)
 	{
-		Datum		values[ACTIVE_SESSION_HISTORY_COLS];
-		bool		nulls[ACTIVE_SESSION_HISTORY_COLS];
+		Datum		values[ncols];
+		bool		nulls[ncols];
 		int			j = 0;
 		pg_uuid_t	root_request_id;
 		pg_uuid_t	yql_endpoint_tserver_uuid;
@@ -625,7 +630,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = CStringGetTextDatum(
 			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
 		values[j++] = CStringGetTextDatum(
-			pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+			YBCGetWaitEventClass(sample->encoded_wait_event_code));
 		values[j++] = CStringGetTextDatum(
 			pgstat_get_wait_event(sample->encoded_wait_event_code));
 
@@ -653,6 +658,10 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 			nulls[j++] = true;
 
 		values[j++] = Float4GetDatum(sample->sample_weight);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS)
+			values[j++] = CStringGetTextDatum(
+				pgstat_get_wait_event_type(sample->encoded_wait_event_code));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

@@ -17,10 +17,10 @@ type: docs
 
 YugabyteDB supports the following types of reads:
 
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
+- [Follower reads](../../going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
-A data center (also known as a [universe](../../../architecture/concepts/universe/#universe-vs-cluster)) can have one primary cluster and several read replica clusters.
+A data center (also known as a [universe](../../../architecture/concepts#universe)) can have one primary cluster and several read replica clusters.
 
 Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. In addition, you have to set the application's local data center to the read replica cluster's region.
 
@@ -52,7 +52,6 @@ Waiting for cluster to be ready.
 | JDBC            : jdbc:postgresql://127.0.0.1:5433/yugabyte |
 | YSQL Shell      : bin/ysqlsh                                |
 | YCQL Shell      : bin/ycqlsh                                |
-| YEDIS Shell     : bin/redis-cli                             |
 | Web UI          : http://127.0.0.1:7000/                    |
 | Cluster Data    : /Users/yourname/yugabyte-data             |
 ---------------------------------------------------------------
@@ -210,7 +209,7 @@ For information on deploying read replicas, see [Read Replica Clusters](../../..
 
 ## Fault tolerance
 
-In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the RAFT group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the RAFT leader (the default is 60 seconds). For "write once, read many times" workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads such that they continue to read (which would not be possible without follower reads).
+In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the Raft group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the Raft leader (the default is 60 seconds). For "write once, read many times" workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads such that they continue to read (which would not be possible without follower reads).
 
 The following command starts a read-only workload:
 
@@ -283,4 +282,4 @@ For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
 ## Learn more
 
 - [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/)
+- [Follower reads](../../going-beyond-sql/follower-reads-ycql/)

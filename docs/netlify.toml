@@ -9,21 +9,24 @@
 #
 # https://docs.netlify.com/site-deploys/overview/#deploy-contexts
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
-
+# all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
 
 ################ REDIRECTS ################
 #
@@ -110,8 +113,8 @@
   to = "/preview/drivers-orms/"
 
 [[redirects]]
-  from = "/explore/fault-tolerance/"
-  to = "/preview/explore/fault-tolerance/"
+  from = "/explore/*"
+  to = "/preview/explore/:splat"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/covering-index-ycql/"
@@ -154,8 +157,12 @@
   to = "/preview/explore/ycql-language/jsonb-ycql/"
 
 [[redirects]]
+  from = "/preview/explore/ysql-language-features/going-beyond-sql/*"
+  to = "/preview/explore/going-beyond-sql/:splat"
+
+[[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
@@ -311,7 +318,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/sharding/"
@@ -319,7 +326,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/replication/"
@@ -332,6 +339,15 @@
 [[redirects]]
   from = "/preview/architecture/concepts/yql/"
   to = "/preview/architecture/query-layer/"
+
+[[redirects]]
+  from = "/preview/architecture/concepts"
+  to = "/preview/architecture/key-concepts"
+
+# from 404 report (referrer: ycombinator)
+[[redirects]]
+  from = "/preview/architecture/concepts/acknowledgements"
+  to = "/preview/architecture/key-concepts"
 
 [[redirects]]
   from = "/preview/architecture/docdb/replication/"
@@ -399,11 +415,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/indexes-1/"
@@ -415,15 +431,15 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/linux/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/read-replicas/"
@@ -479,7 +495,7 @@
 
 [[redirects]]
   from = "/preview/explore/ysql-language-features/tablespaces/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/tablespaces/"
+  to = "/preview/explore/going-beyond-sql/tablespaces/"
 
 [[redirects]]
   from = "/preview/faq/"
@@ -543,11 +559,15 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/ybdb-release/"
+  to = "/preview/releases/ybdb-releases/"
 
 [[redirects]]
   from = "/preview/releases/release-notes/*"
-  to = "/preview/releases/ybdb-release/:splat"
+  to = "/preview/releases/ybdb-releases/:splat"
+
+[[redirects]]
+  from = "/preview/releases/ybdb-release/*"
+  to = "/preview/releases/ybdb-releases/:splat"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -560,6 +580,14 @@
 [[redirects]]
   from = "/preview/secure/authentication/ldap-authentication/"
   to = "/preview/secure/authentication/ldap-authentication-ysql/"
+
+[[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ysql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ysql"
+
+[[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ycql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ycql"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-overview/"
@@ -583,7 +611,11 @@
 
 [[redirects]]
   from = "/quick-start/run-sample-apps/"
-  to = "/preview/develop/realworld-apps/explore-sample-apps/"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
 
 [[redirects]]
   from = "/quick-start/test-redis/"
@@ -1272,6 +1304,8 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://api.segment.io/
+            https://cdn.segment.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1294,6 +1328,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://cdn.segment.com/
         ;
 
         style-src 'self' 'unsafe-inline'

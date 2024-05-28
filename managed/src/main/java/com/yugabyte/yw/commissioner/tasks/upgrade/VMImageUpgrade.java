@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -79,7 +80,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   @Override
   public NodeState getNodeState() {
-    return NodeState.Reprovisioning;
+    return NodeState.VMImageUpgrade;
   }
 
   @Override
@@ -90,6 +91,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     Set<NodeDetails> nodeSet = fetchNodesForCluster();
     String newVersion = taskParams().ybSoftwareVersion;
     if (taskParams().isSoftwareUpdateViaVm) {
@@ -104,10 +106,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodesForClustersInParams();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          Set<NodeDetails> nodeSet = fetchNodesForCluster();
+          MastersAndTservers nodes = getNodesToBeRestarted();
+          Set<NodeDetails> nodeSet = toOrderedSet(nodes.asPair());
 
           String newVersion = taskParams().ybSoftwareVersion;
 
@@ -143,6 +151,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Universe universe = getUniverse();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
+      createSetNodeStateTask(node, getNodeState());
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
@@ -180,9 +189,19 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
       List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
-      if (node.isMaster) processTypes.add(ServerType.MASTER);
-      if (node.isTserver) processTypes.add(ServerType.TSERVER);
+      List<NodeDetails> masters = new ArrayList<>();
+      if (node.isMaster) {
+        processTypes.add(ServerType.MASTER);
+        masters.add(node);
+      }
+      List<NodeDetails> tservers = new ArrayList<>();
+      if (node.isTserver) {
+        processTypes.add(ServerType.TSERVER);
+        tservers.add(node);
+      }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
+
+      createCheckNodesAreSafeToTakeDownTask(masters, tservers, null);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
@@ -235,6 +254,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
             } else {
+              long startTime = System.currentTimeMillis();
               // Todo: remove the following subtask.
               // We have an issue where the tserver gets running once the VM with the new image is
               // up.
@@ -250,7 +270,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createServerControlTask(node, processType, "start")
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               createWaitForServersTasks(new HashSet<>(nodeList), processType);
-              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+              createWaitForServerReady(node, processType)
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
@@ -258,6 +278,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 createSetActiveUniverseKeysTask()
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               }
+              createSleepAfterStartupTask(
+                  universe.getUniverseUUID(),
+                  Collections.singletonList(processType),
+                  SetNodeState.getStartKey(node.getNodeName(), getNodeState()));
             }
           });
 
@@ -269,6 +293,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       }
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createSetNodeStateTask(node, NodeState.Live);
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent

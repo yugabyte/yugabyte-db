@@ -74,6 +74,7 @@ public class LdapUtil {
     String serviceAccountDistinguishedName;
     String serviceAccountPassword;
     String ldapSearchAttribute;
+    String ldapSearchFilter;
     boolean enableDetailedLogs;
     String ldapGroupSearchFilter;
     SearchScope ldapGroupSearchScope;
@@ -111,6 +112,7 @@ public class LdapUtil {
     String serviceAccountPassword =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountPassword);
     String ldapSearchAttribute = confGetter.getGlobalConf(GlobalConfKeys.ldapSearchAttribute);
+    String ldapSearchFilter = confGetter.getGlobalConf(GlobalConfKeys.ldapSearchFilter);
     boolean enabledDetailedLogs = confGetter.getGlobalConf(GlobalConfKeys.enableDetailedLogs);
     String ldapGroupSearchFilter = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchFilter);
     SearchScope ldapGroupSearchScope =
@@ -138,6 +140,7 @@ public class LdapUtil {
             serviceAccountDistinguishedName,
             serviceAccountPassword,
             ldapSearchAttribute,
+            ldapSearchFilter,
             enabledDetailedLogs,
             ldapGroupSearchFilter,
             ldapGroupSearchScope,
@@ -294,18 +297,21 @@ public class LdapUtil {
       throw new PlatformServiceException(UNAUTHORIZED, "Error binding to service account.");
     }
     try {
+      String searchFilter = ldapConfiguration.getLdapSearchFilter();
+      if (StringUtils.isEmpty(searchFilter)) {
+        searchFilter = "(" + ldapConfiguration.getLdapSearchAttribute() + "=" + email + ")";
+      }
+      log.debug("Performing LDAP search with filter: {}", searchFilter);
       EntryCursor cursor =
           connection.search(
-              ldapConfiguration.getLdapBaseDN(),
-              "(" + ldapConfiguration.getLdapSearchAttribute() + "=" + email + ")",
-              SearchScope.SUBTREE,
-              "*");
+              ldapConfiguration.getLdapBaseDN(), searchFilter, SearchScope.SUBTREE, "*");
       log.info("Connection cursor: {}", cursor);
       while (cursor.next()) {
         userEntry = cursor.get();
         if (enableDetailedLogs) {
           log.info("LDAP server returned response: {}", userEntry.toString());
         }
+
         Attribute parseDn = userEntry.get("distinguishedName");
         log.info("parseDn: {}", parseDn);
         if (parseDn == null) {
@@ -315,15 +321,19 @@ public class LdapUtil {
           distinguishedName = parseDn.getString();
         }
         log.info("Distinguished name parsed: {}", distinguishedName);
+
         Attribute parseRole = userEntry.get("yugabytePlatformRole");
         if (parseRole != null) {
           role = parseRole.getString();
         }
 
         // Cursor.next returns true in some environments
-        if (!StringUtils.isEmpty(distinguishedName)) {
-          log.info("Successfully fetched DN");
-          break;
+        if (!StringUtils.isEmpty(distinguishedName)
+            && getNameFromDN(distinguishedName).equals(email)) {
+          if (ldapConfiguration.isEnableDetailedLogs()) {
+            log.debug("Successfully fetched user entry from LDAP Server {}", userEntry.toString());
+          }
+          return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
         }
       }
 
@@ -337,7 +347,7 @@ public class LdapUtil {
       log.error("LDAP query failed.", e);
       throw new PlatformServiceException(BAD_REQUEST, "LDAP search failed.");
     }
-    return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
+    return new ImmutableTriple<Entry, String, String>(null, "", "");
   }
 
   public LdapNetworkConnection createConnection(
@@ -402,27 +412,51 @@ public class LdapUtil {
       String role = "";
       Entry userEntry = null;
       if (ldapConfiguration.isUseLdapSearchAndBind()) {
+        // search and bind
         if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()
-            || ldapConfiguration.getLdapSearchAttribute().isEmpty()) {
+            || (ldapConfiguration.getLdapSearchAttribute().isEmpty()
+                && ldapConfiguration.getLdapSearchFilter().isEmpty())) {
           throw new PlatformServiceException(
               BAD_REQUEST,
-              "Service account and LDAP Search Attribute must be configured"
+              "Service account and LDAP Search Attribute/Filter must be configured"
                   + " to use search and bind.");
         }
+        // With search + bind, we first log in to the service account, fetch the user via the search
+        // attribute/filter and retrieve the user's DN. Once we have the DN, we perform a bind with
+        // the LDAP server for the user using this DN and the password entered on the login page.
+        log.debug("Configuring authentication via LDAP Search and Bind");
         Triple<Entry, String, String> entryDnRole =
             searchAndBind(
                 email, ldapConfiguration, connection, ldapConfiguration.isEnableDetailedLogs());
         userEntry = entryDnRole.getLeft();
+        if (userEntry == null) {
+          // search has returned an empty user => user doesn't exist on the LDAP server
+          String errorMessage =
+              "LDAP user "
+                  + email
+                  + " does not match any entries on the LDAP server based on the provided search"
+                  + " attribute/filter.";
+          throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+        }
         String fetchedDistinguishedName = entryDnRole.getMiddle();
         if (!fetchedDistinguishedName.isEmpty()) {
           distinguishedName = fetchedDistinguishedName;
+          log.debug("Updated Dn: {}", distinguishedName);
         }
         role = entryDnRole.getRight();
       }
 
+      // simple bind
+      log.debug("Configuring authentication via LDAP Simple Bind");
       email = email.toLowerCase();
       try {
+        if (ldapConfiguration.isEnableDetailedLogs()) {
+          log.debug(
+              "Binding to LDAP Server with distinguishedName: {} and password: {}",
+              distinguishedName,
+              "********");
+        }
         connection.bind(distinguishedName, password);
       } catch (LdapNoSuchObjectException e) {
         log.error(e.getMessage());
@@ -444,6 +478,12 @@ public class LdapUtil {
             && !ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           connection.unBind();
           try {
+            if (ldapConfiguration.isEnableDetailedLogs()) {
+              log.debug(
+                  "Binding to LDAP Server with distinguishedName: {} and password: {}",
+                  ldapConfiguration.getServiceAccountDistinguishedName(),
+                  "********");
+            }
             connection.bind(
                 ldapConfiguration.getServiceAccountDistinguishedName(),
                 ldapConfiguration.getServiceAccountPassword());
@@ -453,6 +493,12 @@ public class LdapUtil {
                     + "Defaulting to current user connection with LDAP Server."
                     + e.getMessage();
             log.error(errorMessage);
+            if (ldapConfiguration.isEnableDetailedLogs()) {
+              log.debug(
+                  "Binding to LDAP Server with distinguishedName: {} and password: {}",
+                  distinguishedName,
+                  "********");
+            }
             connection.bind(distinguishedName, password);
           }
         }
@@ -462,6 +508,9 @@ public class LdapUtil {
               connection.search(distinguishedName, "(objectclass=*)", SearchScope.SUBTREE, "*");
           while (cursor.next()) {
             userEntry = cursor.get();
+            if (ldapConfiguration.isEnableDetailedLogs()) {
+              log.info("LDAP server returned response: {}", userEntry.toString());
+            }
             Attribute parseRole = userEntry.get("yugabytePlatformRole");
             role = parseRole.getString();
           }
@@ -472,6 +521,7 @@ public class LdapUtil {
       }
 
       if (ldapConfiguration.isLdapGroupUseRoleMapping()) {
+        log.debug("Mapping roles to LDAP groups...");
         if (ldapConfiguration.getServiceAccountDistinguishedName().isEmpty()
             || ldapConfiguration.getServiceAccountPassword().isEmpty()) {
           throw new PlatformServiceException(
@@ -479,6 +529,12 @@ public class LdapUtil {
         }
         connection.unBind();
         try {
+          if (ldapConfiguration.isEnableDetailedLogs()) {
+            log.debug(
+                "Binding to LDAP Server with distinguishedName: {} and password: {}",
+                ldapConfiguration.getServiceAccountDistinguishedName(),
+                "********");
+          }
           connection.bind(
               ldapConfiguration.getServiceAccountDistinguishedName(),
               ldapConfiguration.getServiceAccountPassword());
@@ -573,6 +629,12 @@ public class LdapUtil {
          * Otherwise, this is a user for which the admin has or will set a role, NOOP
          */
         if (users.isLdapSpecifiedRole()) {
+          if (ldapConfiguration.isEnableDetailedLogs()) {
+            log.debug(
+                "Assigning LDAP-specified role {} to existing user {}",
+                roleToAssign,
+                oldUser.getEmail());
+          }
           oldUser.setRole(roleToAssign);
           oldUser.setLdapSpecifiedRole(true);
         } else if (oldUser.isLdapSpecifiedRole()) {
@@ -596,17 +658,26 @@ public class LdapUtil {
         users.setPrimary(false);
         users.setRole(roleToAssign);
       }
+      if (ldapConfiguration.isEnableDetailedLogs()) {
+        log.debug("Saving new user: {}", users);
+      }
       users.save();
 
       if (ldapConfiguration.isUseNewRbacAuthz()) {
+        log.debug("Using new RBAC authorization...");
         List<RoleBinding> currentRoleBindings = RoleBinding.getAll(users.getUuid());
         currentRoleBindings.stream().forEach(rB -> rB.delete());
         com.yugabyte.yw.models.rbac.Role newRbacRole =
             com.yugabyte.yw.models.rbac.Role.get(users.getCustomerUUID(), roleToAssign.name());
         if (newRbacRole != null) {
+          log.debug("Found role with name: {}", roleToAssign.name());
           ResourceGroup rG =
               ResourceGroup.getSystemDefaultResourceGroup(users.getCustomerUUID(), users);
-          RoleBinding.create(users, RoleBindingType.System, newRbacRole, rG);
+          RoleBinding createdRoleBinding =
+              RoleBinding.create(users, RoleBindingType.System, newRbacRole, rG);
+          if (ldapConfiguration.isEnableDetailedLogs()) {
+            log.debug("Created role binding: {}", createdRoleBinding);
+          }
         } else {
           throw new RuntimeException(String.format("No role with the name: %s found", role));
         }
@@ -621,6 +692,8 @@ public class LdapUtil {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     } catch (LdapException e) {
       log.error(String.format("LDAP error while attempting to auth email %s", email), e);
+      throw e;
+    } catch (PlatformServiceException e) {
       throw e;
     } catch (Exception e) {
       log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
@@ -638,5 +711,11 @@ public class LdapUtil {
 
   public boolean isCertVerificationEnforced() {
     return confGetter.getGlobalConf(GlobalConfKeys.ldapsEnforceCertVerification);
+  }
+
+  private String getNameFromDN(String dn) {
+    String[] attributeValuePairs = dn.split(",");
+    String[] attributeValue = attributeValuePairs[0].split("=");
+    return attributeValue[1].trim();
   }
 }

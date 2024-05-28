@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -30,13 +31,14 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
-import java.text.DateFormat;
-import java.text.ParseException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -73,8 +75,9 @@ public class ReleasesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
+    // Validate the version/tag combo doesn't exist
     if (reqRelease.release_uuid == null) {
-      log.debug("generating random release UUID as one was not provided");
+      log.trace("generating random release UUID as one was not provided");
       reqRelease.release_uuid = UUID.randomUUID();
     }
     Release release;
@@ -130,10 +133,33 @@ public class ReleasesController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
-  public Result list(UUID customerUUID, Http.Request request) {
+  public Result list(UUID customerUUID, @Nullable String deploymentType, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    List<Release> releases = Release.getAll();
+    List<Release> releases = null;
+    if (deploymentType != null) {
+      switch (deploymentType) {
+        case "x86_64":
+          releases =
+              Release.getAllWithArtifactType(ReleaseArtifact.Platform.LINUX, Architecture.x86_64);
+          break;
+        case "aarch64":
+          releases =
+              Release.getAllWithArtifactType(ReleaseArtifact.Platform.LINUX, Architecture.aarch64);
+          break;
+        case "kubernetes":
+          releases = Release.getAllWithArtifactType(ReleaseArtifact.Platform.KUBERNETES, null);
+          break;
+        default:
+          log.error(
+              "unknown deployment type {}, must be 'x86_64', 'aarch64', or 'kubernetes'",
+              deploymentType);
+          throw new PlatformServiceException(
+              BAD_REQUEST, "unknown deployment type " + deploymentType);
+      }
+    } else {
+      releases = Release.getAll();
+    }
     List<ResponseRelease> respReleases = new ArrayList<>();
     for (Release release : releases) {
       ResponseRelease resp = releaseToResponseRelease(release);
@@ -232,14 +258,13 @@ public class ReleasesController extends AuthenticatedController {
         release.setReleaseTag(reqRelease.release_tag);
       }
       if (reqRelease.release_date != null) {
-        DateFormat df = DateFormat.getDateInstance();
         try {
-          Date releaseDate = df.parse(reqRelease.release_date);
+          Date releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
           if (!releaseDate.equals(release.getReleaseDate())) {
             log.debug("updating release date to {}", reqRelease.release_date);
             release.setReleaseDate(releaseDate);
           }
-        } catch (ParseException e) {
+        } catch (IllegalArgumentException | DateTimeException e) {
           log.warn("unable to parse date format", e);
         }
       }
@@ -297,26 +322,26 @@ public class ReleasesController extends AuthenticatedController {
               }
               break;
             }
-            if (!found) {
-              log.info("creating new artifact");
-              if (reqArtifact.package_file_id != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_file_id);
-                release.addArtifact(newArtifact);
-              }
-              if (reqArtifact.package_url != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_url);
-                release.addArtifact(newArtifact);
-              }
+          }
+          if (!found) {
+            log.info("creating new artifact");
+            if (reqArtifact.package_file_id != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_file_id);
+              release.addArtifact(newArtifact);
+            }
+            if (reqArtifact.package_url != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_url);
+              release.addArtifact(newArtifact);
             }
           }
         }
@@ -351,7 +376,7 @@ public class ReleasesController extends AuthenticatedController {
     resp.release_type = release.getReleaseType();
     resp.state = release.getState().toString();
     if (release.getReleaseDate() != null) {
-      resp.release_date = release.getReleaseDate().toString();
+      resp.release_date_msecs = release.getReleaseDate().toInstant().toEpochMilli();
     }
     resp.release_notes = release.getReleaseNotes();
     resp.release_tag = release.getReleaseTag();

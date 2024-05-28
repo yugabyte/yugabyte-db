@@ -628,6 +628,10 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	if (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
 		return;
 
+	/* YB: YB_REPLICA_IDENTITY_CHANGE is also good. */
+	if (IsYugaByteEnabled() && rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE)
+		return;
+
 	/*
 	 * In per-database catalog version mode at the end of a global-impact
 	 * DDL statement, we internally call yb_increment_all_db_catalog_versions
@@ -639,7 +643,7 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	 * NOTE: we may need to allow more system tables in YB context.
 	 *
 	 * TODO(#20143): Revisit if and when we introduce support for replica
-	 * identity.
+	 * identity, to identify how REPLICA_IDENTITY_NOTHING is handled here.
 	 */
 	if (IsYugaByteEnabled() &&
 		yb_non_ddl_txn_for_sys_tables_allowed)

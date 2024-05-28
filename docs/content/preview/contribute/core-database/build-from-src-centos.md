@@ -137,6 +137,8 @@ To compile with GCC, install the following packages, and adjust the version numb
 sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 ```
 
+Note: there may be compilation issues ([#22059](https://github.com/yugabyte/yugabyte-db/issues/22059)).
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
@@ -146,6 +148,12 @@ sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 Perform the following steps to build a release package:
 
 1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Install patchelf:
+
+   ```sh
+   sudo yum install -y patchelf
+   ```
+
 1. Run the `yb_release` script using the following command:
 
    ```sh

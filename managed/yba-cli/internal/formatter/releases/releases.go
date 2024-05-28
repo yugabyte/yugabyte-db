@@ -6,6 +6,7 @@ package releases
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -74,7 +75,10 @@ func (c *Context) Version() string {
 // State of YugabyteDB release
 func (c *Context) State() string {
 	state := c.release["state"].(string)
-	return state
+	if strings.Compare(state, "ACTIVE") == 0 {
+		return formatter.Colorize(state, formatter.GreenColor)
+	}
+	return formatter.Colorize(state, formatter.YellowColor)
 }
 
 // MarshalJSON function

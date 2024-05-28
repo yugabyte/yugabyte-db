@@ -256,6 +256,7 @@ typedef struct PgPrepareParameters {
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
+  bool fetch_ybctids_only;
 } YBCPgPrepareParameters;
 
 // Opaque type for output parameter.
@@ -386,6 +387,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
+  const bool*     ysql_enable_colocated_tables_with_tablespaces;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
@@ -488,6 +490,14 @@ typedef struct PgSessionTxnInfo {
   bool is_not_null;
 } YBCPgSessionTxnInfo;
 
+// Values to copy from main backend session into background workers
+typedef struct PgSessionParallelData {
+  uint64_t session_id;
+  uint64_t txn_serial_no;
+  uint64_t read_time_serial_no;
+  uint32_t active_sub_transaction_id;
+} YBCPgSessionParallelData;
+
 typedef struct PgJwtAuthOptions {
   char* jwks;
   char* matching_claim_key;
@@ -546,6 +556,18 @@ typedef enum PgTransactionSetting {
 // Postgres WAL record pointer defined in Postgres' xlogdefs.h
 typedef uint64_t YBCPgXLogRecPtr;
 
+// Postgres Replica Identity values defined in Postgres' pg_class.h
+#define YBC_REPLICA_IDENTITY_DEFAULT 'd'
+#define YBC_REPLICA_IDENTITY_NOTHING 'n'
+#define YBC_REPLICA_IDENTITY_FULL 'f'
+#define YBC_REPLICA_IDENTITY_INDEX 'i'
+#define YBC_YB_REPLICA_IDENTITY_CHANGE 'c'
+
+typedef struct PgReplicaIdentityDescriptor {
+  YBCPgOid table_oid;
+  char identity_type;
+} YBCPgReplicaIdentityDescriptor;
+
 typedef struct PgReplicationSlotDescriptor {
   const char *slot_name;
   const char *stream_id;
@@ -554,14 +576,25 @@ typedef struct PgReplicationSlotDescriptor {
   uint64_t confirmed_flush;
   uint64_t restart_lsn;
   uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
+  YBCPgReplicaIdentityDescriptor *replica_identities;
+  int replica_identities_count;
+  uint64_t last_pub_refresh_time;
 } YBCReplicationSlotDescriptor;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgDatumMessage {
   const char* column_name;
+  // Null indicates that the value is explicitly null while Omitted indicates that the value is
+  // present but was just not sent from the CDC service due to the Replica Identity (CHANGE,
+  // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES).
   uint64_t after_op_datum;
   bool after_op_is_null;
+  bool after_op_is_omitted;
   uint64_t before_op_datum;
   bool before_op_is_null;
+  bool before_op_is_omitted;
 } YBCPgDatumMessage;
 
 typedef enum PgRowMessageAction {
@@ -571,8 +604,11 @@ typedef enum PgRowMessageAction {
   YB_PG_ROW_MESSAGE_ACTION_INSERT = 3,
   YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
+  YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
 } YBCPgRowMessageAction;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgRowMessage {
   int col_count;
   YBCPgDatumMessage* cols;
@@ -585,9 +621,13 @@ typedef struct PgRowMessage {
   uint32_t xid;
 } YBCPgRowMessage;
 
+// Upon adding any more palloc'd members in the below struct, add logic to free it in
+// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct PgChangeRecordBatch {
   int row_count;
   YBCPgRowMessage* rows;
+  bool needs_publication_table_list_refresh;
+  uint64_t publication_refresh_time;
 } YBCPgChangeRecordBatch;
 
 // A struct to store ASH metadata in PG's procarray
@@ -614,6 +654,18 @@ typedef struct AshMetadata {
   uint16_t client_port;
   uint8_t addr_family;
 } YBCAshMetadata;
+
+typedef struct PgYCQLStatementStats {
+  int64_t queryid;
+  const char* query;
+  bool is_prepared;
+  int64_t calls;
+  double total_time;
+  double min_time;
+  double max_time;
+  double mean_time;
+  double stddev_time;
+} YCQLStatementStats;
 
 // Struct to store ASH samples in the circular buffer.
 typedef struct AshSample {
@@ -670,6 +722,19 @@ typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
   YB_REPLICATION_SLOT_USE_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
+
+typedef struct PgTabletsDescriptor {
+  const char* tablet_id;
+  const char* table_name;
+  const char* table_id;
+  const char* namespace_name;
+  const char* table_type;
+  const char* pgschema_name;
+  const char* partition_key_start;
+  size_t partition_key_start_len;
+  const char* partition_key_end;
+  size_t partition_key_end_len;
+} YBCPgTabletsDescriptor;
 
 #ifdef __cplusplus
 }  // extern "C"

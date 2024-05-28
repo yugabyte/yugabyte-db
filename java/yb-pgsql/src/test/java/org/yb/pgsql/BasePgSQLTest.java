@@ -142,6 +142,27 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
   protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
 
+  // Some reasons why the test should not be run with connection manager
+  protected static final String UNIQUE_PHYSICAL_CONNS_NEEDED =
+      "Test needs two different physical connections. With Connection Manager the logical" +
+        " connections will share the same physical connection in a single threaded test if" +
+        " no active transactions are there on the first connection";
+
+  protected static final String LESSER_PHYSICAL_CONNS =
+      "Skipping this test with Ysql Connection Manager as logical connections " +
+        "created are lesser than physical connections and the real maximum limit for creating " +
+        "connections is never reached";
+
+  protected static final String NO_PHYSICAL_CONN_ATTACHED =
+      "Skipping this test with Ysql Connection Manager as no physical connection "+
+        "is being assigned therefore no backend id present when logical connection is not " +
+        "executing any transaction";
+
+  protected static final String SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM =
+      "Skipping this test with Ysql Connection Manager as all 3 logical " +
+        "connections will be using same physical conn, due to which it will affect the memory " +
+        "allocated to connection1 by connection2";
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -293,9 +314,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
-    String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-    if ((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")){
+
+    if (isTestRunningWithConnectionManager()) {
       builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
+        Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
     }
   }
 
@@ -456,6 +479,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       stmt.execute("ROLLBACK");
       stmt.execute("DISCARD TEMP");
+
+      // TODO(tim): Workaround for DB-11127, remove after fix.
+      stmt.execute("RESET enable_seqscan");
+      stmt.execute("RESET enable_bitmapscan");
     }
 
     cleanUpCustomDatabases();
@@ -566,6 +593,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       destroyMiniCluster();
       miniCluster = null;
     }
+  }
+
+  protected boolean isTestRunningWithConnectionManager() {
+    return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -2185,7 +2216,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
+  protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
     Long rpc_count_before =
@@ -2311,5 +2342,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
     resultSet.next();
     return resultSet.getString(1);
+  }
+
+  // yb-tserver flag ysql_conn_mgr_stats_interval (stats_interval field
+  // in the odyssey's config) controls the interval at which the
+  // stats gets updated (src/odyssey/sources/cron.c:332).
+  public static final int CONNECTIONS_STATS_UPDATE_INTERVAL_SECS = 1;
+
+  public static void waitForStatsToGetUpdated() throws InterruptedException {
+    Thread.sleep(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS * 1000 * 2);
   }
 }

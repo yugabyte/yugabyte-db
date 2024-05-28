@@ -36,7 +36,7 @@ If the scheduled maintenance is a database upgrade, you can start the upgrade by
 Maintenance operations, including database upgrades, certificate rotations, and cluster maintenance, block other cluster operations such as backups, and incur a load on the cluster.
 
 - Avoid scheduling during [scheduled backups](../backup-clusters/).
-- Schedule the window for low traffic periods to reduce the impact of rolling updates.
+- Schedule the window for low traffic periods to reduce the impact of rolling updates or, in the case of clusters with a fault tolerance of none, downtime.
 - If you have a [staging environment](../../cloud-basics/create-clusters-overview/#staging-cluster), schedule the maintenance window for the staging cluster to a time before that of the production cluster, so that you can validate updates against your applications in your pre-production environment _before_ updating your production cluster. You can also set an exclusion period for the production cluster.
 
 Note that if another [locking cluster operation](../#locking-operations) is already running, the maintenance operation must wait for it to finish. A scheduled maintenance will continue to attempt to run while the maintenance window is open, and if it cannot run, is postponed to the next available window.
@@ -64,7 +64,7 @@ Yugabyte performs rolling maintenance and upgrades on multi-node clusters with z
 
 - Dropped connections - Connections to the stopped node are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
 - Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.
-- May not be [highly available](../../../architecture/core-functions/high-availability/) - During maintenance, one node is always offline. In a multi-node cluster with a [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of 1, if one of the remaining nodes goes down (for a total of 2 nodes offline), you can no longer access the database.
+- May not be [highly available](../../../explore/fault-tolerance/) - During maintenance, one node is always offline. In a multi-node cluster with a [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of 1, if one of the remaining nodes goes down (for a total of 2 nodes offline), you can no longer access the database.
 
 ## Critical maintenance
 

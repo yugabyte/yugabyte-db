@@ -429,27 +429,6 @@ export interface PitrConfig {
   uuid: string;
 }
 
-export interface HAPlatformInstance {
-  uuid: string;
-  config_uuid: string;
-  address: string;
-  is_leader: boolean;
-  is_local: boolean;
-  last_backup: string | null;
-}
-
-export interface HAConfig {
-  uuid: string;
-  cluster_key: string;
-  last_failover: number;
-  instances: HAPlatformInstance[];
-}
-
-export interface HAReplicationSchedule {
-  frequency_milliseconds: number;
-  is_running: boolean;
-}
-
 export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
@@ -514,6 +493,15 @@ export interface MetricsQueryParams {
   tableId?: string;
   tableName?: string;
   xClusterConfigUuid?: string;
+}
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/models/NodeInstance.java
+ */
+export enum OnPremNodeState {
+  DECOMMISSIONED = 'DECOMMISSIONED',
+  USED = 'USED',
+  FREE = 'FREE'
 }
 
 // ---------------------------------------------------------------------------

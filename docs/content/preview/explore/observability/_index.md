@@ -20,7 +20,7 @@ showRightNav: true
 
 Observability refers to the extent to which the internal state and behavior of a system can be understood, monitored, and analyzed from the outside, typically by developers and DevOps. It focuses on providing insight into how a system is performing, what is happening inside it, and how it is interacting with its environment.
 
-The goal of observability is to make it easier to diagnose and resolve issues, optimize performance, and gain insights into the system's behavior. It is especially crucial in modern, complex, and distributed systems, where understanding the interactions between different services and components can be challenging. [DevOps Research and Assessment (DORA)](https://dora.dev/) research shows that a comprehensive monitoring and observability solution, along with several other technical practices, positively contributes to the management of software infrastructure.
+The goal of observability is to make it easier to diagnose and resolve issues, optimize performance, and gain insights into the system's behavior. It is especially important in modern, complex, and distributed systems, where understanding the interactions between different services and components can be challenging. [DevOps Research and Assessment (DORA)](https://dora.dev/) research shows that a comprehensive monitoring and observability solution, along with several other technical practices, positively contributes to the management of software infrastructure.
 
 YugabyteDB provides several components and features that you can use to actively monitor your system and diagnose issues quickly.
 
@@ -68,9 +68,14 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
+| [pg_locks](./pg-locks) | Get information on locks held by a transaction |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
+
+## Active Session History
+
+[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
 
 ## Learn more
 
@@ -105,11 +110,11 @@ To get more details about the various steps of a query execution, use the [Expla
       href="./pg-stat-progress-copy/"
       icon="/images/section_icons/explore/json_documents.png">}}
 
-  <!-- {{<index/item
+  {{<index/item
       title="Get lock information insights with pg_locks"
       body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
       href="./pg-locks/"
-      icon="/images/section_icons/explore/secure.png">}} -->
+      icon="/images/section_icons/explore/secure.png">}}
 
   {{<index/item
       title="Query statistics using pg_stat_statements"
@@ -122,4 +127,5 @@ To get more details about the various steps of a query execution, use the [Expla
       body="Understand the different metrics in YugabyteDB to monitor your cluster"
       href="../../launch-and-manage/monitor-and-alert/metrics"
       icon="fa-solid fa-bell">}}
+
 {{</index/block>}}

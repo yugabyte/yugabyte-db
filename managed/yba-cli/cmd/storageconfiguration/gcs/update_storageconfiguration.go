@@ -74,8 +74,12 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 		r = storageConfigs
 
 		if len(r) < 1 {
-			fmt.Println("No storage configurations found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No storage configurations with name: %s found\n",
+						storageName),
+					formatter.RedColor,
+				))
 		}
 
 		var storageConfig ybaclient.CustomerConfigUI
@@ -152,7 +156,7 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		fmt.Printf("The storage configuration %s (%s) has been updated\n",
+		logrus.Infof("The storage configuration %s (%s) has been updated\n",
 			formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 
 		storageconfigurationutil.UpdateStorageConfigurationUtil(authAPI, storageName, storageUUID)
@@ -167,7 +171,7 @@ func init() {
 	updateGCSStorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
 	updateGCSStorageConfigurationCmd.Flags().Bool("update-credentials", false,
-		"[Optional] Update credentials of the storage configuration, defaults to false."+
+		"[Optional] Update credentials of the storage configuration. (default false)"+
 			" If set to true, provide either credentials-file-path"+
 			" or set use-gcp-iam.")
 	updateGCSStorageConfigurationCmd.Flags().String("credentials-file-path", "",
@@ -180,6 +184,6 @@ func init() {
 	updateGCSStorageConfigurationCmd.Flags().Bool("use-gcp-iam", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. "+
 			"Supported for Kubernetes GKE clusters with workload identity. Configuration "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			"creation will fail on insufficient permissions on the host. (default false)")
 
 }

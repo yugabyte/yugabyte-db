@@ -55,6 +55,7 @@
 using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 
 namespace yb {
 using client::YBClient;
@@ -140,9 +141,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
-
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -210,6 +211,7 @@ Result<YBTableName> CDCSDKTestBase::GetTable(
       YBTableName yb_table;
       yb_table.set_table_id(table.id());
       yb_table.set_namespace_id(table.namespace_().id());
+      yb_table.set_table_name(table.name());
       return yb_table;
     }
   }
@@ -229,8 +231,8 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
       RETURN_NOT_OK(conn.ExecuteFormat("create schema $0;", schema_name));
     }
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TYPE $0.coupon_discount_type$1 AS ENUM ('FIXED$2','PERCENTAGE$3');", schema_name,
-        enum_suffix, enum_suffix, enum_suffix));
+        "CREATE TYPE $0.$1$2 AS ENUM ('FIXED$3','PERCENTAGE$4');", schema_name,
+        kEnumTypeName, enum_suffix, enum_suffix, enum_suffix));
   }
 
   std::string table_oid_string = "";
@@ -283,10 +285,9 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 
 Status CDCSDKTestBase::AddColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& add_column_name, const std::string& enum_suffix,
+    const std::string& add_column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 ADD COLUMN $2 int", schema_name, table_name + enum_suffix,
       add_column_name));
   return Status::OK();
@@ -294,23 +295,19 @@ Status CDCSDKTestBase::AddColumn(
 
 Status CDCSDKTestBase::DropColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& column_name, const std::string& enum_suffix,
+    const std::string& column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+
   return Status::OK();
 }
 
 Status CDCSDKTestBase::RenameColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
     const std::string& old_column_name, const std::string& new_column_name,
-    const std::string& enum_suffix, const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+    pgwrapper::PGConn *conn, const std::string& enum_suffix, const std::string& schema_name) {
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 RENAME COLUMN $2 TO $3", schema_name, table_name + enum_suffix,
       old_column_name, new_column_name));
   return Status::OK();

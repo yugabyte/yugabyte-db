@@ -78,8 +78,10 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -1699,7 +1701,6 @@ TEST_F(XClusterTestTransactionalOnly, WithBootstrap) {
       producer_tables_, bootstrap_ids, {LeaderOnly::kTrue, Transactional::kTrue}));
   master::GetUniverseReplicationResponsePB verify_repl_resp;
   ASSERT_OK(VerifyUniverseReplication(&verify_repl_resp));
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
   // 6. Verify we got the rows from step 3 but not 1.
   ASSERT_OK(VerifyNumRecordsOnConsumer(batch_size));
@@ -3369,6 +3370,63 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
   ASSERT_OK(VerifyNumRecordsOnConsumer(3 * kNumWriteRecords));
 }
 
+Status VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* object, const JsonReader& json_reader,  const char* member_name) {
+  const rapidjson::Value* meta_cache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(object, member_name, &meta_cache));
+  EXPECT_TRUE(meta_cache->HasMember("tablets"));
+  std::vector<const rapidjson::Value*> tablets;
+  return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
+}
+
+void VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
+  JsonReader json_reader(produced_json);
+  EXPECT_OK(json_reader.Init());
+  const rapidjson::Value* object = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(object)->GetType());
+
+  EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  bool found_xcluster_member = false;
+  for (auto it = object->MemberBegin(); it != object->MemberEnd();
+       ++it) {
+    std::string member_name = it->name.GetString();
+    if (member_name.starts_with("XClusterConsumerRemote_")) {
+      found_xcluster_member = true;
+    }
+    EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+  }
+  EXPECT_TRUE(found_xcluster_member)
+      << "No member name starting with XClusterConsumerRemote_ is found";
+}
+
+TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
+  ASSERT_OK(SetUpWithParams({1}, 3));
+  std::string table_name = "table";
+
+  auto table = ASSERT_RESULT(CreateTable(producer_client(), namespace_name, table_name, 3));
+  std::shared_ptr<client::YBTable> producer_table;
+  ASSERT_OK(producer_client()->OpenTable(table, &producer_table));
+  ASSERT_RESULT(CreateTable(consumer_client(), namespace_name, table_name, 3));
+
+  ASSERT_OK(SetupUniverseReplication({producer_table}));
+
+  // Verify that universe replication was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  // wait 5 seconds for metacache to populate
+  SleepFor(5000ms);
+
+  for (const auto& tserver : consumer_cluster()->mini_tablet_servers()) {
+    auto tserver_endpoint = tserver->bound_http_addr();
+    auto query_endpoint = "http://" + AsString(tserver_endpoint) + "/api/v1/meta-cache";
+    faststring result;
+    ASSERT_OK(EasyCurl().FetchURL(query_endpoint, &result));
+    VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString());
+  }
+  ASSERT_OK(DeleteUniverseReplication());
+}
+
 // Verify the xCluster Pollers shutdown immediately even if the Poll delay is very long.
 TEST_F_EX(XClusterTest, PollerShutdownWithLongPollDelay, XClusterTestNoParam) {
   // Make Pollers enter a long sleep state.
@@ -3788,6 +3846,55 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
 
   // Verify the error is cleared in the master.
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
+// Test deleting inbound replication group without performing source stream cleanup.
+TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
+  constexpr int kNTabletsPerTable = 1;
+  constexpr int kReplicationFactor = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  ASSERT_OK(SetUpWithParams(tables_vector, kReplicationFactor));
+
+  ASSERT_OK(SetupReplication());
+
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 1));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  // Delete with skip_producer_stream_deletion set.
+  master::DeleteUniverseReplicationRequestPB req;
+  master::DeleteUniverseReplicationResponsePB resp;
+  req.set_replication_group_id(kReplicationGroupId.ToString());
+  req.set_skip_producer_stream_deletion(true);
+
+  auto consumer_master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(consumer_master_proxy->DeleteUniverseReplication(req, &resp, &rpc));
+  }
+  ASSERT_FALSE(resp.has_error());
+
+  // Make sure source stream still exists.
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 1));
+
+  // Delete the stream manually from the source.
+  master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
+  master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+  delete_cdc_stream_req.add_stream_id(stream_id.ToString());
+  delete_cdc_stream_req.set_force_delete(true);
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    auto producer_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &producer_client()->proxy_cache(),
+        ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    ASSERT_OK(
+        producer_proxy->DeleteCDCStream(delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
+  }
+
+  ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 0));
 }
 
 }  // namespace yb

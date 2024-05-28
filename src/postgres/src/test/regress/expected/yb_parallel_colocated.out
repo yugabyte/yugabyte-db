@@ -21,6 +21,7 @@ set yb_enable_base_scans_cost_model to true;
 -- encourage use of parallel plans
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+set enable_bitmapscan = false;
 -- Parallel sequential scan
 EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9';
@@ -312,9 +313,9 @@ EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
                              QUERY PLAN
 ---------------------------------------------------------------------
- HashAggregate
+ GroupAggregate
    Group Key: c
-   ->  Gather
+   ->  Gather Merge
          Workers Planned: 2
          ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
                Index Cond: (c > 40)
@@ -323,15 +324,15 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
  c  | count
 ----+-------
- 44 |    20
+ 41 |    20
  42 |    20
  43 |    20
- 48 |    20
+ 44 |    20
  45 |    20
- 41 |    20
  46 |    20
- 49 |    20
  47 |    20
+ 48 |    20
+ 49 |    20
 (9 rows)
 
 -- Joins
@@ -339,16 +340,16 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
-                             QUERY PLAN
----------------------------------------------------------------------
+                              QUERY PLAN
+----------------------------------------------------------------------
  Gather
    Workers Planned: 2
    ->  Parallel Hash Join
          Hash Cond: (pctest2.b = pctest1.a)
          ->  Parallel Index Only Scan using pctest2_b_idx on pctest2
          ->  Parallel Hash
-               ->  Parallel Seq Scan on pctest1
-                     Storage Filter: ((a % 10) = 0)
+               ->  Parallel Index Scan using pctest1_a_idx on pctest1
+                     Storage Index Filter: ((a % 10) = 0)
 (8 rows)
 
 SELECT pctest1.* FROM pctest1, pctest2
@@ -380,19 +381,18 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
+                                 QUERY PLAN
+----------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
-               ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(10 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (pctest1.k = pctest2.k)
+         Sort Keys: pctest1.k
+         ->  Parallel Index Scan using pctest1_pkey on pctest1
+               Storage Filter: (c = 42)
+         ->  Index Scan using pctest2_pkey on pctest2
+               Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+(9 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -436,19 +436,18 @@ set enable_hashjoin to false;
 EXPLAIN (costs off)
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- Gather Merge
-   Workers Planned: 2
-   ->  Sort
-         Sort Key: pctest1.k
-         ->  YB Batched Nested Loop Join
-               Join Filter: (pctest1.k = pctest2.k)
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
-                     Index Cond: (c = 42)
-               ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
-(10 rows)
+                          QUERY PLAN
+---------------------------------------------------------------
+ Merge Join
+   Merge Cond: (pctest1.k = pctest2.k)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest1_pkey on pctest1
+               Storage Filter: (c = 42)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest2_pkey on pctest2
+(9 rows)
 
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
@@ -748,7 +747,7 @@ SELECT count(*) FROM pctest1;
 CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
 INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
 EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
-                             QUERY PLAN                              
+                             QUERY PLAN
 ---------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
@@ -760,14 +759,14 @@ EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 (7 rows)
 
 SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
- count | max  | min 
+ count | max  | min
 -------+------+-----
    877 | 1000 | 124
 (1 row)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-                                QUERY PLAN                                 
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
@@ -779,7 +778,7 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 (7 rows)
 
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
- count | max  | min 
+ count | max  | min
 -------+------+-----
    877 | 1000 | 124
 (1 row)

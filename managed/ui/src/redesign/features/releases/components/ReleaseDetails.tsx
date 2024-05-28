@@ -10,6 +10,7 @@ import { ImportedArchitecture } from './ImportedArchitecture';
 import { InUseUniverses } from './InUseUniverses';
 import { YBButton } from '../../../components';
 import { ModalTitle, ReleasePlatformArchitecture, ReleaseState, Releases } from './dtos';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
@@ -148,7 +149,7 @@ interface ReleaseDetailsProps {
 const releaseDetailsMap = {
   version: 'version',
   support: 'release_type',
-  releaseDate: 'release_date',
+  releaseDate: 'release_date_msecs',
   releaseNote: 'release_notes',
   status: 'state'
 };
@@ -173,14 +174,14 @@ export const ReleaseDetails = ({
     const key = releaseDetailsMap[releaseDetailsKey];
     let value = data?.[key];
     if (!value) {
-      value = 'NA';
+      value = '';
     }
 
     if (key === releaseDetailsMap.releaseNote) {
       return (
         <Box className={helperClasses.releaseMetadataValue}>
           <Link target="_blank" to={DOCS_LINK}>
-            <span>{t('releases.releaseNote')}</span>
+            <span data-testid={`ReleaseDetails-ReleaseNote`}>{t('releases.releaseNote')}</span>
           </Link>
         </Box>
       );
@@ -191,11 +192,17 @@ export const ReleaseDetails = ({
     if (key === releaseDetailsMap.version) {
       return (
         <Box className={helperClasses.flexRow}>
-          <Box className={helperClasses.releaseMetadataValue}>{value}</Box>
+          <Box
+            className={helperClasses.releaseMetadataValue}
+            data-testid={'ReleaseDetails-ReleaseVersion'}
+          >
+            {value}
+          </Box>
           {isNonEmptyString(data.release_tag) && (
             <>
               <Box className={helperClasses.releaseTagBox}>
                 <span
+                  data-testid={'ReleaseDetails-ReleaseTag'}
                   className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
                 >
                   {data.release_tag.length > MAX_RELEASE_TAG_CHAR
@@ -217,10 +224,24 @@ export const ReleaseDetails = ({
     }
     if (key === releaseDetailsMap.support) {
       return (
-        <Box className={helperClasses.releaseMetadataValue}>{t(`releases.type.${value}`)}</Box>
+        <Box
+          className={helperClasses.releaseMetadataValue}
+          data-testid={'ReleaseDetails-ReleaseSupport'}
+        >
+          {t(`releases.type.${value}`)}
+        </Box>
       );
     }
-    return <Box className={helperClasses.releaseMetadataValue}>{value}</Box>;
+
+    // Release Date
+    return (
+      <Box
+        className={helperClasses.releaseMetadataValue}
+        data-testid={'ReleaseDetails-ReleaseMetadata'}
+      >
+        {value ? ybFormatDate(value, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP) : ''}
+      </Box>
+    );
   };
 
   const handleTabChange = (_event: React.ChangeEvent<{}>, newTab: ReleaseDetailsTab) => {

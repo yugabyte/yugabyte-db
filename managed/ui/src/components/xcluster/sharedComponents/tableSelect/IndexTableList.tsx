@@ -9,21 +9,41 @@ import {
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { formatBytes, tableSort } from '../../ReplicationUtils';
+import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
 import { TableNameCell } from './TableNameCell';
+import { XClusterConfigAction } from '../../constants';
 
-import { IndexTableReplicationCandidate, MainTableReplicationCandidate } from '../../XClusterTypes';
+import {
+  IndexTableReplicationCandidate,
+  MainTableReplicationCandidate,
+  TableReplicationCandidate
+} from '../../XClusterTypes';
+import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './IndexTableList.module.scss';
 
 interface IndexTableListProps {
   mainTableReplicationCandidate: MainTableReplicationCandidate;
+  xClusterConfigAction: XClusterConfigAction;
+  isMainTableSelectable: boolean;
+  isTransactionalConfig: boolean;
+  selectedTableUuids: string[];
+  handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
+  handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;
 
-export const IndexTableList = ({ mainTableReplicationCandidate }: IndexTableListProps) => {
+export const IndexTableList = ({
+  mainTableReplicationCandidate,
+  isMainTableSelectable,
+  isTransactionalConfig,
+  selectedTableUuids,
+  handleTableSelect,
+  handleTableGroupSelect,
+  xClusterConfigAction
+}: IndexTableListProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof MainTableReplicationCandidate>('tableName');
@@ -43,12 +63,33 @@ export const IndexTableList = ({ mainTableReplicationCandidate }: IndexTableList
     mainTableReplicationCandidate.indexTables?.sort((a, b) =>
       tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
+  const untoggleableTableUuids = indexTableRows
+    .filter(
+      (table) =>
+        mainTableReplicationCandidate.tableType !== TableType.PGSQL_TABLE_TYPE ||
+        isTransactionalConfig ||
+        !isTableToggleable(table, xClusterConfigAction)
+    )
+    .map((table) => table.tableUUID);
+  const isSelectable =
+    isMainTableSelectable &&
+    !isTransactionalConfig &&
+    mainTableReplicationCandidate.tableType === TableType.PGSQL_TABLE_TYPE;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable
         maxHeight="300px"
         tableContainerClass={styles.bootstrapTable}
         data={indexTableRows.slice((activePage - 1) * pageSize, activePage * pageSize)}
+        selectRow={{
+          mode: 'checkbox',
+          clickToExpand: true,
+          onSelect: handleTableSelect,
+          onSelectAll: handleTableGroupSelect,
+          selected: selectedTableUuids,
+          hideSelectColumn: !isSelectable,
+          unselectable: untoggleableTableUuids
+        }}
         options={tableOptions}
       >
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />

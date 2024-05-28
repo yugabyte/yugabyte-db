@@ -259,7 +259,17 @@ INSERT INTO box_temp
 		   ('(-infinity,-infinity)(infinity,infinity)');
 SET enable_seqscan = false;
 SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)';
-ERROR:  SP-GiST only supports forward scan direction
+             f1             
+----------------------------
+ (2,2),(1,1)
+ (4,4),(2,2)
+ (6,6),(3,3)
+ (8,8),(4,4)
+ (0,100),(0,0)
+ (0,Infinity),(0,100)
+ (0,Infinity),(-Infinity,0)
+(7 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -268,7 +278,18 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 << '(10,20),(30,40)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)';
-ERROR:  SP-GiST only supports forward scan direction
+             f1             
+----------------------------
+ (2,2),(1,1)
+ (4,4),(2,2)
+ (6,6),(3,3)
+ (8,8),(4,4)
+ (10,10),(5,5)
+ (0,100),(0,0)
+ (0,Infinity),(0,100)
+ (0,Infinity),(-Infinity,0)
+(8 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)';
                      QUERY PLAN                     
 ----------------------------------------------------
@@ -277,7 +298,27 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &< '(10,4.333334),(5,100)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)';
-ERROR:  SP-GiST only supports forward scan direction
+                    f1                     
+-------------------------------------------
+ (20,20),(10,10)
+ (22,22),(11,11)
+ (24,24),(12,12)
+ (26,26),(13,13)
+ (28,28),(14,14)
+ (30,30),(15,15)
+ (32,32),(16,16)
+ (34,34),(17,17)
+ (36,36),(18,18)
+ (38,38),(19,19)
+ (40,40),(20,20)
+ (42,42),(21,21)
+ (44,44),(22,22)
+ (46,46),(23,23)
+ (48,48),(24,24)
+ (50,50),(25,25)
+ (Infinity,Infinity),(-Infinity,-Infinity)
+(17 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -286,7 +327,21 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 && '(15,20),(25,30)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)';
-ERROR:  SP-GiST only supports forward scan direction
+        f1         
+-------------------
+ (80,80),(40,40)
+ (82,82),(41,41)
+ (84,84),(42,42)
+ (86,86),(43,43)
+ (88,88),(44,44)
+ (90,90),(45,45)
+ (92,92),(46,46)
+ (94,94),(47,47)
+ (96,96),(48,48)
+ (98,98),(49,49)
+ (100,100),(50,50)
+(11 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -295,7 +350,20 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &> '(40,30),(45,50)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)';
-ERROR:  SP-GiST only supports forward scan direction
+        f1         
+-------------------
+ (82,82),(41,41)
+ (84,84),(42,42)
+ (86,86),(43,43)
+ (88,88),(44,44)
+ (90,90),(45,45)
+ (92,92),(46,46)
+ (94,94),(47,47)
+ (96,96),(48,48)
+ (98,98),(49,49)
+ (100,100),(50,50)
+(10 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -304,7 +372,13 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 >> '(30,40),(40,30)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)';
-ERROR:  SP-GiST only supports forward scan direction
+            f1            
+--------------------------
+ (2,2),(1,1)
+ (4,4),(2,2)
+ (40,4.3333333333),(-3,1)
+(3 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)';
                      QUERY PLAN                     
 ----------------------------------------------------
@@ -313,7 +387,13 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <<| '(10,4.33334),(5,100)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)';
-ERROR:  SP-GiST only supports forward scan direction
+            f1            
+--------------------------
+ (2,2),(1,1)
+ (4,4),(2,2)
+ (40,4.3333333333),(-3,1)
+(3 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)';
                      QUERY PLAN                     
 ----------------------------------------------------
@@ -322,7 +402,12 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 &<| '(10,4.3333334),(5,1)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49.99)';
-ERROR:  SP-GiST only supports forward scan direction
+          f1          
+----------------------
+ (100,100),(50,50)
+ (0,Infinity),(0,100)
+(2 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49.99)';
                         QUERY PLAN                         
 -----------------------------------------------------------
@@ -331,7 +416,21 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |&> '(49.99,49.99),(49.99,49
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)';
-ERROR:  SP-GiST only supports forward scan direction
+          f1          
+----------------------
+ (82,82),(41,41)
+ (84,84),(42,42)
+ (86,86),(43,43)
+ (88,88),(44,44)
+ (90,90),(45,45)
+ (92,92),(46,46)
+ (94,94),(47,47)
+ (96,96),(48,48)
+ (98,98),(49,49)
+ (100,100),(50,50)
+ (0,Infinity),(0,100)
+(11 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)';
                   QUERY PLAN                   
 -----------------------------------------------
@@ -340,7 +439,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 |>> '(37,38),(39,40)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,16)';
-ERROR:  SP-GiST only supports forward scan direction
+                    f1                     
+-------------------------------------------
+ (16,16),(8,8)
+ (18,18),(9,9)
+ (20,20),(10,10)
+ (Infinity,Infinity),(-Infinity,-Infinity)
+(4 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,15)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -349,7 +455,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 @> '(10,11),(15,15)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)';
-ERROR:  SP-GiST only supports forward scan direction
+       f1        
+-----------------
+ (30,30),(15,15)
+(1 row)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)';
                   QUERY PLAN                  
 ----------------------------------------------
@@ -358,7 +468,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 <@ '(10,15),(30,35)';
 (2 rows)
 
 SELECT * FROM box_temp WHERE f1 ~= '(20,20),(40,40)';
-ERROR:  SP-GiST only supports forward scan direction
+       f1        
+-----------------
+ (40,40),(20,20)
+(1 row)
+
 EXPLAIN (COSTS OFF) SELECT * FROM box_temp WHERE f1 ~= '(20,20),(40,40)';
                   QUERY PLAN                  
 ----------------------------------------------

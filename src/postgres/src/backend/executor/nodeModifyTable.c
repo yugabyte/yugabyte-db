@@ -82,15 +82,10 @@
 /*  Yugabyte includes */
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "catalog/dependency.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_depend.h"
-#include "catalog/pg_shdepend.h"
-#include "catalog/yb_catalog_version.h"
 #include "executor/ybcModifyTable.h"
 #include "optimizer/ybcplan.h"
 #include "parser/parsetree.h"
-#include "utils/syscache.h"
 #include "utils/typcache.h"
 
 #include "pg_yb_utils.h"
@@ -223,9 +218,6 @@ static void YbPostProcessDml(CmdType cmd_type,
 							 HeapTuple newtup);
 static void YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel,
 									   TupleTableSlot *slot);
-static void YbHandlePossibleObjectPinning(TupleDesc desc,
-										  HeapTuple tuple,
-										  bool is_shared_dep);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -475,7 +467,8 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 			{
 				Bitmapset  *attrs_used = NULL;
 
-				pull_varattnos((Node *) expr, 1, &attrs_used);
+				pull_varattnos_min_attr((Node *) expr, 1, &attrs_used,
+										YBGetFirstLowInvalidAttributeNumber(rel) + 1);
 
 				if (!bms_overlap(updatedCols, attrs_used))
 					continue;	/* need not update this column */
@@ -488,7 +481,7 @@ ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
 			/* And mark this column in rextra->ri_extraUpdatedCols */
 			rextra->ri_extraUpdatedCols =
 				bms_add_member(rextra->ri_extraUpdatedCols,
-							   i + 1 - FirstLowInvalidHeapAttributeNumber);
+							   i + 1 - YBGetFirstLowInvalidAttributeNumber(rel));
 		}
 	}
 
@@ -2518,6 +2511,20 @@ yb_lreplace:;
 		}
 	}
 
+	Bitmapset *extraGeneratedCols = NULL;
+	if (resultRelInfo->ri_NumGeneratedNeeded > 0)
+	{
+		/*
+		 * Include any affected generated columns. Note that generated columns
+		 * are, conceptually, updated after BEFORE triggers have run.
+		 */
+		Bitmapset *generatedCols =
+			ExecGetExtraUpdatedCols(resultRelInfo, estate);
+		Assert(!bms_is_empty(generatedCols));
+		extraGeneratedCols = bms_union(actualUpdatedCols, generatedCols);
+		actualUpdatedCols = extraGeneratedCols;
+	}
+
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
 	bool	   is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
 
@@ -2541,6 +2548,7 @@ yb_lreplace:;
 											? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 									 actualUpdatedCols, canSetTag);
 
+	bms_free(extraGeneratedCols);
 	bms_free(extraUpdatedCols);
 	return row_found;
 }
@@ -5176,49 +5184,11 @@ static void YbPostProcessDml(CmdType cmd_type,
 							 TupleDesc desc,
 							 HeapTuple newtup)
 {
-	if (!IsYBRelation(rel) || IsBootstrapProcessingMode())
-		return; /* Nothing to do*/
-
-	if (!YbIsSystemCatalogChange(rel))
-		return; /* We only care about system table changes here. */
-
-	/* This routine is for a very specific set of DMLs. */
-	Assert(cmd_type != CMD_INSERT ||
-		   cmd_type != CMD_UPDATE ||
-		   cmd_type != CMD_DELETE);
-
 	/*
 	 * TODO(alex, myang):
 	 *   Mark system catalogs as directly modified so that we know to increment
 	 *   catalog version. Handle shared table modification as well!
 	 */
-
-	/*
-	 * Update pinned objects cache if pg_depend/pg_shdepend was modified.
-	 */
-	bool is_shared_dep;
-
-	if (RelationGetRelid(rel) == DependRelationId)
-		is_shared_dep = false;
-	else if (RelationGetRelid(rel) == SharedDependRelationId)
-		is_shared_dep = true;
-	else
-		return; /* Nothing more to do */
-
-	if (cmd_type == CMD_INSERT)
-	{
-		YbHandlePossibleObjectPinning(desc, newtup, is_shared_dep);
-	}
-	else
-	{
-		/*
-		 * In YB, we do not fetch the deleted tuple content and thus we don't
-		 * know what exactly was deleted.
-		 * As a workaround, we invalidate the cache as a whole.
-		 * For simplicity, we do the same for UPDATE.
-		 */
-		 YbResetPinnedCache();
-	}
 }
 
 /* YB_TODO(review) Revisit later. */
@@ -5238,50 +5208,4 @@ YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel, TupleTableSlot *slot)
 		 pfree(tuple);
 
 	return;
-}
-
-/*
- * When inserting a new value into pg_depend or pg_shdepend, it should be reflected in the
- * YB pinned object cache.
- * This function takes care of that.
- */
-static void
-YbHandlePossibleObjectPinning(TupleDesc desc,
-							  HeapTuple tuple,
-							  bool is_shared_dep)
-{
-	Assert(tuple != NULL);
-
-	int attnum_deptype = is_shared_dep ? Anum_pg_shdepend_deptype
-									   : Anum_pg_depend_deptype;
-	int attnum_refclassid = is_shared_dep ? Anum_pg_shdepend_refclassid
-										  : Anum_pg_depend_refclassid;
-	int attnum_refobjid = is_shared_dep ? Anum_pg_shdepend_refobjid
-										: Anum_pg_depend_refobjid;
-#ifdef YB_TODO
-	/* Pg15  No longer use pin */
-	char pin_deptype = is_shared_dep ? SHARED_DEPENDENCY_PIN
-									 : DEPENDENCY_PIN;
-#else
-	char pin_deptype = DEPENDENCY_PARTITION_PRI;
-#endif
-
-	bool is_null; /* Can never really be null. */
-
-	char deptype = DatumGetChar(
-		heap_getattr(tuple, attnum_deptype, desc, &is_null));
-	Assert(!is_null);
-
-	if (deptype != pin_deptype)
-		return; /* Nothing to do here. */
-
-	Oid refclassid = DatumGetObjectId(
-		heap_getattr(tuple, attnum_refclassid, desc, &is_null));
-	Assert(!is_null);
-
-	Oid refobjid = DatumGetObjectId(
-		heap_getattr(tuple, attnum_refobjid, desc, &is_null));
-	Assert(!is_null);
-
-	YbPinObjectIfNeeded(refclassid, refobjid, is_shared_dep);
 }

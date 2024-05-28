@@ -23,17 +23,35 @@
 
 #include "postgres.h"
 
+#include <inttypes.h>
+
 #include "access/xact.h"
 #include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 #include "replication/slot.h"
+#include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/memutils.h"
 
 static MemoryContext virtual_wal_context = NULL;
+static MemoryContext cached_records_context = NULL;
+static MemoryContext unacked_txn_list_context = NULL;
 
 /* Cached records received from the CDC service. */
 static YBCPgChangeRecordBatch *cached_records = NULL;
 static size_t cached_records_last_sent_row_idx = 0;
+static bool last_getconsistentchanges_response_empty = false;
+static TimestampTz last_getconsistentchanges_response_receipt_time;
+static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
+
+/*
+ * Marker to refresh publication's tables list. If set to true call
+ * UpdatePublicationTableList before calling next GetConsistentChanges.
+ */
+static bool needs_publication_table_list_refresh = false;
+
+/* The time at which the list of tables in the publication needs to be provided to the VWAL. */
+static uint64_t publication_refresh_time = 0;
 
 typedef struct UnackedTransactionInfo {
 	TransactionId xid;
@@ -62,17 +80,19 @@ typedef struct UnackedTransactionInfo {
  *
  * The size of this list depends on how fast the client confirms the flush of
  * the streamed changes.
- *
- * TODO(#21399): Store this in a separate memory context for ease of tracking.
  */
 static List *unacked_transactions = NIL;
 
 static List *YBCGetTables(List *publication_names);
 static void InitVirtualWal(List *publication_names);
 
+static void PreProcessBeforeFetchingNextBatch();
+
 static void TrackUnackedTransaction(YBCPgVirtualWalRecord *record);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
+
+static Oid *YBCGetTableOids(List *tables);
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
@@ -84,6 +104,23 @@ YBCInitVirtualWal(List *yb_publication_names)
 	virtual_wal_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"YB virtual WAL context",
 												ALLOCSET_DEFAULT_SIZES);
+	/*
+	 * A separate memory context for the cached record batch that we receive
+	 * from the CDC service as a child of the virtual wal context. Makes it
+	 * easier to free the batch before requesting another batch.
+	 */
+	cached_records_context = AllocSetContextCreate(virtual_wal_context,
+													 "YB cached record batch "
+													 "context",
+													 ALLOCSET_DEFAULT_SIZES);
+	/*
+	 * A separate memory context for the unacked txn list as a child of the
+	 * virtual wal context.
+	 */
+	unacked_txn_list_context = AllocSetContextCreate(virtual_wal_context,
+													 "YB unacked txn list "
+													 "context",
+													 ALLOCSET_DEFAULT_SIZES);
 	caller_context = GetCurrentMemoryContext();
 
 	/* Start a transaction to be able to read the catalog tables. */
@@ -101,6 +138,11 @@ YBCInitVirtualWal(List *yb_publication_names)
 	MemoryContextSwitchTo(caller_context);
 
 	unacked_transactions = NIL;
+	last_getconsistentchanges_response_empty = false;
+	last_getconsistentchanges_response_receipt_time = 0;
+	last_txn_begin_lsn = InvalidXLogRecPtr;
+
+	needs_publication_table_list_refresh = false;
 }
 
 void
@@ -108,21 +150,33 @@ YBCDestroyVirtualWal()
 {
 	YBCDestroyVirtualWalForCDC();
 
+	if (unacked_txn_list_context)
+		MemoryContextDelete(unacked_txn_list_context);
+
+	if (cached_records_context)
+		MemoryContextDelete(cached_records_context);
+
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
+
+	needs_publication_table_list_refresh = false;
 }
 
 static List *
 YBCGetTables(List *publication_names)
 {
 	List	*yb_publications;
+	List	*tables;
 
 	Assert(IsTransactionState());
 
 	yb_publications =
 		YBGetPublicationsByNames(publication_names, false /* missing_ok */);
 
-	return yb_pg_get_publications_tables(yb_publications);
+	tables = yb_pg_get_publications_tables(yb_publications);
+	list_free(yb_publications);
+
+	return tables;
 }
 
 static void
@@ -131,13 +185,11 @@ InitVirtualWal(List *publication_names)
 	List		*tables;
 	Oid			*table_oids;
 
-	tables = YBCGetTables(publication_names);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(
+		MyReplicationSlot->data.yb_last_pub_refresh_time);
 
-	table_oids = palloc(sizeof(Oid) * list_length(tables));
-	ListCell *lc;
-	size_t table_idx = 0;
-	foreach (lc, tables)
-		table_oids[table_idx++] = lfirst_oid(lc);
+	tables = YBCGetTables(publication_names);
+	table_oids = YBCGetTableOids(tables);	
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables));
@@ -147,14 +199,16 @@ InitVirtualWal(List *publication_names)
 }
 
 YBCPgVirtualWalRecord *
-YBCReadRecord(XLogReaderState *state, char **errormsg)
+YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 {
 	MemoryContext			caller_context;
 	YBCPgVirtualWalRecord	*record = NULL;
+	List					*tables;
+	Oid						*table_oids;
 
 	elog(DEBUG4, "YBCReadRecord");
 
-	caller_context = MemoryContextSwitchTo(virtual_wal_context);
+	caller_context = MemoryContextSwitchTo(cached_records_context);
 
 	/* reset error state */
 	*errormsg = NULL;
@@ -166,18 +220,50 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
 	{
-		elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
+		PreProcessBeforeFetchingNextBatch();
 
-		/* We no longer need the earlier record batch. */
-		if (cached_records)
-			pfree(cached_records);
+		if (needs_publication_table_list_refresh)
+		{
+			StartTransactionCommand();
+
+			Assert(yb_read_time < publication_refresh_time);
+
+			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
+
+			// Get tables in publication and call UpdatePublicationTableList
+			tables = YBCGetTables(publication_names);
+			table_oids = YBCGetTableOids(tables);
+			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
+										  table_oids, list_length(tables));
+
+			pfree(table_oids);
+			list_free(tables);
+			AbortCurrentTransaction();
+
+			needs_publication_table_list_refresh = false;
+		}
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInSendingMicros = 0;
+		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
 	Assert(cached_records);
+
+	/*
+	 * The GetConsistentChanges response has indicated that it is time to
+	 * refresh the publication's table list. Before calling the next
+	 * GetConsistentChanges get the table list as of time
+	 * publication_refresh_time and notify the updated list to Virtual Wal.
+	 */
+	if (cached_records && cached_records->needs_publication_table_list_refresh)
+	{
+		needs_publication_table_list_refresh =
+			cached_records->needs_publication_table_list_refresh;
+		publication_refresh_time = cached_records->publication_refresh_time;
+	}
 
 	/*
 	 * We did not get any records from CDC service, return NULL and retry in the
@@ -185,14 +271,12 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 	 */
 	if (!cached_records || cached_records->row_count == 0)
 	{
-		/*
-		 * TODO(#20726): Sleep for a configurable amount of time here to avoid
-		 * spamming the CDC service.
-		 */
+		last_getconsistentchanges_response_empty = true;
 		MemoryContextSwitchTo(caller_context);
 		return NULL;
 	}
 
+	last_getconsistentchanges_response_empty = false;
 	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 	state->ReadRecPtr = record->lsn;
 	state->yb_virtual_wal_record = record;
@@ -204,50 +288,85 @@ YBCReadRecord(XLogReaderState *state, char **errormsg)
 }
 
 static void
+PreProcessBeforeFetchingNextBatch()
+{
+	long secs;
+	int microsecs;
+
+	if (last_getconsistentchanges_response_empty)
+	{
+		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
+			 yb_walsender_poll_sleep_duration_empty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+	}
+	else
+	{
+		elog(DEBUG4,
+			 "YBCReadRecord: Sleeping for %d ms as the last "
+			 "response was non-empty.",
+			 yb_walsender_poll_sleep_duration_nonempty_ms);
+		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+	}
+
+	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
+
+	/* Log the summary of time spent in processing the previous batch. */
+	if (log_min_messages <= DEBUG1 &&
+		last_getconsistentchanges_response_receipt_time != 0)
+	{
+		TimestampDifference(last_getconsistentchanges_response_receipt_time,
+							GetCurrentTimestamp(), &secs, &microsecs);
+		elog(DEBUG1,
+			 "Walsender processing time for the last batch is (%ld s, %d us)",
+			 secs, microsecs);
+		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
+			 YbWalSndTotalTimeInSendingMicros);
+	}
+
+	/* We no longer need the earlier record batch. */
+	if (cached_records)
+		MemoryContextReset(cached_records_context);
+}
+
+static void
 TrackUnackedTransaction(YBCPgVirtualWalRecord *record)
 {
-	YBUnackedTransactionInfo *transaction = NULL;
+	MemoryContext			 caller_context;
+
+	caller_context = GetCurrentMemoryContext();
+	MemoryContextSwitchTo(unacked_txn_list_context);
 
 	switch (record->action)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 		{
-			transaction = palloc(sizeof(YBUnackedTransactionInfo));
-			transaction->xid = record->xid;
-			transaction->begin_lsn = record->lsn;
-			transaction->commit_lsn = InvalidXLogRecPtr;
-
-			unacked_transactions = lappend(unacked_transactions, transaction);
+			last_txn_begin_lsn = record->lsn;
 			break;
 		}
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 		{
-			YBUnackedTransactionInfo *txninfo = NULL;
+			YBUnackedTransactionInfo *transaction =
+				palloc(sizeof(YBUnackedTransactionInfo));
+			transaction->xid = record->xid;
+			Assert(last_txn_begin_lsn != InvalidXLogRecPtr);
+			transaction->begin_lsn = last_txn_begin_lsn;
+			transaction->commit_lsn = record->lsn;
 
-			/*
-			 * We should at least have one transaction which we appended while
-			 * handling the corresponding BEGIN record.
-			 */
-			Assert(list_length(unacked_transactions) > 0);
-
-			txninfo = (YBUnackedTransactionInfo *) lfirst(
-				list_tail((List *) unacked_transactions));
-			Assert(txninfo->xid == record->xid);
-			Assert(txninfo->begin_lsn != InvalidXLogRecPtr);
-			Assert(txninfo->commit_lsn == InvalidXLogRecPtr);
-
-			txninfo->commit_lsn = record->lsn;
+			unacked_transactions = lappend(unacked_transactions, transaction);
 			break;
 		}
 
 		/* Not of interest here. */
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN: switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_DDL: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
-			return;
+			break;
 	}
+
+	MemoryContextSwitchTo(caller_context);
 }
 
 XLogRecPtr
@@ -283,8 +402,14 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 		return restart_lsn_hint;
 	}
 
-	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id, restart_lsn_hint,
-						   confirmed_flush, &restart_lsn);
+	elog(DEBUG1, "Updating confirmed_flush to %lu and restart_lsn_hint to %lu",
+		 confirmed_flush, restart_lsn_hint);
+
+	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id,
+						   restart_lsn_hint, confirmed_flush, &restart_lsn);
+
+	elog(DEBUG1, "The restart_lsn calculated by the virtual wal is %" PRIu64,
+		 restart_lsn);
 
 	CleanupAckedTransactions(confirmed_flush);
 	return restart_lsn;
@@ -300,6 +425,10 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 
 	if (numunacked == 0)
 		return InvalidXLogRecPtr;
+
+	elog(DEBUG1,
+		 "The number of unacked transactions in the virtual wal client is %d",
+		 numunacked);
 
 	foreach (lc, unacked_transactions)
 	{
@@ -363,4 +492,23 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 		else
 			break;
 	}
+}
+
+/*
+ * Get the table Oids for the list of tables provided as arguments. It is the
+ * responsibility of the caller to free the array of Oid values returned from
+ * this function. 
+ */
+static Oid *
+YBCGetTableOids(List *tables)
+{
+	Oid			*table_oids;
+
+	table_oids = palloc(sizeof(Oid) * list_length(tables));
+	ListCell *lc;
+	size_t table_idx = 0;
+	foreach (lc, tables)
+		table_oids[table_idx++] = lfirst_oid(lc);
+	
+	return table_oids;
 }

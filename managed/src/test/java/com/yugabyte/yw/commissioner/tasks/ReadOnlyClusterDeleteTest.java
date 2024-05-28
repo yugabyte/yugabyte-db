@@ -158,7 +158,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_DELETE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

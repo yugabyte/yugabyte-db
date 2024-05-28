@@ -35,6 +35,16 @@ westus2:
   latitude: 47.603569
   longitude: -122.330276
 
+westus3:
+  name: West US 3
+  latitude: 33.448376
+  longitude: -112.074036
+
+westcentralus:
+  name: West Central US
+  latitude: 40.890
+  longitude: -110.234
+
 canadacentral:
   name: "Canada Central"
   latitude: 45.501690
@@ -124,3 +134,63 @@ koreasouth:
   name: "Korea South"
   latitude: 35.907757
   longitude: 127.766
+
+australiacentral:
+  name: Australia Central
+  latitude: -35.3075
+  longitude: 149.1244
+
+francecentral:
+  name: France Central
+  latitude: 46.3772
+  longitude: 2.3730
+
+southafricanorth:
+  name: South Africa North
+  latitude: -25.731340
+  longitude: 28.218370
+
+germanywestcentral:
+  name: Germany West Central
+  latitude: 50.110924
+  longitude: 8.682127
+
+israelcentral:
+  name: Israel Central
+  latitude: 31.0461
+  longitude: 34.8516
+
+italynorth:
+  name: Italy north
+  latitude: 41.8719
+  longitude: 12.5674
+
+norwayeast:
+  name: Norway East
+  latitude: 59.913868
+  longitude: 10.752245
+
+polandcentral:
+  name: Poland Central
+  latitude: 59.913868
+  longitude: 10.752245
+
+qatarcentral:
+  name: Qatar Central
+  latitude: 25.3548
+  longitude: 51.1839
+
+swedencentral:
+  name: Sweden Central
+  latitude: 60.1282
+  longitude: 18.6435
+
+switzerlandnorth:
+  name: Switzerland North
+  latitude: 47.451542
+  longitude: 8.564572
+
+uaenorth:
+  name: UAE North
+  latitude: 25.266666
+  longitude: 55.316666

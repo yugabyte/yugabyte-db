@@ -25,7 +25,9 @@ class AuthenticatedComponent extends Component {
   }
 
   componentDidMount() {
+    // Remove old releases API call - 2024.2
     this.props.fetchSoftwareVersions();
+    this.props.fetchDBVersions();
     this.props.fetchTableColumnTypes();
     this.props.getEBSListItems();
     this.props.getGCPListItems();

@@ -15,7 +15,12 @@ import { IndexTableList } from './IndexTableList';
 import { TableNameCell } from './TableNameCell';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
 
-import { NamespaceItem, MainTableReplicationCandidate, XClusterTableType } from '../..';
+import {
+  NamespaceItem,
+  MainTableReplicationCandidate,
+  XClusterTableType,
+  TableReplicationCandidate
+} from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './ExpandedTableSelect.module.scss';
@@ -26,18 +31,20 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 interface ExpandedTableSelectProps {
   row: NamespaceItem;
   selectedTableUUIDs: string[];
-  // Determines if the rows in this expanded table select are selectable.
+  // `isSelectable` determines if the rows in this expanded table select are selectable.
   isSelectable: boolean;
+  isTransactionalConfig: boolean;
   tableType: XClusterTableType;
   xClusterConfigAction: XClusterConfigAction;
-  handleTableSelect: (row: MainTableReplicationCandidate, isSelected: boolean) => void;
-  handleTableGroupSelect: (isSelected: boolean, rows: MainTableReplicationCandidate[]) => boolean;
+  handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
+  handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
 }
 
 export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs: selectedTableUuids,
   isSelectable,
+  isTransactionalConfig,
   tableType,
   xClusterConfigAction,
   handleTableSelect,
@@ -74,7 +81,15 @@ export const ExpandedTableSelect = ({
           (mainTableReplicationCandidate.indexTables?.length ?? 0) > 0
         }
         expandComponent={(mainTableReplicationCandidate: MainTableReplicationCandidate) => (
-          <IndexTableList mainTableReplicationCandidate={mainTableReplicationCandidate} />
+          <IndexTableList
+            mainTableReplicationCandidate={mainTableReplicationCandidate}
+            xClusterConfigAction={xClusterConfigAction}
+            isMainTableSelectable={isSelectable}
+            isTransactionalConfig={isTransactionalConfig}
+            selectedTableUuids={selectedTableUuids}
+            handleTableSelect={handleTableSelect}
+            handleTableGroupSelect={handleTableGroupSelect}
+          />
         )}
         expandColumnOptions={{
           expandColumnVisible: true,

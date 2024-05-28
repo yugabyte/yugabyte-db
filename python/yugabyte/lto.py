@@ -17,7 +17,7 @@ import logging
 import re
 import psutil  # type: ignore
 
-from typing import Iterable, Set, List, Optional, Tuple, Dict
+from typing import Iterable, Set, List, Optional, Tuple, Dict, Collection
 from yugabyte.dep_graph_common import (
     DependencyGraph,
     Node,
@@ -125,6 +125,33 @@ def get_yb_pgbackend_link_cmd(build_root: str) -> Tuple[str, List[str]]:
             "one file starting with %s in %s. Got %s" % (
                 prefix_str, pg_backend_build_dir, matched_files))
     return pg_backend_build_dir, read_file(matched_files[0]).strip().split()
+
+
+def get_obj_paths_from_static_library(
+        static_lib_path: str,
+        excluded_file_names: Collection[str] = [],
+        must_exclude: bool = False) -> List[str]:
+    """
+    Retrieve the list of object file paths contained in the given static library.
+    """
+    ar_output = subprocess.check_output(['ar', '-t', static_lib_path]).decode('utf-8')
+    excluded_file_names = set(excluded_file_names)
+    file_names = [line.strip() for line in ar_output.split('\n')]
+    file_names = sorted([file_name for file_name in file_names if file_name])
+    if excluded_file_names:
+        file_names_after_exclusion = sorted([
+            file_name for file_name in file_names
+            if file_name not in excluded_file_names])
+        if file_names == file_names_after_exclusion and must_exclude:
+            raise ValueError(
+                f"Object file names contained in library {static_lib_path} "
+                f"must include at least some of {excluded_file_names}, which should then be "
+                f"explicitly omitted from linking. Found: {file_names}"
+            )
+
+        file_names = file_names_after_exclusion
+    dir_path = os.path.dirname(static_lib_path)
+    return [os.path.join(dir_path, file_name) for file_name in file_names]
 
 
 class LinkCommand:
@@ -505,6 +532,24 @@ class LinkHelper:
                         not arg.startswith('-lyb_')):
                     self.process_arg(arg)
 
+    def add_pgcommon_srv_library(self) -> None:
+        common_dir = os.path.join(self.build_root, 'postgres_build', 'src', 'common')
+
+        # Instead of libpgcommon.a, use libpgcommon_srv.a in the server.
+        obj_paths = get_obj_paths_from_static_library(
+            os.path.join(common_dir, 'libpgcommon_srv.a'),
+            # Exclude this file that has pg_link_canary_is_frontend returning false. Instead, allow
+            # the version of this function from libpq (returning true) to be used.
+            # See #22105 for more details.
+            excluded_file_names=['link-canary_srv.o'],
+            must_exclude=True)
+
+        self.new_args.extend(obj_paths)
+
+        # We still need to provide the Postgres frontend version of link-canary.o that has
+        # the pg_link_canary_is_frontend function returning true.
+        self.new_args.append(os.path.join(common_dir, 'link-canary.o'))
+
     def add_final_args(self, lto_type: str) -> None:
         assert lto_type in ['full', 'thin']
         for static_lib_path in sorted(self.static_libs_from_ldd):
@@ -519,9 +564,9 @@ class LinkHelper:
                     ', '.join(sorted(self.static_libs_from_ldd[static_lib_path])))
                 self.new_args.append(static_lib_path)
 
+        self.add_pgcommon_srv_library()
+
         self.new_args.extend([
-            # Instead of libpgcommon.a, use libpgcommon_srv.a in the server.
-            os.path.join(self.build_root, 'postgres_build', 'src', 'common', 'libpgcommon_srv.a'),
             '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
             '-l:libpgport.a',
             '-l:libpq.a',

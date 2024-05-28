@@ -55,7 +55,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t 
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
          Storage Filter: (r1 = r2)
 (4 rows)
 
@@ -71,7 +71,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
          Storage Filter: (r1 = r2)
 (4 rows)
 
@@ -89,7 +89,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r3 FROM t 
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: (r3 = 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r3 FROM t WHERE r3 = 1;
@@ -105,7 +105,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r3 FROM t 
  Unique (actual rows=0 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=0 loops=1)
          Index Cond: (r3 = 5)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r3 FROM t WHERE r3 = 5;
@@ -121,7 +121,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FRO
    Group Key: r2, r3
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: (r3 = 1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (5 rows)
 
 SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1;
@@ -137,7 +137,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FRO
    Group Key: r2, r3
    ->  Distinct Index Scan using t_pkey on t (actual rows=0 loops=1)
          Index Cond: (r3 = 5)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (5 rows)
 
 SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5;
@@ -153,7 +153,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FRO
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: ((r2 = 1) AND (r3 = 1))
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;
@@ -202,7 +202,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
          Storage Filter: ((r1 * r1) = 1)
 (4 rows)
 
@@ -217,7 +217,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
          Storage Filter: ((r2 * r2) = 1)
 (4 rows)
 
@@ -235,7 +235,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * r2 AS
  HashAggregate (actual rows=4 loops=1)
    Group Key: (r1 * r2)
    ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (4 rows)
 
 SELECT DISTINCT r1 * r2 AS r FROM t;
@@ -254,7 +254,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT 0 * r1 AS 
  HashAggregate (actual rows=1 loops=1)
    Group Key: (0 * r1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT 0 * r1 AS r FROM t;
@@ -290,7 +290,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=1 loops=1)
          Index Cond: (r1 > 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r1 > 1;
@@ -307,7 +307,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
          Index Cond: (r2 > 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r2 > 1;
@@ -326,7 +326,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t 
    Group Key: r2
    ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
          Index Cond: (r2 < 5)
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (5 rows)
 
 SELECT DISTINCT r2 FROM t WHERE r2 < 5;
@@ -344,7 +344,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: (r1 = ANY ('{1,2}'::integer[]))
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);
@@ -361,7 +361,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: (r1 = ANY ('{1,2}'::integer[]))
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
@@ -376,7 +376,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
          Index Cond: (r2 = ANY ('{1,2}'::integer[]))
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2);
@@ -393,7 +393,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
  Unique (actual rows=2 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
          Index Cond: ((r1 = ANY ('{1,2}'::integer[])) AND (r2 = 2))
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;
@@ -411,7 +411,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
  Unique (actual rows=4 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=5 loops=1)
          Index Cond: (r2 = ANY ('{1,2}'::integer[]))
-         Distinct Prefix: 2
+         Distinct Keys: r1, r2
 (4 rows)
 
 SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;
@@ -430,7 +430,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
          Index Cond: (r1 = 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r1 = 1;
@@ -472,7 +472,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FRO
                            QUERY PLAN
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-   Distinct Prefix: 2
+   Distinct Keys: h1, h2
 (2 rows)
 
 SELECT DISTINCT h1, h2 FROM th;
@@ -493,7 +493,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th
  HashAggregate (actual rows=2 loops=1)
    Group Key: h1
    ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: h1, h2
 (4 rows)
 
 SELECT DISTINCT h1 FROM th;
@@ -510,7 +510,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h2 FROM th
  HashAggregate (actual rows=3 loops=1)
    Group Key: h2
    ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: h1, h2
 (4 rows)
 
 SELECT DISTINCT h2 FROM th;
@@ -527,7 +527,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2, r1
                            QUERY PLAN
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-   Distinct Prefix: 3
+   Distinct Keys: h1, h2, r1
 (2 rows)
 
 SELECT DISTINCT h1, h2, r1 FROM th;
@@ -549,7 +549,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
  HashAggregate (actual rows=3 loops=1)
    Group Key: r1
    ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-         Distinct Prefix: 3
+         Distinct Keys: h1, h2, r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM th;
@@ -571,7 +571,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th
          Sort Key: h1
          Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: h1, h2
 (6 rows)
 
 SELECT DISTINCT h1 FROM th ORDER BY h1;
@@ -587,7 +587,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
    Index Cond: ((h1 = 1) AND (h2 = 1))
-   Distinct Prefix: 3
+   Distinct Keys: h1, h2, r1
 (3 rows)
 
 SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1;
@@ -605,7 +605,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
          Sort Key: r1
          Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th (actual rows=3 loops=1)
-               Distinct Prefix: 3
+               Distinct Keys: h1, h2, r1
                Storage Filter: (h1 = 1)
 (7 rows)
 
@@ -623,7 +623,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FRO
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
    Index Cond: ((h1 = 1) AND (h2 = 1))
-   Distinct Prefix: 2
+   Distinct Keys: h1, h2
 (3 rows)
 
 SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;
@@ -637,7 +637,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FRO
                            QUERY PLAN
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
-   Distinct Prefix: 3
+   Distinct Keys: h1, h2, r1
    Storage Filter: (r1 = 1)
 (3 rows)
 
@@ -653,7 +653,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
-         Distinct Prefix: 3
+         Distinct Keys: h1, h2, r1
          Storage Filter: (r1 = 1)
 (4 rows)
 
@@ -680,7 +680,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t;
 -------------------------------------------------------------------------
  Unique (actual rows=335 loops=1)
    ->  Distinct Index Only Scan using irv on t (actual rows=335 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
 
@@ -706,7 +706,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t O
 ----------------------------------------------------------------------------------
  Unique (actual rows=335 loops=1)
    ->  Distinct Index Only Scan Backward using irv on t (actual rows=335 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
 
@@ -757,7 +757,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t;
 -------------------------------------------------------------------------
  Unique (actual rows=335 loops=1)
    ->  Distinct Index Only Scan using irv on t (actual rows=335 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
 
@@ -790,7 +790,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM th;
  HashAggregate (actual rows=334 loops=1)
    Group Key: v
    ->  Distinct Index Only Scan using ihv on th (actual rows=668 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: v, h1
          Heap Fetches: 0
 (5 rows)
 
@@ -884,7 +884,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sam
  Unique (actual rows=1 loops=1)
    ->  Distinct Index Scan using sample_pkey on sample (actual rows=1 loops=1)
          Index Cond: (a > 0)
-         Distinct Prefix: 1
+         Distinct Keys: a
 (4 rows)
 
 SELECT DISTINCT a FROM sample WHERE a > 0;

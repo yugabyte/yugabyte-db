@@ -351,8 +351,8 @@ class ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
-  Result<rapidjson::Document> CloneFromSnapshotSchedule(
-      const SnapshotScheduleId& schedule_id, const std::string& target_namespace_name,
+  Result<rapidjson::Document> CloneNamespace(
+      const TypedNamespaceName& source_namespace, const std::string& target_namespace_name,
       HybridTime restore_at);
   Result<rapidjson::Document> IsCloneDone(const NamespaceId& source_namespace_id, uint32_t seq_no);
   Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
@@ -436,8 +436,6 @@ class ClusterAdminClient {
   Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& replication_group_id);
-
-  Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status SetUniverseReplicationEnabled(const std::string& replication_group_id,
                                        bool is_enabled);

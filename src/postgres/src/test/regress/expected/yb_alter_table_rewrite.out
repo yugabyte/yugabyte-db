@@ -100,11 +100,11 @@ Referenced by:
 Policies:
     POLICY "p" FOR SELECT
       TO user1
-      USING ((username = (CURRENT_USER)::text))
+      USING ((username = CURRENT_USER))
 Statistics objects:
-    "public"."s1" (dependencies) ON a, b FROM table_rewrite_test1
+    "public.s1" (dependencies) ON a, b FROM table_rewrite_test1
 Triggers:
-    dummy_trigger AFTER INSERT ON table_rewrite_test1 FOR EACH ROW EXECUTE PROCEDURE dummy()
+    dummy_trigger AFTER INSERT ON table_rewrite_test1 FOR EACH ROW EXECUTE FUNCTION dummy()
 Tablespace: "test_tablespace"
 
 \d test_index;
@@ -435,9 +435,9 @@ CREATE INDEX test_add_column_idx ON test_add_column(b ASC)
     SPLIT AT VALUES ((5), (10));
 INSERT INTO test_add_column VALUES (1, 1);
 ALTER TABLE test_add_column ADD COLUMN c SERIAL;
-SET ddl_rollback_enabled = ON;
+SET yb_ddl_rollback_enabled = ON;
 ALTER TABLE test_add_column ADD COLUMN d SERIAL PRIMARY KEY;
-SET ddl_rollback_enabled = OFF;
+SET yb_ddl_rollback_enabled = OFF;
 SELECT num_tablets, num_hash_key_columns FROM
     yb_table_properties('test_add_column'::regclass);
  num_tablets | num_hash_key_columns 
@@ -478,7 +478,7 @@ ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
 ALTER TABLE nopk ALTER COLUMN id DROP NOT NULL;
 INSERT INTO nopk VALUES (null);
 ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
-ERROR:  column "id" contains null values
+ERROR:  column "id" of relation "nopk" contains null values
 DROP TABLE nopk;
 -- test complex pks.
 CREATE TABLE complex_pk (v1 int, v2 text, v3 char, v4 boolean);
@@ -700,6 +700,26 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('range_pk_test
            5 |                    1
 (1 row)
 
+-- rules:
+-- 1. new table rewrite + rule
+-- 2. old table rewrite + rule -- fail
+-- 3. new table rewrite + no more rule
+-- 4. old table rewrite + no more rule
+CREATE TABLE pk_rule_table (id int);
+CREATE RULE pk_rule AS
+    ON INSERT TO pk_rule_table
+    DO INSTEAD DELETE FROM pk_rule_table;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey; -- should fail.
+ERROR:  changing primary key of a table with rules is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16981. React with thumbs up to raise its priority
+RESET yb_enable_alter_table_rewrite;
+DROP RULE pk_rule ON pk_rule_table;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey;
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+RESET yb_enable_alter_table_rewrite;
 -- Tests for ALTER TYPE.
 -- basic tests.
 CREATE TABLE varchar_table(id SERIAL, c1 varchar(10), PRIMARY KEY (id ASC));
@@ -741,15 +761,15 @@ SELECT * from varchar_table;
 
 ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
 SELECT * from varchar_table;
- id |        c1        
-----+------------------
-  1 |  1.4142135623731
-  2 |                1
-  3 |                1
-  4 | 1.73205080756888
-  5 |                1
-  6 |  1.4142135623731
-  7 | 1.73205080756888
+ id |         c1
+----+--------------------
+  1 | 1.4142135623730951
+  2 |                  1
+  3 |                  1
+  4 | 1.7320508075688772
+  5 |                  1
+  6 | 1.4142135623730951
+  7 | 1.7320508075688772
 (7 rows)
 
 ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, ALTER c1 TYPE varchar;
@@ -765,7 +785,7 @@ SELECT * from int4_table;
 
 CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
 ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
-ERROR:  cannot alter type of column named in partition key
+ERROR:  cannot alter column "c1" because it is part of the partition key of relation "int4_table2"
 CREATE TABLE pk_table(c1 int primary key);
 INSERT INTO pk_table VALUES (1), (2);
 ALTER TABLE pk_table ALTER c1 TYPE varchar;
@@ -780,21 +800,51 @@ INSERT INTO pk_table VALUES (1); -- should fail.
 ERROR:  duplicate key value violates unique constraint "pk_table_pkey"
 ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
 ERROR:  duplicate key value violates unique constraint "pk_table"
--- test ALTER TYPE on a column that is a part of a view/rule.
+-- test ALTER TYPE on a column that is a part of a view/rule:
+-- 1. column part of view --fail
+-- 2. column not part of view
+-- 3. column part of view via _RETURN rule -- fail
+-- 4. column not part of view via _RETURN rule
+-- 5. rule on other table/view that affects this table
+-- 6. rule on other table/view + rule on this table
+-- 7. rule on other table/view + rule on this table + old rewrite -- fail
+-- 8. rule on other table/view + no more rule on this table
+-- 9. rule on other table/view (this is dropped for #22063) + no more rule on this table + old rewrite
 CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
 CREATE VIEW test_view AS SELECT c2 FROM test_table;
 ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
 ERROR:  cannot alter type of a column used by a view or rule
 DETAIL:  rule _RETURN on view test_view depends on column "c2"
 ALTER TABLE test_table ALTER c3 TYPE varchar(1);
-CREATE TABLE dummy_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE TABLE dummy_table (c3 varchar);
 CREATE RULE "_RETURN" AS
     ON SELECT TO dummy_table
     DO INSTEAD
-        SELECT * FROM test_table;
-ALTER TABLE test_table ALTER c4 TYPE varchar(1); -- should fail.
+        SELECT c3 FROM test_table;
+ALTER TABLE test_table ALTER c3 TYPE varchar(1); -- should fail.
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view dummy_table depends on column "c4"
+DETAIL:  rule _RETURN on view dummy_table depends on column "c3"
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+CREATE RULE dummy_rule AS
+    ON INSERT TO dummy_table
+    DO INSTEAD DELETE FROM test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+CREATE RULE test_rule AS
+    ON INSERT TO test_table
+    DO INSTEAD DELETE FROM dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE test_table ALTER c4 TYPE char; -- should fail.
+ERROR:  changing column type of a table with rules is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16981. React with thumbs up to raise its priority
+RESET yb_enable_alter_table_rewrite;
+DROP RULE test_rule ON test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+SET yb_enable_alter_table_rewrite = OFF;
+-- TODO(#22063): DROP VIEW is needed to avoid non-deterministic error.
+DROP VIEW dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+RESET yb_enable_alter_table_rewrite;
 DROP TABLE test_table CASCADE;
 -- test ALTER TYPE on a foreign key column.
 CREATE TABLE fk_table (c1 varchar primary key);

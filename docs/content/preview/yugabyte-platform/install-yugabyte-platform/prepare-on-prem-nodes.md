@@ -24,10 +24,9 @@ The following ports must be opened for intra-cluster communication (they do not 
 
 The following ports must be exposed for intra-cluster communication. You should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
-- 9300 - Prometheus metrics
+- 9300 - Prometheus Node Exporter
 - 7000 - YB-Master HTTP endpoint
 - 9000 - YB-TServer HTTP endpoint
-- 11000 - YEDIS API
 - 12000 - YCQL API
 - 13000 - YSQL API
 - 54422 - Custom SSH
@@ -36,7 +35,6 @@ The following ports must be exposed for intra-node communication and be availabl
 
 - 5433 - YSQL server
 - 9042 - YCQL server
-- 6379 - YEDIS server
 
 For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
 
@@ -49,7 +47,7 @@ You can prepare VMs for use as nodes in an on-premises deployment, as follows:
     This checklist also gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#public-clouds).
 
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](../../../deploy/manual-deployment/system-config).
-1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use). If your SSH user does not have sudo privileges at all, follow the steps in [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 1. Execute the following command to verify that you can `ssh` into the node (from your local machine if the node has a public address):
 
     ```sh
@@ -91,21 +89,25 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YBA to function as expected.
   {{< /tip >}}
 
-- Verify that Python 3.6 or later is installed.
+- Verify that Python 3.5-3.8 is installed. v3.6 is recommended.
 
-    If you are using Python v3.11 or later, install the selinux python package as follows:
-
-    ```sh
-    python3.11 -m pip install selinux
-    ```
-
-    In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one as follows:
+    In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 
     ```sh
-    sudo alternatives --set python3 /usr/bin/python3.9
+    sudo alternatives --set python3 /usr/bin/python3.6
     sudo alternatives --display python3
     python3 -V
     ```
+
+    If you are using Python later than v3.6, install the [selinux](https://pypi.org/project/selinux/) package corresponding to your version of python. For example, using [pip](https://pip.pypa.io/en/stable/installation/), you can install as follows:
+
+    ```sh
+    python3 -m pip install selinux
+    ```
+
+    Refer to [Ansible playbook fails with libselinux-python aren't installed on RHEL8](https://access.redhat.com/solutions/5674911) for more information.
+
+    If you are using Python later than v3.7, set the **Max Python Version (exclusive)** Global Configuration option to the python version. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 - Enable core dumps and set ulimits, as follows:
 

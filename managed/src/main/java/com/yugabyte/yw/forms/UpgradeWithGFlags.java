@@ -50,8 +50,9 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
     for (Cluster curCluster : universe.getUniverseDetails().clusters) {
       Cluster newCluster = newClusters.get(curCluster.uuid);
       if (newCluster == null
-          || Objects.equals(
-              newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)) {
+          || (Objects.equals(
+                  newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)
+              && !skipMatchWithUserIntent)) {
         continue;
       }
       if (newCluster.clusterType == ClusterType.PRIMARY) {
@@ -92,7 +93,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
 
   private boolean verifyGFlagsOld(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    if (masterGFlags.equals(userIntent.masterGFlags)
+    if (!skipMatchWithUserIntent
+        && masterGFlags.equals(userIntent.masterGFlags)
         && tserverGFlags.equals(userIntent.tserverGFlags)) {
       return false;
     }

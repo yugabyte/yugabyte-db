@@ -50,6 +50,7 @@ public class TestPgSelect extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_packed_row", "false");
+    flagMap.put("pg_client_use_shared_memory", "false");
     return flagMap;
   }
 
@@ -1585,10 +1586,10 @@ public class TestPgSelect extends BasePgSQLTest {
         query = "SELECT * FROM sample WHERE key ";
 
         // Num requests are 1 as it just searches tablet 1.
-        assertTrue(getNumDocdbRequests(statement, query + "< 65534") == 1);
+        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534"));
 
         // Test 2
-        assertTrue(getNumDocdbRequests(statement, query + "< 65534::bigint") == 1);
+        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534::bigint"));
 
         // Test 3
         // 2147483648 is an actual bigint value. Hence, we end up perfroming a scan on all the
@@ -1596,10 +1597,10 @@ public class TestPgSelect extends BasePgSQLTest {
         // of rows returned are equal when the qualifying condition is 2147483648 as compared to
         // 20999999999, the former condition ends up scanning all the 4 tablets while the later
         // condition scans just 3 tablets.
-        assertTrue(getNumDocdbRequests(statement, query + "< 2147483648") == 4);
+        assertEquals(4, getNumDocdbRequests(statement, query + "< 2147483648"));
 
         // Test 4
-        assertTrue(getNumDocdbRequests(statement, query + "< 2099999999") == 3);
+        assertEquals(3, getNumDocdbRequests(statement, query + "< 2099999999"));
     }
   }
 
@@ -1627,8 +1628,8 @@ public class TestPgSelect extends BasePgSQLTest {
         // All the elements present in the IN list are out of the 32 bit integer range. Hence, they
         // should not be pushed down as a part of search array. Subsequently the number of RPCs
         // should be 0.
-        assertTrue(
-          getNumDocdbRequests(statement, query + "IN (3000000005, 3000000006, 3000000007)") == 0);
+        assertEquals(
+          0, getNumDocdbRequests(statement, query + "IN (3000000005, 3000000006, 3000000007)"));
 
         // Test 6
         // Fails with the following error in prior to this diff

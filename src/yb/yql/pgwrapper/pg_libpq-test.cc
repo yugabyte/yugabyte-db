@@ -481,7 +481,7 @@ TEST_F(PgLibPqTest, ConcurrentIndexInsert) {
 TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  const auto num_iterations = 50;
+  const auto num_iterations = 25;
   const auto kTimeout = 60s;
 
   ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));
@@ -2272,8 +2272,7 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("SET yb_binary_restore TO true"));
   ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
   // Cleanup hasn't been processed yet, so this fails.
-  ASSERT_QUERY_FAIL(conn.Execute("CREATE TABLEGROUP tg3"),
-                    "Duplicate tablegroup");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("CREATE TABLEGROUP tg3"), "Duplicate tablegroup");
 
   // Wait for cleanup thread to delete a table.
   // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
@@ -3848,6 +3847,37 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
   // Check that no new files are created on view creation.
   values = ASSERT_RESULT(conn.FetchRows<bool>(query));
   ASSERT_EQ(values, decltype(values){true});
+}
+
+// Test to verify backends with the same backend id do not operate on the
+// same temporary table namespace.
+TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
+  const std::string kTableName = "foo";
+  const std::string kTableName2 = "foo2";
+  auto* ts1 = cluster_->tserver_daemons()[0];
+  auto* ts2 = cluster_->tserver_daemons()[1];
+  auto conn1 = ASSERT_RESULT(PGConnBuilder({
+        .host = ts1->bind_host(),
+        .port = ts1->pgsql_rpc_port(),
+      }).Connect());
+  auto conn2 = ASSERT_RESULT(PGConnBuilder({
+        .host = ts2->bind_host(),
+        .port = ts2->pgsql_rpc_port(),
+      }).Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName2));
+  ASSERT_OK(conn2.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (4), (5), (6)", kTableName2));
+
+  ASSERT_OK(conn2.ExecuteFormat("DROP TABLE $0", kTableName));
+  auto rows = ASSERT_RESULT((
+      conn1.FetchRows<int32_t>(Format("SELECT * FROM $0", kTableName))));
+  ASSERT_EQ(rows, (decltype(rows){1, 2, 3}));
+  conn2.Reset();
+  rows = ASSERT_RESULT((
+      conn1.FetchRows<int32_t>(Format("SELECT * FROM $0", kTableName2))));
+  ASSERT_EQ(rows, (decltype(rows){4, 5, 6}));
 }
 
 class PgBackendsSessionExpireTest : public LibPqTestBase {

@@ -21,24 +21,57 @@ namespace cdc {
 class CDCSDKUniqueRecordID {
  public:
   explicit CDCSDKUniqueRecordID(
-      const TabletId& tablet_id, const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+      const bool& publication_refresh_record, const std::shared_ptr<CDCSDKProtoRecordPB>& record);
 
   explicit CDCSDKUniqueRecordID(
-      RowMessage_Op op, uint64_t commit_time, uint64_t record_time, std::string& tablet_id,
-      uint32_t write_id);
+      bool publication_refresh_record, RowMessage_Op op, uint64_t commit_time,
+      std::string& docdb_txn_id, uint64_t record_time, uint32_t write_id, std::string& table_id,
+      std::string& primary_key);
 
-  static bool CanFormUniqueRecordId(const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+  enum VWALRecordType {
+    // These are arranged in the priority order with DDL having the highest priority.
+    DDL = 0,
+    BEGIN = 1,
+    DML = 2,
+    COMMIT = 3,
+    PUBLICATION_REFRESH = 4,
+    SAFEPOINT = 5,
+    UNKNOWN = 6 // should never be encountered
+  };
 
-  bool lessThan(const std::shared_ptr<CDCSDKUniqueRecordID>& record);
+  CDCSDKUniqueRecordID::VWALRecordType GetVWALRecordTypeFromOp(
+      const bool& is_publication_refresh, const RowMessage_Op& op);
+
+  static bool CanFormUniqueRecordId(
+      const bool& is_publication_refresh_record,
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+
+  bool CompareDDLOrder(const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id);
+
+  // This comparator will be used by the Virtual WAL's Priority queue to sort records in the PQ.
+  // Returns true iff this "HasHigherPriorityThan" other <=> this < other.
+  bool HasHigherPriorityThan(const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id);
+
+  // This comparator will be used by the LSN generator. Returns true iff this
+  // "GreaterThanDistributedLSN" other <=> this > other.
+  bool GreaterThanDistributedLSN(
+      const std::shared_ptr<CDCSDKUniqueRecordID>& other_unique_record_id);
 
   uint64_t GetCommitTime() const;
 
+  std::string ToString() const;
+
+  bool IsPublicationRefreshRecord() const;
+
  private:
   RowMessage_Op op_;
+  VWALRecordType vwal_record_type_;
   uint64_t commit_time_;
+  std::string docdb_txn_id_;
   uint64_t record_time_;
-  std::string tablet_id_;
   uint32_t write_id_;
+  std::string table_id_;
+  std::string primary_key_;
 };
 
 }  // namespace cdc

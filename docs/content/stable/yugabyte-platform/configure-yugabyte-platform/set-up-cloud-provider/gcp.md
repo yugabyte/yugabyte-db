@@ -175,12 +175,36 @@ For each region that you want to use for this configuration, do the following:
 - Enter the ID of a shared subnet.
 - Optionally, if you have an [instance template](#gcp-instance-templates), specify the template name in the **Instance Template** field.
 
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. You can see this name when creating universes using this provider.
+
+1. Enter the Machine Image ID to use for each [provider region](#regions).
+
+1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
+
 ### SSH Key Pairs
 
-To be able to provision cloud instances with YugabyteDB, YBA requires SSH access. The following are two ways to provide SSH access:
+To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.
+
+Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+
+You can manage SSH key pairs in the following ways:
 
 - Enable YBA to create and manage Key Pairs. In this mode, YBA creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content.
 
 ### Advanced
 

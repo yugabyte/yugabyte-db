@@ -16,8 +16,10 @@ import jakarta.persistence.Id;
 import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+@Slf4j
 @Entity
 public class ReleaseArtifact extends Model {
   @Getter @Id private UUID artifactUUID = UUID.randomUUID();
@@ -53,6 +55,11 @@ public class ReleaseArtifact extends Model {
 
   @Column @Getter private String packageURL;
 
+  public void setPackageURL(String url) {
+    this.packageURL = url;
+    save();
+  }
+
   public static class GCSFile {
     public String path;
     public String credentialsJson;
@@ -61,6 +68,7 @@ public class ReleaseArtifact extends Model {
   @Getter private GCSFile gcsFile;
 
   @Column(name = "gcs_file")
+  @Getter
   private String gcsFileJson;
 
   public void setGCSFile(GCSFile gcsFile) {
@@ -78,6 +86,7 @@ public class ReleaseArtifact extends Model {
   @Getter private S3File s3File;
 
   @Column(name = "s3_file")
+  @Getter
   private String s3FileJson;
 
   public void setS3File(S3File s3File) {
@@ -108,7 +117,7 @@ public class ReleaseArtifact extends Model {
           String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
-    artifact.sha256 = sha256;
+    artifact.sha256 = ReleaseArtifact.sha256Format(sha256);
     artifact.platform = platform;
     artifact.architecture = architecture;
     artifact.packageFileID = packageFileID;
@@ -137,7 +146,7 @@ public class ReleaseArtifact extends Model {
           String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
-    artifact.sha256 = sha256;
+    artifact.sha256 = sha256Format(sha256);
     artifact.platform = platform;
     artifact.architecture = architecture;
     artifact.packageURL = packageURL;
@@ -166,7 +175,7 @@ public class ReleaseArtifact extends Model {
           String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
-    artifact.sha256 = sha256;
+    artifact.sha256 = sha256Format(sha256);
     artifact.platform = platform;
     artifact.architecture = architecture;
     artifact.gcsFile = gcsFile;
@@ -196,7 +205,8 @@ public class ReleaseArtifact extends Model {
           String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
-    artifact.sha256 = sha256;
+
+    artifact.sha256 = ReleaseArtifact.sha256Format(sha256);
     artifact.platform = platform;
     artifact.architecture = architecture;
     artifact.s3File = s3File;
@@ -242,9 +252,32 @@ public class ReleaseArtifact extends Model {
     return artifact;
   }
 
+  public static ReleaseArtifact getForReleaseMatchingType(
+      UUID releaseUUID, Platform plat, Architecture arch) {
+    ReleaseArtifact artifact =
+        find.query()
+            .where()
+            .eq("release", releaseUUID)
+            .eq("platform", plat)
+            .eq("architecture", arch)
+            .findOne();
+    if (artifact != null) {
+      artifact.fillJsonText();
+    }
+    return artifact;
+  }
+
   public static List<ReleaseArtifact> getForReleaseLocalFile(UUID releaseUUID) {
     List<ReleaseArtifact> artifacts =
         find.query().where().eq("release", releaseUUID).isNotNull("package_file_id").findList();
+    artifacts.forEach(a -> a.fillJsonText());
+    return artifacts;
+  }
+
+  public static List<ReleaseArtifact> getAllPlatformArchitecture(
+      Platform platform, Architecture architecture) {
+    List<ReleaseArtifact> artifacts =
+        find.query().where().eq("platform", platform).eq("architecture", architecture).findList();
     artifacts.forEach(a -> a.fillJsonText());
     return artifacts;
   }
@@ -255,8 +288,30 @@ public class ReleaseArtifact extends Model {
   }
 
   public void setSha256(String sha256) {
-    this.sha256 = sha256;
+    // Shortcut setting to null;
+    if (sha256 == null) {
+      this.sha256 = sha256;
+      return;
+    }
+    // This only happens when migrating from legacy releases, where md5 was supported.
+    try {
+      this.sha256 = sha256Format(sha256);
+    } catch (RuntimeException e) {
+      log.error("invalid sha256", e);
+      return;
+    }
     save();
+  }
+
+  public String getSha256() {
+    return sha256;
+  }
+
+  public String getFormattedSha256() {
+    if (sha256 != null && !sha256.toLowerCase().startsWith("sha256:")) {
+      return String.format("sha256:%s", sha256);
+    }
+    return sha256;
   }
 
   public boolean isKubernetes() {
@@ -276,5 +331,19 @@ public class ReleaseArtifact extends Model {
     if (s3FileJson != null) {
       s3File = Json.fromJson(Json.parse(s3FileJson), S3File.class);
     }
+  }
+
+  private static String sha256Format(String sha256) {
+    if (sha256 == null) {
+      return sha256;
+    }
+    // This only happens when migrating from legacy releases, where md5 was supported.
+    if (sha256.startsWith("md5")) {
+      throw new RuntimeException("cannot set md5sum as sha256 value");
+    }
+    if (sha256.startsWith("sha256:")) {
+      sha256 = sha256.replaceFirst("sha256:", "");
+    }
+    return sha256;
   }
 }

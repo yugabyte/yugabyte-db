@@ -1,0 +1,1520 @@
+--
+-- YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
+--
+SET yb_explain_hide_non_deterministic_fields = true;
+SET enable_bitmapscan = true;
+-- tenk1 already has 4 ASC indexes: unique1, unique2, hundred, and (thousand, tenthous)
+-- each query has an order by to make asserting results easier
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 ORDER BY unique1;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: unique1
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=2 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2 loops=1)
+               Index Cond: (unique1 <= 1)
+(6 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 ORDER BY unique1;
+ unique1 | unique2 | hundred | thousand
+---------+---------+---------+----------
+       0 |    9998 |       0 |        0
+       1 |    2838 |       1 |        1
+(2 rows)
+
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique2 BETWEEN 4 and 6 ORDER BY unique1;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: unique1
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=3 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=3 loops=1)
+               Index Cond: ((unique2 >= 4) AND (unique2 <= 6))
+(6 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique2 BETWEEN 4 and 6 ORDER BY unique1;
+ unique1 | unique2 | hundred | thousand
+---------+---------+---------+----------
+    5057 |       6 |      57 |       57
+    7164 |       4 |      64 |      164
+    8009 |       5 |       9 |        9
+(3 rows)
+
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Sort Key: unique1
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=4 loops=1)
+         Storage Filter: ((thousand < 200) AND (unique1 < 1000))
+         ->  Bitmap Index Scan on tenk1_hundred (actual rows=200 loops=1)
+               Index Cond: (hundred = ANY ('{64,66}'::integer[]))
+(7 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+ unique1 | unique2 | hundred | thousand
+---------+---------+---------+----------
+      64 |    8227 |      64 |       64
+      66 |    6723 |      66 |       66
+     164 |    3131 |      64 |      164
+     166 |    6582 |      66 |      166
+(4 rows)
+
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+                                                                              QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=9 loops=1)
+   Sort Key: unique1
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=9 loops=1)
+         Storage Filter: ((unique1 <= 1) OR ((unique2 >= 4) AND (unique2 <= 6)) OR ((hundred = ANY ('{64,66}'::integer[])) AND (thousand < 200) AND (unique1 < 1000)))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 204
+         ->  BitmapOr (actual rows=204 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2 loops=1)
+                     Index Cond: (unique1 <= 1)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=3 loops=1)
+                     Index Cond: ((unique2 >= 4) AND (unique2 <= 6))
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 3
+               ->  Bitmap Index Scan on tenk1_hundred (actual rows=200 loops=1)
+                     Index Cond: (hundred = ANY ('{64,66}'::integer[]))
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 200
+ Storage Read Requests: 4
+ Storage Rows Scanned: 409
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(24 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+ unique1 | unique2 | hundred | thousand
+---------+---------+---------+----------
+       0 |    9998 |       0 |        0
+       1 |    2838 |       1 |        1
+      64 |    8227 |      64 |       64
+      66 |    6723 |      66 |       66
+     164 |    3131 |      64 |      164
+     166 |    6582 |      66 |      166
+    5057 |       6 |      57 |       57
+    7164 |       4 |      64 |      164
+    8009 |       5 |       9 |        9
+(9 rows)
+
+/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+                                                                           QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using tenk1_unique1 on tenk1 (actual rows=9 loops=1)
+   Storage Filter: ((unique1 <= 1) OR ((unique2 >= 4) AND (unique2 <= 6)) OR ((hundred = ANY ('{64,66}'::integer[])) AND (thousand < 200) AND (unique1 < 1000)))
+   Storage Table Read Requests: 10
+   Storage Table Rows Scanned: 10000
+   Storage Index Read Requests: 10
+   Storage Index Rows Scanned: 10000
+ Storage Read Requests: 20
+ Storage Rows Scanned: 20000
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
+
+/*+ Set(enable_bitmapscan false) */
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+ unique1 | unique2 | hundred | thousand
+---------+---------+---------+----------
+       0 |    9998 |       0 |        0
+       1 |    2838 |       1 |        1
+      64 |    8227 |      64 |       64
+      66 |    6723 |      66 |       66
+     164 |    3131 |      64 |      164
+     166 |    6582 |      66 |      166
+    5057 |       6 |      57 |       57
+    7164 |       4 |      64 |      164
+    8009 |       5 |       9 |        9
+(9 rows)
+
+-- test respecting row limits
+SET yb_fetch_row_limit = 5;
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM tenk1 WHERE thousand < 4 OR thousand >= 998;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=60 loops=1)
+   Storage Table Read Requests: 12
+   Storage Table Rows Scanned: 60
+   ->  BitmapOr (actual rows=60 loops=1)
+         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=40 loops=1)
+               Index Cond: (thousand < 4)
+               Storage Index Read Requests: 8
+               Storage Index Rows Scanned: 40
+         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=20 loops=1)
+               Index Cond: (thousand >= 998)
+               Storage Index Read Requests: 4
+               Storage Index Rows Scanned: 20
+ Storage Read Requests: 24
+ Storage Rows Scanned: 120
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+--
+-- test respecting size limits
+--
+SET yb_fetch_row_limit = 0;
+SET yb_fetch_size_limit = '135kB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM tenk1 WHERE thousand < 500 OR hundred >= 75;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=6250 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 6250
+   ->  BitmapOr (actual rows=6250 loops=1)
+         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=5000 loops=1)
+               Index Cond: (thousand < 500)
+               Storage Index Read Requests: 2
+               Storage Index Rows Scanned: 5000
+         ->  Bitmap Index Scan on tenk1_hundred (actual rows=2500 loops=1)
+               Index Cond: (hundred >= 75)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 2500
+ Storage Read Requests: 6
+ Storage Rows Scanned: 13750
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+RESET yb_fetch_row_limit;
+RESET yb_fetch_size_limit;
+--
+-- test exceeding work_mem
+--
+SET work_mem TO '4MB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=6407 loops=1)
+   Storage Table Read Requests: 7
+   Storage Table Rows Scanned: 6407
+   ->  BitmapOr (actual rows=6407 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=6000 loops=1)
+               Index Cond: (unique1 < 6000)
+               Storage Index Read Requests: 6
+               Storage Index Rows Scanned: 6000
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=1000 loops=1)
+               Index Cond: (unique2 < 1000)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1000
+ Storage Read Requests: 14
+ Storage Rows Scanned: 13407
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+SET work_mem TO '100kB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
+NOTICE:  exceeded work_mem, switching to full table scan
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=6407 loops=1)
+   Storage Filter: ((unique1 < 6000) OR (unique2 < 1000))
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 10000
+   Exceeded work_mem: true
+   ->  BitmapOr (actual rows=0 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=0 loops=1)
+               Index Cond: (unique1 < 6000)
+               Storage Index Read Requests: 5
+               Storage Index Rows Scanned: 5120
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=0 loops=1)
+               Index Cond: (unique2 < 1000)
+ Storage Read Requests: 8
+ Storage Rows Scanned: 15120
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+-- verify that remote filters still apply to sequential scan when we've exceeded work_mem.
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
+NOTICE:  exceeded work_mem, switching to full table scan
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=4 loops=1)
+   Storage Filter: ((((unique1 >= 1000) AND (unique1 <= 8000)) OR (unique2 < 1000)) AND (twothousand = 0))
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10000
+   Exceeded work_mem: true
+   ->  BitmapOr (actual rows=0 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=0 loops=1)
+               Index Cond: ((unique1 >= 1000) AND (unique1 <= 8000))
+               Storage Index Read Requests: 5
+               Storage Index Rows Scanned: 5120
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=0 loops=1)
+               Index Cond: (unique2 < 1000)
+ Storage Read Requests: 6
+ Storage Rows Scanned: 15120
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+-- verify we still do the right thing when pushdown is disabled.
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
+NOTICE:  exceeded work_mem, switching to full table scan
+                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=4 loops=1)
+   Filter: ((((unique1 >= 1000) AND (unique1 <= 8000)) OR (unique2 < 1000)) AND (twothousand = 0))
+   Rows Removed by Filter: 9996
+   Storage Table Read Requests: 12
+   Storage Table Rows Scanned: 10000
+   Exceeded work_mem: true
+   ->  BitmapOr (actual rows=0 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=0 loops=1)
+               Index Cond: ((unique1 >= 1000) AND (unique1 <= 8000))
+               Storage Index Read Requests: 5
+               Storage Index Rows Scanned: 5120
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=0 loops=1)
+               Index Cond: (unique2 < 1000)
+ Storage Read Requests: 17
+ Storage Rows Scanned: 15120
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SET work_mem TO '4GB';
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=6407 loops=1)
+   Storage Table Read Requests: 7
+   Storage Table Rows Scanned: 6407
+   ->  BitmapOr (actual rows=6407 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=6000 loops=1)
+               Index Cond: (unique1 < 6000)
+               Storage Index Read Requests: 6
+               Storage Index Rows Scanned: 6000
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=1000 loops=1)
+               Index Cond: (unique2 < 1000)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1000
+ Storage Read Requests: 14
+ Storage Rows Scanned: 13407
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+RESET work_mem;
+--
+-- test recheck condition and UPDATE
+--
+CREATE TABLE tenk3 AS (SELECT * FROM tenk1);
+CREATE INDEX NONCONCURRENTLY tenk3_unique1 ON tenk3 (unique1 ASC);
+CREATE INDEX NONCONCURRENTLY tenk3_unique2 ON tenk3 (unique2 ASC);
+-- use Bitmap Scan to update some rows
+/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
+UPDATE tenk3 SET unique2 = NULL WHERE unique2 < 100 OR unique1 < 10;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Update on tenk3 (actual rows=0 loops=1)
+   ->  YB Bitmap Table Scan on tenk3 (actual rows=110 loops=1)
+         ->  BitmapOr (actual rows=110 loops=1)
+               ->  Bitmap Index Scan on tenk3_unique2 (actual rows=100 loops=1)
+                     Index Cond: (unique2 < 100)
+               ->  Bitmap Index Scan on tenk3_unique1 (actual rows=10 loops=1)
+                     Index Cond: (unique1 < 10)
+(7 rows)
+
+/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk3 (actual rows=199 loops=1)
+   ->  BitmapOr (actual rows=199 loops=1)
+         ->  Bitmap Index Scan on tenk3_unique1 (actual rows=100 loops=1)
+               Index Cond: (unique1 < 100)
+         ->  Bitmap Index Scan on tenk3_unique2 (actual rows=110 loops=1)
+               Index Cond: (unique2 IS NULL)
+(6 rows)
+
+SET yb_pushdown_is_not_null = false;
+/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk3 (actual rows=199 loops=1)
+   Storage Recheck Cond: ((unique1 < 100) OR (unique2 IS NULL))
+   ->  BitmapOr (actual rows=199 loops=1)
+         ->  Bitmap Index Scan on tenk3_unique1 (actual rows=100 loops=1)
+               Index Cond: (unique1 < 100)
+         ->  Bitmap Index Scan on tenk3_unique2 (actual rows=110 loops=1)
+               Index Cond: (unique2 IS NULL)
+(7 rows)
+
+RESET yb_pushdown_is_not_null;
+-- use Bitmap Scan to delete rows and validate their deletion
+/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
+DELETE FROM tenk3 WHERE unique2 IS NULL OR unique1 < 1000;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Delete on tenk3 (actual rows=0 loops=1)
+   ->  YB Bitmap Table Scan on tenk3 (actual rows=1089 loops=1)
+         ->  BitmapOr (actual rows=1089 loops=1)
+               ->  Bitmap Index Scan on tenk3_unique2 (actual rows=110 loops=1)
+                     Index Cond: (unique2 IS NULL)
+               ->  Bitmap Index Scan on tenk3_unique1 (actual rows=1000 loops=1)
+                     Index Cond: (unique1 < 1000)
+(7 rows)
+
+/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk3 (actual rows=0 loops=1)
+   ->  BitmapOr (actual rows=0 loops=1)
+         ->  Bitmap Index Scan on tenk3_unique1 (actual rows=0 loops=1)
+               Index Cond: (unique1 < 100)
+               Storage Index Read Requests: 1
+         ->  Bitmap Index Scan on tenk3_unique2 (actual rows=0 loops=1)
+               Index Cond: (unique2 IS NULL)
+               Storage Index Read Requests: 1
+ Storage Read Requests: 2
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(12 rows)
+
+--
+-- test cases where we could skip fetching the table rows (TODO: #22044)
+--
+-- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=3594 loops=1)
+         Storage Table Read Requests: 4
+         Storage Table Rows Scanned: 3594
+         ->  BitmapOr (actual rows=3594 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+                     Index Cond: (unique1 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=2000 loops=1)
+                     Index Cond: (unique2 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+ count
+-------
+  3594
+(1 row)
+
+-- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=3594 loops=1)
+   Storage Table Read Requests: 4
+   Storage Table Rows Scanned: 3594
+   ->  BitmapOr (actual rows=3594 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+               Index Cond: (unique1 < 2000)
+               Storage Index Read Requests: 2
+               Storage Index Rows Scanned: 2000
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=2000 loops=1)
+               Index Cond: (unique2 < 2000)
+               Storage Index Read Requests: 2
+               Storage Index Rows Scanned: 2000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+-- this query has a recheck condition, so we need to fetch the rows
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=2796 loops=1)
+         Filter: ((unique1 < 2000) OR ((unique2 < 2000) AND ((unique2 % 2) = 0)))
+         Rows Removed by Filter: 798
+         Storage Table Read Requests: 4
+         Storage Table Rows Scanned: 3594
+         ->  BitmapOr (actual rows=3594 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+                     Index Cond: (unique1 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=2000 loops=1)
+                     Index Cond: (unique2 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+ count
+-------
+  2796
+(1 row)
+
+-- when the expression can be pushed down, we don't need a recheck but we do
+-- still need to send the request.
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=2796 loops=1)
+         Storage Filter: ((unique1 < 2000) OR ((unique2 < 2000) AND ((unique2 % 2) = 0)))
+         Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 2796
+         ->  BitmapOr (actual rows=2796 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+                     Index Cond: (unique1 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=1000 loops=1)
+                     Index Cond: (unique2 < 2000)
+                     Storage Index Filter: ((unique2 % 2) = 0)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2000
+ Storage Read Requests: 6
+ Storage Rows Scanned: 6796
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+ count
+-------
+  2796
+(1 row)
+
+-- other aggregates may require the rows
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT SUM(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=3594 loops=1)
+         Storage Table Read Requests: 4
+         Storage Table Rows Scanned: 3594
+         ->  BitmapOr (actual rows=3594 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+                     Index Cond: (unique1 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=2000 loops=1)
+                     Index Cond: (unique2 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT SUM(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+   sum
+----------
+ 11537790
+(1 row)
+
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on tenk1 (actual rows=3594 loops=1)
+         Storage Table Read Requests: 4
+         Storage Table Rows Scanned: 3594
+         ->  BitmapOr (actual rows=3594 loops=1)
+               ->  Bitmap Index Scan on tenk1_unique1 (actual rows=2000 loops=1)
+                     Index Cond: (unique1 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+               ->  Bitmap Index Scan on tenk1_unique2 (actual rows=2000 loops=1)
+                     Index Cond: (unique2 < 2000)
+                     Storage Index Read Requests: 2
+                     Storage Index Rows Scanned: 2000
+ Storage Read Requests: 8
+ Storage Rows Scanned: 7594
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+ max
+------
+ 9997
+(1 row)
+
+-- when we don't need the actual value, we can avoid fetching
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=10 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=5 loops=1)
+               Index Cond: (unique1 < 5)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 5
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=5 loops=1)
+               Index Cond: (unique2 < 5)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 5
+ Storage Read Requests: 3
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+/*+ BitmapScan(tenk1) */
+SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+ ?column?
+----------
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+(10 rows)
+
+/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT random() FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Bitmap Table Scan on tenk1 (actual rows=10 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on tenk1_unique1 (actual rows=5 loops=1)
+               Index Cond: (unique1 < 5)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 5
+         ->  Bitmap Index Scan on tenk1_unique2 (actual rows=5 loops=1)
+               Index Cond: (unique2 < 5)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 5
+ Storage Read Requests: 3
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+--
+-- test primary key queries
+--
+CREATE TABLE pk (k INT PRIMARY KEY, a INT);
+CREATE INDEX ON pk(a ASC);
+INSERT INTO pk SELECT i, i FROM generate_series(1, 1000) i;
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk WHERE k = 123 OR a = 123;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Bitmap Table Scan on pk (actual rows=1 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   ->  BitmapOr (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on pk_pkey (actual rows=1 loops=1)
+               Index Cond: (k = 123)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+         ->  Bitmap Index Scan on pk_a_idx (actual rows=1 loops=1)
+               Index Cond: (a = 123)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1
+ Storage Read Requests: 3
+ Storage Rows Scanned: 3
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+/*+ BitmapScan(pk) */
+SELECT * FROM pk WHERE k = 123 OR a = 123;
+  k  |  a
+-----+-----
+ 123 | 123
+(1 row)
+
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pk (actual rows=3 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 3
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on pk_pkey (actual rows=2 loops=1)
+                     Index Cond: (k = ANY ('{123,124}'::integer[]))
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 2
+               ->  Bitmap Index Scan on pk_a_idx (actual rows=2 loops=1)
+                     Index Cond: (a = ANY ('{122,123}'::integer[]))
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+ Storage Read Requests: 3
+ Storage Rows Scanned: 7
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+/*+ BitmapScan(pk) */
+SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+  k  |  a
+-----+-----
+ 122 | 122
+ 123 | 123
+ 124 | 124
+(3 rows)
+
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pk (actual rows=3 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 3
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on pk_pkey (actual rows=1 loops=1)
+                     Index Cond: (k = 123)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on pk_pkey (actual rows=1 loops=1)
+                     Index Cond: (k = 124)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on pk_a_idx (actual rows=1 loops=1)
+                     Index Cond: (a = 122)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 1
+               ->  Bitmap Index Scan on pk_a_idx (actual rows=1 loops=1)
+                     Index Cond: (a = 123)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 1
+ Storage Read Requests: 5
+ Storage Rows Scanned: 7
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(27 rows)
+
+/*+ BitmapScan(pk) */
+SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
+  k  |  a
+-----+-----
+ 122 | 122
+ 123 | 123
+ 124 | 124
+(3 rows)
+
+-- test non-existent results
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on pk (actual rows=0 loops=1)
+         ->  BitmapOr (actual rows=0 loops=1)
+               ->  Bitmap Index Scan on pk_pkey (actual rows=0 loops=1)
+                     Index Cond: (k = 2000)
+                     Storage Table Read Requests: 1
+               ->  Bitmap Index Scan on pk_a_idx (actual rows=0 loops=1)
+                     Index Cond: (a < 0)
+                     Storage Index Read Requests: 1
+ Storage Read Requests: 2
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+/*+ BitmapScan(pk) */
+SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
+ count
+-------
+     0
+(1 row)
+
+--
+-- test system catalog queries (they are colocated)
+--
+/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Sort (actual rows=11 loops=1)
+   Sort Key: rolname
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pg_authid (actual rows=11 loops=1)
+         Storage Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+         ->  BitmapOr (actual rows=11 loops=1)
+               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=8 loops=1)
+                     Index Cond: ((rolname >= 'pg'::name) AND (rolname < 'ph'::name))
+                     Storage Index Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=3 loops=1)
+                     Index Cond: ((rolname >= 'yb'::name) AND (rolname < 'yc'::name))
+                     Storage Index Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+(12 rows)
+
+/*+ BitmapScan(pg_authid) */
+SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+          rolname          | rolsuper | rolinherit | rolcreaterole | rolcreatedb | rolcanlogin | rolreplication | rolbypassrls | rolconnlimit | rolpassword | rolvaliduntil
+---------------------------+----------+------------+---------------+-------------+-------------+----------------+--------------+--------------+-------------+---------------
+ pg_execute_server_program | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_monitor                | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_read_all_settings      | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_read_all_stats         | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_read_server_files      | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_signal_backend         | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_stat_scan_tables       | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ pg_write_server_files     | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ yb_db_admin               | f        | f          | f             | f           | f           | f              | f            |           -1 |             |
+ yb_extension              | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+ yb_fdw                    | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
+(11 rows)
+
+/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+                                                              QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pg_tablespace (actual rows=0 loops=1)
+   Filter: (NOT (hashed SubPlan 1))
+   Rows Removed by Filter: 2
+   SubPlan 1
+     ->  YB Bitmap Table Scan on pg_authid (actual rows=12 loops=1)
+           Storage Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+           ->  BitmapOr (actual rows=12 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=1 loops=1)
+                       Index Cond: (rolname = 'postgres'::name)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=8 loops=1)
+                       Index Cond: ((rolname >= 'pg'::name) AND (rolname < 'ph'::name))
+                       Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=3 loops=1)
+                       Index Cond: ((rolname >= 'yb'::name) AND (rolname < 'yc'::name))
+                       Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+(15 rows)
+
+/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+ spcname
+---------
+(0 rows)
+
+SET yb_enable_expression_pushdown = false;
+/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Seq Scan on pg_tablespace (actual rows=0 loops=1)
+   Filter: (NOT (hashed SubPlan 1))
+   Rows Removed by Filter: 2
+   SubPlan 1
+     ->  YB Bitmap Table Scan on pg_authid (actual rows=12 loops=1)
+           Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
+           ->  BitmapOr (actual rows=12 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=1 loops=1)
+                       Index Cond: (rolname = 'postgres'::name)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=8 loops=1)
+                       Index Cond: ((rolname >= 'pg'::name) AND (rolname < 'ph'::name))
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=3 loops=1)
+                       Index Cond: ((rolname >= 'yb'::name) AND (rolname < 'yc'::name))
+(13 rows)
+
+/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+ spcname
+---------
+(0 rows)
+
+RESET yb_enable_expression_pushdown;
+--
+-- test indexes on multiple columns / indexes with additional columns
+--
+CREATE TABLE multi (a INT, b INT, c INT, h INT, PRIMARY KEY (a ASC, b ASC));
+CREATE INDEX ON multi (c ASC) INCLUDE (a);
+CREATE INDEX ON multi (h HASH) INCLUDE (a);
+CREATE INDEX ON multi (b ASC, c ASC);
+INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1, 1000) i;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=3 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 3
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=1 loops=1)
+                     Index Cond: (a < 2)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on multi_pkey (actual rows=2 loops=1)
+                     Index Cond: (b > 1997)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 2
+ Storage Read Requests: 3
+ Storage Rows Scanned: 6
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
+  a   |  b   |  c   |  h
+------+------+------+------
+    1 |    2 |    3 |    4
+  999 | 1998 | 2997 | 3996
+ 1000 | 2000 | 3000 | 4000
+(3 rows)
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=2 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 2
+         ->  Bitmap Index Scan on multi_c_a_idx (actual rows=2 loops=1)
+               Index Cond: ((c >= 10) AND (c <= 15))
+               Storage Index Filter: (a < 30)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 2
+ Storage Read Requests: 2
+ Storage Rows Scanned: 4
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
+ a | b  | c  | h
+---+----+----+----
+ 4 |  8 | 12 | 16
+ 5 | 10 | 15 | 20
+(2 rows)
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDER BY a;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=6 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 6
+         ->  BitmapOr (actual rows=6 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=1 loops=1)
+                     Index Cond: (a < 2)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on multi_pkey (actual rows=2 loops=1)
+                     Index Cond: (b > 1997)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 2
+               ->  Bitmap Index Scan on multi_c_a_idx (actual rows=2 loops=1)
+                     Index Cond: ((c >= 10) AND (c <= 15))
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+               ->  Bitmap Index Scan on multi_h_a_idx (actual rows=1 loops=1)
+                     Index Cond: (h = 8)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 1
+ Storage Read Requests: 5
+ Storage Rows Scanned: 12
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(27 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8  ORDER BY a;
+  a   |  b   |  c   |  h
+------+------+------+------
+    1 |    2 |    3 |    4
+    2 |    4 |    6 |    8
+    4 |    8 |   12 |   16
+    5 |   10 |   15 |   20
+  999 | 1998 | 2997 | 3996
+ 1000 | 2000 | 3000 | 4000
+(6 rows)
+
+-- try some slightly complex nested logical operands queries
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=4 loops=1)
+         ->  BitmapOr (actual rows=4 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=1 loops=1)
+                     Index Cond: (a < 2)
+               ->  BitmapOr (actual rows=3 loops=1)
+                     ->  Bitmap Index Scan on multi_b_c_idx (actual rows=2 loops=1)
+                           Index Cond: ((b > 1797) AND (c >= 2709) AND (c <= 2712))
+                     ->  Bitmap Index Scan on multi_b_c_idx (actual rows=1 loops=1)
+                           Index Cond: ((b > 1797) AND (c = 2997))
+(12 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
+  a  |  b   |  c   |  h
+-----+------+------+------
+   1 |    2 |    3 |    4
+ 903 | 1806 | 2709 | 3612
+ 904 | 1808 | 2712 | 3616
+ 999 | 1998 | 2997 | 3996
+(4 rows)
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
+                                                           QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=3 loops=1)
+         Storage Filter: (((a < 3) AND ((a % 2) = 0)) OR ((b = ANY ('{10,270,1800}'::integer[])) AND ((c < 20) OR (c > 2500))))
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=1 loops=1)
+                     Index Cond: (a < 3)
+                     Storage Index Filter: ((a % 2) = 0)
+               ->  BitmapOr (actual rows=2 loops=1)
+                     ->  Bitmap Index Scan on multi_b_c_idx (actual rows=1 loops=1)
+                           Index Cond: ((b = ANY ('{10,270,1800}'::integer[])) AND (c < 20))
+                     ->  Bitmap Index Scan on multi_b_c_idx (actual rows=1 loops=1)
+                           Index Cond: ((b = ANY ('{10,270,1800}'::integer[])) AND (c > 2500))
+(14 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
+  a  |  b   |  c   |  h
+-----+------+------+------
+   2 |    4 |    6 |    8
+   5 |   10 |   15 |   20
+ 900 | 1800 | 2700 | 3600
+(3 rows)
+
+--
+-- test limits
+--
+CREATE TABLE test_limit (a INT, b INT, c INT);
+CREATE INDEX ON test_limit (a ASC);
+INSERT INTO test_limit SELECT i, i * 2, i * 3 FROM generate_series(1, 1000) i;
+SET yb_fetch_row_limit = 100;
+SET yb_fetch_size_limit = 0;
+/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on test_limit (actual rows=10 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 100
+         ->  Bitmap Index Scan on test_limit_a_idx (actual rows=199 loops=1)
+               Index Cond: (a < 200)
+               Storage Index Read Requests: 3
+               Storage Index Rows Scanned: 199
+ Storage Read Requests: 4
+ Storage Rows Scanned: 299
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(12 rows)
+
+SET yb_fetch_row_limit = 0;
+SET yb_fetch_size_limit = '1kB';
+/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  YB Bitmap Table Scan on test_limit (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on test_limit_a_idx (actual rows=199 loops=1)
+               Index Cond: (a < 200)
+(4 rows)
+
+RESET yb_fetch_row_limit;
+RESET yb_fetch_size_limit;
+--
+-- test remote pushdown
+--
+/*+ BitmapScan(multi multi_b_c_idx) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: b
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=2 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 2
+         ->  Bitmap Index Scan on multi_b_c_idx (actual rows=2 loops=1)
+               Index Cond: (b < 10)
+               Storage Index Filter: ((b % 4) = 0)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 4
+ Storage Read Requests: 2
+ Storage Rows Scanned: 6
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+/*+ BitmapScan(multi multi_b_c_idx) */
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+ a | b | c  | h
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 4 | 8 | 12 | 16
+(2 rows)
+
+/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: b
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=2 loops=1)
+         Filter: ((b % 4) = 0)
+         Rows Removed by Filter: 2
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 4
+         ->  Bitmap Index Scan on multi_b_c_idx (actual rows=4 loops=1)
+               Index Cond: (b < 10)
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 4
+ Storage Read Requests: 2
+ Storage Rows Scanned: 8
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */
+SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
+ a | b | c  | h
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 4 | 8 | 12 | 16
+(2 rows)
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=3 loops=1)
+         Storage Filter: (((a < 5) AND ((a % 2) = 0)) OR ((c <= 10) AND ((a % 3) = 0)))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 3
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=2 loops=1)
+                     Index Cond: (a < 5)
+                     Storage Index Filter: ((a % 2) = 0)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 4
+               ->  Bitmap Index Scan on multi_c_a_idx (actual rows=1 loops=1)
+                     Index Cond: (c <= 10)
+                     Storage Index Filter: (((a % 3) = 0) AND (((a < 5) AND ((a % 2) = 0)) OR ((c <= 10) AND ((a % 3) = 0))))
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 3
+ Storage Read Requests: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(22 rows)
+
+/*+ BitmapScan(multi) */
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+ a | b | c  | h
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 3 | 6 |  9 | 12
+ 4 | 8 | 12 | 16
+(3 rows)
+
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: a
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on multi (actual rows=3 loops=1)
+         Filter: (((a < 5) AND ((a % 2) = 0)) OR ((c <= 10) AND ((a % 3) = 0)))
+         Rows Removed by Filter: 1
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 4
+         ->  BitmapOr (actual rows=4 loops=1)
+               ->  Bitmap Index Scan on multi_pkey (actual rows=4 loops=1)
+                     Index Cond: (a < 5)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 4
+               ->  Bitmap Index Scan on multi_c_a_idx (actual rows=3 loops=1)
+                     Index Cond: (c <= 10)
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 3
+ Storage Read Requests: 3
+ Storage Rows Scanned: 11
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(21 rows)
+
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */
+SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
+ a | b | c  | h
+---+---+----+----
+ 2 | 4 |  6 |  8
+ 3 | 6 |  9 | 12
+ 4 | 8 | 12 | 16
+(3 rows)
+
+--
+-- test unsatisfiable conditions
+--
+CREATE TABLE test_false (a INT, b INT);
+CREATE INDEX ON test_false (a ASC);
+CREATE INDEX ON test_false (b ASC);
+INSERT INTO test_false VALUES (1, 1), (2, 2);
+/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a <= 1 AND a = 2);
+                             QUERY PLAN
+---------------------------------------------------------------------
+ YB Bitmap Table Scan on test_false (actual rows=0 loops=1)
+   Storage Recheck Cond: ((a <= 1) AND (a = 2))
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   ->  Bitmap Index Scan on test_false_a_idx (actual rows=1 loops=1)
+         Index Cond: ((a <= 1) AND (a = 2))
+         Storage Index Read Requests: 1
+         Storage Index Rows Scanned: 1
+ Storage Read Requests: 2
+ Storage Rows Scanned: 2
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(12 rows)
+
+/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_false (actual rows=0 loops=1)
+   Storage Recheck Cond: (((a = 1) AND (a = 2)) OR (b = 0))
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   ->  BitmapOr (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on test_false_a_idx (actual rows=1 loops=1)
+               Index Cond: ((a = 1) AND (a = 2))
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1
+         ->  Bitmap Index Scan on test_false_b_idx (actual rows=0 loops=1)
+               Index Cond: (b = 0)
+               Storage Index Read Requests: 1
+ Storage Read Requests: 3
+ Storage Rows Scanned: 2
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+--
+-- test recheck index conditions
+--
+create table recheck_test (col int);
+create index on recheck_test (col ASC);
+insert into recheck_test select i from generate_series(1, 10) i;
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col IN (5, 6);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((col < 3) AND (col = ANY ('{5,6}'::integer[])))
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=2 loops=1)
+         Index Cond: ((col < 3) AND (col = ANY ('{5,6}'::integer[])))
+(4 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col IN (5, 6) AND t.col < 3;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((col = ANY ('{5,6}'::integer[])) AND (col < 3))
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=2 loops=1)
+         Index Cond: ((col = ANY ('{5,6}'::integer[])) AND (col < 3))
+(4 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((col < 3) AND (col = 5))
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=1 loops=1)
+         Index Cond: ((col < 3) AND (col = 5))
+(4 rows)
+
+explain (analyze, costs off) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
+   Storage Recheck Cond: ((col < 3) AND (col = 5))
+   ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=1 loops=1)
+         Index Cond: ((col < 3) AND (col = 5))
+(4 rows)
+
+--
+-- test colocated queries
+--
+CREATE DATABASE colo WITH colocation = true;
+\c colo;
+SET yb_explain_hide_non_deterministic_fields = true;
+SET enable_bitmapscan = true;
+CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT);
+CREATE INDEX ON pk_colo(a ASC);
+INSERT INTO pk_colo SELECT i, i FROM generate_series(1, 1000) i;
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ YB Bitmap Table Scan on pk_colo (actual rows=1 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   ->  BitmapOr (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on pk_colo_pkey (actual rows=1 loops=1)
+               Index Cond: (k = 123)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1
+         ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=1 loops=1)
+               Index Cond: (a = 123)
+               Storage Table Rows Scanned: 1
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1
+ Storage Read Requests: 3
+ Storage Rows Scanned: 4
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
+  k  |  a
+-----+-----
+ 123 | 123
+(1 row)
+
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Sort (actual rows=10 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=10 loops=1)
+         Storage Filter: (((k < 10) AND ((k % 2) = 1)) OR ((a > 990) AND ((a % 2) = 1)))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 10
+         ->  BitmapOr (actual rows=10 loops=1)
+               ->  Bitmap Index Scan on pk_colo_pkey (actual rows=5 loops=1)
+                     Index Cond: (k < 10)
+                     Storage Index Filter: ((k % 2) = 1)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 9
+               ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=5 loops=1)
+                     Index Cond: (a > 990)
+                     Storage Index Filter: ((a % 2) = 1)
+                     Storage Table Rows Scanned: 10
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 10
+ Storage Read Requests: 3
+ Storage Rows Scanned: 39
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(23 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
+  k  |  a
+-----+-----
+   1 |   1
+   3 |   3
+   5 |   5
+   7 |   7
+   9 |   9
+ 991 | 991
+ 993 | 993
+ 995 | 995
+ 997 | 997
+ 999 | 999
+(10 rows)
+
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=6 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 6
+         ->  BitmapOr (actual rows=6 loops=1)
+               ->  Bitmap Index Scan on pk_colo_pkey (actual rows=4 loops=1)
+                     Index Cond: (k < 5)
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 4
+               ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=2 loops=1)
+                     Index Cond: ((a >= 7) AND (a <= 8))
+                     Storage Table Rows Scanned: 2
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+ Storage Read Requests: 3
+ Storage Rows Scanned: 14
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
+ k | a
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 7 | 7
+ 8 | 8
+(6 rows)
+
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=3 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 3
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on pk_colo_pkey (actual rows=2 loops=1)
+                     Index Cond: (k = ANY ('{123,124}'::integer[]))
+                     Storage Table Read Requests: 1
+                     Storage Table Rows Scanned: 2
+               ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=2 loops=1)
+                     Index Cond: (a = ANY ('{122,123}'::integer[]))
+                     Storage Table Rows Scanned: 2
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+ Storage Read Requests: 3
+ Storage Rows Scanned: 9
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+  k  |  a
+-----+-----
+ 122 | 122
+ 123 | 123
+ 124 | 124
+(3 rows)
+
+-- test count
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=3 loops=1)
+         ->  BitmapOr (actual rows=3 loops=1)
+               ->  Bitmap Index Scan on pk_colo_pkey (actual rows=2 loops=1)
+                     Index Cond: (k = ANY ('{123,124}'::integer[]))
+               ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=2 loops=1)
+                     Index Cond: (a = ANY ('{122,123}'::integer[]))
+(7 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+ count
+-------
+     3
+(1 row)
+
+-- test non-existent results
+/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=0 loops=1)
+         ->  BitmapOr (actual rows=0 loops=1)
+               ->  Bitmap Index Scan on pk_colo_pkey (actual rows=0 loops=1)
+                     Index Cond: (k = 2000)
+               ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=0 loops=1)
+                     Index Cond: (a < 0)
+(7 rows)
+
+/*+ BitmapScan(pk_colo) */
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+ count
+-------
+     0
+(1 row)
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET enable_bitmapscan;

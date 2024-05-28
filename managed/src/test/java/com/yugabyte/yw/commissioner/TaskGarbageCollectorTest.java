@@ -159,7 +159,7 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);
     parentTask.setOwner("test");
     parentTask.setTaskState(TaskInfo.State.Success);
-    parentTask.setDetails(mapper.createObjectNode());
+    parentTask.setTaskParams(mapper.createObjectNode());
     parentTask.save();
 
     TaskInfo subTask = new TaskInfo(TaskType.CreateUniverse, null);
@@ -167,7 +167,7 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     subTask.setParentUuid(parentTask.getUuid());
     subTask.setPosition(0);
     subTask.setTaskState(TaskInfo.State.Success);
-    subTask.setDetails(mapper.createObjectNode());
+    subTask.setTaskParams(mapper.createObjectNode());
     subTask.save();
 
     UUID targetUuid = UUID.randomUUID();
@@ -196,7 +196,7 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);
     parentTask.setOwner("test");
     parentTask.setTaskState(TaskInfo.State.Success);
-    parentTask.setDetails(mapper.createObjectNode());
+    parentTask.setTaskParams(mapper.createObjectNode());
     parentTask.save();
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     CustomerTask customerTask =

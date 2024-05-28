@@ -531,7 +531,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
         NetworkError, "Rpc timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
         passed, timeout, now, last_read_time_);
     LOG(WARNING) << connection->ToString() << ": " << status;
-    reactor.DestroyConnection(connection.get(), status);
+    implicit_cast<StreamContext*>(connection.get())->Destroy(status);
     return;
   }
 

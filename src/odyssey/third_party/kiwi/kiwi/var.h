@@ -8,6 +8,7 @@
  */
 
 #define KIWI_MAX_VAR_SIZE 128
+#define KIWI_MAX_NAME_SIZE 64
 
 typedef struct kiwi_var kiwi_var_t;
 typedef struct kiwi_vars kiwi_vars_t;
@@ -45,7 +46,7 @@ struct kiwi_var {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
 #endif
-	char *name;
+	char name[KIWI_MAX_NAME_SIZE];
 	int name_len;
 	char value[KIWI_MAX_VAR_SIZE];
 	int value_len;
@@ -67,9 +68,9 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 	var->name = name;
 #else
 	if (name_len == 0)
-		var->name = NULL;
+		var->name[0] = '\0';
 	else
-		var->name = strdup(name);
+		memcpy(var->name, name, name_len);
 #endif
 	var->name_len = name_len;
 	var->value_len = 0;
@@ -136,7 +137,6 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
-	var->name = (char *)malloc(name_len * sizeof(char));
 	memcpy(var->name, name, name_len);
 	var->name_len = name_len;
 	memcpy(var->value, value, value_len);

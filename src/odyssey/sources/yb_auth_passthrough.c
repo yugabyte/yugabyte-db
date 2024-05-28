@@ -442,12 +442,13 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					"Unable to allocate the shared memory segment");
 				return -1;
 			}
-
+			machine_msg_free(msg);
 			return rc_auth;
 
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 			rc_auth = -1;
+			machine_msg_free(msg);
 			continue;
 
 		case KIWI_BE_NOTICE_RESPONSE:
@@ -460,16 +461,24 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				rc = od_write(&client->io, msg);
 				if (rc < 0)
 					rc_auth = -1;
-
+				machine_msg_free(msg);
 				continue;
 			}
+			machine_msg_free(msg);
 
 			break;
 
+		case YB_OID_DETAILS:
+			/* Read the oid details */
+			yb_handle_oid_pkt_client(instance, client, msg);
+			continue;
+
 		case KIWI_BE_ERROR_RESPONSE:
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
+			machine_msg_free(msg);
 			server->offline = 1;
 		default:
+			machine_msg_free(msg);
 			return -1;
 		}
 	}

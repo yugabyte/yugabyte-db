@@ -44,30 +44,25 @@ INSERT INTO test VALUES (1, 4, 3);
 INSERT INTO test VALUES (1, 4, 3);
 ERROR:  duplicate key value violates unique constraint "test_1_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 AND h3 = 3;
-                        QUERY PLAN
-----------------------------------------------------------
- Append
-   ->  Index Scan using test_1_pkey on test_1
-         Index Cond: ((h1 = 1) AND (h2 = 4) AND (h3 = 3))
-(3 rows)
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: ((h1 = 1) AND (h2 = 4) AND (h3 = 3))
+(2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 ORDER BY h2;
-                  QUERY PLAN
-----------------------------------------------
- Merge Append
-   Sort Key: test_1.h2
-   ->  Index Scan using test_1_pkey on test_1
-         Index Cond: (h1 = 1)
-(4 rows)
+                 QUERY PLAN
+---------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: (h1 = 1)
+(2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 ORDER BY h3;
-                  QUERY PLAN
-----------------------------------------------
- Merge Append
-   Sort Key: test_1.h3
-   ->  Index Scan using test_1_pkey on test_1
-         Index Cond: ((h1 = 1) AND (h2 = 4))
-(4 rows)
+                 QUERY PLAN
+---------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: ((h1 = 1) AND (h2 = 4))
+(2 rows)
 
 -- LIST partitioning where primary key contain only hash components.
 CREATE TABLE person (
@@ -115,12 +110,11 @@ INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
 INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
 ERROR:  duplicate key value violates unique constraint "person_americas_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM person WHERE person_id=1 AND country='United States';
-                                 QUERY PLAN
------------------------------------------------------------------------------
- Append
-   ->  Index Scan using person_americas_pkey on person_americas
-         Index Cond: ((person_id = 1) AND (country = 'United States'::text))
-(3 rows)
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using person_americas_pkey on person_americas person
+   Index Cond: ((person_id = 1) AND (country = 'United States'::text))
+(2 rows)
 
 -- Range partitioning where primary key contains only range components.
 CREATE TABLE parted (a int, b text, PRIMARY KEY (a ASC, b DESC)) PARTITION BY RANGE(a);
@@ -152,20 +146,18 @@ INSERT INTO parted VALUES (1, '1');
 ERROR:  duplicate key value violates unique constraint "part_a_1_5_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM parted WHERE a = 1 ORDER BY b DESC;
                       QUERY PLAN
-------------------------------------------------------
- Merge Append
-   Sort Key: part_a_1_5.b DESC
-   ->  Index Scan using part_a_1_5_pkey on part_a_1_5
-         Index Cond: (a = 1)
-(4 rows)
+-------------------------------------------------------
+ Index Scan using part_a_1_5_pkey on part_a_1_5 parted
+   Index Cond: (a = 1)
+(2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM parted ORDER BY a;
-                       QUERY PLAN
---------------------------------------------------------
+                           QUERY PLAN
+-----------------------------------------------------------------
  Merge Append
-   Sort Key: part_a_1_5.a
-   ->  Index Scan using part_a_1_5_pkey on part_a_1_5
-   ->  Index Scan using part_a_5_10_pkey on part_a_5_10
+   Sort Key: parted.a
+   ->  Index Scan using part_a_1_5_pkey on part_a_1_5 parted_1
+   ->  Index Scan using part_a_5_10_pkey on part_a_5_10 parted_2
 (4 rows)
 
 -- Test creating a partition with a different primary key.

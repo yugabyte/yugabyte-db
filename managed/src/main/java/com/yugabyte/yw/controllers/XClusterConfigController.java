@@ -440,6 +440,7 @@ public class XClusterConfigController extends AuthenticatedController {
               targetUniverse,
               editFormData.tables,
               editFormData.bootstrapParams,
+              editFormData.autoIncludeIndexTables,
               editFormData.dryRun);
     } else {
       // If renaming, verify xCluster replication with same name (between same source/target)
@@ -505,6 +506,7 @@ public class XClusterConfigController extends AuthenticatedController {
       Universe targetUniverse,
       Set<String> tableIds,
       @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      boolean autoIncludeIndexTables,
       boolean dryRun) {
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList = null;
@@ -543,8 +545,11 @@ public class XClusterConfigController extends AuthenticatedController {
           indexTableIdSet.stream()
               .filter(tableId -> !xClusterConfig.getTableIds().contains(tableId))
               .collect(Collectors.toSet());
-      allTableIds.addAll(indexTableIdSet);
-      tableIdsToAdd.addAll(indexTableIdSetToAdd);
+      if (autoIncludeIndexTables) {
+        allTableIds.addAll(indexTableIdSet);
+        tableIdsToAdd.addAll(indexTableIdSetToAdd);
+      }
+
       if (Objects.nonNull(bootstrapParams)) {
         mainTableToAddIndexTablesMap.forEach(
             (mainTableId, indexTableIds) -> {
@@ -1501,31 +1506,6 @@ public class XClusterConfigController extends AuthenticatedController {
       @Nullable BootstrapParams bootstrapParams,
       @Nullable String currentReplicationGroupName) {
 
-    // If some tables do not exist on the target universe, bootstrapping is required.
-    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
-        sourceTableIdTargetTableIdMap.entrySet().stream()
-            .filter(entry -> Objects.isNull(entry.getValue()))
-            .map(Entry::getKey)
-            .collect(Collectors.toSet());
-    if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
-      if (Objects.isNull(bootstrapParams)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Table ids %s do not have corresponding tables on the target universe and "
-                    + "they must be bootstrapped but bootstrapParams is null",
-                sourceTableIdsWithNoTableOnTargetUniverse));
-      }
-      if (Objects.isNull(bootstrapParams.tables)
-          || !bootstrapParams.tables.containsAll(sourceTableIdsWithNoTableOnTargetUniverse)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Table ids %s do not have corresponding tables on the target universe and "
-                    + "they must be bootstrapped but the set of tables in bootstrapParams (%s) "
-                    + "does not contain all of them",
-                sourceTableIdsWithNoTableOnTargetUniverse, bootstrapParams.tables));
-      }
-    }
-
     Set<String> requestedTableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     if (bootstrapParams != null && bootstrapParams.tables != null) {
       // Ensure tables in bootstrapParams is a subset of requestedTableIds.
@@ -1550,9 +1530,35 @@ public class XClusterConfigController extends AuthenticatedController {
       bootstrapParams.tables =
           XClusterConfigTaskBase.getTableIdsWithoutTablesOnTargetInReplication(
               ybService,
+              requestedTableInfoList,
               sourceTableIdTargetTableIdWithBootstrapMap,
               targetUniverse,
               currentReplicationGroupName);
+
+      // If some tables do not exist on the target universe, bootstrapping is required.
+      Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+          sourceTableIdTargetTableIdMap.entrySet().stream()
+              .filter(entry -> Objects.isNull(entry.getValue()))
+              .map(Entry::getKey)
+              .collect(Collectors.toSet());
+      if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
+        if (Objects.isNull(bootstrapParams)) {
+          throw new IllegalArgumentException(
+              String.format(
+                  "Table ids %s do not have corresponding tables on the target universe and "
+                      + "they must be bootstrapped but bootstrapParams is null",
+                  sourceTableIdsWithNoTableOnTargetUniverse));
+        }
+        if (Objects.isNull(bootstrapParams.tables)
+            || !bootstrapParams.tables.containsAll(sourceTableIdsWithNoTableOnTargetUniverse)) {
+          throw new IllegalArgumentException(
+              String.format(
+                  "Table ids %s do not have corresponding tables on the target universe and "
+                      + "they must be bootstrapped but the set of tables in bootstrapParams (%s) "
+                      + "does not contain all of them",
+                  sourceTableIdsWithNoTableOnTargetUniverse, bootstrapParams.tables));
+        }
+      }
 
       // If table type is YSQL and bootstrap is requested, all tables in that keyspace are selected.
       if (requestedTableInfoList.get(0).getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE) {

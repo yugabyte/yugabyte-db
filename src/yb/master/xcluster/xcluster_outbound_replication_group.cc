@@ -13,10 +13,12 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/common/colocated_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
@@ -53,6 +55,18 @@ Result<bool> IsReady(
 
   return namespace_info.state() ==
          SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::READY;
+}
+
+template <typename LockType>
+bool IsDeleted(const Result<LockType>& lock_result) {
+  if (!lock_result.ok()) {
+    // The only allowed error is NotFound which indicates the group is deleted.
+    LOG_IF(DFATAL, !lock_result.status().IsNotFound())
+        << "Unexpected lock outcome: " << lock_result.status();
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace
@@ -117,6 +131,8 @@ void XClusterOutboundReplicationGroup::StartNamespaceCheckpointTasks(
 
 Status XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
+  TEST_SYNC_POINT("XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap");
+
   std::lock_guard mutex_l(mutex_);
   auto l = VERIFY_RESULT(LockForWrite());
 
@@ -249,6 +265,24 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
       "Namespace in unexpected state");
 
   if (table_ids.empty()) {
+    auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+    std::set<TableId> tables;
+    std::transform(
+        table_infos.begin(), table_infos.end(), std::inserter(tables, tables.begin()),
+        [](const auto& table_info) { return table_info->id(); });
+
+    std::set<TableId> checkpointed_tables;
+    std::transform(
+        ns_info->table_infos().begin(), ns_info->table_infos().end(),
+        std::inserter(checkpointed_tables, checkpointed_tables.begin()),
+        [](const auto& table_info) { return table_info.first; });
+
+    auto diff = STLSetSymmetricDifference(tables, checkpointed_tables);
+    SCHECK_FORMAT(
+        diff.empty(), IllegalState,
+        "List of tables changed during xCluster checkpoint of replication group $0: $1", ToString(),
+        yb::ToString(diff));
+
     LOG_WITH_PREFIX(INFO) << "Marking namespace " << namespace_id << " as READY";
     ns_info->set_state(NamespaceInfoPB::READY);
     done = true;
@@ -293,13 +327,49 @@ void XClusterOutboundReplicationGroup::MarkCheckpointNamespaceAsFailed(
   WARN_NOT_OK(Upsert(*lock_result, epoch), ToString());
 }
 
+Result<scoped_refptr<NamespaceInfo>> XClusterOutboundReplicationGroup::GetYbNamespaceInfo(
+    const NamespaceId& namespace_id) const {
+  NamespaceIdentifierPB ns_id_pb;
+  ns_id_pb.set_id(namespace_id);
+  return helper_functions_.get_namespace_func(ns_id_pb);
+}
+
+Result<NamespaceId> XClusterOutboundReplicationGroup::GetNamespaceId(
+    const NamespaceName& namespace_name) const {
+  NamespaceIdentifierPB ns_id_pb;
+  ns_id_pb.set_name(namespace_name);
+  ns_id_pb.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  auto ns = VERIFY_RESULT(helper_functions_.get_namespace_func(ns_id_pb));
+  return ns->id();
+}
+
+Result<NamespaceName> XClusterOutboundReplicationGroup::GetNamespaceName(
+    const NamespaceId& namespace_id) const {
+  return VERIFY_RESULT(GetYbNamespaceInfo(namespace_id))->name();
+}
+
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
   auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_infos);
 
-  SCHECK(!table_infos.empty(), InvalidArgument, "No tables to bootstrap");
+  SCHECK(
+      !table_infos.empty(), InvalidArgument,
+      "Database should have at least one table in order to be part of xCluster replication");
+
+  auto yb_ns_info = VERIFY_RESULT(GetYbNamespaceInfo(namespace_id));
+  if (yb_ns_info->colocated()) {
+    bool has_any_colocated_table =
+        std::any_of(table_infos.begin(), table_infos.end(), [](const TableInfoPtr& table_info) {
+          return IsColocatedDbTablegroupParentTableId(table_info->id());
+        });
+    SCHECK(
+        has_any_colocated_table, InvalidArgument,
+        "Colocated database should have at least one colocated table in order to be part of "
+        "xCluster replication");
+  }
+
   NamespaceInfoPB ns_info;
   ns_info.set_state(NamespaceInfoPB::CHECKPOINTING);
 
@@ -319,8 +389,7 @@ Result<NamespaceId> XClusterOutboundReplicationGroup::AddNamespaceInternal(
   SCHECK(!namespace_name.empty(), InvalidArgument, "Namespace name cannot be empty");
   VLOG_WITH_PREFIX_AND_FUNC(1) << namespace_name;
 
-  auto namespace_id = VERIFY_RESULT(
-      helper_functions_.get_namespace_id_func(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
+  auto namespace_id = VERIFY_RESULT(GetNamespaceId(namespace_name));
 
   auto& outbound_group_pb = l.mutable_data()->pb;
 
@@ -389,7 +458,7 @@ Status XClusterOutboundReplicationGroup::DeleteNamespaceStreams(
   }
 
   req.set_force_delete(true);
-  req.set_ignore_errors(false);
+  req.set_ignore_errors(true);  // Ignore errors if stream is not found.
   auto resp = VERIFY_RESULT(helper_functions_.delete_cdc_stream_func(req, epoch));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -540,9 +609,7 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
         Format("Namespace $0 is not yet ready to start replicating", ns_id));
 
     namespace_ids.push_back(ns_id);
-    namespace_names.push_back(VERIFY_RESULT(helper_functions_.get_namespace_name_func(ns_id)));
-
-    auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(ns_id));
+    namespace_names.push_back(VERIFY_RESULT(GetNamespaceName(ns_id)));
 
     for (const auto& [table_id, table_info] : ns_info.table_infos()) {
       if (!table_info.is_part_of_initial_bootstrap()) {
@@ -634,10 +701,7 @@ Result<IsOperationDoneResult> XClusterOutboundReplicationGroup::IsCreateXCluster
 bool XClusterOutboundReplicationGroup::HasNamespace(const NamespaceId& namespace_id) const {
   SharedLock mutex_lock(mutex_);
   auto lock_result = LockForRead();
-  if (!lock_result.ok()) {
-    // The only allowed error is NotFound which indicates the group is deleted.
-    LOG_IF_WITH_PREFIX(DFATAL, !lock_result.status().IsNotFound())
-        << "Unexpected lock outcome: " << lock_result.status();
+  if (IsDeleted(lock_result)) {
     return false;
   }
   return HasNamespaceUnlocked(namespace_id);
@@ -651,9 +715,7 @@ XClusterOutboundReplicationGroup::NamespaceInfoPB*
 XClusterOutboundReplicationGroup::GetNamespaceInfoSafe(
     const Result<XClusterOutboundReplicationGroupInfo::WriteLock>& lock_result,
     const NamespaceId& namespace_id) const {
-  if (!lock_result.ok()) {
-    LOG_IF(DFATAL, !lock_result.status().IsNotFound())
-        << "Unexpected lock outcome: " << lock_result.status();
+  if (IsDeleted(lock_result)) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "Replication group deleted";
     return nullptr;
   }
@@ -800,6 +862,60 @@ Status XClusterOutboundReplicationGroup::MarkNewTablesAsCheckpointed(
 
   table_info->set_is_checkpointing(false);
   return Upsert(*lock_result, epoch);
+}
+
+Status XClusterOutboundReplicationGroup::RemoveStreams(
+    const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto lock_result = LockForWrite();
+  if (IsDeleted(lock_result)) {
+    return Status::OK();
+  }
+
+  auto& pb = lock_result->mutable_data()->pb;
+
+  bool upsert_needed = false;
+  for (const auto& stream : streams) {
+    for (const auto& table_id : stream->table_id()) {
+      for (auto& [ns_id, ns_info] : *pb.mutable_namespace_infos()) {
+        auto table_info = FindOrNull(ns_info.table_infos(), table_id);
+        if (table_info && table_info->has_stream_id() && table_info->stream_id() == stream->id()) {
+          ns_info.mutable_table_infos()->erase(table_id);
+          upsert_needed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (upsert_needed) {
+    return Upsert(*lock_result, epoch);
+  }
+  return Status::OK();
+}
+
+void XClusterOutboundReplicationGroup::StartPostLoadTasks(const LeaderEpoch& epoch) {
+  std::lock_guard mutex_lock(mutex_);
+  auto lock_result = LockForWrite();
+  if (!lock_result.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to lock: " << lock_result.status();
+    return;
+  }
+
+  auto tasks = GetTasks();
+  if (!tasks.empty()) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Tasks already in progress: " << AsString(tasks);
+    return;
+  }
+
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& [ns_id, ns_info] : lock_result->mutable_data()->pb.namespace_infos()) {
+    if (ns_info.state() == NamespaceInfoPB::CHECKPOINTING) {
+      namespace_ids.push_back(ns_id);
+    }
+  }
+
+  StartNamespaceCheckpointTasks(namespace_ids, epoch);
 }
 
 }  // namespace yb::master

@@ -202,6 +202,8 @@ extern void recordDependencyOn(const ObjectAddress *depender,
 							   const ObjectAddress *referenced,
 							   DependencyType behavior);
 
+extern bool tablegroupHasDependents(Oid tablegroupId);
+
 extern void recordMultipleDependencies(const ObjectAddress *depender,
 									   const ObjectAddress *referenced,
 									   int nreferenced,
@@ -209,8 +211,6 @@ extern void recordMultipleDependencies(const ObjectAddress *depender,
 
 extern void recordDependencyOnCurrentExtension(const ObjectAddress *object,
 											   bool isReplace);
-
-extern void YbRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
 
 extern void checkMembershipInCurrentExtension(const ObjectAddress *object);
 
@@ -255,6 +255,8 @@ extern void deleteSharedDependencyRecordsFor(Oid classId, Oid objectId,
 											 int32 objectSubId);
 
 extern void recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner);
+
+void shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId);
 
 extern void changeDependencyOnOwner(Oid classId, Oid objectId,
 									Oid newOwnerId);

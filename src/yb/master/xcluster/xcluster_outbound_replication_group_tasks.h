@@ -49,9 +49,11 @@ class XClusterCheckpointNamespaceTask : public MultiStepCatalogEntityTask {
   void CheckpointStreamsCallback(XClusterCheckpointStreamsResult result);
   Status MarkTablesAsCheckpointed(XClusterCheckpointStreamsResult result);
   void TaskCompleted(const Status& s) override;
+  MonoDelta GetDelayWithBackoff();
 
   const NamespaceId namespace_id_;
   XClusterOutboundReplicationGroup& outbound_replication_group_;
+  MonoDelta delay_with_backoff_ = MonoDelta::FromMilliseconds(100);
 };
 
 class XClusterOutboundReplicationGroupTaskFactory {

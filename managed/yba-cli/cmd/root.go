@@ -72,7 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
 		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
 	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output, defaults to false.")
+	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output. (default false)")
 	rootCmd.PersistentFlags().Bool("wait", true,
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
@@ -90,6 +90,7 @@ func init() {
 
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
+	rootCmd.AddCommand(auth.RegisterCmd)
 	rootCmd.AddCommand(releases.ReleasesCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
@@ -97,13 +98,19 @@ func init() {
 	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
+	// Example for adding preview commands to the list of available commands
+	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
+
 }
 
 // Execute commands
 func Execute(version string) {
 	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("YugabyteDB Anywhere CLI (yba) version: {{.Version}}\n")
 	if err := rootCmd.Execute(); err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		// Set log level and formatter for this error
+		log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 }
 
@@ -139,9 +146,7 @@ func initConfig() {
 	viper.SetEnvPrefix("yba")
 	//Read all enviromnent variable that match YBA_ENVNAME
 	viper.AutomaticEnv() // read in environment variables that match
-	//Set Logrus formatter options
-	log.SetFormatter()
-	// Set log level
+	// Set log level and formatter
 	log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {

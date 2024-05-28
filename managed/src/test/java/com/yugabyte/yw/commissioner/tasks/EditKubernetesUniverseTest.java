@@ -11,8 +11,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -25,10 +27,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -78,6 +82,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    setFollowerLagMock();
+    setUnderReplicatedTabletsMock();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.editUniverse =
         new EditKubernetesUniverse(
@@ -110,6 +116,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("1.2.3.0", 1234));
   }
 
   private void setupUniverseSingleAZ(boolean setMasters) {
@@ -145,6 +153,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
+    setDumpEntitiesMock(defaultUniverse, "", false);
   }
 
   private static final List<TaskType> KUBERNETES_ADD_POD_TASKS =
@@ -184,6 +193,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForDuration,
           TaskType.ModifyBlackList,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
@@ -199,6 +209,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -209,18 +220,24 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
           TaskType.KubernetesCommandExecutor,
           TaskType.UpdateUniverseIntent,
           TaskType.SwamperTargetsFileUpdate,
@@ -230,16 +247,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -267,7 +290,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = resultList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -416,7 +439,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + "\"}}]}";
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
-
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
@@ -474,22 +499,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + "\"podIP\": \"1.2.3.0\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + "\"podIP\": \"1.2.2.0\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + "\"podIP\": \"1.2.2.1\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + "\"podIP\": \"1.2.2.2\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
@@ -602,5 +627,62 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedVolumeSizeChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize =
+        150; /* Changed volume size 100 -> 150 */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunDisallowedNumNodesChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams
+            .clusters
+            .get(0)
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0)
+            .azList
+            .get(0)
+            .numNodesInAZ +=
+        1; /* Changed num nodes */
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertFalse(canRerun);
+  }
+
+  @Test
+  public void testCheckEditKubernetesRerunAllowedResourceSpecChange() throws IOException {
+    setupUniverseSingleAZ(true /*set masters */);
+    ObjectMapper mapper = new ObjectMapper();
+    UniverseDefinitionTaskParams taskParams =
+        mapper.readValue(
+            defaultUniverse.getUniverseDetailsJson(), UniverseDefinitionTaskParams.class);
+    taskParams.clusters.get(0).userIntent.masterK8SNodeResourceSpec.memoryGib += 1.0;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(taskParams));
+    boolean canRerun = EditKubernetesUniverse.checkEditKubernetesRerunAllowed(taskInfo);
+    assertTrue(canRerun);
   }
 }

@@ -62,6 +62,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -642,6 +643,19 @@ public class PlacementInfoUtil {
         new AvailableNodeTracker(cluster.uuid, clusters, nodes);
     List<String> errors = new ArrayList<>();
     if (availableNodeTracker.isOnprem()) {
+      Map<UUID, Integer> nodeCountByAz =
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+      for (Cluster clust : clusters) {
+        if (!cluster.uuid.equals(clust.uuid)
+            && clust.placementInfo != null
+            && clust.userIntent != null
+            && Objects.equals(clust.userIntent.instanceType, cluster.userIntent.instanceType)) {
+          clust
+              .placementInfo
+              .azStream()
+              .forEach(az -> nodeCountByAz.merge(az.uuid, 1, Integer::sum));
+        }
+      }
       cluster
           .placementInfo
           .azStream()
@@ -651,12 +665,13 @@ public class PlacementInfoUtil {
                 int occupied = availableNodeTracker.getOccupiedByZone(az.uuid);
                 int willBeFreed = availableNodeTracker.getWillBeFreed(az.uuid);
                 AvailabilityZone availabilityZone = AvailabilityZone.getOrBadRequest(az.uuid);
-                if (available + occupied + willBeFreed < az.numNodesInAZ) {
+                int requiredNumber = nodeCountByAz.get(az.uuid);
+                if (available + occupied + willBeFreed < requiredNumber) {
                   errors.add(
                       String.format(
                           "Couldn't find %d nodes of type %s in %s zone "
                               + "(%d is free and %d currently occupied)",
-                          az.numNodesInAZ,
+                          requiredNumber,
                           cluster.userIntent.getInstanceType(az.uuid),
                           availabilityZone.getName(),
                           available,
@@ -1485,7 +1500,7 @@ public class PlacementInfoUtil {
    *
    * @param placementInfo The cluster placement info.
    */
-  private static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
+  static Set<UUID> removeUnusedPlacementAZs(PlacementInfo placementInfo) {
     Set<UUID> result = new HashSet<>();
     for (PlacementCloud cloud : placementInfo.cloudList) {
       Iterator<PlacementRegion> regionIterator = cloud.regionList.iterator();
@@ -1652,6 +1667,12 @@ public class PlacementInfoUtil {
           && existingNode.machineImage != null) {
         nodeDetails.machineImage = existingNode.machineImage;
         nodeDetails.ybPrebuiltAmi = existingNode.ybPrebuiltAmi;
+        if (existingNode.sshPortOverride != null) {
+          nodeDetails.sshPortOverride = existingNode.sshPortOverride;
+        }
+        if (StringUtils.isNotBlank(existingNode.sshUserOverride)) {
+          nodeDetails.sshUserOverride = existingNode.sshUserOverride;
+        }
         break;
       }
     }
@@ -1705,6 +1726,12 @@ public class PlacementInfoUtil {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
     newNode.machineImage = templateNode.machineImage;
+    if (templateNode.sshPortOverride != null) {
+      newNode.sshPortOverride = templateNode.sshPortOverride;
+    }
+    if (StringUtils.isNotBlank(templateNode.sshUserOverride)) {
+      newNode.sshUserOverride = templateNode.sshUserOverride;
+    }
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
     newNode.placementUuid = templateNode.placementUuid;
     newNode.azUuid = templateNode.azUuid;
@@ -2468,7 +2495,7 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, 1 /* rf */, 1 /* numNodes */);
   }
 
-  private static PlacementAZ addPlacementZone(
+  public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes) {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }

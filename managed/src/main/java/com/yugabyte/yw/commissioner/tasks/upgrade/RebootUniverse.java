@@ -19,6 +19,11 @@ import play.mvc.Http.Status;
 @Abortable
 public class RebootUniverse extends UpgradeTaskBase {
 
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
+  }
+
   @Inject
   protected RebootUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -48,7 +53,7 @@ public class RebootUniverse extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
+          LinkedHashSet<NodeDetails> nodes = toOrderedSet(getNodesToBeRestarted().asPair());
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->
                   createRebootTasks(nodez, false /* isHardReboot */)

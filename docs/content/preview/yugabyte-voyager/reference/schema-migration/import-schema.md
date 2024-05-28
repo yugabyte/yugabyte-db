@@ -51,11 +51,11 @@ The valid *arguments* for import schema are described in the following table:
 | --target-db-port | Port number of the target database server. <br>Default: 5433 |
 | --target-db-schema | Schema name of the target YugabyteDB database. MySQL and Oracle migrations only. |
 | --target-db-user | Username of the target YugabyteDB database. |
-| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the SSL certificate revocation list (CRL).|
 | --target-ssl-mode | Specify the SSL mode for the target database as one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
-| [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--target-ssl-root-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Examples

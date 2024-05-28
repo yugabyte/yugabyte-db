@@ -103,14 +103,16 @@
       justify-content: space-between;
       align-items: center;
 
-      width: 360px;
+      width: 450px;
 
       .configMetric {
         .label {
           font-size: 12px;
+          height: 50%;
         }
 
         .value {
+          height: 50%;
           font-size: 16px;
           overflow: hidden;
           white-space: nowrap;

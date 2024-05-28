@@ -29,30 +29,18 @@ Typically, troubleshooting involves a number of steps that are rather consistent
 
 5. File an issue: if you can't find a solution to your problem, file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) describing your specific problem.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cluster/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Cluster-level issues and performance</div>
-      </div>
-      <div class="body">
-        Troubleshoot common YugabyteDB cluster issues and improve cluster performance.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Cluster-level issues and performance"
+    body="Troubleshoot common YugabyteDB cluster issues and improve cluster performance."
+    href="cluster/"
+    icon="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="nodes/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/universe.png" aria-hidden="true" />
-        <div class="title">Node-level issues</div>
-      </div>
-      <div class="body">
-        Diagnose and solve issues on an individual YugabyteDB node.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Node-level issues"
+    body="Diagnose and solve issues on an individual YugabyteDB node."
+    href="nodes/"
+    icon="/images/section_icons/architecture/concepts/universe.png" aria-hidden="true">}}
 
-</div>
+{{</index/block>}}

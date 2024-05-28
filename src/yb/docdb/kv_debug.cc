@@ -65,6 +65,12 @@ Result<std::string> DocDBKeyToDebugStr(
       RETURN_NOT_OK(transaction_id);
       return Format("TXN META $0", *transaction_id);
     }
+    case KeyType::kPostApplyTransactionMetadata: {
+      RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
+      auto transaction_id = DecodeTransactionId(&key_slice);
+      RETURN_NOT_OK(transaction_id);
+      return Format("TXN POST META $0", *transaction_id);
+    }
     case KeyType::kEmpty:
       FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
@@ -233,6 +239,13 @@ Result<std::string> DocDBValueToDebugStr(
         return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
       }
       return ToString(VERIFY_RESULT(TransactionMetadata::FromPB(metadata_pb)));
+    }
+    case KeyType::kPostApplyTransactionMetadata: {
+      PostApplyTransactionMetadataPB metadata_pb;
+      if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
+        return STATUS_FORMAT(Corruption, "Bad post-apply metadata: $0", value.ToDebugHexString());
+      }
+      return ToString(VERIFY_RESULT(PostApplyTransactionMetadata::FromPB(metadata_pb)));
     }
     case KeyType::kReverseTxnKey:
       return DocDBKeyToDebugStr(value, StorageDbType::kIntents);

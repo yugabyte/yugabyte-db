@@ -23,7 +23,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <uuid/uuid.h>
-
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -149,7 +148,6 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
-
 #include "yb/common/opid.fwd.h"
 #include "yb/common/opid.h"
 #include "yb/common/opid.pb.h"
@@ -196,7 +194,6 @@
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"

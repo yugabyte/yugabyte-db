@@ -4,6 +4,8 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.forms.SubTaskFormData;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -17,6 +19,7 @@ public class FailedSubtasks {
   @ApiModelProperty(value = "List of failed subtasks")
   public List<SubtaskData> failedSubTasks;
 
+  @ApiModel(value = "SubtaskData", description = "Detailed subtask data")
   public static class SubtaskData {
     @ApiModelProperty(value = "Failed SubTask UUID")
     public UUID subTaskUUID;
@@ -38,6 +41,11 @@ public class FailedSubtasks {
 
     @ApiModelProperty(value = "Failed SubTask Error message")
     public String errorString;
+
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Subtask error code")
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.0.0")
+    public TaskErrorCode errorCode;
   }
 
   public static SubtaskData toSubtaskData(SubTaskFormData subTaskFormData) {
@@ -48,6 +56,7 @@ public class FailedSubtasks {
     subtaskData.subTaskState = subTaskFormData.subTaskState;
     subtaskData.subTaskGroupType = subTaskFormData.subTaskGroupType;
     subtaskData.errorString = subTaskFormData.errorString;
+    subtaskData.errorCode = subTaskFormData.errorCode;
     return subtaskData;
   }
 }

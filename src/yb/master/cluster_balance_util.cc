@@ -502,10 +502,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
   }
-  // If this server has a pending tablet delete, don't use it.
-  if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts << " has a pending delete. "
-              << "Not allowing it to take more tablets";
+  // If this server has a pending tablet delete for this tablet, don't use it.
+  auto ts_it = global_state_->pending_deletes_.find(to_ts);
+  if (ts_it != global_state_->pending_deletes_.end() && ts_it->second.contains(tablet_id)) {
+    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts
+                                  << " has a pending delete for tablet " << tablet_id
+                                  << ". Not allowing it to take another replica.";
     return false;
   }
   // If all checks pass, return true.
@@ -722,6 +724,8 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
   SCHECK_FORMAT(initialized_, IllegalState,
       "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
 
+  SCHECK_NE(&per_tablet_meta_[tablet_id].leader_uuid, &from_ts, InvalidArgument,
+      "from_ts should not be a reference to the leader_uuid in per_tablet_meta_");
   if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
     return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
                               tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);

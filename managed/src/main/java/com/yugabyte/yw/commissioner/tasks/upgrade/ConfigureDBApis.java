@@ -42,7 +42,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
   }
 
   @Override

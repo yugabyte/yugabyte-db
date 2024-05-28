@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Typography, makeStyles } from '@material-ui/core';
 import _ from 'lodash';
+import clsx from 'clsx';
+import { Link } from 'react-router';
 import { YBButton, YBErrorIndicator } from '@yugabytedb/ui-components';
-import { YBBreadcrumb } from '../common/YBBreadcrumb';
 import { SecondaryDashboardData } from './SecondaryDashboardData';
 import { QUERY_KEY, TroubleshootAPI } from '../api';
 import { Anomaly, AppName, GraphQuery, Universe } from '../helpers/dtos';
@@ -11,13 +12,32 @@ import { getGraphRequestParams, getRecommendationMetricsMap } from '../helpers/u
 
 import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
 
+const useStyles = makeStyles((theme) => ({
+  inProgressIcon: {
+    color: '#1A44A5'
+  },
+  icon: {
+    height: '40px',
+    width: '40px'
+  },
+  loadingBox: {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '100%',
+    height: '100%'
+  }
+}));
+
 export interface SecondaryDashboardEntryProps {
   universeUuid: string;
+  hideHeader?: boolean;
   troubleshootUuid: string;
   // TODO: any should be replaced with YBM Node Response
   universeData: Universe | any;
   appName: AppName;
   timezone?: string;
+  hostUrl?: string;
   onSelectedIssue?: (troubleshootUuid: string | null) => void;
 }
 
@@ -27,23 +47,24 @@ export const SecondaryDashboardEntry = ({
   universeData,
   appName,
   timezone,
+  hideHeader = false,
+  hostUrl,
   onSelectedIssue
 }: SecondaryDashboardEntryProps) => {
+  const classes = useStyles();
+
   const [userSelectedAnomaly, setUserSelectedAnomaly] = useState<Anomaly | null>(null);
   const [graphRequestParams, setGraphRequestParams] = useState<GraphQuery[] | null>(null);
   const [recommendationMetrics, setRecommendationMetrics] = useState<any>(null);
 
   const { isLoading, isError, isIdle } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid),
+    () => TroubleshootAPI.fetchAnamoliesById(universeUuid, troubleshootUuid, hostUrl),
     {
-      onSuccess: (anomalyListdata: Anomaly[]) => {
-        const selectedAnomalyData = anomalyListdata?.find(
-          (anomaly: Anomaly) => anomaly.uuid === troubleshootUuid
-        );
-        setUserSelectedAnomaly(selectedAnomalyData!);
-        setGraphRequestParams(getGraphRequestParams(selectedAnomalyData!));
-        setRecommendationMetrics(getRecommendationMetricsMap(selectedAnomalyData!));
+      onSuccess: (anomalyData: Anomaly) => {
+        setUserSelectedAnomaly(anomalyData);
+        setGraphRequestParams(getGraphRequestParams(anomalyData));
+        setRecommendationMetrics(getRecommendationMetricsMap(anomalyData));
       },
       onError: (error: any) => {
         console.error('Failed to fetch Anomalies', error);
@@ -52,7 +73,11 @@ export const SecondaryDashboardEntry = ({
   );
 
   if (isLoading) {
-    return <LoadingIcon />;
+    return (
+      <Box className={classes.loadingBox}>
+        <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />
+      </Box>
+    );
   }
 
   if (isError || (isIdle && userSelectedAnomaly === undefined)) {
@@ -65,21 +90,24 @@ export const SecondaryDashboardEntry = ({
 
   return (
     <Box>
-      <Typography variant="h2" className="content-title">
-        {appName === AppName.YBA ? (
-          <YBBreadcrumb to={`/universes/${universeUuid}/troubleshoot`}>
-            {'Troubleshoot'}
-          </YBBreadcrumb>
-        ) : (
-          <Box>
-            <YBButton variant="pill" data-testid="BtnAddIPList" onClick={() => routeToPrimary()}>
-              {'Troubleshoot'}
-            </YBButton>
-          </Box>
-        )}
-      </Typography>
+      {!hideHeader && (
+        <Typography variant="h2" className="content-title">
+          {appName === AppName.YBA ? (
+            <Link to={`/universes/${universeUuid}/troubleshoot`}>
+              <Typography variant="h3">{'Troubleshoot'}</Typography>
+            </Link>
+          ) : (
+            <Box>
+              <YBButton variant="pill" data-testid="BtnAddIPList" onClick={() => routeToPrimary()}>
+                {'Troubleshoot'}
+              </YBButton>
+            </Box>
+          )}
+        </Typography>
+      )}
       {userSelectedAnomaly && (
         <SecondaryDashboardData
+          hostUrl={hostUrl}
           anomalyData={userSelectedAnomaly}
           universeData={universeData}
           universeUuid={universeUuid}

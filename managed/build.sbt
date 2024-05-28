@@ -120,10 +120,19 @@ def commonSettings = Seq(
   scalaVersion := "2.13.12"
 )
 
+lazy val TestLocalProviderSuite = config("testLocalSuite") extend(Test)
+lazy val TestQuickSuite = config("testQuickSuite") extend(Test)
+lazy val TestRetrySuite = config("testRetrySuite") extend(Test)
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
+  .configs(TestLocalProviderSuite, TestQuickSuite, TestRetrySuite)
   .disablePlugins(PlayLayoutPlugin)
   .settings(commonSettings)
+  .settings(
+    inConfig(TestLocalProviderSuite)(Defaults.testTasks),
+    inConfig(TestQuickSuite)(Defaults.testTasks),
+    inConfig(TestRetrySuite)(Defaults.testTasks)
+  )
   .settings(commands += Command.command("deflake") { state =>
     "test" :: "deflake" :: state
   })
@@ -231,6 +240,9 @@ libraryDependencies ++= Seq(
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
   "org.hsqldb" % "hsqldb" % "2.7.1",
+  "org.mapstruct" %"mapstruct" % "1.5.5.Final",
+  "org.mapstruct" %"mapstruct-processor" % "1.5.5.Final",
+  "org.projectlombok" %"lombok-mapstruct-binding" % "0.2.0",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -454,7 +466,7 @@ generateCrdObjects := {
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
@@ -694,33 +706,73 @@ compileGoGenV2Client := {
 lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
 compileYbaCliBinary := {
   var status = 0
-  var output = Seq.empty[String]
+  var completeFileList = Seq.empty[String]
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  val processLogger = ProcessLogger(
-    line => output :+= line,
-    line => println(s"Error: $line")
-  )
 
-  val process = Process("make package", new File(baseDirectory.value + "/yba-cli/"))
-  status = process.!(processLogger)
-  if (status == 0) {
-    val fileListIndex = output.indexWhere(_.startsWith("List of files in"))
-    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
-  } else {
-    fileList = Seq.empty[String]
-  }
-  (status, fileList)
+  val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
+  completeFileList = fileList1
+  status = status1
+
+  val (status2, fileList2) = makeYbaCliPackage("linux", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList2
+  status = status max status2
+
+  val (status3, fileList3) = makeYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList3
+  status = status max status3
+
+  val (status4, fileList4) = makeYbaCliPackage("darwin", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList4
+  status = status max status4
+
+
+  (status, completeFileList)
 }
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
+def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (Int, Seq[String]) = {
+
+  var status = 0
+  var output = Seq.empty[String]
+  var fileList = Seq.empty[String]
+
+  val processLogger = ProcessLogger(
+    line => output :+= line,
+    line => println(s"Error: $line")
+  )
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
+  status = process.!(processLogger)
+  if (status == 0) {
+    val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
+    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
+  } else {
+    fileList = Seq.empty[String]
+  }
+
+  (status, fileList)
+}
+
 // Clean the YBA CLI binary
 lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
 cleanYbaCliBinary := {
-   ybLog("Cleaning YBA CLI go binary.")
-  val status = Process("make clean", new File(baseDirectory.value + "/yba-cli/")).!
+  ybLog("Cleaning YBA CLI go binary.")
+
+  var status = cleanYbaCliPackage("linux", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("linux", "arm64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "arm64", baseDirectory.value)
+
+  status
+}
+
+def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
+
   status
 }
 
@@ -780,6 +832,9 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
     openApiValidateSpec := SettingDisabled,
     openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
+    openApiTypeMappings := Map[String, String](
+      "OffsetDateTime" -> "java.util.Date"
+    ),
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
@@ -808,20 +863,29 @@ Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
 Universal / mappings ++= {
-  val (status, cliFiles) = compileYbaCliBinary.value
+  val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
-    val targetFolderOpt: Option[String] = Some("bin")
-    val filesWithRelativePaths: Seq[(File, String)] = cliFiles.map { filePath =>
-      val targetPath = "bin/" + Paths.get(filePath).getFileName.toString
-      (file(filePath), targetPath)
+    cliFolders.flatMap { folderPath =>
+      val folder = file(folderPath)
+      if (folder.isDirectory) {
+        val targetPath = s"yba-cli/${folder.getName}"
+        val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
+        folderMappings
+      } else {
+        println(s"Warning: $folderPath is not a directory and will not be included in the package.")
+        Nil
+      }
     }
-
-    ybLog("Added YBA CLI files to package.")
-    filesWithRelativePaths
   } else {
     ybLog("Error generating YBA CLI binary.")
     Seq.empty
   }
+}
+
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
+  val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
+  Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
 }
 
 
@@ -843,8 +907,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.81-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b6"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.83-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -911,6 +975,34 @@ Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSiz
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testOptions += Tests.Filter(s =>
+  !s.contains("com.yugabyte.yw.commissioner.tasks.local")
+)
+
+lazy val testLocal = taskKey[Unit]("Runs local provider tests")
+lazy val testFast = taskKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+
+def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
+def quickTestSuiteFilter(name: String): Boolean =
+  !(name.startsWith("com.yugabyte.yw.commissioner.tasks.local") ||
+    name.startsWith("com.yugabyte.yw.commissioner.tasks.upgrade"))
+def upgradeRetryTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.upgrade")
+
+TestLocalProviderSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestLocalProviderSuite / testOptions := Seq(Tests.Filter(localTestSuiteFilter))
+TestLocalProviderSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testLocal := (TestLocalProviderSuite / test).value
+
+TestQuickSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestQuickSuite / testOptions := Seq(Tests.Filter(quickTestSuiteFilter))
+TestQuickSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testFast := (TestQuickSuite / test).value
+
+TestRetrySuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestRetrySuite / testOptions := Seq(Tests.Filter(upgradeRetryTestSuiteFilter))
+TestRetrySuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testUpgradeRetry := (TestRetrySuite / test).value
 
 // Skip packaging javadoc for now
 Compile / doc / sources := Seq()

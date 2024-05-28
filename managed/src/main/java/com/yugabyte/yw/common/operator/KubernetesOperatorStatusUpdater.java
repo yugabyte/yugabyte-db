@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.Event;
@@ -48,9 +49,11 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   private final String yugawareNamespace;
 
   private final Config k8sClientConfig;
+  private final OperatorUtils operatorUtils;
 
   @Inject
-  public KubernetesOperatorStatusUpdater(RuntimeConfGetter confGetter) {
+  public KubernetesOperatorStatusUpdater(
+      RuntimeConfGetter confGetter, OperatorUtils operatorUtils) {
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
     if (namespace == null || namespace.trim().isEmpty()) {
@@ -59,6 +62,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       confBuilder.withNamespace(namespace);
     }
     k8sClientConfig = confBuilder.build();
+    this.operatorUtils = operatorUtils;
 
     // Get Yugaware pod and namespace
     this.yugawarePod = System.getProperty("HOSTNAME");
@@ -246,6 +250,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
     if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
       return;
     }
+    Customer cust = Customer.get(universe.getCustomerId());
     try (final KubernetesClient client =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
       YBUniverse ybUniverse = getYBUniverse(client, universeName);
@@ -254,7 +259,14 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         return;
       }
       YBUniverseStatus status = ybUniverse.getStatus();
-      status.setUniverseState(state.getUniverseStateString());
+
+      boolean shouldUpdateStatus =
+          state.equals(UniverseState.READY)
+              ? !operatorUtils.universeAndSpecMismatch(cust, universe, ybUniverse)
+              : true;
+      if (shouldUpdateStatus) {
+        status.setUniverseState(state.getUniverseStateString());
+      }
       // Handle the success case
       String message = null;
       if (t == null) {

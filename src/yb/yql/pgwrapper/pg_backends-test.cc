@@ -70,6 +70,9 @@ class PgBackendsTest : public LibPqTestBase {
                  kMasterTserverRpcTimeoutSec * 1000),
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
+          // YB_TODO: Remove when this flag is set to true by default (when it works with the ysql
+          // major version upgrade).
+          "--ysql_enable_db_catalog_version_mode=true",
         });
     options->extra_tserver_flags.insert(
         options->extra_tserver_flags.end(),
@@ -77,6 +80,9 @@ class PgBackendsTest : public LibPqTestBase {
           "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
           Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          // YB_TODO: Remove when this flag is set to true by default (when it works with the ysql
+          // major version upgrade).
+          "--ysql_enable_db_catalog_version_mode=true",
         });
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(

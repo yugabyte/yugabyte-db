@@ -135,12 +135,12 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
-          .thenReturn(HostAndPort.fromParts("1.1.1.1", 1234));
+          .thenReturn(HostAndPort.fromParts("10.0.0.1", 1234));
       setMockLiveTabletServers();
     } catch (Exception e) {
       fail();
     }
-
+    setDumpEntitiesMock(defaultUniverse, "", false);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
@@ -332,7 +332,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = taskParams.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -345,7 +345,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
