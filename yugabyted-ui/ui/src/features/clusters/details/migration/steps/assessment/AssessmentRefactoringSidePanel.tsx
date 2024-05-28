@@ -47,12 +47,12 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-interface MigrationUnsupportedRefactoringProps {
+interface MigrationRefactoringSidePanelProps {
   data: RefactoringDataItems[number] | undefined;
   onClose: () => void;
 }
 
-export const MigrationUnsupportedRefactoring: FC<MigrationUnsupportedRefactoringProps> = ({
+export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProps> = ({
   data,
   onClose,
 }) => {

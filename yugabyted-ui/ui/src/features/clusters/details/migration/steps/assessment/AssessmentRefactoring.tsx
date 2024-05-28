@@ -29,7 +29,7 @@ import CollpaseIcon from "@app/assets/collapse.svg";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import PlusIcon from "@app/assets/plus_icon.svg";
 import MinusIcon from "@app/assets/minus_icon.svg";
-import { MigrationUnsupportedRefactoring } from "./AssessmentUnsupportedRefactoring";
+import { MigrationRefactoringSidePanel } from "./AssessmentRefactoringSidePanel";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -472,7 +472,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         </Box>
       </Box>
 
-      <MigrationUnsupportedRefactoring
+      <MigrationRefactoringSidePanel
         data={selectedDataType}
         onClose={() => setSelectedDataType(undefined)}
       />

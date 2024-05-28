@@ -3,7 +3,7 @@ import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@ma
 import { useTranslation } from "react-i18next";
 import { YBButton, YBTooltip } from "@app/components";
 import CaretRightIcon from "@app/assets/Drilldown.svg";
-import { MigrationSchemaRecommendation } from "./AssessmentSchemaRecommend";
+import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -201,7 +201,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
         </Box>
       </Box>
 
-      <MigrationSchemaRecommendation
+      <MigrationRecommendationSidePanel
         open={showRecommendation}
         onClose={() => setShowRecommendation(false)}
       />

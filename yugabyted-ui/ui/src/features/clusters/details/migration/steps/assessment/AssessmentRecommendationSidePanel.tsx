@@ -12,6 +12,8 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[500],
     fontWeight: theme.typography.fontWeightMedium as number,
     textTransform: "uppercase",
+    marginBottom: theme.spacing(0.75),
+    padding: 0,
     textAlign: "left",
   },
   dividerHorizontal: {
@@ -38,125 +40,106 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-interface MigrationSourceObjectsProps {
+interface MigrationRecommendationSidePanel {
   open: boolean;
   onClose: () => void;
 }
 
-export const MigrationSourceObjects: FC<MigrationSourceObjectsProps> = ({ open, onClose }) => {
+export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePanel> = ({
+  open,
+  onClose,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const sourceObjectData = [
+  const recommendationData = [
     {
-      name: "public.geometricshapes_id_seq",
-      type: "Sequence",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
+      tableName: "table-01",
+      diskSize: "16.2 GB",
+      schemaRecommendation: "Colocated",
     },
     {
-      name: "public.locations_id_seq",
-      type: "Sequence",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
+      tableName: "table-02",
+      diskSize: "12.2 GB",
+      schemaRecommendation: "Sharded",
     },
     {
-      name: "public.mytable_event_id_idx",
-      type: "Index",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
+      tableName: "table-03",
+      diskSize: "5.6 GB",
+      schemaRecommendation: "Colocated",
     },
     {
-      name: "public.get_geometricshapes",
-      type: "Function",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
+      tableName: "table-04",
+      diskSize: "3.1 GB",
+      schemaRecommendation: "Colocated",
     },
     {
-      name: "public.locations",
-      type: "Table",
-      size: "52.5 GB",
-      rowCount: "120398",
-      iops: "36.5",
-    },
-    {
-      name: "public.product_warehouse",
-      type: "Table",
-      size: "12.8 GB",
-      rowCount: "33062",
-      iops: "16.2",
+      tableName: "table-05",
+      diskSize: "24.2 GB",
+      schemaRecommendation: "Colocated",
     },
   ];
 
-  const sourceObjects = useMemo(
+  const recommendationObjects = useMemo(
     () => ({
-      sequence: sourceObjectData.filter((obj) => obj.type === "Sequence").length,
-      table: sourceObjectData.filter((obj) => obj.type === "Table").length,
-      index: sourceObjectData.filter((obj) => obj.type === "Index").length,
-      function: sourceObjectData.filter((obj) => obj.type === "Function").length,
-      total: sourceObjectData.length,
+      colocated: {
+        totalCount: recommendationData.filter((obj) => obj.schemaRecommendation === "Colocated")
+          .length,
+        totalSize:
+          recommendationData
+            .filter((obj) => obj.schemaRecommendation === "Colocated")
+            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0).toFixed(2) + " GB",
+      },
+      sharded: {
+        totalCount: recommendationData.filter((obj) => obj.schemaRecommendation === "Sharded")
+          .length,
+        totalSize:
+          recommendationData
+            .filter((obj) => obj.schemaRecommendation === "Sharded")
+            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0).toFixed(2) + " GB",
+      },
     }),
-    [sourceObjectData]
+    [recommendationData]
   );
 
   const types = useMemo(() => {
     const typeSet = new Set<string>();
-    sourceObjectData.forEach((obj) => typeSet.add(obj.type));
+    recommendationData.forEach((obj) => typeSet.add(obj.schemaRecommendation));
     return Array.from(typeSet);
-  }, [sourceObjectData]);
+  }, [recommendationData]);
 
   const [typeFilter, setTypeFilter] = React.useState<string>("");
   const [search, setSearch] = React.useState<string>("");
 
   const filteredSourceObjects = useMemo(() => {
     const searchQuery = search.toLowerCase().trim();
-    return sourceObjectData.filter(
+    return recommendationData.filter(
       (obj) =>
-        (typeFilter === "" || obj.type === typeFilter) &&
-        (search === "" || obj.name.toLowerCase().includes(searchQuery))
+        (typeFilter === "" || obj.schemaRecommendation === typeFilter) &&
+        (search === "" || obj.tableName.toLowerCase().includes(searchQuery))
     );
-  }, [sourceObjectData, typeFilter, search]);
+  }, [recommendationData, typeFilter, search]);
 
   const sourceObjectsColumns = [
     {
-      name: "name",
-      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.objectName"),
+      name: "tableName",
+      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.tableName"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "type",
-      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type"),
+      name: "diskSize",
+      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.diskSize"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "size",
-      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.size"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "rowCount",
-      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.rowCount"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "iops",
-      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.iops"),
+      name: "schemaRecommendation",
+      label: t("clusterDetail.voyager.planAndAssess.recommendation.schema.schemaRecommendation"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -167,7 +150,7 @@ export const MigrationSourceObjects: FC<MigrationSourceObjectsProps> = ({ open, 
   return (
     <YBModal
       open={open}
-      title={t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.heading")}
+      title={t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
       onClose={onClose}
       enableBackdropDismiss
       titleSeparator
@@ -176,49 +159,51 @@ export const MigrationSourceObjects: FC<MigrationSourceObjectsProps> = ({ open, 
     >
       <Box my={2}>
         <Paper>
-          <Box p={2} className={classes.grayBg}>
-            <Grid container spacing={4}>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalObjects")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.total}
+          <Box p={2} className={classes.grayBg} display="flex" gridGap={20}>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="h5">
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.colocatedTables")}
                 </Typography>
               </Grid>
-              <Grid item xs={1}>
-                <Divider orientation="vertical" />
-              </Grid>
-              <Grid item xs={2}>
+              <Grid item xs={6}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.sequenceCount")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.sequence}
+                  {recommendationObjects.colocated.totalCount}
                 </Typography>
               </Grid>
-              <Grid item xs={2}>
+              <Grid item xs={6}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.tableCount")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.table}
+                  {recommendationObjects.colocated.totalSize}
                 </Typography>
               </Grid>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.indexCount")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.index}
+            </Grid>
+            <Divider orientation="vertical" flexItem />
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="h5">
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.shardedTables")}
                 </Typography>
               </Grid>
-              <Grid item xs={2}>
+              <Grid item xs={6}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.functionCount")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.function}
+                  {recommendationObjects.sharded.totalCount}
+                </Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" className={classes.label}>
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
+                </Typography>
+                <Typography variant="body2" className={classes.value}>
+                  {recommendationObjects.sharded.totalCount}
                 </Typography>
               </Grid>
             </Grid>
@@ -229,7 +214,7 @@ export const MigrationSourceObjects: FC<MigrationSourceObjectsProps> = ({ open, 
       <Box display="flex" alignItems="center" gridGap={10} my={2}>
         <Box flex={1}>
           <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type")}
+            {t("clusterDetail.voyager.planAndAssess.recommendation.schema.schemaRecommendation")}
           </Typography>
           <YBSelect
             className={classes.fullWidth}
@@ -249,12 +234,12 @@ export const MigrationSourceObjects: FC<MigrationSourceObjectsProps> = ({ open, 
         </Box>
         <Box flex={2}>
           <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.search")}
+            {t("clusterDetail.voyager.planAndAssess.recommendation.schema.search")}
           </Typography>
           <YBInput
             className={classes.fullWidth}
             placeholder={t(
-              "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.searchPlaceholder"
+              "clusterDetail.voyager.planAndAssess.recommendation.schema.searchPlaceholder"
             )}
             InputProps={{
               startAdornment: <SearchIcon />,

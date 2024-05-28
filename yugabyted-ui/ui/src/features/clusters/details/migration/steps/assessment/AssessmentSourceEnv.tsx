@@ -3,7 +3,7 @@ import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@ma
 import { useTranslation } from "react-i18next";
 import { YBButton, YBTooltip } from "@app/components";
 import CaretRightIcon from "@app/assets/Drilldown.svg";
-import { MigrationSourceObjects } from "./AssessmentSourceObjects";
+import { MigrationSourceEnvSidePanel } from "./AssessmentSourceEnvSidePanel";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -172,7 +172,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
         </Box>
       </Box>
 
-      <MigrationSourceObjects
+      <MigrationSourceEnvSidePanel
         open={showSourceObjects}
         onClose={() => setShowSourceObjects(false)}
       />
