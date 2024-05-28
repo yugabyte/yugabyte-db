@@ -18,12 +18,12 @@ Data modeling involves designing the database schema for efficient storage and a
 In YugabyteDB, data is stored as rows and columns in tables which are organized under schemas and databases.
 
 {{<lead link="../../../explore/ysql-language-features/databases-schemas-tables">}}
-To understand more about creating and managing tables, schemas and databases, see [Schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables)
+To understand more about creating and managing tables, schemas, and databases, see [Schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables).
 {{</lead>}}
 
-When modeling your data for YugabyteDB, you must understand the 2 [data distribution](../../../explore/going-beyond-sql/data-sharding) schemes, Hash and Range sharding in detail. This is very significant for designing your tables and indexes for fast retrieval and storage.
+To design your tables and indexes for fast retrieval and storage in YugabyteDB, you first need to understand the two [data distribution](../../../explore/going-beyond-sql/data-sharding) schemes, Hash and Range sharding, in detail.
 
-In YugabyteDB the sharding and ordering of data in the tables and indexes is governed by the primary key of the table and index respectively. Let us dig deeper into designing the primary keys with some examples.
+In YugabyteDB, the sharding and ordering of data in the tables and indexes is governed by the primary key of the table and index respectively.
 
 ## Cluster setup
 
@@ -81,7 +81,7 @@ INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
 </details>
 
 {{<note>}}
-To explain the behavior of the queries we will use **explain (analyze, dist, costs off)**. In practice, you do not need this unless you are trying to optimize the performance. For more details, see [Analyze queries](../../../explore/query-1-performance/explain-analyze)
+To explain the behavior of the queries, the examples use **explain (analyze, dist, costs off)**. In practice, you do not need to do this unless you are trying to optimize performance. For more details, see [Analyze queries](../../../explore/query-1-performance/explain-analyze).
 {{</note>}}
 
 ## Primary keys
