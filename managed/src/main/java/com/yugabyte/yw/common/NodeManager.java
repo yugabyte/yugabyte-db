@@ -1168,18 +1168,6 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
-          // TODO: PLAT-2782: certificates are generated 3 times for each node.
-          if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
-            subcommand.addAll(
-                getCertificatePaths(
-                    runtimeConfigFactory.forUniverse(universe),
-                    userIntent,
-                    taskParam,
-                    commonName,
-                    taskParam.getProvider().getYbHome(),
-                    alternateNames));
-          }
-
           Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
           processGFlags(config, universe, node, taskParam, gflags, useHostname);
           if (!config.getBoolean("yb.cloud.enabled")) {
