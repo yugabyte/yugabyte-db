@@ -1053,6 +1053,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	od_route_t *route = client->route;
 	assert(route != NULL);
 
+	int prev_named_prep_stmt = 1;
+
 	kiwi_fe_type_t type = *data;
 	if (type == KIWI_FE_TERMINATE)
 		return OD_STOP;
@@ -1230,6 +1232,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (desc.operator_name[0] == '\0') {
 				/* no need for odyssey to track unnamed prepared statements */
+				prev_named_prep_stmt = 0;
 				break;
 			}
 
@@ -1600,6 +1603,26 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_error(&instance->logger, "error while forwarding",
 				client, server, "Got error while forwarding the packet");
 			return OD_ESERVER_WRITE;
+		}
+
+		/* unnamed prepared statement was parsed, send ParseComplete to client */
+		if (prev_named_prep_stmt == 0) {
+
+			machine_msg_t *pcmsg;
+			pcmsg = kiwi_be_write_parse_complete(NULL);
+
+			if (pcmsg == NULL) {
+				return OD_ESERVER_WRITE;
+			}
+
+			rc = od_write(&client->io, pcmsg);
+
+			if (rc == -1) {
+				od_error(&instance->logger, "parse", client,
+					 NULL, "write error: %s",
+					 od_io_error(&client->io));
+				return OD_ESERVER_WRITE;
+			}
 		}
 
 		retstatus = OD_SKIP;
