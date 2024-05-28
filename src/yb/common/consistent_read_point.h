@@ -41,7 +41,9 @@ class ConsistentReadPoint {
   void MoveFrom(ConsistentReadPoint* rhs);
 
   // Set the current time as the read point.
-  void SetCurrentReadTime() EXCLUDES(mutex_);
+  // No uncertainty window when clamp is set.
+  void SetCurrentReadTime(
+    const ClampUncertaintyWindow clamp = ClampUncertaintyWindow::kFalse) EXCLUDES(mutex_);
 
   // If read point is not set, use the current time as the read point and defer it to the global
   // limit. If read point was already set, return error if it is not deferred.
@@ -91,7 +93,8 @@ class ConsistentReadPoint {
  private:
   inline void SetReadTimeUnlocked(
       const ReadHybridTime& read_time, HybridTimeMap* local_limits = nullptr) REQUIRES(mutex_);
-  void SetCurrentReadTimeUnlocked() REQUIRES(mutex_);
+  void SetCurrentReadTimeUnlocked(
+    const ClampUncertaintyWindow clamp = ClampUncertaintyWindow::kFalse) REQUIRES(mutex_);
   void UpdateLimitsMapUnlocked(
       const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
   void RestartRequiredUnlocked(const TabletId& tablet, const ReadHybridTime& restart_time)

@@ -611,6 +611,12 @@ message PgPerformOptionsPB {
   int64 pg_txn_start_us = 22;
 
   AshMetadataPB ash_metadata = 23;
+
+  // When set,
+  // - Sets the read time locally.
+  // - Clamps the read uncertainty window.
+  // See the commit desc for more info.
+  bool clamp_uncertainty_window = 24;
 }
 
 message PgPerformRequestPB {

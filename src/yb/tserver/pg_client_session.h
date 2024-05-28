@@ -191,7 +191,8 @@ class PgClientSession {
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
-  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation, uint64_t txn_serial_no);
+  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation, uint64_t txn_serial_no,
+                                   ClampUncertaintyWindow clamp);
 
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);

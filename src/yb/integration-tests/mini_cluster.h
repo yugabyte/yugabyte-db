@@ -300,6 +300,15 @@ class MiniCluster : public MiniClusterBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
+// Requires that skewed clock is registered as physical clock.
+// Jumps the physical clock by delta
+// i.e. no effect on hybrid ts unless by physical clock.
+// new_clock = old_clock + delta (clocks are moving).
+// Returns an RAII structure that resets the delta change
+// when it goes out of scope.
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta);
+
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
 

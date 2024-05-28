@@ -33,8 +33,11 @@ void ConsistentReadPoint::SetReadTimeUnlocked(
   restarts_.clear();
 }
 
-void ConsistentReadPoint::SetCurrentReadTimeUnlocked() {
-  SetReadTimeUnlocked(ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
+void ConsistentReadPoint::SetCurrentReadTimeUnlocked(const ClampUncertaintyWindow clamp) {
+  SetReadTimeUnlocked(
+    clamp
+    ? ReadHybridTime::SingleTime(clock_->Now())
+    : ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
 }
 
 void ConsistentReadPoint::SetReadTime(
@@ -43,9 +46,9 @@ void ConsistentReadPoint::SetReadTime(
   SetReadTimeUnlocked(read_time, &local_limits);
 }
 
-void ConsistentReadPoint::SetCurrentReadTime() {
+void ConsistentReadPoint::SetCurrentReadTime(const ClampUncertaintyWindow clamp) {
   std::lock_guard lock(mutex_);
-  SetCurrentReadTimeUnlocked();
+  SetCurrentReadTimeUnlocked(clamp);
 }
 
 Status ConsistentReadPoint::TrySetDeferredCurrentReadTime() {
