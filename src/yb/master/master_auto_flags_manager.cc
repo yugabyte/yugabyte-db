@@ -241,9 +241,8 @@ MasterAutoFlagsManager::MasterAutoFlagsManager(
       update_lock_(mutex_, std::defer_lock) {}
 
 Status MasterAutoFlagsManager::Init(
-    const std::string& local_hosts, std::function<bool()> has_sys_catalog_func,
-    bool is_shell_mode) {
-  RETURN_NOT_OK(AutoFlagsManagerBase::Init(local_hosts));
+    rpc::Messenger* messenger, std::function<bool()> has_sys_catalog_func, bool is_shell_mode) {
+  RETURN_NOT_OK(AutoFlagsManagerBase::Init(messenger));
 
   if (VERIFY_RESULT(LoadFromFile())) {
     return Status::OK();
@@ -266,8 +265,8 @@ Status MasterAutoFlagsManager::Init(
 }
 
 Status MasterAutoFlagsManager::LoadFromMasterLeader(
-    const std::string& local_hosts, const server::MasterAddresses& master_addresses) {
-  return AutoFlagsManagerBase::LoadFromMasterLeader(local_hosts, master_addresses);
+    const server::MasterAddresses& master_addresses) {
+  return AutoFlagsManagerBase::LoadFromMasterLeader(master_addresses);
 }
 
 Status MasterAutoFlagsManager::LoadNewConfig(const AutoFlagsConfigPB new_config) {

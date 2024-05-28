@@ -1,5 +1,6 @@
 {{- $numnodes := int (default "3" (.Get "numnodes")) -}}
 {{- $basedir := default "/tmp/ybd" (.Get "basedir") }}
+{{- $fault := default "zone" (.Get "fault-domain") }}
 {{- $rf := int (default "3" (.Get "rf")) -}}
 {{- $ips := split (replace (default "" (.Get "ips")) " " "") "," -}}
 {{- $offset := 2 -}}
@@ -77,9 +78,9 @@
 {{- $data = print $data "After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:" "\n" -}}
 {{- $data = print $data "```sh" "\n" -}}
 {{- if (gt $rf 3) -}}
-{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=zone --rf " $rf "\n" -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=" $fault " --rf " $rf "\n" -}}
 {{- else -}}
-{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=zone" "\n" -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=" $fault "\n" -}}
 {{- end -}}
 {{- $data = print $data "```" "\n" -}}
 {{- end -}}

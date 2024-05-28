@@ -16,6 +16,9 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
+DEFINE_test_flag(bool, block_xcluster_checkpoint_namespace_task, false,
+    "When enabled XClusterCheckpointNamespaceTask will be blocked");
+
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -59,11 +62,19 @@ Status XClusterCheckpointNamespaceTask::FirstStep() {
 }
 
 Status XClusterCheckpointNamespaceTask::CheckpointStreams() {
-  RETURN_NOT_OK(outbound_replication_group_.CheckpointStreamsForInitialBootstrap(
+  auto status = outbound_replication_group_.CheckpointStreamsForInitialBootstrap(
       namespace_id_, epoch_,
-      std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreamsCallback, this, _1)));
+      std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreamsCallback, this, _1));
 
-  return Status::OK();
+  if (!status.ok() && status.IsTryAgain()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to checkpoint streams: " << status << ". Scheduling retry";
+    ScheduleNextStepWithDelay(
+        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams",
+        GetDelayWithBackoff());
+    return Status::OK();
+  }
+
+  return status;
 }
 
 void XClusterCheckpointNamespaceTask::CheckpointStreamsCallback(
@@ -76,6 +87,14 @@ void XClusterCheckpointNamespaceTask::CheckpointStreamsCallback(
 
 Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     XClusterCheckpointStreamsResult result) {
+  if (FLAGS_TEST_block_xcluster_checkpoint_namespace_task) {
+    ScheduleNextStepWithDelay(
+        std::bind(
+            &XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed, this, std::move(result)),
+        "CheckpointStreams", MonoDelta::FromMilliseconds(100));
+    return Status::OK();
+  }
+
   if (VERIFY_RESULT(outbound_replication_group_.MarkBootstrapTablesAsCheckpointed(
           namespace_id_, std::move(result), epoch_))) {
     // All tables have been checkpointed and the replication group is now READY.
@@ -91,6 +110,13 @@ void XClusterCheckpointNamespaceTask::TaskCompleted(const Status& status) {
   if (!status.ok()) {
     outbound_replication_group_.MarkCheckpointNamespaceAsFailed(namespace_id_, epoch_, status);
   }
+}
+
+MonoDelta XClusterCheckpointNamespaceTask::GetDelayWithBackoff() {
+  const auto delay = delay_with_backoff_;
+  // Exponential delay from 100ms to 5s.
+  delay_with_backoff_ = MonoDelta::FromSeconds(std::min(5.0, delay.ToSeconds() * 1.1));
+  return delay;
 }
 
 } // namespace yb::master

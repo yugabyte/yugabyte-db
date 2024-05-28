@@ -150,7 +150,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
-  Status Cleanup(TransactionIdSet&& set) override;
+  Status Cleanup(TransactionIdApplyOpIdMap&& set) override;
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
@@ -238,8 +238,14 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t GetNumRunningTransactions() const;
 
-  // Returns pair of number of intents and number of transactions.
-  Result<std::pair<size_t, size_t>> TEST_CountIntents() const;
+  struct CountIntentsResult {
+    size_t num_intents;
+    size_t num_transactions;
+    size_t num_post_apply;
+  };
+  // Returns pair of number of intents, number of transactions, and number of post-apply
+  // records.
+  Result<CountIntentsResult> TEST_CountIntents() const;
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 

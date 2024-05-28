@@ -196,8 +196,8 @@ message ResourcesPB {
 message TSRegistrationPB {
   optional ServerRegistrationPB common = 1;
 
-  // Capabilities supported byt this TS.
-  repeated fixed32 capabilities = 2;
+  // DEPRECATED Capabilities of tablet server.
+  reserved 2;
 
   // Resources available at the tserver.
   optional ResourcesPB resources = 3;

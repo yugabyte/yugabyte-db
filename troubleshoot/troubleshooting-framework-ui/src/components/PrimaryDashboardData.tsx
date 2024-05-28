@@ -2,12 +2,16 @@ import { useState, useEffect, ChangeEvent } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { Box, MenuItem, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
+import {
+  YBSelect,
+  YBDateTimePicker,
+  YBTimeFormats,
+  formatDatetime,
+  getDiffHours
+} from '@yugabytedb/ui-components';
 import { PrimaryDashboard } from './PrimaryDashboard';
-import { YBDateTimePicker } from '../common/YBDateTimePicker';
 import { Anomaly, AnomalyCategory, AppName } from '../helpers/dtos';
-import { YBSelect } from '../common/YBSelect';
 import { TIME_FILTER, anomalyFilterDurations } from '../helpers/constants';
-import { YBTimeFormats, formatDatetime, getDiffHours } from '../helpers/dateUtils';
 
 interface PrimaryDashboardDataProps {
   anomalyData: Anomaly[] | null;
@@ -83,11 +87,11 @@ export const PrimaryDashboardData = ({
   const classes = useStyles();
   const today = new Date();
   const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setDate(yesterday.getDate() - 14);
 
   const [filteredAnomalyList, setFilteredAnomalyList] = useState<Anomaly[]>([]);
   const [anomalyCategoryOptions, setAnomalyCategoryOptions] = useState<AnomalyCategory[]>();
-  const [filterDuration, setFilterDuration] = useState<string>(anomalyFilterDurations[0].label);
+  const [filterDuration, setFilterDuration] = useState<string>(anomalyFilterDurations[0].value);
   const [datetimeError, setDateTimeError] = useState<string>('');
   const [startDateTime, setStartDateTime] = useState<Date>(yesterday);
   const [endDateTime, setEndDateTime] = useState<Date>(today);
@@ -118,19 +122,20 @@ export const PrimaryDashboardData = ({
       // Make an API call with update timestamp
       setDateTimeError('');
       // Investigate if we can just do toISOString();
-      const formattedStartDate = formatDatetime(
-        startDateTime,
-        YBTimeFormats.YB_ISO8601_TIMESTAMP,
-        timezone
-      );
-      const formattedEndDate = formatDatetime(
-        endDateTime,
-        YBTimeFormats.YB_ISO8601_TIMESTAMP,
-        timezone
-      );
+      const formattedStartDate = startDateTime?.toISOString();
+      const formattedEndDate = endDateTime?.toISOString();
       onFilterByDate(formattedStartDate, formattedEndDate);
     }
   }, [startDateTime, endDateTime]);
+
+  useUpdateEffect(() => {
+    // When the default window is 14 days
+    if (filterDuration === anomalyFilterDurations[0].value) {
+      const formattedStartDate = yesterday?.toISOString();
+      const formattedEndDate = today?.toISOString();
+      onFilterByDate(formattedStartDate, formattedEndDate);
+    }
+  }, [filterDuration]);
 
   const handleResolve = (id: string, isResolved: boolean) => {
     const anomalyListCopy = JSON.parse(JSON.stringify(anomalyData));
@@ -138,7 +143,7 @@ export const PrimaryDashboardData = ({
     if (selectedAnomaly) {
       selectedAnomaly.isResolved = isResolved;
     }
-    setFilteredAnomalyList(selectedAnomaly);
+    setFilteredAnomalyList(anomalyListCopy);
   };
 
   const onSelectCategories = (category: AnomalyCategory | string) => {
@@ -204,9 +209,9 @@ export const PrimaryDashboardData = ({
             {anomalyFilterDurations.map((duration: any) => (
               <MenuItem
                 key={`duration-${duration.label}`}
-                value={duration.label}
+                value={duration.value}
                 onClick={(e: any) => {
-                  onSelectedFilterDuration(duration.label);
+                  onSelectedFilterDuration(duration.value);
                 }}
                 className={clsx(classes.menuItem, classes.regularText)}
               >
@@ -214,21 +219,21 @@ export const PrimaryDashboardData = ({
               </MenuItem>
             ))}
           </YBSelect>
-          {filterDuration === TIME_FILTER.CUSTOM && (
+          {filterDuration === TIME_FILTER.SMALL_CUSTOM && (
             <>
+              <Box className={classes.datePicker}>
+                <YBDateTimePicker
+                  dateTimeLabel={'Start Date'}
+                  defaultDateTimeValue={previousDateTime}
+                  onChange={onStartDateChange}
+                />
+              </Box>
               <Box className={classes.datePicker}>
                 <YBDateTimePicker
                   dateTimeLabel={'End Date'}
                   defaultDateTimeValue={currentDateTime}
                   onChange={onEndDateChange}
                   errorMsg={datetimeError}
-                />
-              </Box>
-              <Box className={classes.datePicker}>
-                <YBDateTimePicker
-                  dateTimeLabel={'Start Date'}
-                  defaultDateTimeValue={previousDateTime}
-                  onChange={onStartDateChange}
                 />
               </Box>
             </>

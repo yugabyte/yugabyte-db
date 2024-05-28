@@ -59,7 +59,8 @@ func statusHeader() {
 func generalStatus() {
 	outString := "YBA Url" + " \t" + "Install Root" + " \t" + "yba-ctl config" + " \t" +
 		"yba-ctl Logs" + " \t"
-	ybaUrl := "https://" + viper.GetString("host")
+	hostnames := SplitInput(viper.GetString("host"))
+	ybaUrl := "https://" + hostnames[0]
 	if viper.GetInt("platform.port") != 443 {
 		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
 	}

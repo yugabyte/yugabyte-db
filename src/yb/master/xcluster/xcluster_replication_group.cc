@@ -13,12 +13,14 @@
 
 #include "yb/master/xcluster/xcluster_replication_group.h"
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -266,9 +268,7 @@ Result<bool> ShouldAddTableToReplicationGroup(
     CatalogManager& catalog_manager) {
   const auto& table_pb = table_info.old_pb();
 
-  // Only user created YSQL tables should be automatically added to xCluster replication.
-  if (table_pb.colocated() || table_pb.table_type() != PGSQL_TABLE_TYPE ||
-      !catalog_manager.IsUserCreatedTable(table_info)) {
+  if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
 
@@ -281,17 +281,18 @@ Result<bool> ShouldAddTableToReplicationGroup(
     return false;
   }
 
-  // Handle v1 API, transactional xcluster replication for indexes. If the indexed table is under
-  // replication then we need to add the index to replication as well.
-  if (!universe_pb.has_db_scoped_info() && !(universe_pb.transactional() && IsIndex(table_pb))) {
-    return false;
-  }
-
   if (universe_pb.has_db_scoped_info()) {
     if (!IncludesConsumerNamespace(universe, table_info.namespace_id())) {
       return false;
     }
   } else {
+    // Handle v1 API, transactional xcluster replication for indexes. If the indexed table is under
+    // replication then we need to add the index to replication as well.
+
+    if (!universe_pb.transactional() || !IsIndex(table_pb)) {
+      return false;
+    }
+
     const auto& indexed_table_id = GetIndexedTableId(table_pb);
     auto indexed_table_stream_ids =
         catalog_manager.GetXClusterConsumerStreamIdsForTable(indexed_table_id);
@@ -300,16 +301,11 @@ Result<bool> ShouldAddTableToReplicationGroup(
     }
   }
 
-  // Check if the table has already been added to this replication group.
+  // Skip if the table has already been added to this replication group.
   auto cluster_config = catalog_manager.ClusterConfig();
   {
     auto l = cluster_config->LockForRead();
     const auto& consumer_registry = l->pb.consumer_registry();
-    // Only add if we are in a transactional replication with STANDBY mode.
-    if (consumer_registry.role() != cdc::XClusterRole::STANDBY ||
-        !consumer_registry.transactional()) {
-      return false;
-    }
 
     auto producer_entry =
         FindOrNull(consumer_registry.producer_map(), universe.ReplicationGroupId().ToString());
@@ -329,16 +325,23 @@ Result<bool> ShouldAddTableToReplicationGroup(
     }
   }
 
+  SCHECK(
+      !table_info.IsColocationParentTable(), IllegalState,
+      Format(
+          "Colocated parent tables can only be added during the initial xCluster replication "
+          "setup: $0",
+          table_info.ToString()));
+
   return true;
 }
 
 Result<NamespaceId> GetProducerNamespaceId(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
-  auto l = universe.LockForRead();
   SCHECK(
-      l->pb.has_db_scoped_info(), IllegalState, "Replication group $0 is not db-scoped",
+      universe.IsDbScoped(), IllegalState, "Replication group $0 is not db-scoped",
       universe.ToString());
 
+  auto l = universe.LockForRead();
   auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
   SCHECK_FORMAT(
       opt_namespace_id, NotFound, "Namespace $0 not found in replication group $1",
@@ -349,11 +352,10 @@ Result<NamespaceId> GetProducerNamespaceId(
 
 bool IncludesConsumerNamespace(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
-  auto l = universe.LockForRead();
-  if (!l->pb.has_db_scoped_info()) {
+  if (!universe.IsDbScoped()) {
     return false;
   }
-
+  auto l = universe.LockForRead();
   auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
   return opt_namespace_id.has_value();
 }
@@ -439,6 +441,110 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
   }
 
   return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
+}
+
+Status RemoveTablesFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(!producer_table_ids.empty(), InvalidArgument, "No tables to remove");
+
+  auto& replication_group_id = universe->ReplicationGroupId();
+
+  std::set<TableId> producer_table_ids_to_remove(
+      producer_table_ids.begin(), producer_table_ids.end());
+  std::set<TableId> consumer_table_ids_to_remove;
+
+  // 1. Get the corresponding stream ids and consumer table ids for the tables to remove.
+  auto l = universe->LockForWrite();
+  auto& universe_pb = l.mutable_data()->pb;
+
+  // Filter out any tables that aren't in the existing replication config.
+  std::set<TableId> existing_tables(universe_pb.tables().begin(), universe_pb.tables().end());
+  std::set<TableId> filtered_list;
+  set_intersection(
+      producer_table_ids_to_remove.begin(), producer_table_ids_to_remove.end(),
+      existing_tables.begin(), existing_tables.end(),
+      std::inserter(filtered_list, filtered_list.begin()));
+  filtered_list.swap(producer_table_ids_to_remove);
+
+  VLOG(1) << "Removing tables " << yb::ToString(producer_table_ids_to_remove)
+          << " from inbound xCluster replication group " << replication_group_id;
+  if (producer_table_ids_to_remove.empty()) {
+    return Status::OK();
+  }
+
+  std::vector<xrepl::StreamId> streams_to_remove;
+
+  auto cluster_config = catalog_manager.ClusterConfig();
+  {
+    auto cl = cluster_config->LockForRead();
+    auto& cluster_config_pb = cl->pb;
+    auto& producer_map = cluster_config_pb.consumer_registry().producer_map();
+    auto producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+    if (producer_entry) {
+      // Remove the Tables Specified (not part of the key).
+      auto& stream_map = producer_entry->stream_map();
+      for (auto& [stream_id, stream_entry] : stream_map) {
+        if (producer_table_ids_to_remove.contains(stream_entry.producer_table_id())) {
+          streams_to_remove.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
+          // Also fetch the consumer table ids here so we can clean the in-memory maps after.
+          consumer_table_ids_to_remove.insert(stream_entry.consumer_table_id());
+        }
+      }
+
+      // If this ends with an empty Map, disallow and force user to delete.
+      LOG_IF(WARNING, streams_to_remove.size() == stream_map.size())
+          << "All tables in xCluster replication group " << replication_group_id
+          << " have been removed";
+    }
+  }
+
+  // 2. Delete xCluster streams on the Producer.
+  if (!streams_to_remove.empty()) {
+    auto rpc_task = VERIFY_RESULT(
+        universe->GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
+
+    // Atomicity cannot be guaranteed for both producer and consumer deletion. So ignore any errors
+    // due to missing streams.
+    RETURN_NOT_OK_PREPEND(
+        rpc_task->client()->DeleteCDCStream(
+            streams_to_remove, true /* force_delete */, true /* remove_table_ignore_errors */),
+        "Unable to delete xCluster streams on source. Try setting the ignore-errors option");
+  }
+
+  // 3. Update the Consumer Registry (removes from TServers) and Master Configs.
+  auto cl = cluster_config->LockForWrite();
+  auto& cluster_config_pb = cl.mutable_data()->pb;
+  auto& producer_map = *cluster_config_pb.mutable_consumer_registry()->mutable_producer_map();
+  auto producer_entry = FindOrNull(producer_map, replication_group_id.ToString());
+  if (producer_entry) {
+    // Remove the Tables Specified (not part of the key).
+    auto stream_map = producer_entry->mutable_stream_map();
+    for (auto& stream_id : streams_to_remove) {
+      stream_map->erase(stream_id.ToString());
+    }
+
+    cluster_config_pb.set_version(cluster_config_pb.version() + 1);
+  }
+
+  for (auto& table_id : producer_table_ids_to_remove) {
+    universe_pb.mutable_table_streams()->erase(table_id);
+    universe_pb.mutable_validated_tables()->erase(table_id);
+    Erase(table_id, universe_pb.mutable_tables());
+  }
+
+  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, universe.get(), cluster_config.get()));
+
+  // 4. Clear in-mem maps.
+  catalog_manager.SyncXClusterConsumerReplicationStatusMap(replication_group_id, producer_map);
+
+  catalog_manager.ClearXClusterConsumerTableStreams(
+      replication_group_id, consumer_table_ids_to_remove);
+
+  l.Commit();
+  cl.Commit();
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

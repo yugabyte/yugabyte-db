@@ -101,12 +101,12 @@ The query plan would be similar to the following:
 ```yaml
  Nested Loop (actual time=2002.483..9011.038 rows=18 loops=1)
    ->  Seq Scan on students (actual time=1001.369..1001.393 rows=8 loops=1)
-         Remote Filter: ((name)::text = 'Natasha'::text)
+         Storage Filter: ((name)::text = 'Natasha'::text)
          Storage Table Read Requests: 1
          Storage Table Read Execution Time: 1001.245 ms
    ->  Index Scan using scores_pkey on scores (actual time=1001.141..1001.146 rows=2 loops=8)
          Index Cond: (id = students.id)
-         Remote Filter: (score > 70)
+         Storage Filter: (score > 70)
          Storage Table Read Requests: 1
          Storage Table Read Execution Time: 1001.050 ms
  Planning Time: 0.308 ms
@@ -147,14 +147,14 @@ The query plan would be similar to the following:
          Sort Key: students.id
          Sort Method: quicksort  Memory: 25kB
          ->  Seq Scan on students (actual time=1001.418..1001.424 rows=8 loops=1)
-               Remote Filter: ((name)::text = 'Natasha'::text)
+               Storage Filter: ((name)::text = 'Natasha'::text)
                Storage Table Read Requests: 1
                Storage Table Read Execution Time: 1001.243 ms
    ->  Sort (actual time=1001.447..1001.455 rows=51 loops=1)
          Sort Key: scores.id
          Sort Method: quicksort  Memory: 27kB
          ->  Seq Scan on scores (actual time=1001.370..1001.390 rows=51 loops=1)
-               Remote Filter: (score > 70)
+               Storage Filter: (score > 70)
                Storage Table Read Requests: 1
                Storage Table Read Execution Time: 1001.250 ms
  Planning Time: 0.252 ms
@@ -190,13 +190,13 @@ The query plan would be similar to the following:
  Hash Join (actual time=2002.431..2002.477 rows=18 loops=1)
    Hash Cond: (scores.id = students.id)
    ->  Seq Scan on scores (actual time=1001.043..1001.061 rows=51 loops=1)
-         Remote Filter: (score > 70)
+         Storage Filter: (score > 70)
          Storage Table Read Requests: 1
          Storage Table Read Execution Time: 1000.927 ms
    ->  Hash (actual time=1001.360..1001.361 rows=8 loops=1)
          Buckets: 1024  Batches: 1  Memory Usage: 9kB
          ->  Seq Scan on students (actual time=1001.327..1001.335 rows=8 loops=1)
-               Remote Filter: ((name)::text = 'Natasha'::text)
+               Storage Filter: ((name)::text = 'Natasha'::text)
                Storage Table Read Requests: 1
                Storage Table Read Execution Time: 1001.211 ms
  Planning Time: 0.231 ms
@@ -211,7 +211,7 @@ The query plan would be similar to the following:
 
 In the case of Nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
 
-To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the GUC variable `yb_bnl_batch_size`, which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
+To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter `yb_bnl_batch_size`, which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
 
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 
@@ -248,7 +248,7 @@ The query plan would be similar to the following:
          Storage Index Read Execution Time: 1000.589 ms
    ->  Index Scan using idx_id on scores (actual time=2002.290..2002.305 rows=18 loops=1)
          Index Cond: (id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))
-         Remote Filter: (score > 70)
+         Storage Filter: (score > 70)
          Storage Table Read Requests: 1
          Storage Table Read Execution Time: 1001.356 ms
          Storage Index Read Requests: 1

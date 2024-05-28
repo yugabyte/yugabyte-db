@@ -406,7 +406,7 @@ SELECT * FROM foo_part ORDER BY a, b;
 -- Verify that ADD COLUMN ... DEFAULT NOT NULL fails when the default value is
 -- null.
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
-ERROR:  column "g" contains null values
+ERROR:  column "g" of relation "foo" contains null values
 -- Test add column with volatile default value.
 ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
 NOTICE:  table rewrite may lead to inconsistencies

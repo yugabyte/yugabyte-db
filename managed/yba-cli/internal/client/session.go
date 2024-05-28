@@ -21,6 +21,12 @@ func (a *AuthAPIClient) ApiLogin() ybaclient.SessionManagementApiApiApiLoginRequ
 	return a.APIClient.SessionManagementApi.ApiLogin(a.ctx)
 }
 
+// RegisterCustomer registers a YugabyteDB Anywhere customer
+func (a *AuthAPIClient) RegisterCustomer() (
+	ybaclient.SessionManagementApiApiRegisterCustomerRequest) {
+	return a.APIClient.SessionManagementApi.RegisterCustomer(a.ctx)
+}
+
 // GetSessionInfo fetches YugabyteDB Anywhere session info
 func (a *AuthAPIClient) GetSessionInfo() (
 	ybaclient.SessionManagementApiApiGetSessionInfoRequest) {
@@ -32,7 +38,7 @@ func (a *AuthAPIClient) GetCustomerUUID() error {
 	r, response, err := a.GetSessionInfo().Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"Get Customer UUID", "Get Session Info")
+			"Get Session Info", "Get Customer UUID")
 		return errMessage
 	}
 	if !r.HasCustomerUUID() {

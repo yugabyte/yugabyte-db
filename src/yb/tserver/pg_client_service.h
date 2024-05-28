@@ -28,7 +28,6 @@
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
-#include "yb/tserver/xcluster_context.h"
 
 namespace yb {
 
@@ -37,6 +36,7 @@ class MemTracker;
 namespace tserver {
 
 class PgMutationCounter;
+class TserverXClusterContextIf;
 
 // Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \
@@ -82,11 +82,13 @@ class PgMutationCounter;
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
+    (TabletsMetadata) \
     (TabletServerCount) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (WaitForBackendsCatalogVersion) \
+    (YCQLStatementStats) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see
@@ -100,14 +102,11 @@ class PgClientServiceImpl : public PgClientServiceIf {
   explicit PgClientServiceImpl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock,
-      TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const scoped_refptr<MetricEntity>& entity,
-      rpc::Messenger* messenger,
-      const std::string& permanent_uuid,
-      const server::ServerBaseOptions* tablet_server_opts,
-      const std::optional<XClusterContext>& xcluster_context = std::nullopt,
+      const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
+      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const TserverXClusterContextIf* xcluster_context = nullptr,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
   ~PgClientServiceImpl();

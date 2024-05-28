@@ -5,7 +5,7 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
-
+import { useTranslation } from 'react-i18next';
 import {
   RadioGroupOrientation,
   YBInputField,
@@ -37,7 +37,9 @@ import {
   deleteItem,
   editItem,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  UseProviderValidationEnabled
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
@@ -47,9 +49,15 @@ import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 
+import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
+import { QUERY_KEY } from '../../../../../redesign/features/universe/universe-form/utils/api';
 import { AZURegionMutation, AZUAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -58,7 +66,7 @@ import { getYBAHost } from '../../utils';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
-import { useTranslation } from 'react-i18next';
+import { AZURE_FORM_MAPPERS } from './constants';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -156,10 +164,26 @@ export const AZUProviderCreateForm = ({
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
 
+  const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.azu);
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
-  if (hostInfoQuery.isLoading) {
+
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+
+  if (
+    hostInfoQuery.isLoading ||
+    globalRuntimeConfigQuery.isLoading ||
+    isProviderValidationLoading
+  ) {
     return <YBLoading />;
   }
+
   if (hostInfoQuery.isError) {
     return (
       <YBErrorIndicator
@@ -198,7 +222,19 @@ export const AZUProviderCreateForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues);
       try {
-        await createInfraProvider(providerPayload);
+        await createInfraProvider(providerPayload, {
+          shouldValidate: isValidationEnabled,
+          ignoreValidationErrors: false,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                AZURE_FORM_MAPPERS
+              );
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -239,6 +275,7 @@ export const AZUProviderCreateForm = ({
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
   );
+
   const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
@@ -302,7 +339,12 @@ export const AZUProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Network Resource Group</FieldLabel>
+                <FieldLabel
+                  infoTitle="Network Resource Group"
+                  infoContent="All network and NIC resources of VMs will be created in this group. If left empty, the default resource group will be used."
+                >
+                  Network Resource Group (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkRG"
@@ -320,7 +362,12 @@ export const AZUProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel>Network Subscription ID</FieldLabel>
+                <FieldLabel
+                  infoTitle="Network Subscription ID"
+                  infoContent="All network and NIC resources of VMs will be created under this subscription. If left empty, the default subscription id will be used."
+                >
+                  Network Subscription ID (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuNetworkSubscriptionId"
@@ -374,6 +421,7 @@ export const AZUProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -387,12 +435,13 @@ export const AZUProviderCreateForm = ({
               viewMode="CREATE"
             />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -403,7 +452,7 @@ export const AZUProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>

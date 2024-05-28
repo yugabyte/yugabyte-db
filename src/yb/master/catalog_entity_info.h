@@ -463,6 +463,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  bool is_being_altered_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+  }
+
   std::vector<std::string> cols_marked_for_deletion() const {
     std::vector<std::string> columns;
     for (const auto& col : pb.schema().columns()) {
@@ -474,6 +479,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   }
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
+
+  // Returns the transaction-id of the DDL transaction operating on it, Nil if no such DDL is
+  // happening.
+  Result<TransactionId> GetCurrentDdlTransactionId() const;
 
   const std::string& state_name() const {
     return SysTablesEntryPB_State_Name(pb.state());
@@ -721,6 +730,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
+  bool IsSequencesSystemTable() const;
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
@@ -736,6 +746,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
+
+  void AddDdlTxnWaitingForSchemaVersion(int schema_version,
+                                        const TransactionId& txn) EXCLUDES(lock_);
+
+  std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
+      int schema_version) EXCLUDES(lock_);
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -787,6 +803,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
   std::atomic_bool bootstrapping_xcluster_replication_ = false;
+
+  // Store a map of schema version->TransactionId of the DDL transaction that initiated the
+  // change. When a schema version n has propagated to all tablets, we use this map to signal all
+  // the DDL transactions waiting for schema version n and any k < n. The map is ordered by schema
+  // version to easily figure out all the entries for schema version < n.
+  std::map<int, TransactionId> ddl_txns_waiting_for_schema_version_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -1149,7 +1171,12 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   bool IsConsistentSnapshotStream() const;
 
+  const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
+
   std::string ToString() const override;
+
+  bool IsXClusterStream() const;
+  bool IsCDCSDKStream() const;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
@@ -1216,6 +1243,8 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
+
+  bool IsDbScoped() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;

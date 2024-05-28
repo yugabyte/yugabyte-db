@@ -2715,7 +2715,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, bexpr, YbBatchedExpr);
 				MUTATE(newnode->orig_expr, bexpr->orig_expr, Expr *);
-				return (Node *) newnode;			
+				return (Node *) newnode;
 			}
 		case T_WithCheckOption:
 			{
@@ -3367,6 +3367,16 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_RestrictInfo:
+			{
+				RestrictInfo   *rinfo = (RestrictInfo *) node;
+				RestrictInfo   *newnode;
+
+				FLATCOPY(newnode, rinfo, RestrictInfo);
+				MUTATE(newnode->clause, rinfo->clause, Expr *);
 				return (Node *) newnode;
 			}
 			break;

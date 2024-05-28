@@ -5,7 +5,6 @@
 package task
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -53,7 +52,11 @@ var listTaskCmd = &cobra.Command{
 			Format: task.NewTaskFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No tasks found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No tasks found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		task.Write(taskCtx, r)

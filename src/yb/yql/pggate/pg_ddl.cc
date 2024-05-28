@@ -178,7 +178,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& tablespace_oid,
                              bool is_matview,
                              const PgObjectId& pg_table_oid,
-                             const PgObjectId& old_relfilenode_oid)
+                             const PgObjectId& old_relfilenode_oid,
+                             bool is_truncate)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -198,6 +199,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_matview(is_matview);
   pg_table_oid.ToPB(req_.mutable_pg_table_oid());
   old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
+  req_.set_is_truncate(is_truncate);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
@@ -321,8 +323,9 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
                          const PgObjectId& index_id,
-                         bool if_exist)
-    : PgDropTable(pg_session, index_id, if_exist) {
+                         bool if_exist,
+                         bool ddl_rollback_enabled)
+    : PgDropTable(pg_session, index_id, if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
 }
 
 PgDropIndex::~PgDropIndex() {
@@ -336,7 +339,8 @@ Status PgDropIndex::Exec() {
     PgObjectId indexed_table_id(indexed_table_name.table_id());
 
     pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
-    pg_session_->InvalidateTableCache(indexed_table_id, InvalidateOnPgClient::kFalse);
+    pg_session_->InvalidateTableCache(indexed_table_id,
+        ddl_rollback_enabled_ ? InvalidateOnPgClient::kTrue : InvalidateOnPgClient::kFalse);
     return Status::OK();
   }
   return s;
@@ -380,6 +384,22 @@ Status PgAlterTable::DropColumn(const char *name) {
   return Status::OK();
 }
 
+Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
+  auto replica_identity_pb = std::make_unique<tserver::PgReplicaIdentityPB>();
+  tserver::PgReplicaIdentityType replica_identity_type;
+  switch (identity_type) {
+    case 'd': replica_identity_type = tserver::DEFAULT; break;
+    case 'n': replica_identity_type = tserver::NOTHING; break;
+    case 'f': replica_identity_type = tserver::FULL; break;
+    case 'c': replica_identity_type = tserver::CHANGE; break;
+    default:
+      RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+  }
+  replica_identity_pb->set_replica_identity(replica_identity_type);
+  req_.set_allocated_replica_identity(replica_identity_pb.release());
+  return Status::OK();
+}
+
 Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
   auto& rename = *req_.mutable_rename_table();
   rename.set_database_name(db_name);
@@ -402,6 +422,11 @@ Status PgAlterTable::Exec() {
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);
   return Status::OK();
+}
+
+void PgAlterTable::InvalidateTableCacheEntry() {
+  pg_session_->InvalidateTableCache(
+      PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kTrue);
 }
 
 PgAlterTable::~PgAlterTable() {

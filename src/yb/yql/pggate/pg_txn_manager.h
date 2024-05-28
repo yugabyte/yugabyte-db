@@ -86,9 +86,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
   uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-    read_time_serial_no_ = read_time_serial_no;
-  }
+  uint64_t GetTxnSerialNo() { return txn_serial_no_; }
+  SubTransactionId GetActiveSubTransactionId() { return active_sub_transaction_id_; }
+  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
  private:
   struct DdlCommitInfo {

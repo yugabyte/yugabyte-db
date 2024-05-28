@@ -25,7 +25,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/snapshot.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -33,6 +32,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
@@ -1426,7 +1426,8 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
         }
         return Status::OK();
       }));
-  // Pass 2: Get all the SysTablesEntry of the database that are in running state as of read_time.
+  // Pass 2: Get all the SysTablesEntry of the database that are in running state and not Hidden as
+  // of read_time.
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
@@ -1440,6 +1441,7 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         if (pb.namespace_id() == namespace_id && pb.state() == SysTablesEntryPB::RUNNING &&
+            pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
           VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
           if (IsColocatedDbParentTableId(id.ToBuffer()) ||
@@ -1461,7 +1463,10 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [namespace_id, &tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING) {
+        // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
+        //  according to their state.
+        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
+            pb.hide_hybrid_time() == 0) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
@@ -3039,7 +3044,6 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_.empty()) {
-      LOG(WARNING) << "No active snapshot: " << current_snapshot_id_;
       return;
     }
 

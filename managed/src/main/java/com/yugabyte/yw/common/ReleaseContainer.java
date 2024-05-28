@@ -32,21 +32,31 @@ public class ReleaseContainer {
 
   private CloudUtilFactory cloudUtilFactory;
   private Config appConfig;
+  private ReleasesUtils releasesUtils;
 
   // Internally set the artifact used for getFilePath
   private ReleaseArtifact artifact;
 
-  public ReleaseContainer(Release release, CloudUtilFactory cloudUtilFactory, Config appConfig) {
+  public ReleaseContainer(
+      Release release,
+      CloudUtilFactory cloudUtilFactory,
+      Config appConfig,
+      ReleasesUtils releasesUtils) {
     this.release = release;
     this.cloudUtilFactory = cloudUtilFactory;
     this.appConfig = appConfig;
+    this.releasesUtils = releasesUtils;
   }
 
   public ReleaseContainer(
-      ReleaseMetadata metadata, CloudUtilFactory cloudUtilFactory, Config appConfig) {
+      ReleaseMetadata metadata,
+      CloudUtilFactory cloudUtilFactory,
+      Config appConfig,
+      ReleasesUtils releasesUtils) {
     this.metadata = metadata;
     this.cloudUtilFactory = cloudUtilFactory;
     this.appConfig = appConfig;
+    this.releasesUtils = releasesUtils;
   }
 
   public boolean isLegacy() {
@@ -111,7 +121,7 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.http.paths.getX86_64_checksum();
     } else {
-      return this.artifact.getSha256();
+      return this.artifact.getFormattedSha256();
     }
   }
 
@@ -262,7 +272,7 @@ public class ReleaseContainer {
             "cannot download helmchart for %s. No kubernetes artifact found", release.getVersion());
         return;
       }
-      checksum = artifact.getSha256();
+      checksum = artifact.getFormattedSha256();
       if (artifact.getS3File() != null) {
         configType = Util.S3;
         urlPath = artifact.getS3File().path;
@@ -423,7 +433,11 @@ public class ReleaseContainer {
   }
 
   public ReleaseManager.ReleaseMetadata getMetadata() {
-    return this.metadata;
+    if (isLegacy()) {
+      return this.metadata;
+    } else {
+      return releasesUtils.releaseToReleaseMetadata(this.release);
+    }
   }
 
   private void setArtifactMatchingPackage(String ybPackage) {
@@ -446,5 +460,13 @@ public class ReleaseContainer {
       }
     }
     throw new RuntimeException("Unable to find matching artifact for package " + ybPackage);
+  }
+
+  public boolean isActive() {
+    if (isLegacy()) {
+      return this.metadata.state == ReleaseManager.ReleaseState.ACTIVE;
+    } else {
+      return this.release.getState() == Release.ReleaseState.ACTIVE;
+    }
   }
 }

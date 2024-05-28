@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
+import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -35,6 +36,8 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
@@ -510,9 +513,9 @@ public class TaskExecutor {
     } else {
       taskInfo.setTaskState(State.Created);
     }
-    // Set the task details.
-    taskInfo.setDetails(
-        RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
+    // Set the task params.
+    taskInfo.setTaskParams(
+        RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     return taskInfo;
@@ -588,7 +591,7 @@ public class TaskExecutor {
       log.info("Adding task #{}: {}", subTaskCount, subTask.getName());
       if (log.isDebugEnabled()) {
         JsonNode redactedTask =
-            RedactingService.filterSecretFields(subTask.getTaskDetails(), RedactionTarget.LOGS);
+            RedactingService.filterSecretFields(subTask.getTaskParams(), RedactionTarget.LOGS);
         log.debug(
             "Details for task #{}: {} details= {}", subTaskCount, subTask.getName(), redactedTask);
       }
@@ -841,7 +844,7 @@ public class TaskExecutor {
       this.taskScheduledTime = Instant.now();
 
       Duration duration = Duration.ZERO;
-      JsonNode jsonNode = taskInfo.getDetails();
+      JsonNode jsonNode = taskInfo.getTaskParams();
       if (jsonNode != null && !jsonNode.isNull()) {
         JsonNode timeLimitJsonNode = jsonNode.get("timeLimitMins");
         if (timeLimitJsonNode != null && !timeLimitJsonNode.isNull()) {
@@ -955,9 +958,9 @@ public class TaskExecutor {
 
     // This is invoked from tasks to save the updated task details generally in transaction with
     // other DB updates.
-    public synchronized void setTaskDetails(JsonNode taskDetails) {
+    public synchronized void setTaskParams(JsonNode taskParams) {
       taskInfo.refresh();
-      taskInfo.setDetails(taskDetails);
+      taskInfo.setTaskParams(taskParams);
       taskInfo.update();
     }
 
@@ -1016,12 +1019,17 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
+      TaskError taskError = new TaskError();
       // Method maskConfig does not modify the input as it makes a deep-copy.
-      String maskedTaskDetails = CommonUtils.maskConfig(taskDetails).toString();
-      String errorString;
+      String maskedTaskParams =
+          CommonUtils.maskConfig((ObjectNode) taskInfo.getTaskParams()).toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
-        errorString = "Platform shutdown";
+        taskError.setCode(TaskErrorCode.PLATFORM_SHUTDOWN);
+        taskError.setMessage("Platform shutdown");
+      } else if (t instanceof TaskExecutionException) {
+        TaskExecutionException e = (TaskExecutionException) t;
+        taskError.setCode(e.getCode());
+        taskError.setMessage(e.getMessage());
       } else {
         Throwable cause = t;
         // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
@@ -1029,26 +1037,25 @@ public class TaskExecutor {
         while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
           cause = cause.getCause();
         }
-        errorString =
+        String errorString =
             String.format(
                 "Failed to execute task %s, hit error:\n\n %s.",
-                StringUtils.abbreviate(maskedTaskDetails, 500),
+                StringUtils.abbreviate(maskedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
+        taskError.setMessage(errorString);
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          maskedTaskDetails,
+          maskedTaskParams,
           t);
 
       if (log.isDebugEnabled()) {
         log.debug("Task creator callstack:\n{}", String.join("\n", creatorCallstack));
       }
-
-      taskDetails.put("errorString", errorString);
       taskInfo.setTaskState(state);
-      taskInfo.setDetails(taskDetails);
+      taskInfo.setTaskError(taskError);
       taskInfo.update();
     }
 

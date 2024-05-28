@@ -231,7 +231,11 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
             fullWidth
           >
             {currProvider.imageBundles
-              .filter((img: ImageBundle) => img.details.arch === curLinuxImgBundle.details.arch)
+              .filter(
+                (img: ImageBundle) =>
+                  img.details.arch === curLinuxImgBundle.details.arch &&
+                  img?.uuid !== curLinuxImgBundle?.uuid
+              )
               .map((img: ImageBundle) => (
                 <MenuItem key={img.uuid} value={img.uuid} className={classes.versionComp}>
                   {img.name}

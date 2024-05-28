@@ -159,7 +159,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     TestUtils.setFakeHttpContext(user);
     TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
     taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
     CustomerTask task =
@@ -208,7 +208,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     subTask.setTaskState(taskState);
     ObjectNode taskDetailsJson = Json.newObject();
     taskDetailsJson.put("errorString", taskState.equals(TaskInfo.State.Failure) ? "foobaz" : null);
-    subTask.setDetails(taskDetailsJson);
+    subTask.setTaskParams(taskDetailsJson);
     subTask.setOwner("foobar");
     subTask.save();
 
@@ -251,11 +251,11 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     ObjectMapper objectMapper = new ObjectMapper();
     ObjectNode objectNode = objectMapper.createObjectNode();
     TaskInfo taskInfo = TaskInfo.get(upgradeUUID);
-    JsonNode taskInfoDetails = taskInfo.getDetails();
-    objectNode.setAll((ObjectNode) taskInfoDetails);
+    JsonNode taskParams = taskInfo.getTaskParams();
+    objectNode.setAll((ObjectNode) taskParams);
     objectNode.put(YB_SOFTWARE_VERSION, "{Previous Version}");
     objectNode.put(YB_PREV_SOFTWARE_VERSION, "{Current Version}");
-    taskInfo.setDetails(objectNode);
+    taskInfo.setTaskParams(objectNode);
     taskInfo.save();
 
     String url = "/api/customers/" + customer.getUuid() + "/tasks";
@@ -265,12 +265,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(json.isObject(), is(true));
     JsonNode universeTasks = json.get(universeUUID.toString());
     JsonNode upgradeTask = universeTasks.get(0);
-    JsonNode taskDetails = taskInfo.getDetails();
+    taskParams = taskInfo.getTaskParams();
     assertThat(
         ((upgradeTask.get("type").asText().equals("SoftwareUpgradeYB")
-                && taskDetails.has(YB_PREV_SOFTWARE_VERSION)))
+                && taskParams.has(YB_PREV_SOFTWARE_VERSION)))
             || (!upgradeTask.get("type").asText().equals("SoftwareUpgradeYB")
-                && !taskDetails.has(YB_SOFTWARE_VERSION)),
+                && !taskParams.has(YB_SOFTWARE_VERSION)),
         is(true));
   }
 

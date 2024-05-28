@@ -47,8 +47,8 @@ extern Oid	CreateTableGroup(CreateTableGroupStmt *stmt);
 extern Oid	get_tablegroup_oid(const char *tablegroupname, bool missing_ok);
 extern char *get_tablegroup_name(Oid grp_oid);
 
-extern void RemoveTablegroupById(Oid grp_oid);
-
+extern void RemoveTablegroupById(Oid grp_oid, bool remove_implicit);
+extern char *get_implicit_tablegroup_name(Oid oidSuffix);
 extern ObjectAddress RenameTablegroup(const char *oldname, const char *newname);
 extern ObjectAddress AlterTablegroupOwner(const char *grpname, Oid newOwnerId);
 

@@ -69,7 +69,7 @@ func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
 		for _, universe := range universes {
 			err := format(&Context{u: universe})
 			if err != nil {
-				logrus.Debugf("Error rendering universe: %v", err)
+				logrus.Debugf("Error rendering universe: %v\n", err)
 				return err
 			}
 		}

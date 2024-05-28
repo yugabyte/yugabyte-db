@@ -170,41 +170,6 @@ YugabyteDB Managed reserves the following ranges for internal operations.
 | AWS | 10.3.0.0/16<br>10.4.0.0/16 |
 | GCP | 10.21.0.0/16 |
 
-<!--
-## Create the VPC network
-
-To create a VPC network, you need to complete the following tasks:
-
-1. Create the VPC. [AWS](../cloud-add-vpc-aws/#create-a-vpc) | [GCP](../cloud-add-vpc-gcp/#create-a-vpc)
-
-    - Reserves a range of IP addresses for the network.
-    - The status of the VPC is _Active_ when done.
-
-1. Deploy the cluster in the VPC. [AWS](../cloud-add-vpc-aws/#deploy-a-cluster-in-the-vpc) | [GCP](../cloud-add-vpc-gcp/#deploy-a-cluster-in-the-vpc)
-
-    - This can be done at any time - you don't need to wait until the VPC is peered.
-
-1. Create a peering connection. [AWS](../cloud-add-vpc-aws/#create-a-peering-connection) | [GCP](../cloud-add-vpc-gcp/#create-a-peering-connection)
-
-    - Connects your VPC and the application VPC on the cloud provider network.
-    - The status of the peering connection is _Pending_ when done.
-
-1. Configure the cloud provider.
-
-    - Confirms the connection between your VPC and the application VPC.
-    - Performed in the cloud provider settings.
-      - In AWS, [accept the peering request](../cloud-add-vpc-aws/#accept-the-peering-request-in-aws).
-      - In GCP, [create a peering connection](../cloud-add-vpc-gcp/#create-a-peering-connection-in-gcp).
-    - The status of the peering connection is _Active_ when done.
-
-1. [Add the application VPC to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/).
-
-    - Allows the peered application VPC to connect to the cluster.
-    - Add at least one of the CIDR blocks associated with the peered application VPC to the IP allow list for your cluster.
-
-With the exception of 4, these tasks are performed in YugabyteDB Managed.
--->
-
 ## Next steps
 
 - [Peering connections](../cloud-add-peering/)

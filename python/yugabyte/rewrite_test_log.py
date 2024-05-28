@@ -31,6 +31,8 @@ from typing import List, Optional, Set, Any, Tuple, Dict
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yugabyte.common_util import init_logging, shlex_join  # noqa
+from yugabyte import common_util  # noqa
+
 
 UUID_RE_STR = '[0-9a-f]{32}'
 TABLET_OR_PEER_ID_RE_STR = r'\b[T|P] [0-9a-f]{32}\b'
@@ -55,6 +57,9 @@ PROCESSING_CREATE_TABLET_RE_STR = ''.join([
 PROCESSING_CREATE_TABLET_RE = re.compile(PROCESSING_CREATE_TABLET_RE_STR)
 
 SYS_CATALOG_TABLET_ID = '0' * 32
+
+THIRDPARTY_DIR_RE_STR = '/opt/yb-build/thirdparty/yugabyte-db-thirdparty-[0-9a-z_.-]+'
+LLVM_TOOLCHAIN_DIR_RE_STR = '/opt/yb-build/llvm/yb-llvm-[0-9a-z_.-]+'
 
 
 def normalize_daemon_id(s: str) -> str:
@@ -119,6 +124,7 @@ class LogRewriterConf:
     test_tmpdir: Optional[str]
     replace_original: bool
     output_log_path: str
+    home_dir: str
 
     def __init__(
             self,
@@ -128,7 +134,8 @@ class LogRewriterConf:
             build_root: str,
             test_tmpdir: Optional[str],
             replace_original: bool,
-            output_log_path: str) -> None:
+            output_log_path: str,
+            home_dir: Optional[str] = None) -> None:
         self.input_log_path = input_log_path
         self.verbose = verbose
         self.yb_src_root = yb_src_root
@@ -136,6 +143,7 @@ class LogRewriterConf:
         self.test_tmpdir = test_tmpdir
         self.replace_original = replace_original
         self.output_log_path = output_log_path
+        self.home_dir = home_dir or os.path.expanduser('~')
 
 
 class LogRewriter:
@@ -187,7 +195,7 @@ class LogRewriter:
 
     def execute_pipeline(self, p: subprocess.Popen) -> List[str]:
         """
-        Execute a pipeline, typically consisting.
+        Execute a pipeline, typically consisting of a grep command piped to sort and uniq.
         """
         stdout, _ = p.communicate()
         p.wait()
@@ -389,10 +397,20 @@ class LogRewriter:
         mapping is reported at the bottom of the new log. Word boundaries (\b) are required around
         the matched string.
         """
-        self.add_propagated_msg(f'{var_name} = {value_str}')
-        replacement = '{%s}' % var_name
+        self.add_propagated_msg(f'{value_str} -> {var_name}')
+        if var_name == '~':
+            # Special case for the tilde meaning the home directory.
+            replacement = var_name
+        else:
+            replacement = '{%s}' % var_name
         # In Perl regular expressions, \b is word boundary.
-        self.regex_replacements.append((rf'\b%s\b' % value_str, replacement))
+        perl_regex = ''
+        if value_str and value_str[0].isalpha():
+            perl_regex += rf'\b'
+        perl_regex += value_str
+        if value_str and value_str[-1].isalpha():
+            perl_regex += rf'\b'
+        self.regex_replacements.append((perl_regex, replacement))
 
     def add_env_var_mapping(self, dir_path: str, env_var_name: str) -> None:
         """
@@ -401,7 +419,7 @@ class LogRewriter:
         ${YB_SRC_ROOT}, ${TEST_TMPDIR}. No word boundaries are required around the matched string.
         """
         replacement = '${%s}' % env_var_name
-        self.add_propagated_msg('%s = %s', env_var_name, dir_path)
+        self.add_propagated_msg(f'{dir_path} -> {env_var_name}')
         self.regex_replacements.append((dir_path, replacement))
 
     def run(self) -> None:
@@ -418,8 +436,6 @@ class LogRewriter:
 
         self.regex_replacements = get_stack_trace_replacements()
         self.find_test_host_name()
-        if self.test_host_name:
-            self.add_value_to_var_mapping(self.test_host_name, 'test_host_name')
 
         if self.rewriting_peer_ids:
             for peer_id, daemon_id in sorted(
@@ -449,10 +465,41 @@ class LogRewriter:
             # Special case for the system catalog tablet id.
             self.add_value_to_var_mapping(SYS_CATALOG_TABLET_ID, 'sys_catalog_tablet_id')
 
-        for dir_arg_name in ['build_root', 'yb_src_root', 'test_tmpdir']:
-            arg_value = getattr(self.conf, dir_arg_name)
-            if arg_value:
-                self.add_env_var_mapping(arg_value, dir_arg_name.upper())
+        # Try to get rid of useless navigation into the build directory and then two levels up.
+        two_levels_above_build_root = os.path.join(self.conf.build_root, '..', '..')
+        if os.path.abspath(two_levels_above_build_root) == os.path.abspath(self.conf.yb_src_root):
+            self.add_env_var_mapping(two_levels_above_build_root, 'YB_SRC_ROOT')
+
+        self.add_env_var_mapping(self.conf.build_root, 'BUILD_ROOT')
+        self.add_env_var_mapping(self.conf.yb_src_root, 'YB_SRC_ROOT')
+        if self.conf.test_tmpdir:
+            self.add_env_var_mapping(self.conf.test_tmpdir, 'TEST_TMPDIR')
+
+        thirdparty_dir_candidates = self.egrep_sort_uniq(['-o', THIRDPARTY_DIR_RE_STR], count=False)
+        thirdparty_dir: Optional[str] = None
+        if len(thirdparty_dir_candidates) == 1:
+            thirdparty_dir = thirdparty_dir_candidates[0]
+        if thirdparty_dir:
+            # Only use the third-party directory from the log, not from the environment variable.
+            self.add_env_var_mapping(thirdparty_dir, 'YB_THIRDPARTY_DIR')
+
+        llvm_toolchain_dir_candidates = self.egrep_sort_uniq(
+            ['-o', LLVM_TOOLCHAIN_DIR_RE_STR], count=False)
+        llvm_toolchain_dir: Optional[str] = None
+        if len(llvm_toolchain_dir_candidates):
+            llvm_toolchain_dir = llvm_toolchain_dir_candidates[0]
+        if llvm_toolchain_dir:
+            self.add_env_var_mapping(llvm_toolchain_dir, 'YB_LLVM_TOOLCHAIN_DIR')
+
+        # Only replace the home directory and the test host name at the end, after all other
+        # replacements of longer paths that may start with the home directory have been made.
+        self.add_value_to_var_mapping(self.conf.home_dir, '~')
+        if self.test_host_name:
+            self.add_value_to_var_mapping(self.test_host_name, 'test_host_name')
+
+        # -----------------------------------------------------------------------------------------
+        # Done with adding all the replacements. Now create a Perl command to perform them.
+        # -----------------------------------------------------------------------------------------
 
         # Perl seems to be faster than sed and awk at replacing multiple regular expressions.
         perl_commands = [self.get_perl_replacement_cmd(a, b) for a, b in self.regex_replacements]

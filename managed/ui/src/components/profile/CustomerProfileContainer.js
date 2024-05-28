@@ -24,10 +24,9 @@ import {
   updateUserProfileFailure,
   updateUserProfileSuccess,
   updatePassword,
-  updatePasswordFailure,
-  updatePasswordSuccess,
   DEFAULT_RUNTIME_GLOBAL_SCOPE
 } from '../../actions/customers';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -73,12 +72,10 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     updateUserPassword: (userUUID, values) => {
-      dispatch(updatePassword(userUUID, values)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(updatePasswordFailure(response.payload));
-        } else {
-          dispatch(updatePasswordSuccess(response.payload));
-        }
+      return updatePassword(userUUID, values).then(() => {
+          toast.success("password updated successfully");
+      }).catch((payload)=> {
+        toast.error(payload.response.data.error);
       });
     },
     addCustomerConfig: (config) => {

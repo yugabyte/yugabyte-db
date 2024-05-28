@@ -15,8 +15,11 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
@@ -71,6 +74,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // Collect validation errors only when client is successfully created, otherwise,
     // all other validations will unquestionably fail.
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
+    boolean enableVMOSPatching =
+        runtimeConfigGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
 
     // validate SSH private key content
     try {
@@ -94,10 +99,6 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       }
     }
 
-    if (provider.getDetails().sshPort == null) {
-      validationErrorsMap.put("SSH_PORT", "Please provide a valid ssh port value");
-    }
-
     // validate hosted zone id
     if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
       for (Region region : provider.getRegions()) {
@@ -119,9 +120,17 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate Region and its details
     if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
       for (Region region : provider.getRegions()) {
-        validateAMI(provider, region, validationErrorsMap);
+        validateAMI(provider, region, validationErrorsMap, enableVMOSPatching);
         validateVpc(provider, region, validationErrorsMap);
-        validateSgAndPort(provider, region, validationErrorsMap);
+        validateSg(provider, region, validationErrorsMap);
+        if (!enableVMOSPatching) {
+          String fieldDetails = "SSH_PORT";
+          Integer sshPort = provider.getDetails().getSshPort();
+          if (sshPort == null) {
+            validationErrorsMap.put("SSH_PORT", "Please provide a valid ssh port value");
+          }
+          validateSshPort(provider, region, fieldDetails, sshPort, validationErrorsMap);
+        }
         validateSubnets(provider, region, validationErrorsMap);
         dryRun(provider, region, validationErrorsMap);
       }
@@ -181,11 +190,19 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private void validateAMI(
-      Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
-    String imageId = region.getYbImage();
-    String fieldDetails = "REGION." + region.getCode() + ".IMAGE";
-    try {
-      if (!StringUtils.isEmpty(imageId)) {
+      Provider provider,
+      Region region,
+      SetMultimap<String, String> validationErrorsMap,
+      boolean enableVMOSPatching) {
+    List<ImageBundle> imageBundles = provider.getImageBundles();
+    for (ImageBundle imageBundle : imageBundles) {
+      BundleInfo bundleInfo = imageBundle.getDetails().getRegions().get(region.getCode());
+      if (bundleInfo == null || StringUtils.isEmpty(bundleInfo.getYbImage())) {
+        continue;
+      }
+      String imageId = bundleInfo.getYbImage();
+      String fieldDetails = "REGION." + region.getCode() + ".IMAGE." + imageBundle.getName();
+      try {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);
         List<String> errorList = new ArrayList<>();
         String arch = image.getArchitecture().toLowerCase();
@@ -210,12 +227,21 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         if (errorList.size() != 0) {
           validationErrorsMap.putAll(fieldDetails, errorList);
         }
-      }
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        validationErrorsMap.put(fieldDetails, e.getMessage());
-      } else {
-        throw e;
+        if (enableVMOSPatching) {
+          fieldDetails = fieldDetails + ".SSH_PORT";
+          Integer sshPort = imageBundle.getDetails().getSshPort();
+          if (sshPort == null) {
+            validationErrorsMap.put(fieldDetails, "Please provide a valid ssh port value");
+            continue;
+          }
+          validateSshPort(provider, region, fieldDetails, sshPort, validationErrorsMap);
+        }
+      } catch (PlatformServiceException e) {
+        if (e.getHttpStatus() == BAD_REQUEST) {
+          validationErrorsMap.put(fieldDetails, e.getMessage());
+        } else {
+          throw e;
+        }
       }
     }
   }
@@ -236,7 +262,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
   }
 
-  private void validateSgAndPort(
+  private void validateSg(
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
     String fieldDetails = "REGION." + region.getCode() + ".SECURITY_GROUP";
 
@@ -252,31 +278,52 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
             errorList.add(
                 securityGroup.getGroupId() + " is not attached to vpc: " + region.getVnetName());
           }
-          Integer sshPort = provider.getDetails().getSshPort();
-          boolean portOpen = false;
-          if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
-            for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
-              Integer fromPort = ipPermission.getFromPort();
-              Integer toPort = ipPermission.getToPort();
-              if (fromPort == null && toPort == null) {
-                portOpen = true;
-                break;
-              }
-              if (fromPort == null || toPort == null) {
-                continue;
-              }
-              if (fromPort <= sshPort && toPort >= sshPort) {
-                portOpen = true;
-                break;
-              }
-            }
-          }
-          if (!portOpen) {
-            errorList.add(sshPort + " is not open on security group " + securityGroup.getGroupId());
-          }
         }
         if (errorList.size() != 0) {
           validationErrorsMap.putAll(fieldDetails, errorList);
+        }
+      }
+    } catch (PlatformServiceException e) {
+      if (e.getHttpStatus() == BAD_REQUEST) {
+        validationErrorsMap.put(fieldDetails, e.getMessage());
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  private void validateSshPort(
+      Provider provider,
+      Region region,
+      String fieldDetails,
+      Integer sshPort,
+      SetMultimap<String, String> validationErrorsMap) {
+    try {
+      List<SecurityGroup> securityGroupList =
+          awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
+      for (SecurityGroup securityGroup : securityGroupList) {
+        boolean portOpen = false;
+        if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
+          for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
+            Integer fromPort = ipPermission.getFromPort();
+            Integer toPort = ipPermission.getToPort();
+            if (fromPort == null && toPort == null) {
+              portOpen = true;
+              break;
+            }
+            if (fromPort == null || toPort == null) {
+              continue;
+            }
+            if (fromPort <= sshPort && toPort >= sshPort) {
+              portOpen = true;
+              break;
+            }
+          }
+        }
+        if (!portOpen) {
+          String errorMsg =
+              sshPort + " is not open on security group " + securityGroup.getGroupId();
+          validationErrorsMap.put(fieldDetails, errorMsg);
         }
       }
     } catch (PlatformServiceException e) {

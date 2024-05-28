@@ -22,8 +22,6 @@ YugabyteDB can be configured to protect data in transit using the following:
 
 YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org) (v. 1.0.2u or later), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols.
 
-**Note:** Client-server TLS encryption is not supported for YEDIS.
-
 Follow the steps in this section to learn how to enable encryption using TLS for a three-node YugabyteDB cluster.
 
 <div class="row">

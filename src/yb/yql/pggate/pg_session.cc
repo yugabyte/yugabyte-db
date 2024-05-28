@@ -890,6 +890,11 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
+  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
+    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
+    return Status::OK();
+  }
+
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
@@ -1025,14 +1030,6 @@ Result<TableKeyRangesWithHt> PgSession::GetTableKeyRanges(
       max_key_length, pg_txn_manager_->GetReadTimeSerialNo());
 }
 
-uint64_t PgSession::GetReadTimeSerialNo() {
-  return pg_txn_manager_->GetReadTimeSerialNo();
-}
-
-void PgSession::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
-}
-
 Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
   return pg_client_.ListReplicationSlots();
 }
@@ -1046,12 +1043,20 @@ PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return {wait_starter_, wait_event};
 }
 
+Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {
+  return pg_client_.YCQLStatementStats();
+}
+
 Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {
   return pg_client_.ActiveSessionHistory();
 }
 
 const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
+}
+
+Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
+  return pg_client_.TabletsMetadata();
 }
 
 }  // namespace yb::pggate

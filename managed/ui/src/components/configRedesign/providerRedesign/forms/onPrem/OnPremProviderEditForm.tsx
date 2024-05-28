@@ -645,11 +645,7 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid,
-            details: existingRegion.details
-          }),
+          ...existingRegion,
           latitude: regionFormValues.latitude,
           longitude: regionFormValues.longitude,
           code: regionFormValues.code,
@@ -663,8 +659,7 @@ const constructProviderPayload = async (
               return {
                 ...(existingZone
                   ? {
-                      active: existingZone.active,
-                      uuid: existingZone.uuid
+                      ...existingZone
                     }
                   : { active: true }),
                 code: azFormValues.code,

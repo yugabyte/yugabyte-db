@@ -35,21 +35,21 @@ export const TIME_FILTER = {
   ONE_DAY: 'Last 1 day',
   TWO_DAYS: 'Last 2 days',
   SEVEN_DAYS: 'Last 7 days',
-  CUSTOM: 'Custom'
+  FOURTEEN_DAYS: 'Last 14 days',
+  CUSTOM: 'Custom',
+  SMALL_CUSTOM: 'custom'
 } as const;
 
 export const filterDurations = [
-  { label: TIME_FILTER.ONE_HOUR, value: '1' },
-  { label: TIME_FILTER.SIX_HOURS, value: '6' },
-  { label: TIME_FILTER.TWELVE_HOURS, value: '12' },
-  { label: TIME_FILTER.TWENTYFOUR_HOURS, value: '24' },
-  { label: TIME_FILTER.SEVEN_DAYS, value: '7d' },
+  // { label: TIME_FILTER.ONE_HOUR, value: '1' },
+  // { label: TIME_FILTER.SIX_HOURS, value: '6' },
+  // { label: TIME_FILTER.TWELVE_HOURS, value: '12' },
+  // { label: TIME_FILTER.TWENTYFOUR_HOURS, value: '24' },
+  // { label: TIME_FILTER.SEVEN_DAYS, value: '7d' },
   { label: TIME_FILTER.CUSTOM, value: 'custom' }
 ] as const;
 
 export const anomalyFilterDurations = [
-  { label: TIME_FILTER.ONE_DAY, value: '1' },
-  { label: TIME_FILTER.TWO_DAYS, value: '2' },
-  { label: TIME_FILTER.SEVEN_DAYS, value: '7d' },
+  { label: TIME_FILTER.FOURTEEN_DAYS, value: '14d' },
   { label: TIME_FILTER.CUSTOM, value: 'custom' }
 ] as const;

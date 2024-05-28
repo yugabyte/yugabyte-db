@@ -95,7 +95,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
   public static final Boolean TRANSACTION_SOURCE_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
   public static final Boolean TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT = true;
-  public static final String ENABLE_PG_SAVEPOINTS_GFLAG_NAME = "enable_pg_savepoints";
   public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
   public static final int LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK = 12;
   public static final String TXN_XCLUSTER_SAFETIME_LAG_NAME = "consumer_safe_time_lag";
@@ -976,6 +975,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       bootstrapParams.tables =
           getTableIdsWithoutTablesOnTargetInReplication(
               ybService,
+              requestedTableInfoList,
               sourceTableIdTargetTableIdWithBootstrapMap,
               targetUniverse,
               currentReplicationGroupName);
@@ -1062,6 +1062,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static Set<String> getTableIdsWithoutTablesOnTargetInReplication(
       YBClientService ybService,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Map<String, String> sourceTableIdTargetTableIdMap,
       Universe targetUniverse,
       @Nullable String currentReplicationGroupName) {
@@ -1074,13 +1075,44 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     if (tableIdsInReplicationOnTargetUniverse.isEmpty()) {
       return sourceTableIdTargetTableIdMap.keySet();
     }
+
+    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
+    // For YSQL tables, bootstrapping must be skipped for DBs that have any table in bidirectional
+    // replication.
+    Set<String> sourceYsqlTableIdsToSkipBidirectional = new HashSet<>();
+    if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+      Set<String> sourceTableIdsInReplicationOnTargetUniverse =
+          sourceTableIdTargetTableIdMap.entrySet().stream()
+              .filter(entry -> tableIdsInReplicationOnTargetUniverse.contains(entry.getValue()))
+              .map(Map.Entry::getKey)
+              .collect(Collectors.toSet());
+      XClusterConfigTaskBase.groupByNamespaceId(requestedTableInfoList)
+          .forEach(
+              (namespaceId, tablesInfoList) -> {
+                if (tablesInfoList.stream()
+                    .anyMatch(
+                        tableInfo ->
+                            sourceTableIdsInReplicationOnTargetUniverse.contains(
+                                XClusterConfigTaskBase.getTableId(tableInfo)))) {
+                  sourceYsqlTableIdsToSkipBidirectional.addAll(
+                      XClusterConfigTaskBase.getTableIds(tablesInfoList));
+                }
+              });
+    }
+
     log.warn(
-        "Tables {} are in replication on the target universe {} of this config and cannot be "
-            + "bootstrapped; Bootstrapping for their corresponding source table will be disabled.",
+        "Tables {} are in replication on the target universe {} of this config and cannot be"
+            + " bootstrapped; Bootstrapping for their corresponding source table will be disabled."
+            + " Also, tables {} will be skipped bootstrapping because they or their sibling tables"
+            + " are in bidirectional replication.",
         tableIdsInReplicationOnTargetUniverse,
-        targetUniverse.getUniverseUUID());
+        targetUniverse.getUniverseUUID(),
+        sourceYsqlTableIdsToSkipBidirectional);
     return sourceTableIdTargetTableIdMap.entrySet().stream()
-        .filter(entry -> !tableIdsInReplicationOnTargetUniverse.contains(entry.getValue()))
+        .filter(
+            entry ->
+                !tableIdsInReplicationOnTargetUniverse.contains(entry.getValue())
+                    && !sourceYsqlTableIdsToSkipBidirectional.contains(entry.getKey()))
         .map(Entry::getKey)
         .collect(Collectors.toSet());
   }

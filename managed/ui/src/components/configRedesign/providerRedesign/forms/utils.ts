@@ -5,9 +5,11 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import { AxiosError } from 'axios';
-import { FieldValues, FormState } from 'react-hook-form';
+import { FieldValues, FormState, UseFormReturn } from 'react-hook-form';
+import { useQuery } from 'react-query';
+import { get, keys } from 'lodash';
 
-import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
 import {
   KeyPairManagement,
@@ -15,8 +17,11 @@ import {
   ProviderStatus,
   TRANSITORY_PROVIDER_STATUSES
 } from '../constants';
+import { fetchGlobalRunTimeConfigs } from '../../../../api/admin';
 import { AccessKey, YBProvider } from '../types';
 import { NonEditableInUseProviderField } from './constants';
+import { runtimeConfigQueryKey } from '../../../../redesign/helpers/api';
+import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
 
 export const readFileAsText = (sshKeyFile: File) => {
   const reader = new FileReader();
@@ -181,3 +186,72 @@ export const getIsFieldDisabled = (
 ) =>
   isFormDisabled ||
   (NonEditableInUseProviderField[providerCode].includes(fieldName) && isProviderInUse);
+
+export const ValidationErrMsgDelimiter = '<br>';
+
+export const handleFormSubmitServerError = (
+  resp: any,
+  formMethods: UseFormReturn<any>,
+  errFormFieldsMap: Record<string, string>
+) => {
+  const { error } = resp;
+  const errKeys = keys(error);
+
+  errKeys.forEach((key) => {
+    if (key === 'errorSource') return;
+    const errMsg = error[key]?.join(',') ?? '';
+    //accessKey is a special case
+    if (!key.includes('[') || key.includes('allAccessKeys')) {
+      const fieldNameInForm = errFormFieldsMap[key];
+      if (!fieldNameInForm) return;
+
+      formMethods.setError(fieldNameInForm, {
+        message: errMsg
+      });
+    } else {
+      const keyArr = key?.split('[');
+      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1]).split(']')[0]}]`;
+      const prevError = get(formMethods.formState.errors, topLevelKey);
+
+      formMethods.setError(topLevelKey, {
+        message: `${prevError ? prevError?.message + ValidationErrMsgDelimiter : ''}${
+          error[key]?.join(ValidationErrMsgDelimiter) ?? ''
+        }`
+      });
+    }
+  });
+};
+
+const ProviderValidationRuntimeConfigKeys = {
+  [CloudType.gcp]: 'yb.provider.gcp_provider_validation',
+  [CloudType.azu]: 'yb.provider.azure_provider_validation',
+  [CloudType.kubernetes]: 'yb.provider.kubernetes_provider_validation'
+};
+
+export function UseProviderValidationEnabled(
+  provider: CloudType
+): {
+  isLoading: boolean;
+  isValidationEnabled: boolean;
+} {
+  const isProviderSupported = [CloudType.azu, CloudType.gcp, CloudType.kubernetes].includes(
+    provider
+  );
+
+  const { data: globalRuntimeConfigs, isLoading } = useQuery(
+    runtimeConfigQueryKey.globalScope(),
+    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data),
+    {
+      enabled: isProviderSupported
+    }
+  );
+
+  if (!isProviderSupported) return { isLoading: false, isValidationEnabled: false };
+
+  const isValidationEnabled =
+    globalRuntimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === ProviderValidationRuntimeConfigKeys[provider]
+    )?.value === 'true';
+
+  return { isLoading, isValidationEnabled };
+}

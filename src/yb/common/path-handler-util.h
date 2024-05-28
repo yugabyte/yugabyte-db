@@ -42,7 +42,9 @@
     const auto table_filter = table_id + "_filter"; \
     output << GenerateTableFilterBox(table_filter, table_name); \
     uint32 _header_cnt = 0; \
-    output << "<table class='table table-striped' id='" << table_name << "'>\n"; \
+    output << "<table class='table table-striped' id='" << table_name \
+           << "' style='border: solid; border-width: thin;padding: 10px 10px;border-color:  " \
+              "#a8a8a8;'>\n"; \
     output << "<tr>"; \
     BOOST_PP_SEQ_FOR_EACH( \
         INTERNAL_HTML_INTERNAL_PRINT_HEADER_FIELDS, table_name, \

@@ -211,7 +211,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     if (sp.exceptionSet.contains(ExceptionType.APPLICATION_NAME))
       expectedValue = "PostgreSQL JDBC Driver"; // JDBC higher precedence
     else if (sp.exceptionSet.contains(ExceptionType.YB_CACHE_MAPPING))
-      expectedValue = "repeatable read";
+      expectedValue = "read committed";
     else if (sp.exceptionSet.contains(ExceptionType.EXTRA_FLOAT_DIGITS))
       expectedValue = "3"; // JDBC higher precedence
     return expectedValue;
@@ -448,10 +448,9 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         checkSetLocalStatements(stmt, sp);
         checkResetAllStatements(stmt, sp);
 
-        // Drop the role created to test AUTH_PARAM parameters.
+        // Reset from the role created to test AUTH_PARAM parameters.
         if (sp.exceptionSet.contains(ExceptionType.AUTH_PARAM)) {
           modifyParameterValue(stmt, sp, QueryType.RESET);
-          stmt.execute(String.format("DROP ROLE %s", sp.expectedValue));
         }
       }
     } catch (Exception e) {

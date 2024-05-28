@@ -47,22 +47,26 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
   }
 
   @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
           List<UniverseDefinitionTaskParams.Cluster> curClusters =
               universe.getUniverseDetails().clusters;
+          MastersAndTservers mastersAndTservers = getNodesToBeRestarted();
           for (UniverseDefinitionTaskParams.Cluster curCluster : curClusters) {
             // We only update tservers
-            List<NodeDetails> tServerNodes =
-                fetchTServerNodes(taskParams().upgradeOption).stream()
-                    .filter(nodeDetails -> nodeDetails.isTserver)
-                    .toList();
             // Upgrade GFlags in all nodes. Also install
             // OpenTelemetry collector and configure as needed
             createConfigureAuditLoggingAndOtelCollectorTasks(
-                universe, curCluster.userIntent, tServerNodes);
+                universe,
+                curCluster.userIntent,
+                mastersAndTservers.getForCluster(curCluster.uuid).tserversList);
           }
           updateAndPersistAuditLoggingConfigTask();
         });

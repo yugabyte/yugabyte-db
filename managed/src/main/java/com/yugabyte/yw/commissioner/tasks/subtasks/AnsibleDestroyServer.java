@@ -52,7 +52,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   private void removeNodeFromUniverse(final String nodeName) {
     Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getNode(nodeName) == null) {
-      log.error("No node in universe with name " + nodeName);
+      log.warn("No node in universe with name {}", nodeName);
       return;
     }
     // Persist the desired node information into the DB.
@@ -63,7 +63,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.removeNode(nodeName);
             log.debug(
-                "Removing node " + nodeName + " from universe " + taskParams().getUniverseUUID());
+                "Removing node {} from universe {}", nodeName, taskParams().getUniverseUUID());
           }
         };
 
@@ -72,6 +72,18 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+    if (nodeDetails == null) {
+      // Nothing can be done.
+      log.warn(
+          "Node {} is not found in the universe {}",
+          taskParams().nodeName,
+          universe.getUniverseUUID());
+      return;
+    }
+    boolean cleanupFailed = false;
+
     // Execute the ansible command.
     try {
       getNodeManager()
@@ -81,6 +93,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
+        cleanupFailed = true;
         log.debug(
             "Ignoring error deleting instance {} due to isForceDelete being set.",
             taskParams().nodeName,
@@ -88,11 +101,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
-        u.getUniverseDetails()
-            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
-            .userIntent;
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
 
     if (taskParams().deleteRootVolumes
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
@@ -112,10 +122,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
-
     try {
-      deleteNodeAgent(univNodeDetails);
+      deleteNodeAgent(nodeDetails);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
@@ -128,24 +136,29 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)
-        && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
+        && nodeDetails.state != NodeDetails.NodeState.Decommissioned) {
       // Free up the node.
       try {
         NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);
-        providerNode.clearNodeDetails();
+        if (cleanupFailed) {
+          log.info(
+              "Failed to clean node instance {}. Setting to decommissioned state",
+              taskParams().nodeName);
+          providerNode.setToFailedCleanup(universe, nodeDetails);
+        } else {
+          providerNode.clearNodeDetails();
+          log.info("Marked node instance {} as available", taskParams().nodeName);
+        }
       } catch (Exception e) {
         if (!taskParams().isForceDelete) {
           throw e;
         }
       }
-      log.info("Marked node instance {} as available", taskParams().nodeName);
     }
-
+    // Update the node state to Terminated to mark that instance has been terminated. This is a
+    // short-lived state as either the node is deleted or the state is changed to Decommissioned.
+    setNodeState(NodeDetails.NodeState.Terminated);
     if (taskParams().deleteNode) {
-      // Update the node state to removed. Even though we remove the node below, this will
-      // help tracking state for any nodes stuck in limbo.
-      setNodeState(NodeDetails.NodeState.Terminated);
-
       removeNodeFromUniverse(taskParams().nodeName);
     }
   }

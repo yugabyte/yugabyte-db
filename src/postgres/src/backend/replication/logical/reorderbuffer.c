@@ -563,6 +563,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	tuple->alloc_tuple_size = alloc_len;
 	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
+	if (IsYugaByteEnabled())
+		tuple->yb_is_omitted = NULL;
+
 	return tuple;
 }
 
@@ -572,6 +575,9 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 void
 ReorderBufferReturnTupleBuf(ReorderBuffer *rb, ReorderBufferTupleBuf *tuple)
 {
+	if (IsYugaByteEnabled() && tuple->yb_is_omitted)
+		pfree(tuple->yb_is_omitted);
+
 	pfree(tuple);
 }
 
@@ -2191,18 +2197,27 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 							 relpathperm(change->data.tp.relnode,
 										 MAIN_FORKNUM));
 
-					/*
-					 * YB note: TODO(#20726) - This is the schema of the
-					 * relation at the streaming time. Needs to be updated to
-					 * fetch the schema at the time of commit.
-					 */
-					relation = RelationIdGetRelation(reloid);
+					if (IsYugaByteEnabled())
+					{
+						/*
+						 * In YB, the replica identity used for streaming is the
+						 * one that existed at the time of slot (stream)
+						 * creation. So we overwrite the replica identity of the
+						 * relation to what it existed at that time.
+						 */
+						relation = YbGetRelationWithOverwrittenReplicaIdentity(
+							reloid, YBCGetReplicaIdentityForRelation(reloid));
+					}
+					else
+					{
+						relation = RelationIdGetRelation(reloid);
 
-					if (!RelationIsValid(relation))
-						elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
-							 reloid,
-							 relpathperm(change->data.tp.relnode,
-										 MAIN_FORKNUM));
+						if (!RelationIsValid(relation))
+							elog(ERROR, "could not open relation with OID %u (for filenode \"%s\")",
+								 reloid,
+								 relpathperm(change->data.tp.relnode,
+											 MAIN_FORKNUM));
+					}
 
 					/*
 					 * YB note: We disable this check here since:
@@ -3545,6 +3560,9 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 			Assert(txn->total_size > 0);
 			Assert(rb->size >= txn->total_size);
 
+			if (IsYugaByteEnabled())
+				elog(DEBUG1, "streaming txn %d", txn->xid);
+
 			ReorderBufferStreamTXN(rb, txn);
 		}
 		else
@@ -3559,6 +3577,9 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 			Assert(txn);
 			Assert(txn->size > 0);
 			Assert(rb->size >= txn->size);
+
+			if (IsYugaByteEnabled())
+				elog(DEBUG1, "serializing txn %d to disk", txn->xid);
 
 			ReorderBufferSerializeTXN(rb, txn);
 		}
@@ -5221,4 +5242,16 @@ restart:
 	if (cmax)
 		*cmax = ent->cmax;
 	return true;
+}
+
+bool *
+YBAllocateIsOmittedArray(ReorderBuffer *rb, int nattrs)
+{
+	return (bool *) MemoryContextAlloc(rb->tup_context,
+									   MAXIMUM_ALIGNOF + sizeof(bool) * nattrs);
+}
+
+void YBReorderBufferSchemaChange(ReorderBuffer *rb, Oid relid)
+{
+	rb->yb_schema_change(rb, relid);
 }

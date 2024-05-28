@@ -83,7 +83,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (nodeInstance.isPresent()) {
         // Illegal state if it is unused because both node name and in-use fields are updated
         // together.
-        checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
+        checkState(
+            nodeInstance.get().getState().equals(NodeInstance.State.USED),
+            "Node name is set but the node is not in use");
       }
     }
   }

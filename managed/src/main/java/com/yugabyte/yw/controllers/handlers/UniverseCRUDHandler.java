@@ -322,6 +322,9 @@ public class UniverseCRUDHandler {
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
     }
+    if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
+      userIntent.masterDeviceInfo.validate();
+    }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 

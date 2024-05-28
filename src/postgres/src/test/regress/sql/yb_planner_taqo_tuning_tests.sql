@@ -2,35 +2,41 @@ CREATE DATABASE taqo_tuning_tests with colocation = true;
 \c taqo_tuning_tests
 SET statement_timeout = '7200s';
 -- CREATE QUERIES
-CREATE TABLE t_range_100k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_100k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr100kv1 ON t_range_100k (v1 ASC);
-CREATE TABLE t_range_200k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_200k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr200kv1 ON t_range_200k (v1 ASC);
-CREATE TABLE t_range_300k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_300k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr300kv1 ON t_range_300k (v1 ASC);
-CREATE TABLE t_range_400k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_400k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr400kv1 ON t_range_400k (v1 ASC);
-CREATE TABLE t_range_500k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_500k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr500kv1 ON t_range_500k (v1 ASC);
-CREATE TABLE t_range_600k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_600k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr600kv1 ON t_range_600k (v1 ASC);
-CREATE TABLE t_range_700k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_700k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr700kv1 ON t_range_700k (v1 ASC);
-CREATE TABLE t_range_800k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_800k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr800kv1 ON t_range_800k (v1 ASC);
-CREATE TABLE t_range_900k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_900k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr900kv1 ON t_range_900k (v1 ASC);
-CREATE TABLE t_range_1m (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_1m (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr1mv1 ON t_range_1m (v1 ASC);
-CREATE TABLE t_range_100k_1update (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
-CREATE TABLE t_range_100k_2update (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
-CREATE TABLE t_range_100k_3update (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
-CREATE TABLE t_range_100k_4update (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE TABLE t_range_100k_1update (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_100k_2update (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_100k_3update (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_100k_4update (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE TABLE t_range_100k_1column (id INT PRIMARY KEY);
-CREATE TABLE t_range_100k_2column (id INT PRIMARY KEY, v1 INT);
-CREATE TABLE t_range_100k_3column (id INT PRIMARY KEY, v1 INT, v2 INT);
-CREATE TABLE t_range_100k_4column (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT);
-CREATE TABLE t_range_1m_4keys (k1 INT, k2 INT, k3 INT, k4 INT, v1 INT, PRIMARY KEY (k1, k2, k3, k4));
+CREATE TABLE t_range_100k_2column (id INT, v1 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_100k_3column (id INT, v1 INT, v2 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_100k_4column (id INT, v1 INT, v2 INT, v3 INT, PRIMARY KEY (id ASC));
+CREATE TABLE t_range_1m_4keys (k1 INT, k2 INT, k3 INT, k4 INT, v1 INT, PRIMARY KEY (k1 ASC, k2 ASC, k3 ASC, k4 ASC));
+CREATE TABLE t_int_100k (v1 int, v2 int, v3 int, v4 int, v5 int, v6 int, v7 int, v8 int);
+CREATE TABLE t_numeric_100k (v1 numeric(12,6), v2 numeric(12,6), v3 numeric(12,6), v4 numeric(12,6), v5 numeric(12,6), v6 numeric(12,6), v7 numeric(12,6), v8 numeric(12,6));
+CREATE TABLE t_real_100k (v1 real, v2 real, v3 real, v4 real, v5 real, v6 real, v7 real, v8 real);
+CREATE TABLE t_char4_100k (v1 char(4), v2 char(4), v3 char(4), v4 char(4), v5 char(4), v6 char(4), v7 char(4), v8 char(4));
+CREATE TABLE t_char8_100k (v1 char(8), v2 char(8), v3 char(8), v4 char(8), v5 char(8), v6 char(8), v7 char(8), v8 char(8));
+CREATE TABLE t_char16_100k (v1 char(16), v2 char(16), v3 char(16), v4 char(16), v5 char(16), v6 char(16), v7 char(16), v8 char(16));
 
 SET yb_non_ddl_txn_for_sys_tables_allowed = ON;
 UPDATE pg_class SET reltuples = 100000, relpages = 0 WHERE relnamespace = 'public'::regnamespace AND (relname = 't_range_100k' OR relname = 't_range_100k_pkey');
@@ -259,8 +265,7 @@ SET pg_hint_plan.debug_print = ON;
 SET client_min_messages TO log;
 SET pg_hint_plan.message_level = debug;
 SET temp_file_limit="8182MB";
-set yb_bnl_batch_size = 1024; set yb_enable_base_scans_cost_model = true;
-SET yb_enable_optimizer_statistics = true;
+SET yb_enable_optimizer_statistics = true; set yb_bnl_batch_size = 1024; set yb_enable_base_scans_cost_model = true;
 -- Query Hash: 1dc3153f1e9ed56fa96c3cd1b27e0b07
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id limit 2000;
 -- Query Hash: 19e6de1bb5bc99e4b305d7d4f9be0028
@@ -281,6 +286,54 @@ EXPLAIN (COSTS OFF) select * from t_range_100k order by id limit 16000;
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id limit 18000;
 -- Query Hash: bc18b6d99b63eb92ae718494d803ac5c
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id limit 20000;
+-- Query Hash: d0f652bb9a03d4d0079382c8a675ddf5
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_char4_100k limit 40960;
+-- Query Hash: 00e91b30ef109150e085eccecd169799
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_char4_100k limit 20480;
+-- Query Hash: 2f633a7b6847d1b1f71d16509675ba5c
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_char4_100k limit 10240;
+-- Query Hash: b21a31bdafc618945ec67c144587cad6
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_char4_100k limit 5120;
+-- Query Hash: 14737481d661ae29bbf9c3248e627803
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_char8_100k limit 40960;
+-- Query Hash: 6c4e495181e65578bddfa9cc82dce4be
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_char8_100k limit 20480;
+-- Query Hash: 31106354dd73743581a298fb292373fe
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_char8_100k limit 10240;
+-- Query Hash: adb2fabb5dba6de5021647f0dcd506ba
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_char8_100k limit 5120;
+-- Query Hash: 3ea29929b4cdc5cfe987519cfc418dc1
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_char16_100k limit 40960;
+-- Query Hash: 29e65871465d1e4fd8e3d57d9d82cc5a
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_char16_100k limit 20480;
+-- Query Hash: 867c2d4aefb45b79edce4a60c0117472
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_char16_100k limit 10240;
+-- Query Hash: 2e621b26de4391e611d02be624e0cc08
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_char16_100k limit 5120;
+-- Query Hash: 447c4552a30004c9748c19f967c090a9
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_int_100k limit 40960;
+-- Query Hash: 42a05c9206ce8da9e8e280b855ef8267
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_int_100k limit 20480;
+-- Query Hash: e70dcebc0338929507048f3d8ee117a6
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_int_100k limit 10240;
+-- Query Hash: 9d09c8d070ba139698c7dd036e8bd213
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_int_100k limit 5120;
+-- Query Hash: 342457e804c0bd74a91e1dd7b2a39129
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_numeric_100k limit 40960;
+-- Query Hash: c6690513dd017b932bd5405fab3a45f3
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_numeric_100k limit 20480;
+-- Query Hash: 48f6a609f0b240efb26d9e24022269e5
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_numeric_100k limit 10240;
+-- Query Hash: 2e12b7d787ee03f9184d287c5150bbc3
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_numeric_100k limit 5120;
+-- Query Hash: 3058b97e0c5b78a7afcc14b01dc7a0f1
+EXPLAIN (COSTS OFF) SELECT v1 FROM t_real_100k limit 40960;
+-- Query Hash: f180e2b23646b995be28029bd68a1c50
+EXPLAIN (COSTS OFF) SELECT v1, v2 FROM t_real_100k limit 20480;
+-- Query Hash: dcc707d034bab4f4b8bf6a45d2b54d19
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4 FROM t_real_100k limit 10240;
+-- Query Hash: 32dd0af7a84cabeec056261ba6fb8257
+EXPLAIN (COSTS OFF) SELECT v1, v2, v3, v4, v5, v6, v7, v8 FROM t_real_100k limit 5120;
 -- Query Hash: cd9bc3bcc61879e6b7ead7f119f8b650
 EXPLAIN (COSTS OFF) select * from t_range_1m_4keys where k1 > 2 and k1 < 8 and k2 > 5 and k2 < 10;
 -- Query Hash: f09230315434bedd219aa7fba6db004f
@@ -303,6 +356,20 @@ EXPLAIN (COSTS OFF) select * from t_range_1m_4keys where k1 > 2 and k1 < 6 and k
 EXPLAIN (COSTS OFF) select * from t_range_1m_4keys where k1 > 2 and k1 < 6 and k2 > 2 and k2 < 16;
 -- Query Hash: a725b425b9ebccf156b2011f92ebf306
 EXPLAIN (COSTS OFF) select * from t_range_1m_4keys where k1 > 2 and k1 < 6 and k2 > 2 and k2 < 18;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
+-- Query Hash: c17e4e0a745b63c2006e87d41d86be6e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k;
 -- Query Hash: 8317546c890921478dd4eb572fe1270a
 EXPLAIN (COSTS OFF) SELECT * from t_range_100k_1update;
 -- Query Hash: 5b00b70a296886f5b741d87c7bc0ea54
@@ -571,6 +638,42 @@ EXPLAIN (COSTS OFF) SELECT id FROM t_range_100k_3column;
 EXPLAIN (COSTS OFF) SELECT id FROM t_range_100k_4column;
 -- Query Hash: 59e6de5247cc4e29c81c208f9e5a32f3
 EXPLAIN (COSTS OFF) SELECT id FROM t_range_100k;
+-- Query Hash: b7e2b50a9b41efaebefb79dd43ef269c
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99990;
+-- Query Hash: f9373b83e1cfacf7c9cf80cceb1c7f0f
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99900;
+-- Query Hash: 357081f91736d2ff5e9936fee3e8fedd
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99800;
+-- Query Hash: 698f609142df0e0bf93395e05a1556a5
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99600;
+-- Query Hash: 6bba00a1f39bf37341734382da29d146
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99200;
+-- Query Hash: 340f2ffe88d75bd132be8bf9115124fa
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 99000;
+-- Query Hash: 7f4d0300e2b0866fa2d38c06b4c9cbec
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 98000;
+-- Query Hash: 48683ce6ccfba55f1c6e8e7fdd8d1845
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 96000;
+-- Query Hash: 03116268b05f2c133f32c50553b18e80
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 92000;
+-- Query Hash: e97809d9da4483e1f219d27653ec0203
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 90000;
+-- Query Hash: f077961b82832e65dc7117379267656d
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 80000;
+-- Query Hash: 8461640eefa124b442bda3bca958ef19
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 70000;
+-- Query Hash: 4082b8f91e6ff1d1e8689a4f6980d91c
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 60000;
+-- Query Hash: 4176c4bcbf3370770382aeb78f4e7e86
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 50000;
+-- Query Hash: a177fa17c56d623e4957504058165dc3
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 40000;
+-- Query Hash: ad308fcef469d0182caae8a36e99891e
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 30000;
+-- Query Hash: d9108e995210c55b60549aebfebc70f0
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 20000;
+-- Query Hash: 2a74d235202052554e1d95396b999872
+EXPLAIN (COSTS OFF) SELECT 0 FROM t_int_100k WHERE v1 > 10000;
 -- DROP QUERIES;
 DROP TABLE IF EXISTS t_range_100k CASCADE;
 DROP TABLE IF EXISTS t_range_200k CASCADE;
@@ -591,3 +694,10 @@ DROP TABLE IF EXISTS t_range_100k_2column CASCADE;
 DROP TABLE IF EXISTS t_range_100k_3column CASCADE;
 DROP TABLE IF EXISTS t_range_100k_4column CASCADE;
 DROP TABLE IF EXISTS t_range_1m_4keys CASCADE;
+DROP TABLE IF EXISTS t_int_100k CASCADE;
+DROP TABLE IF EXISTS t_numeric_100k CASCADE;
+DROP TABLE IF EXISTS t_real_100k CASCADE;
+DROP TABLE IF EXISTS t_char4_100k CASCADE;
+DROP TABLE IF EXISTS t_char8_100k CASCADE;
+DROP TABLE IF EXISTS t_char16_100k CASCADE;
+

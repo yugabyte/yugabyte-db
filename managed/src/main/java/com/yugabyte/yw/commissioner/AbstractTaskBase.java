@@ -129,13 +129,13 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   @Override
-  public JsonNode getTaskDetails() {
+  public JsonNode getTaskParams() {
     return Json.toJson(taskParams);
   }
 
   @Override
   public String toString() {
-    return getName() + " : details=" + getTaskDetails();
+    return getName() + " : params=" + getTaskParams();
   }
 
   @Override
@@ -275,15 +275,18 @@ public abstract class AbstractTaskBase implements ITask {
   protected boolean doWithModifyingTimeout(
       Function<Long, Long> delayFunct, long totalDelayMs, Supplier<Boolean> funct) {
     long currentDelayMs = 0;
+    long startTime = System.currentTimeMillis();
     do {
       if (funct.get()) {
         return true;
       }
       currentDelayMs = delayFunct.apply(currentDelayMs);
-      log.debug("Waiting for {} ms between retries", currentDelayMs);
+      log.debug(
+          "Waiting for {} ms between retries, total delay remaining {} ms",
+          currentDelayMs,
+          (startTime + totalDelayMs - System.currentTimeMillis()));
       waitFor(Duration.ofMillis(currentDelayMs));
-      totalDelayMs -= currentDelayMs;
-    } while (totalDelayMs > 0);
+    } while (System.currentTimeMillis() < startTime + totalDelayMs);
     return false;
   }
 

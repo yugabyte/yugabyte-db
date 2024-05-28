@@ -1,6 +1,6 @@
 {
   "name": "@yugabytedb/troubleshoot-ui",
-  "version": "1.0.42",
+  "version": "1.0.67",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/types.d.ts",
@@ -24,7 +24,7 @@
     "@testing-library/user-event": "^13.5.0",
     "@typescript-eslint/eslint-plugin": "5.62.0",
     "@typescript-eslint/parser": "5.62.0",
-    "@yugabytedb/ui-components": "1.0.5",
+    "@yugabytedb/ui-components": "1.0.7",
     "react-bootstrap-table": "4.3.1",
     "axios": "0.21.3",
     "clsx": "1.1.1",

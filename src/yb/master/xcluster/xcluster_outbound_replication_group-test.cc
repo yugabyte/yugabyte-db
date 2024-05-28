@@ -23,8 +23,11 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+
+DECLARE_bool(TEST_enable_sync_points);
 
 using namespace std::placeholders;
 using testing::_;
@@ -110,14 +113,18 @@ class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicatio
     return MarkNewTablesAsCheckpointed(table_info->namespace_id(), table_info->id(), epoch);
   }
 
-  Result<NamespaceId> AddNamespaceSync(
-      const LeaderEpoch& epoch, const NamespaceName& namespace_name, MonoDelta delta) {
-    auto namespace_id = VERIFY_RESULT(AddNamespace(epoch, namespace_name));
-    RETURN_NOT_OK(LoggedWaitFor(
+  Status WaitForCheckpoint(const NamespaceId& namespace_id, MonoDelta delta) {
+    return LoggedWaitFor(
         [this, namespace_id]() -> Result<bool> {
           return VERIFY_RESULT(GetNamespaceCheckpointInfo(namespace_id)).has_value();
         },
-        delta, "Waiting for namespace checkpoint"));
+        delta, "Waiting for namespace checkpoint");
+  }
+
+  Result<NamespaceId> AddNamespaceSync(
+      const LeaderEpoch& epoch, const NamespaceName& namespace_name, MonoDelta delta) {
+    auto namespace_id = VERIFY_RESULT(AddNamespace(epoch, namespace_name));
+    RETURN_NOT_OK(WaitForCheckpoint(namespace_id, delta));
 
     return namespace_id;
   }
@@ -181,7 +188,11 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   void CreateNamespace(const NamespaceName& namespace_name, const NamespaceId& namespace_id) {
-    namespace_ids[namespace_name] = namespace_id;
+    scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(namespace_id, /*tasks_tracker=*/nullptr);
+    auto l = ns->LockForWrite();
+    l.mutable_data()->pb.set_name(namespace_name);
+    l.Commit();
+    namespace_infos[namespace_id] = std::move(ns);
   }
 
   TableInfoPtr CreateTable(
@@ -200,6 +211,16 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return table_info;
   }
 
+  void DropTable(const NamespaceId& namespace_id, const TableId& table_id) {
+    auto it = std::find_if(
+        namespace_tables[namespace_id].begin(), namespace_tables[namespace_id].end(),
+        [&table_id](const auto& table_info) { return table_info->id() == table_id; });
+
+    if (it != namespace_tables[namespace_id].end()) {
+      namespace_tables[namespace_id].erase(it);
+    }
+  }
+
   std::shared_ptr<XClusterOutboundReplicationGroupMocked> CreateReplicationGroup() {
     return std::make_shared<XClusterOutboundReplicationGroupMocked>(
         kReplicationGroupId, helper_functions, *task_factory);
@@ -212,25 +233,15 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   std::unordered_map<NamespaceId, std::vector<TableInfoPtr>> namespace_tables;
-  std::unordered_map<NamespaceName, NamespaceId> namespace_ids;
+  std::unordered_map<NamespaceId, scoped_refptr<NamespaceInfo>> namespace_infos;
   std::unordered_set<xrepl::StreamId> xcluster_streams;
   std::unique_ptr<ThreadPool> thread_pool;
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<XClusterOutboundReplicationGroupTaskFactoryMocked> task_factory;
 
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
-      .get_namespace_id_func =
-          [this](YQLDatabase, const NamespaceName& namespace_name) {
-            return namespace_ids[namespace_name];
-          },
-      .get_namespace_name_func = [this](const NamespaceId& namespace_id) -> Result<NamespaceName> {
-        for (const auto& [name, id] : namespace_ids) {
-          if (id == namespace_id) {
-            return name;
-          }
-        }
-        return STATUS_FORMAT(NotFound, "Namespace $0 not found", namespace_id);
-      },
+      .get_namespace_func =
+          std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return namespace_tables[namespace_id]; },
       .create_xcluster_streams_func =
@@ -263,6 +274,23 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       .delete_from_sys_catalog_func =
           [](const LeaderEpoch&, XClusterOutboundReplicationGroupInfo*) { return Status::OK(); },
   };
+
+  Result<scoped_refptr<NamespaceInfo>> GetNamespace(const NamespaceIdentifierPB& ns_identifier) {
+    scoped_refptr<NamespaceInfo> ns_info;
+    if (ns_identifier.has_id()) {
+      ns_info = FindPtrOrNull(namespace_infos, ns_identifier.id());
+    } else {
+      for (const auto& [_, namespace_info] : namespace_infos) {
+        if (namespace_info->name() == ns_identifier.name()) {
+          ns_info = namespace_info;
+          break;
+        }
+      }
+    }
+
+    SCHECK(ns_info, NotFound, "Namespace not found", ns_identifier.DebugString());
+    return ns_info;
+  }
 
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,
@@ -513,4 +541,60 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
   ASSERT_EQ(ns_info->table_infos.size(), 3);
 }
 
+// If we create a table during checkpoint, it should fail.
+TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTableDuringCheckpoint) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"TESTAddTableDuringCheckpoint::TableCreated",
+        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+  sync_point_instance->EnableProcessing();
+
+  CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
+
+  auto outbound_rg = CreateReplicationGroup();
+  auto namespace_id = ASSERT_RESULT(outbound_rg->AddNamespace(kEpoch, kNamespaceName));
+
+  CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
+  TEST_SYNC_POINT("TESTAddTableDuringCheckpoint::TableCreated");
+
+  auto status = outbound_rg->WaitForCheckpoint(namespace_id, kTimeout);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(),
+      "List of tables changed during xCluster checkpoint of replication group "
+      "xClusterOutboundReplicationGroup rg1: [table_id_2]");
+
+  sync_point_instance->DisableProcessing();
+}
+
+// If we drop a table during checkpoint, it should fail.
+TEST_F(XClusterOutboundReplicationGroupMockedTest, DropTableDuringCheckpoint) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"TESTAddTableDuringCheckpoint::TableCreated",
+        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+  sync_point_instance->EnableProcessing();
+
+  CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
+  CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
+
+  auto outbound_rg = CreateReplicationGroup();
+  auto namespace_id = ASSERT_RESULT(outbound_rg->AddNamespace(kEpoch, kNamespaceName));
+
+  DropTable(kNamespaceId, kTableId1);
+  TEST_SYNC_POINT("TESTAddTableDuringCheckpoint::TableCreated");
+
+  auto status = outbound_rg->WaitForCheckpoint(namespace_id, kTimeout);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(),
+      "List of tables changed during xCluster checkpoint of replication group "
+      "xClusterOutboundReplicationGroup rg1: [table_id_1]");
+
+  sync_point_instance->DisableProcessing();
+}
 }  // namespace yb::master

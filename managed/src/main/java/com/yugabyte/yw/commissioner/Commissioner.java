@@ -221,7 +221,7 @@ public class Commissioner {
         if (currentLatch == null || currentLatch != latch) {
           break;
         }
-        Thread.sleep(100);
+        Thread.sleep(10);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
@@ -312,22 +312,22 @@ public class Commissioner {
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
     ObjectNode versionNumbers = Json.newObject();
-    JsonNode taskDetails = taskInfo.getDetails();
+    JsonNode taskParams = taskInfo.getTaskParams();
     if (ImmutableSet.of(
             CustomerTask.TaskType.SoftwareUpgrade,
             CustomerTask.TaskType.RollbackUpgrade,
             CustomerTask.TaskType.FinalizeUpgrade)
         .contains(task.getType())) {
-      if (taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
+      if (taskParams.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
         versionNumbers.put(
             Commissioner.YB_PREV_SOFTWARE_VERSION,
-            taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
+            taskParams.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
       }
 
-      if (taskDetails.has(Commissioner.YB_SOFTWARE_VERSION)) {
+      if (taskParams.has(Commissioner.YB_SOFTWARE_VERSION)) {
         versionNumbers.put(
             Commissioner.YB_SOFTWARE_VERSION,
-            taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+            taskParams.get(Commissioner.YB_SOFTWARE_VERSION).asText());
       }
     }
     return versionNumbers;
@@ -394,10 +394,10 @@ public class Commissioner {
         UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD);
   }
 
-  public JsonNode getTaskDetails(UUID taskUUID) {
+  public JsonNode getTaskParams(UUID taskUUID) {
     Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
     if (optional.isPresent()) {
-      return optional.get().getDetails();
+      return optional.get().getTaskParams();
     }
     throw new PlatformServiceException(
         BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);

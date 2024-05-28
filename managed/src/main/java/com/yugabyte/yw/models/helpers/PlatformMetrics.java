@@ -51,7 +51,6 @@ public enum PlatformMetrics {
   HEALTH_CHECK_C2N_CA_CERT("TServer expired Client to Node CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
-  HEALTH_CHECK_CLIENT_CERT("TServer expired Client certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_YB_CONTROLLER_DOWN("YB-Controller process down nodes count", Unit.COUNT),
 
   // Tasks
@@ -114,7 +113,9 @@ public enum PlatformMetrics {
   UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
   UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false),
   UNIVERSE_OS_UPDATE_REQUIRED(
-      "More recent OS version is recommended for this universe", Unit.STATUS, false);
+      "More recent OS version is recommended for this universe", Unit.STATUS, false),
+  UNIVERSE_RELEASE_FILES_STATUS(
+      "Local filepath for universe DB version is missing", Unit.STATUS, false);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

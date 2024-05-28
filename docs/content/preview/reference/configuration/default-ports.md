@@ -19,7 +19,6 @@ Application clients connect to the following addresses:
 | ------- | ----- | ------- |------------------------------------------|
 | YSQL | 5433  | YB-TServer | [--pgsql_proxy_bind_address 0.0.0.0:5433](../yb-tserver/#pgsql-proxy-bind-address) |
 | YCQL | 9042  | YB-TServer | [--cql_proxy_bind_address 0.0.0.0:9042](../yb-tserver/#cql-proxy-bind-address)   |
-| YEDIS | 6379  | YB-TServer | [--redis_proxy_bind_address 0.0.0.0:6379](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Internode RPC communication
 
@@ -84,7 +83,7 @@ You can access the Prometheus server on port 9090 of the YugabyteDB Anywhere nod
 | Service           | Port |
 | ----------------- | ---- |
 | Prometheus server for YugabyteDB Anywhere | 9090 |
-| Node metrics      | 9300 |
+| Node Exporter     | 9300 |
 
 For information on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
@@ -106,4 +105,3 @@ Use the following YB-TServer targets for the various API metrics:
 | ------- | ------------------------- |
 | YSQL    | `<yb-tserver-address>:13000` |
 | YCQL    | `<yb-tserver-address>:12000` |
-| YEDIS   | `<yb-tserver-address>:11000` |

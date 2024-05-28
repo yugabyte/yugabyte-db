@@ -3,7 +3,7 @@
  */
 export const getPrometheusUrls = (directUrls: string[], useBrowserFqdn: boolean) =>
   directUrls.map((directUrl) => {
-    if (!useBrowserFqdn) {
+    if (!useBrowserFqdn || window.location.hostname === 'localhost') {
       return directUrl;
     }
 

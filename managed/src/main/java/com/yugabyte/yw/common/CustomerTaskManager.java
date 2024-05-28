@@ -8,18 +8,37 @@ import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.forms.AuditLogConfigParams;
+import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -32,6 +51,8 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.util.ArrayList;
@@ -74,15 +95,15 @@ public class CustomerTaskManager {
     this.commissioner = commissioner;
   }
 
+  // Invoked if the task is in incomplete state.
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
-    JsonNode jsonNode = taskInfo.getDetails();
-    if (jsonNode instanceof ObjectNode) {
-      ObjectNode details = (ObjectNode) jsonNode;
-      JsonNode errNode = details.get("errorString");
-      if (errNode == null || errNode.isNull()) {
-        details.put("errorString", "Platform restarted.");
-      }
+    TaskError taskError = taskInfo.getTaskError();
+    if (taskError == null) {
+      taskError = new TaskError();
+      taskError.setCode(TaskErrorCode.PLATFORM_RESTARTED);
+      taskError.setMessage("Platform restarted.");
+      taskInfo.setTaskError(taskError);
     }
   }
 
@@ -104,7 +125,7 @@ public class CustomerTaskManager {
               : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
-        JsonNode node = taskInfo.getDetails();
+        JsonNode node = taskInfo.getTaskParams();
         if (node.has(ALTER_LOAD_BALANCER)) {
           isLoadBalanceAltered = node.path(ALTER_LOAD_BALANCER).asBoolean(false);
         }
@@ -160,7 +181,7 @@ public class CustomerTaskManager {
           // Restore locks the Universe.
           unlockUniverse = true;
           RestoreBackupParams params =
-              Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+              Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
           if (params.category.equals(BackupCategory.YB_CONTROLLER)) {
             isRestoreYbc = true;
           }
@@ -168,7 +189,7 @@ public class CustomerTaskManager {
       } else if (CustomerTask.TaskType.Restore.equals(type)) {
         unlockUniverse = true;
         RestoreBackupParams params =
-            Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+            Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
         if (params.category.equals(BackupCategory.YB_CONTROLLER)) {
           resumeTask = true;
           isRestoreYbc = true;
@@ -232,12 +253,12 @@ public class CustomerTaskManager {
           switch (taskType) {
             case CreateBackup:
               BackupRequestParams backupParams =
-                  Json.fromJson(taskInfo.getDetails(), BackupRequestParams.class);
+                  Json.fromJson(taskInfo.getTaskParams(), BackupRequestParams.class);
               taskParams = backupParams;
               break;
             case RestoreBackup:
               RestoreBackupParams restoreParams =
-                  Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+                  Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
               taskParams = restoreParams;
               break;
             default:
@@ -391,7 +412,7 @@ public class CustomerTaskManager {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
+    JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
     LOG.info(
         "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
@@ -406,6 +427,7 @@ public class CustomerTaskManager {
       case EditUniverse:
       case InstallYbcSoftwareOnK8s:
       case EditKubernetesUniverse:
+      case ReadOnlyKubernetesClusterCreate:
       case ReadOnlyClusterCreate:
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
@@ -588,6 +610,9 @@ public class CustomerTaskManager {
         break;
       case CloudBootstrap:
         taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
+        break;
+      case ReadOnlyClusterDelete:
+        taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
         break;
       default:
         String errMsg =

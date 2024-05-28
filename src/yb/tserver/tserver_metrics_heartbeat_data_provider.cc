@@ -84,8 +84,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         uncompressed_file_sizes += sizes.second;
         num_files += tablet->GetCurrentVersionNumSSTFiles();
         if (should_add_tablet_data && tablet_peer->log_available() &&
-            tablet_peer->tablet_metadata()->tablet_data_state() ==
-              tablet::TabletDataState::TABLET_DATA_READY) {
+            CanServeTabletData(tablet_peer->tablet_metadata()->tablet_data_state())) {
           auto storage_metadata = req->add_storage_metadata();
           storage_metadata->set_tablet_id(tablet_peer->tablet_id());
           storage_metadata->set_sst_file_size(sizes.first);

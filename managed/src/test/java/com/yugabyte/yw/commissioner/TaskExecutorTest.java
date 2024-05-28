@@ -38,10 +38,13 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.List;
@@ -80,6 +83,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSortedSet.of(
+          TaskType.ReadOnlyKubernetesClusterCreate,
+          TaskType.ReadOnlyKubernetesClusterDelete,
           TaskType.CreateKubernetesUniverse,
           TaskType.InstallYbcSoftwareOnK8s,
           TaskType.DestroyKubernetesUniverse,
@@ -164,7 +169,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Class<? extends ITask> taskClass = abortable ? AbortableTask.class : NonAbortableTask.class;
     ITask task = spy(app.injector().instanceOf(taskClass));
     doReturn("TestTask").when(task).getName();
-    doReturn(node).when(task).getTaskDetails();
+    doReturn(node).when(task).getTaskParams();
     return task;
   }
 
@@ -199,8 +204,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               ITask task = (ITask) objects[0];
               // Create a new task info object.
               TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse, null);
-              taskInfo.setDetails(
-                  RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
+              taskInfo.setTaskParams(
+                  RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
@@ -229,7 +234,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getDetails().get("errorString").asText();
+    String errMsg = taskInfo.getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
   }
 
@@ -294,11 +299,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(1, subTasksByPosition.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
 
-    String errMsg = taskInfo.getDetails().get("errorString").asText();
+    String errMsg = taskInfo.getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Failed to execute task"));
 
     assertEquals(TaskInfo.State.Failure, subTaskInfos.get(0).getTaskState());
-    errMsg = subTaskInfos.get(0).getDetails().get("errorString").asText();
+    errMsg = subTaskInfos.get(0).getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in subtask"));
   }
 
@@ -576,8 +581,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    JsonNode errNode = taskInfo.getSubTasks().get(0).getDetails().get("errorString");
-    assertThat(errNode.toString(), containsString("is aborted while waiting"));
+    String errMsg = taskInfo.getSubTasks().get(0).getTaskError().getMessage();
+    assertThat(errMsg, containsString("is aborted while waiting"));
   }
 
   @Test
@@ -691,5 +696,29 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
     assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
+  }
+
+  @Test
+  public void testTaskExecutionException() {
+    ITask task = mockTaskCommon(false);
+    ObjectNode params = Json.newObject();
+    params.put("param1", "value1");
+    doAnswer(
+            inv -> {
+              throw new TaskExecutionException(
+                  TaskErrorCode.PLATFORM_RESTARTED, "Platform restarted");
+            })
+        .when(task)
+        .run();
+    doReturn(params).when(task).getTaskParams();
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    waitForTask(taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    TaskError taskError = taskInfo.getTaskError();
+    assertEquals(TaskErrorCode.PLATFORM_RESTARTED, taskError.getCode());
+    assertEquals("Platform restarted", taskError.getMessage());
+    JsonNode taskParams = taskInfo.getTaskParams();
+    assertEquals(params, taskParams);
   }
 }

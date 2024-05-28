@@ -127,7 +127,6 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
-  capabilities.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -252,6 +251,7 @@ set(UTIL_SRCS
   version_info.cc
   write_buffer.cc
   yb_partition.cc
+  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   )

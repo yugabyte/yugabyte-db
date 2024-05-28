@@ -33,17 +33,15 @@
 
 #include <memory>
 
-#include "yb/gutil/casts.h"
-
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -168,6 +166,17 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
   }
 }
 
+void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
+  TSDescriptorVector descs;
+  const auto& ts_manager = catalog_manager_->master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+  for (auto& ts_desc : descs) {
+    if (!ts_desc->IsLive()) {
+      ts_desc->ClearMetrics();
+    }
+  }
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -177,15 +186,7 @@ void CatalogManagerBgTasks::Run() {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();
     } else if (l.leader_status().ok()) {
-      // Clear metrics for dead tservers.
-      vector<shared_ptr<TSDescriptor>> descs;
-      const auto& ts_manager = catalog_manager_->master_->ts_manager();
-      ts_manager->GetAllDescriptors(&descs);
-      for (auto& ts_desc : descs) {
-        if (!ts_desc->IsLive()) {
-          ts_desc->ClearMetrics();
-        }
-      }
+      ClearDeadTServerMetrics();
 
       if (FLAGS_TEST_echo_service_enabled) {
         WARN_NOT_OK(
@@ -266,7 +267,7 @@ void CatalogManagerBgTasks::Run() {
       WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
           "Failed to run CloneStateManager: ");
 
-      if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
+      if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
         catalog_manager_->CleanUpDeletedTables(l.epoch());
       }
 
@@ -314,6 +315,8 @@ void CatalogManagerBgTasks::Run() {
 
       // Run background tasks related to XCluster & CDC Schema.
       catalog_manager_->RunXReplBgTasks(l.epoch());
+
+      catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();

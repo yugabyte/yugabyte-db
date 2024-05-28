@@ -134,6 +134,11 @@ extern bool yb_enable_replication_slot_consumption;
 extern bool yb_enable_alter_table_rewrite;
 
 /*
+ * GUC variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -160,6 +165,19 @@ extern bool yb_is_read_time_ht;
  */
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
+
+/*
+ * GUC flag: Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was non-empty.
+ */
+extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
@@ -190,6 +208,7 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 bool YBCIsTxnAbortedError(uint16_t txn_errcode);
+const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();
@@ -276,6 +295,7 @@ void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
 const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
+const char* YBCGetWaitEventType(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"

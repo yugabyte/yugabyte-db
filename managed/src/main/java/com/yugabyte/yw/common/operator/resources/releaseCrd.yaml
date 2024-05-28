@@ -9,6 +9,9 @@ spec:
     plural: releases
     singular: release
     kind: Release
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:

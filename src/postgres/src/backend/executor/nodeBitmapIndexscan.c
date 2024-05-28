@@ -28,6 +28,9 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+#include "access/relscan.h"
 
 /* ----------------------------------------------------------------
  *		ExecBitmapIndexScan
@@ -49,7 +52,7 @@ ExecBitmapIndexScan(PlanState *pstate)
 Node *
 MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 {
-	TIDBitmap  *tbm;
+	TIDBitmap  *bitmap;
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
@@ -86,15 +89,16 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	if (node->biss_result)
 	{
-		tbm = node->biss_result;
+		bitmap = node->biss_result;
+
 		node->biss_result = NULL;	/* reset for next time */
 	}
 	else
 	{
 		/* XXX should we use less than work_mem for this? */
-		tbm = tbm_create(work_mem * 1024L,
-						 ((BitmapIndexScan *) node->ss.ps.plan)->isshared ?
-						 node->ss.ps.state->es_query_dsa : NULL);
+		bitmap = tbm_create(work_mem * 1024L,
+							((BitmapIndexScan *) node->ss.ps.plan)->isshared
+								? node->ss.ps.state->es_query_dsa : NULL);
 	}
 
 	/*
@@ -102,7 +106,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	 */
 	while (doscan)
 	{
-		nTuples += (double) index_getbitmap(scandesc, tbm);
+		nTuples += (double) index_getbitmap(scandesc, bitmap);
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -118,7 +122,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	if (node->ss.ps.instrument)
 		InstrStopNode(node->ss.ps.instrument, nTuples);
 
-	return (Node *) tbm;
+	return (Node *) bitmap;
 }
 
 /* ----------------------------------------------------------------

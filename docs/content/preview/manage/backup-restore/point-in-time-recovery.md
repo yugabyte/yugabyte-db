@@ -151,7 +151,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
   - Restore to an absolute time, providing a specific timestamp in one of the following formats:
 
-    - [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds, or microseconds.
+    - [Unix timestamp](https://www.unixtimestamp.com) in microseconds.
     - [YSQL timestamp](../../../api/ysql/datatypes/type_datetime/).
     - [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
 
@@ -234,7 +234,7 @@ xCluster does not replicate any commands related to PITR. If you have two cluste
 
 ### Global objects
 
-PITR doesn't support global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
+PITR doesn't support global objects, such as [tablespaces](../../../explore/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
 
 Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyte-db/issues/10257)
 

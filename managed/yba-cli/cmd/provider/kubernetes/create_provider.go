@@ -5,6 +5,7 @@
 package kubernetes
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"gopkg.in/yaml.v2"
 )
 
 // createK8sProviderCmd represents the provider command
@@ -21,6 +23,13 @@ var createK8sProviderCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
 	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider k8s create -n <provider-name> --type gke \
+	--pull-secret-file <pull-secret-file-path> \
+	--region region-name=us-west1 \
+	--zone zone-name=us-west1-b,region-name=us-west1,storage-class=<storage-class>,\
+	overrirdes-file-path=<overrirdes-file-path> \
+	--zone zone-name=us-west1-a,region-name=us-west1,storage-class=<storage-class> \
+	--zone zone-name=us-west1-c,region-name=us-west1,storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -61,8 +70,22 @@ var createK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		logrus.Debug("Reading Kubernetes Pull Secret")
+		logrus.Debug("Reading Kubernetes Pull Secret\n")
 		pullSecretContent := util.YAMLtoString(pullSecretFilePath)
+
+		pullSecretName := filepath.Base(pullSecretFilePath)
+
+		var kubernetesPullSecretYAML util.KubernetesPullSecretYAML
+
+		// Unmarshal YAML string into struct
+		if err := yaml.Unmarshal([]byte(pullSecretContent), &kubernetesPullSecretYAML); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		kubernetesImagePullSecretName := ""
+		if kubernetesPullSecretYAML.Metadata != nil {
+			kubernetesImagePullSecretName = kubernetesPullSecretYAML.Metadata.Name
+		}
 
 		configFilePath, err := cmd.Flags().GetString("kubeconfig-file")
 		if err != nil {
@@ -71,7 +94,7 @@ var createK8sProviderCmd = &cobra.Command{
 
 		var configContent string
 		if len(configFilePath) > 0 {
-			logrus.Debug("Reading Kube Config")
+			logrus.Debug("Reading Kube Config\n")
 			configContent = util.YAMLtoString(configFilePath)
 		}
 
@@ -98,11 +121,13 @@ var createK8sProviderCmd = &cobra.Command{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Kubernetes: &ybaclient.KubernetesInfo{
-						KubernetesImageRegistry:     util.GetStringPointer(imageRegistry),
-						KubernetesProvider:          util.GetStringPointer(providerType),
-						KubernetesPullSecretContent: util.GetStringPointer(pullSecretContent),
-						KubernetesStorageClass:      util.GetStringPointer(storageClass),
-						KubeConfigContent:           util.GetStringPointer(configContent),
+						KubernetesImageRegistry:       util.GetStringPointer(imageRegistry),
+						KubernetesProvider:            util.GetStringPointer(providerType),
+						KubernetesPullSecretContent:   util.GetStringPointer(pullSecretContent),
+						KubernetesPullSecretName:      util.GetStringPointer(pullSecretName),
+						KubernetesImagePullSecretName: util.GetStringPointer(kubernetesImagePullSecretName),
+						KubernetesStorageClass:        util.GetStringPointer(storageClass),
+						KubeConfigContent:             util.GetStringPointer(configContent),
 					},
 				},
 			},
@@ -149,16 +174,16 @@ func init() {
 	createK8sProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the Kubernetes provider. Minimum number of required "+
 			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,config-name=<config-name>,"+
+			"\"region-name=<region-name>,"+
 			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
 			"storage-class=<storage-class>,"+
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrirdes-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
-			" Config name (and Config File Path provided together), Storage Class, Cert Manager"+
+			" Config File Path, Storage Class, Cert Manager"+
 			" Cluster Issuer, Cert Manager Issuer, Domain, Namespace, Pod Address Template and"+
 			" Overrides File Path are optional. "+
 			"Each region needs to be added using a separate --region flag.")
@@ -166,16 +191,16 @@ func init() {
 	createK8sProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the Kubernetes Region defined. "+
 			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,config-name=<config-name>,"+
+			"\"zone-name=<zone-name>,region-name=<region-name>,"+
 			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
 			"storage-class=<storage-class>,"+
 			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
 			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
 			"pod-address-template=<pod-address-template>,"+
-			"overrirdes-file-path=<path-for-file-contanining-overries>\". "+
+			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
-			" Config name (and Config File Path provided together), Storage Class, Cert Manager"+
+			" Config File Path, Storage Class, Cert Manager"+
 			" Cluster Issuer, Cert Manager Issuer, Domain, Namespace, Pod Address Template and"+
 			" Overrides File Path are optional. "+
 			"Each --region definition "+
@@ -191,104 +216,25 @@ func buildK8sRegions(
 	zoneStrings []string) (res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
-		region := map[string]string{}
-		for _, regionInfo := range strings.Split(regionString, ",") {
-			kvp := strings.Split(regionInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "config-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["config-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "config-file-path":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["config-file-path"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "storage-class":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["storage-class"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "cert-manager-cluster-issuer":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["cert-manager-cluster-issuer"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "cert-manager-issuer":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["cert-manager-issuer"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "domain":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["domain"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "namespace":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["namespace"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "overrirdes-file-path":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["overrirdes-file-path"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "pod-address-template":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["pod-address-template"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := region["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
-					formatter.RedColor))
-		}
+		region := providerutil.BuildRegionMapFromString(regionString, "")
 		var configContent string
-		if _, ok := region["config-name"]; ok {
-			if _, ok := region["config-file-path"]; !ok {
-				logrus.Fatalln(
-					formatter.Colorize("Config file path not specified in region.",
-						formatter.RedColor))
-			} else {
-				logrus.Debug("Reading Region Kube Config")
-				configContent = util.YAMLtoString(region["config-file-path"])
+		if filePath, ok := region["config-file-path"]; ok {
+			if strings.TrimSpace(filePath) != "" {
+				logrus.Debug("Reading Region Kube Config\n")
+				configContent = util.YAMLtoString(filePath)
 			}
 		}
 
 		var overrides string
-		if _, ok := region["overrirdes-file-path"]; ok {
-			logrus.Debug("Reading Region Kubernetes Overrides")
-			overrides = util.YAMLtoString(region["overrirdes-file-path"])
+		if filePath, ok := region["overrides-file-path"]; ok {
+			if strings.TrimSpace(filePath) != "" {
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
+				overrides = util.YAMLtoString(filePath)
+			}
 		}
 
 		zones := buildK8sZones(zoneStrings, region["name"])
@@ -320,112 +266,22 @@ func buildK8sZones(
 	zoneStrings []string,
 	regionName string) (res []ybaclient.AvailabilityZone) {
 	for _, zoneString := range zoneStrings {
-		zone := map[string]string{}
-		for _, zoneInfo := range strings.Split(zoneString, ",") {
-			kvp := strings.Split(zoneInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in zone description",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "zone-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["region-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "config-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["config-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "config-file-path":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["config-file-path"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "storage-class":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["storage-class"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "cert-manager-cluster-issuer":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["cert-manager-cluster-issuer"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "cert-manager-issuer":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["cert-manager-issuer"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "domain":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["domain"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "namespace":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["namespace"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "overrirdes-file-path":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["overrirdes-file-path"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "pod-address-template":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["pod-address-template"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := zone["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in zone.",
-					formatter.RedColor))
-		}
-		if _, ok := zone["region-name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Region name not specified in zone.",
-					formatter.RedColor))
-		}
+		zone := providerutil.BuildZoneMapFromString(zoneString, "")
 
 		var configContent string
-		if _, ok := zone["config-name"]; ok {
-			if _, ok := zone["config-file-path"]; !ok {
-				logrus.Fatalln(
-					formatter.Colorize("Config file path not specified in zone.",
-						formatter.RedColor))
-			} else {
-				logrus.Debug("Reading Zone Kube Config")
-				configContent = util.YAMLtoString(zone["config-file-path"])
+		if filePath, ok := zone["config-file-path"]; ok {
+			if strings.TrimSpace(filePath) != "" {
+				logrus.Debug("Reading Region Kube Config\n")
+				configContent = util.YAMLtoString(filePath)
 			}
 		}
 
 		var overrides string
-		if _, ok := zone["overrirdes-file-path"]; ok {
-			logrus.Debug("Reading Zone Kubernetes Overrides")
-			overrides = util.YAMLtoString(zone["overrirdes-file-path"])
+		if filePath, ok := zone["overrides-file-path"]; ok {
+			if strings.TrimSpace(filePath) != "" {
+				logrus.Debug("Reading Region Kubernetes Overrides\n")
+				overrides = util.YAMLtoString(filePath)
+			}
 		}
 
 		if strings.Compare(zone["region-name"], regionName) == 0 {
@@ -452,7 +308,7 @@ func buildK8sZones(
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

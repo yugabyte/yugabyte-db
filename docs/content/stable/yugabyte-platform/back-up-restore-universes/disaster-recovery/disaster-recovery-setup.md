@@ -14,13 +14,18 @@ type: docs
 
 ## Prerequisites
 
+By default, xCluster Disaster Recovery is not enabled. To enable the feature, set the **Enable disaster recovery** Global Configuration option (config key `yb.xcluster.dr.enabled`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+### Create universes
+
 Create two universes, the DR primary universe which will serve reads and writes, and the DR replica.
 
 Ensure the universes have the following characteristics:
 
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
-- Both universes have the same encryption in transit settings.
+- Both universes have the same encryption in transit settings. Encryption in transit is recommended, and you should create the DR primary and DR replica universes with TLS enabled.
 - They can be backed up and restored using the same backup configuration.
+- They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
 - Neither universe is already being used for xCluster replication.
 
@@ -34,21 +39,14 @@ After DR is configured, the DR replica will only be available for reads.
 
 - Monitor CPU and keep its  use below 65%.
 - Monitor disk space and keep its use under 65%.
-- Create the DR primary and DR replica universes with TLS enabled.
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both DR primary and replica.
 
-    This flag determines the duration for which WAL is retained on the DR primary in case of a network partition or a complete outage of the DR replica. Be sure to allocate enough disk space to hold WAL generated for this duration.
+    This flag determines the duration for which WAL is retained on the DR primary in case of a network partition or a complete outage of the DR replica. For xCluster DR, you should set the flag to a value greater than the default. The goal is to retain write-ahead logs (WALs) during a network partition or DR replica outage until replication can be restarted. Setting this to 86400 (24 hours) is a good rule of thumb, but you should also consider how quickly you will be able to recover from a network partition or DR replica outage.
 
-    The value depends on how long a network partition or DR replica outage can be tolerated, and the amount of WAL expected to be generated during that period.
+    In addition, during an outage, you will need enough disk space to retain the WALs, so determine the data change rate for your workload, and size your disk accordingly.
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
-
-### Upgrading universes in DR
-
-When upgrading universes in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
-
-Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
 ## Set up disaster recovery
 
@@ -86,11 +84,13 @@ After DR is set up, the **xCluster Disaster Recovery** tab displays the DR statu
 
 ### Metrics
 
-In addition, you can monitor the following metrics on the **Metrics** tab:
+In addition, you can monitor the following metrics on the **xCluster Disaster Recovery > Metrics** tab:
 
 - Async Replication Lag
 
     The network lag in microseconds between any two communicating nodes.
+
+    If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
 
 - Consumer Safe Time Lag
 
@@ -142,15 +142,22 @@ The **xCluster Disaster Recovery** tab also lists all the tables in replication 
 
 Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag.
+To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
 
 To create an alert:
 
 1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 1. Click **Create Alert Policy** and choose **Universe Alert**.
 1. Set **Policy Template** to **Replication Lag**.
+1. Enter a name and description for the alert policy.
 1. Set **Target** to **Selected Universes** and select the DR primary.
 1. Set the conditions for the alert.
+
+    - Enter a duration threshold. The alert is triggered when the lag exceeds the threshold for the specified duration.
+    - Set the **Severity** option to Severe.
+    - Set the **Condition** option to Greater Than.
+    - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
+
 1. Click **Save** when you are done.
 
 When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
@@ -211,3 +218,11 @@ In these cases, restart replication as follows:
 1. Click **Create a New Full Copy**.
 
 This performs a full copy of the databases involved from the DR primary to the DR replica.
+
+## Remove disaster recovery
+
+To remove disaster recovery for a universe, do the following:
+
+1. Navigate to your DR primary universe.
+
+1. On the **xCluster Disaster Recovery** tab, click **Actions** and choose **Remove Disaster Recovery**.

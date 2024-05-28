@@ -9,12 +9,14 @@ import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { Box, Typography, Grid } from '@material-ui/core';
+import { YBTooltip } from '../../../../../components';
 import { YBWidget } from '../../../../../../components/panels';
 import { YBLoading } from '../../../../../../components/common/indicators';
 import { MetricsPanelOverview } from '../../../../../../components/metrics';
 import { YBButtonLink } from '../../../../../../components/common/forms/fields';
 import { CustomDatePicker } from '../../../../../../components/metrics/CustomDatePicker/CustomDatePicker';
 import { QUERY_KEY, api } from '../../../../../utils/api';
+import { getPrometheusUrls } from '../../../../../../components/metrics/utils';
 import {
   fetchCDCAllMetrics,
   CDC_METRIC_ARRAY,
@@ -30,6 +32,8 @@ import { ReplicationSlotResponse, SlotState } from '../utils/types';
 import { METRIC_COLORS } from '../../../../../../components/metrics/MetricsConfig';
 import { DurationUnit } from '../../../../../../components/xcluster/disasterRecovery/constants';
 import { replicationSlotStyles } from '../utils/ReplicationSlotStyles';
+//icons
+import { ReactComponent as PrometheusIcon } from '../../../../../assets/prometheus-icon.svg';
 
 interface SlotDetailProps {
   uuid: string;
@@ -136,16 +140,19 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
 
   if (isUniverseDataLoading || isReplicationSlotLoading || isMetricsLoading) return <YBLoading />;
   const slotDetail = replicationSlotData?.replicationSlots?.find((r) => r?.streamID === streamID);
+  const isSlotExpired = Number(_.last(metricsData?.[CDC_EXPIRY_TIME_KEY]?.data[0]?.y)) <= 0;
 
   const slotStatus = slotDetail?.state ? (
     <Typography
       className={
-        [SlotState.INITIATED, SlotState.ACTIVE].includes(slotDetail?.state)
+        isSlotExpired
+          ? classes.expiryStatus
+          : [SlotState.INITIATED, SlotState.ACTIVE].includes(slotDetail?.state)
           ? classes.successStatus
           : classes.errorStatus
       }
     >
-      {_.capitalize(slotDetail?.state)}
+      {isSlotExpired ? _.capitalize(SlotState.EXPIRED) : _.capitalize(slotDetail?.state)}
     </Typography>
   ) : null;
 
@@ -237,7 +244,8 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
               const measureUnit = metricTickSuffix
                 ? ` (${metricTickSuffix.replace('&nbsp;', '')})`
                 : '';
-
+              const directUrls = metrics?.directURLs;
+              const metricsLinkUseBrowserFqdn = metrics?.metricsLinkUseBrowserFqdn;
               return (
                 <Grid item key={metricKey} sm={6} md={6} lg={4}>
                   <YBWidget
@@ -247,6 +255,29 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
                       <div className="metric-title">
                         <span>{metrics?.layout?.title + measureUnit}</span>
                       </div>
+                    }
+                    headerRight={
+                      <Box display={'flex'} mt={1} justifyContent={'flex-end'}>
+                        <YBTooltip
+                          title={
+                            <Typography variant="body2">
+                              {t('metric.tooltip.viewInPrometheus')}
+                            </Typography>
+                          }
+                        >
+                          <a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            href={
+                              // We haven't provided metric as a `|` seperated list, thus we
+                              // will only get a single prometheus URL here.
+                              getPrometheusUrls(directUrls, !!metricsLinkUseBrowserFqdn)[0]
+                            }
+                          >
+                            <PrometheusIcon className={classes.interactiveIcon} />
+                          </a>
+                        </YBTooltip>
+                      </Box>
                     }
                     body={
                       isFetching ? (

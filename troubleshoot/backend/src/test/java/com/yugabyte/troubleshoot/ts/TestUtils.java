@@ -1,6 +1,7 @@
 package com.yugabyte.troubleshoot.ts;
 
 import static com.yugabyte.troubleshoot.ts.CommonUtils.readResource;
+import static com.yugabyte.troubleshoot.ts.configuration.JsonConfiguration.createMapper;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,7 @@ import org.springframework.core.io.ClassPathResource;
 
 public class TestUtils {
 
-  private static ObjectMapper objectMapper = new ObjectMapper();
+  private static final ObjectMapper objectMapper = createMapper();
 
   @SneakyThrows
   public static JsonNode readResourceAsJson(String path) {
@@ -58,5 +59,11 @@ public class TestUtils {
     } finally {
       deserializer.close(true);
     }
+  }
+
+  @SneakyThrows
+  public static String formatJson(String json) {
+    Object jsonObject = objectMapper.treeToValue(objectMapper.readTree(json), Object.class);
+    return objectMapper.writeValueAsString(jsonObject);
   }
 }

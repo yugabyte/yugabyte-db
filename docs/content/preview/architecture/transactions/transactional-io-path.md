@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 80
+    weight: 300
 type: docs
 ---
 
@@ -18,8 +18,6 @@ For an overview of common concepts used in YugabyteDB's implementation of distri
 The write path of a transaction is used for modifying multiple keys and the read path is used for reading a consistent combination of values from multiple tablets.
 
 ## Write path
-
-The write path can be demonstrated through the lifecycle of a single distributed write-only transaction. Suppose it is required to modify rows with keys `k1` and `k2`. If they belong to the same tablet, the transaction can be executed as a [single-shard transaction](../../core-functions/write-path/), in which case atomicity would be ensured by the fact that both updates would be replicated as part of the same Raft log record. However, in the most general case, these keys would belong to different tablets, and that is the working assumption.
 
 The following diagram depicts the high-level steps of a distributed write-only transaction, not including
 any conflict resolution:
@@ -87,7 +85,7 @@ The following diagram depicts the process:
 
 ### Handle the client's request and initialize read transaction
 
-The client's request to either the YCQL, YEDIS, or YSQL API arrives at the YQL engine of a tablet server. The YQL engine detects that the query requests rows from multiple tablets and starts a read-only transaction. A hybrid time `ht_read` is selected for the request, which could be either the current hybrid time on the YQL engine's tablet server or the [safe time](../single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of the involved tablets. The latter case would reduce waiting for safe time for at least that tablet and is therefore better for performance. Typically, due to YugabyteDB load-balancing policy, the YQL engine receiving the request also hosts some of the tablets that the request is reading, allowing to implement the more performant second option without an additional RPC round-trip.
+The client's request to either the YCQL or YSQL API arrives at the YQL engine of a tablet server. The YQL engine detects that the query requests rows from multiple tablets and starts a read-only transaction. A hybrid time `ht_read` is selected for the request, which could be either the current hybrid time on the YQL engine's tablet server or the [safe time](../single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of the involved tablets. The latter case would reduce waiting for safe time for at least that tablet and is therefore better for performance. Typically, due to YugabyteDB load-balancing policy, the YQL engine receiving the request also hosts some of the tablets that the request is reading, allowing to implement the more performant second option without an additional RPC round-trip.
 
 In addition, a point in time called `global_limit` is selected, computed as `physical_time + max_clock_skew`, which helps determine if a particular record was definitely written after the read request had started. `max_clock_skew` is a globally-configured bound on clock skew between different YugabyteDB servers.
 

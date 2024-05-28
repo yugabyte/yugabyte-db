@@ -116,21 +116,10 @@ using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 
-DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the master tserver service");
-TAG_FLAG(master_tserver_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the master service");
-TAG_FLAG(master_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_consensus_svc_num_threads, 10,
-             "Number of RPC threads for the master consensus service");
-TAG_FLAG(master_consensus_svc_num_threads, advanced);
-
-DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_num_threads, 10,
-             "Number of RPC threads for the master remote bootstrap service");
-TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
+DEPRECATE_FLAG(int32, master_tserver_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_consensus_svc_num_threads, "02_2024");
+DEPRECATE_FLAG(int32, master_remote_bootstrap_svc_num_threads, "02_2024");
 
 DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
@@ -233,19 +222,19 @@ Status Master::Init() {
   return Status::OK();
 }
 
-Status Master::InitAutoFlags() {
+Status Master::InitAutoFlags(rpc::Messenger* messenger) {
   // Will we be in shell mode if we dont have a sys catalog yet?
   bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts().AreMasterAddressesProvided();
 
   RETURN_NOT_OK(auto_flags_manager_->Init(
-      options_.HostsString(),
+      messenger,
       [this]() {
         return fs_manager_->LookupTablet(kSysCatalogTabletId);
       } /* has_sys_catalog_func */,
       is_shell_mode_if_new));
 
-  return RpcAndWebServerBase::InitAutoFlags();
+  return RpcAndWebServerBase::InitAutoFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
@@ -257,7 +246,7 @@ Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
       opts().IsShellMode(), IllegalState,
       "Cannot load AutoFlags from another master when not in shell mode.");
 
-  return auto_flags_manager_->LoadFromMasterLeader(options_.HostsString(), {{leader_address}});
+  return auto_flags_manager_->LoadFromMasterLeader({{leader_address}});
 }
 
 MonoDelta Master::default_client_timeout() {
@@ -321,8 +310,8 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
-          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
-          messenger(), fs_manager_->uuid(), &options(), std::nullopt /* xcluster_context */)));
+          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
+          fs_manager_->uuid(), &options(), nullptr /* xcluster_context */)));
 
   return Status::OK();
 }
@@ -334,7 +323,6 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
   DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
-  DisplayIconTile(output, "fa-list-alt", "XCluster Config", "/xcluster-config");
 }
 
 Status Master::StartAsync() {
@@ -712,6 +700,12 @@ std::string Master::GetCertificateDetails() {
   if(!secure_context_) return "";
 
   return secure_context_.get()->GetCertificateDetails();
+}
+
+void Master::WriteServerMetaCacheAsJson(JsonWriter *writer) {
+  writer->StartObject();
+  tserver::DbServerBase::WriteMainMetaCacheAsJson(writer);
+  writer->EndObject();
 }
 
 } // namespace master

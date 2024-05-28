@@ -24,17 +24,13 @@
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// DML
-//--------------------------------------------------------------------------------------------------
 class PgSelectIndex;
 
 class PgDml : public PgStatement {
  public:
-  virtual ~PgDml();
+  ~PgDml() override;
 
   // Append a target in SELECT or RETURNING.
   Status AppendTarget(PgExpr *target);
@@ -92,13 +88,13 @@ class PgDml : public PgStatement {
 
   bool has_aggregate_targets() const;
 
+  bool has_secondary_index_with_doc_op() const;
+
   bool has_doc_op() const {
     return doc_op_ != nullptr;
   }
 
  protected:
-  // Method members.
-  // Constructor.
   PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local);
   PgDml(PgSession::ScopedRefPtr pg_session,
         const PgObjectId& table_id,
@@ -146,6 +142,9 @@ class PgDml : public PgStatement {
 
   // Allocate a PgsqlColRefPB entriy in the protobuf request
   virtual LWPgsqlColRefPB *AllocColRefPB() = 0;
+
+  Status UpdateRequestWithYbctids(
+      const std::vector<Slice>& ybctids, KeepOrder keep_order = KeepOrder::kFalse);
 
   template<class Request>
   static void DoSetCatalogCacheVersion(
@@ -199,10 +198,23 @@ class PgDml : public PgStatement {
   PgPrepareParameters prepare_params_ = { .index_relfilenode_oid = kInvalidOid,
                                           .index_only_scan = false,
                                           .use_secondary_index = false,
-                                          .querying_colocated_table = false };
+                                          .querying_colocated_table = false,
+                                          .fetch_ybctids_only = false };
 
   // Whether or not the statement accesses data within the local region.
   const bool is_region_local_;
+
+  // -----------------------------------------------------------------------------------------------
+  // Data members for YB Bitmap Scans.
+
+  // Retrieved ybctids are populated by secondary index requests and used by Bitmap Index Scans.
+  const std::vector<Slice> *retrieved_ybctids_ = NULL;
+  // If requested_ybctids_ is populated, replace the statement binds with this list of ybctids.
+  // This is used by YB Bitmap Table Scans.
+  const std::vector<Slice> *requested_ybctids_ = NULL;
+  // To allow for the ybctid list to be broken up into batches, we only want to initialize doc_op
+  // on the first ybctid request.
+  bool first_ybctid_request_ = true;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.
@@ -257,5 +269,4 @@ class PgDml : public PgStatement {
   // the tuple id (ybctid).
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

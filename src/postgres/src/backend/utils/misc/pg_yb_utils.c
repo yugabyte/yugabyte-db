@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "access/heaptoast.h"
 #include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
@@ -86,6 +87,7 @@
 #include "libpq/hba.h"
 #include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
@@ -504,17 +506,6 @@ YBIsWaitQueueEnabled()
 	return IsYugaByteEnabled() && cached_value;
 }
 
-bool
-YBSavepointsEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
-	}
-	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
-}
-
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
@@ -914,12 +905,6 @@ YBInitPostgresBackend(
 	}
 }
 
-bool
-YbGetCurrentSessionId(uint64_t *session_id)
-{
-	return YBCGetCurrentPgSessionId(session_id);
-}
-
 void
 YBOnPostgresBackendShutdown()
 {
@@ -964,15 +949,13 @@ YBCAbortTransaction()
 void
 YBCSetActiveSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+	HandleYBStatus(YBCPgSetActiveSubTransaction(id));
 }
 
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
@@ -1418,7 +1401,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool
 YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
-						   CmdType operation)
+						   CmdType operation, List *returningList)
 {
 	if (!IsYBRelation(relation))
 		return false;
@@ -1434,7 +1417,7 @@ YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
 		return true;
 
 	if (operation == CMD_UPDATE)
-		return YbUseScanTupleInUpdate(relation, updatedCols);
+		return YbUseScanTupleInUpdate(relation, updatedCols, returningList);
 
 	return false;
 }
@@ -1448,7 +1431,7 @@ YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
  * returns true when this should be done.
  */
 bool
-YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols)
+YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList)
 {
 	/* Use scan tuple for non-YB relation. */
 	if (!IsYBRelation(relation))
@@ -1465,13 +1448,18 @@ YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols)
 	 *  - BR update triggers: to correctly check for "extra updated" columns.
 	 *  - PK update: works by deletion followed by re-insertion, hence the old
 	 * tuple is required.
+	 *  - Updates with RETURNING clause: to serve any non-modified columns
+	 * in the returning clause.
+	 * YB_TODO: Check if RETURNING clause can be optimized to work with
+	 * only requested columns instead of using wholerow junk attribute.
 	 *
 	 * In these cases, the non-modified columns in "new tuple" are populated
 	 * from the old scanned tuple.
 	 */
 	if (relation->rd_partkey != NULL || relation->rd_rel->relispartition ||
 		relation->rd_att->constr || YBRelHasSecondaryIndices(relation) ||
-		YbRelHasBRUpdateTrigger(relation))
+		YbRelHasBRUpdateTrigger(relation) ||
+		!YbReturningListSubsetOfUpdatedCols(relation, updatedCols, returningList))
 		return true;
 
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(relation);
@@ -1498,6 +1486,7 @@ int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
+int yb_toast_catcache_threshold = -1;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1514,6 +1503,8 @@ bool yb_test_fail_next_ddl = false;
 
 bool yb_test_fail_next_inc_catalog_version = false;
 
+double yb_test_ybgin_disable_cost_factor = 2.0;
+
 char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";
@@ -1524,7 +1515,13 @@ bool yb_test_stay_in_global_catalog_version_mode = false;
 
 bool yb_test_table_rewrite_keep_old_table = false;
 
-bool ddl_rollback_enabled = false;
+/*
+ * These two GUC variables are used together to control whether DDL atomicity
+ * is enabled. See comments for the gflag --ysql_yb_enable_ddl_atomicity_infra
+ * in common_flags.cc.
+ */
+bool yb_enable_ddl_atomicity_infra = true;
+bool yb_ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;
 
@@ -1888,13 +1885,26 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_RuleStmt: // CREATE RULE
-		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		case T_YbCreateProfileStmt:
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
 			is_version_increment = false;
+			is_breaking_change = false;
+			break;
+
+		case T_TruncateStmt:
+			/*
+			 * TRUNCATE (on YB relations) using the old approach does not
+			 * make any system catalog changes, so it doesn't require a
+			 * version increment.
+			 * TRUNCATE using the new rewrite approach changes the
+			 * relfilenode field in pg_class, so it requires a version
+			 * increment.
+			 */
+			if (!yb_enable_alter_table_rewrite)
+				is_version_increment = false;
 			is_breaking_change = false;
 			break;
 
@@ -2220,6 +2230,12 @@ YbDdlModeOptional YbGetDdlMode(
 						break;
 				}
 			}
+			/*
+			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
+			 * to pick up latest table statistics.
+			 */
+			if (is_ddl && ddl_transaction_state.original_node_tag == T_VacuumStmt)
+				is_version_increment = true;
 			break;
 
 		case T_RefreshMatViewStmt:
@@ -2314,25 +2330,22 @@ YBTxnDdlProcessUtility(
 	{
 		if (is_ddl)
 		{
-#ifdef YB_TODO /* utils/syscache.h has YbInitPinnedCacheIfNeeded ifdef'd out */
+#ifdef YB_TODO /* utils/syscache.h has YbInitPinnedCacheIfNeeded removed. */
 			if (YBIsDBCatalogVersionMode())
 				/*
 				 * In order to support concurrent non-global-impact DDLs
 				 * across different databases, call YbInitPinnedCacheIfNeeded
-				 * now which triggers a scan of pg_shdepend and pg_depend.
-				 * This ensure that the scan is done without using a read time
-				 * of the DDL transaction so that yb-master can retry read
-				 * restarts automatically. Otherwise, a read restart error is
+				 * now which triggers a scan of pg_shdepend. This ensure that
+				 * the scan is done without using a read time of the DDL
+				 * transaction so that yb-master can retry read restarts
+				 * automatically. Otherwise, a read restart error is
 				 * returned to the PG backend the DDL statement will fail
 				 * because DDLs cannot be restarted.
 				 *
 				 * YB NOTE: this implies a performance hit for DDL statements
 				 * that do not need to call YbInitPinnedCacheIfNeeded.
-				 *
-				 * TODO(myang): we can optimize to only read pg_shdepend here
-				 * to reduce its performance penalty.
 				 */
-				YbInitPinnedCacheIfNeeded();
+				YbInitPinnedCacheIfNeeded(true /* shared_only */);
 #endif
 
 			YBIncrementDdlNestingLevel(ddl_mode.value);
@@ -2464,7 +2477,8 @@ YbTestGucFailIfStrEqual(char *actual, const char *expected)
 	}
 }
 
-static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+int
+YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 {
 	int ncols = 0; /* Equals to the number of OUT arguments. */
 
@@ -3422,6 +3436,117 @@ yb_server_zone(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	return CStringGetTextDatum(current_zone);
+}
+
+static bytea *
+bytesToBytea(const char *in, int len)
+{
+	bytea	   *out;
+
+	out = (bytea *) palloc(len + VARHDRSZ);
+	SET_VARSIZE(out, len + VARHDRSZ);
+	memcpy(VARDATA(out), in, len);
+
+	return out;
+}
+
+Datum
+yb_local_tablets(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define YB_TABLET_INFO_COLS 8
+
+	/* only superuser and yb_db_admin can query this function */
+	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers and yb_db_admin can query yb_local_tablets"))));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YBCPgTabletsDescriptor	*tablets = NULL;
+	size_t		num_tablets = 0;
+	HandleYBStatus(YBCLocalTablets(&tablets, &num_tablets));
+
+	for (i = 0; i < num_tablets; ++i)
+	{
+		YBCPgTabletsDescriptor *tablet = (YBCPgTabletsDescriptor *)tablets + i;
+		Datum		values[YB_TABLET_INFO_COLS];
+		bool		nulls[YB_TABLET_INFO_COLS];
+		bytea	   *partition_key_start;
+		bytea	   *partition_key_end;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = CStringGetTextDatum(tablet->tablet_id);
+		values[1] = CStringGetTextDatum(tablet->table_id);
+		values[2] = CStringGetTextDatum(tablet->table_type);
+		values[3] = CStringGetTextDatum(tablet->namespace_name);
+		values[4] = CStringGetTextDatum(tablet->pgschema_name);
+		values[5] = CStringGetTextDatum(tablet->table_name);
+
+		if (tablet->partition_key_start_len)
+		{
+			partition_key_start = bytesToBytea(tablet->partition_key_start,
+											   tablet->partition_key_start_len);
+			values[6] = PointerGetDatum(partition_key_start);
+		}
+		else
+			nulls[6] = true;
+
+		if (tablet->partition_key_end_len)
+		{
+			partition_key_end = bytesToBytea(tablet->partition_key_end,
+											 tablet->partition_key_end_len);
+			values[7] = PointerGetDatum(partition_key_end);
+		}
+		else
+			nulls[7] = true;
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+#undef YB_TABLET_INFO_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return (Datum) 0;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4455,6 +4580,23 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 	return false;
 }
 
+bool
+YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
+							  List *returningList)
+{
+
+	ListCell *lc;
+	foreach (lc, returningList)
+	{
+		TargetEntry *element = (TargetEntry *) lfirst(lc);
+		if (!bms_is_member(element->resorigcol -
+							   YBGetFirstLowInvalidAttributeNumber(rel),
+						   updatedCols))
+			return false;
+	}
+	return true;
+}
+
 /*
  * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
  * that requires the sticky connection
@@ -4769,4 +4911,72 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query = pnstrdup(query, query_len);
 	*redacted_query = RedactPasswordIfExists(*redacted_query);
 	*redacted_query_len = strlen(*redacted_query);
+}
+
+/*
+ * In YB, a "relfilenode" corresponds to a DocDB table.
+ * This function creates a new DocDB table for the given table,
+ * with UUID corresponding to the given relfileNodeId.
+ */
+void
+YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
+							bool yb_copy_split_options, bool is_truncate)
+{
+	CreateStmt *dummyStmt	 = makeNode(CreateStmt);
+	dummyStmt->relation		 =
+		makeRangeVar(NULL, RelationGetRelationName(rel), -1);
+	Relation pg_constraint = table_open(ConstraintRelationId,
+										RowExclusiveLock);
+	YbATCopyPrimaryKeyToCreateStmt(rel, pg_constraint, dummyStmt);
+	table_close(pg_constraint, RowExclusiveLock);
+	if (yb_copy_split_options)
+	{
+		YbGetTableProperties(rel);
+		dummyStmt->split_options = YbGetSplitOptions(rel);
+	}
+	bool is_null;
+	HeapTuple tuple = SearchSysCache1(RELOID,
+		ObjectIdGetDatum(RelationGetRelid(rel)));
+	Datum datum = SysCacheGetAttr(RELOID,
+		tuple, Anum_pg_class_reloptions, &is_null);
+	if (!is_null)
+		dummyStmt->options = untransformRelOptions(datum);
+	ReleaseSysCache(tuple);
+	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
+					rel->rd_rel->relkind, RelationGetDescr(rel),
+					newRelfileNodeId,
+					RelationGetNamespace(rel),
+					YbGetTableProperties(rel)->tablegroup_oid,
+					InvalidOid, rel->rd_rel->reltablespace,
+					RelationGetRelid(rel),
+					rel->rd_rel->relfilenode,
+					is_truncate);
+
+	if (yb_test_fail_table_rewrite_after_creation)
+		elog(ERROR, "Injecting error.");
+}
+
+Relation
+YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
+{
+	Relation relation;
+
+	relation = RelationIdGetRelation(relid);
+	if (!RelationIsValid(relation))
+		elog(ERROR, "could not open relation with OID %u", relid);
+
+	/* Overwrite the replica identity of the relation. */
+	relation->rd_rel->relreplident = replident;
+	return relation;
+}
+
+void
+YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
+{
+	char read_time[50];
+
+	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
+	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
+	assign_yb_read_time(read_time, NULL);
+	YbRelationCacheInvalidate();
 }

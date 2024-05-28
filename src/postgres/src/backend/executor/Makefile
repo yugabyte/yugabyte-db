@@ -13,6 +13,15 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	nodeYbBatchedNestloop.o \
+	nodeYbBitmapIndexscan.o \
+	nodeYbBitmapTablescan.o \
+	nodeYbSeqscan.o \
+	ybcExpr.o \
+	ybcFunction.o \
+	ybcModifyTable.o \
+	ybc_fdw.o \
+	\
 	execAmi.o \
 	execAsync.o \
 	execCurrent.o \
@@ -77,12 +86,6 @@ OBJS = \
 	nodeWorktablescan.o \
 	spi.o \
 	tqueue.o \
-	tstoreReceiver.o \
-	ybcExpr.o \
-	ybcFunction.o \
-	ybc_fdw.o \
-	ybcModifyTable.o \
-    nodeYbBatchedNestloop.o \
-    nodeYbSeqscan.o
+	tstoreReceiver.o
 
 include $(top_srcdir)/src/backend/common.mk

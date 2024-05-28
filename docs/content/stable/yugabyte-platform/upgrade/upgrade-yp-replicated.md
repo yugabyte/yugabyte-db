@@ -44,7 +44,7 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 ## Upgrade using Replicated
 
-To start the upgrade, log in to the Replicated Admin Console via <https://:8800> and then perform the following:
+To start the upgrade, sign in to the Replicated Admin Console via <https://:8800> and then perform the following:
 
 1. Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:
 
@@ -90,7 +90,7 @@ You can upgrade your airgapped installation of YugabyteDB Anywhere to a newer ve
 
    Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap` file into that directory.
 
-1. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
+1. Sign in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
 
    ![Airgap Settings](/images/yp/airgap-settings.png)
 

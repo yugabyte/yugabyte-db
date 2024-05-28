@@ -166,6 +166,24 @@
             ]
           }
         ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various resons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -326,6 +344,134 @@
           },
           {
             "recommendation": "Check query stats UI to see - which query/set of queries is distributed unevenly"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "e1bd486c-1823-48e5-97f9-3641ec685055",
+    "category": "NODE",
+    "type": "SLOW_DISKS",
+    "title": "DB node(s) disk IO too high",
+    "mainGraphs": [
+      {
+        "name": "disk_io_time",
+        "filters": {
+          "universeUuid": []
+        }
+      },
+      {
+        "name": "disk_io_queue_depth",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "IOPS/throughput limit reached",
+        "possibleCauseDescription": "DB node disk IO approaches provisioned IOPS/throughput level or device limitations",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check IOPS/throughput metrics",
+            "supportingGraphs": [
+              {
+                "name": "disk_iops",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "disk_bytes_per_second_per_node",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Excessive compactions",
+        "possibleCauseDescription": "DB may run too many compaction operations, which consume IOPS/throughput",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check compaction metrics",
+            "supportingGraphs": [
+              {
+                "name": "lsm_rocksdb_compaction",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "lsm_rocksdb_compaction_tasks",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "2355a3d0-c4ca-42d1-929d-4a0fbfb4ddd7",
+    "category": "NODE",
+    "type": "HOT_NODE_DATA",
+    "title": "Table data is spread unevenly across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "table_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_sst_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_wal_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Suboptimal table partitioning logic",
+        "possibleCauseDescription": "Particular range/hash key has significantly more data, than the other",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check amount of rows for each range/hash value"
           }
         ]
       }

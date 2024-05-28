@@ -16,6 +16,7 @@ import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
 import org.junit.Test;
@@ -26,6 +27,13 @@ import org.yb.YBTestRunner;
 
 @RunWith(value = YBTestRunner.class)
 public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_yb_test_table_rewrite_keep_old_table", "true");
+    return flagMap;
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAlterTableWithConcurrentTxn.class);
 
   // When a transaction is performed on a table that is altered,

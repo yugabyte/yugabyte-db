@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -48,6 +49,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean ignoreUseCustomImageConfig = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     public int cgroupSize = 0;
+    // Setup Audit Log Config for the node
+    public AuditLogConfig auditLogConfig = null;
   }
 
   @Override

@@ -1,3 +1,5 @@
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE INDEX p1_b_idx ON p1 (b ASC);
@@ -512,6 +514,17 @@ a = int4table.a;
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/ select * from oidtable, int4table where oidtable.a = int4table.a;
 drop table oidtable;
 drop table int4table;
+
+create table ss1(a int);
+create table ss2(a int);
+create table ss3(a int, b int, primary key(a asc, b asc));
+
+-- Should not result in an illegal BNL on the inner side
+/*+Leading((ss1 (ss2 ss3)))*/ explain (costs off) select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+/*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+drop table ss1;
+drop table ss2;
+drop table ss3;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;

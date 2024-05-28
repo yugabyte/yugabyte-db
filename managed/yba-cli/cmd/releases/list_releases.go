@@ -5,7 +5,6 @@
 package releases
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -39,7 +38,11 @@ var listReleasesCmd = &cobra.Command{
 			Format: releases.NewReleasesFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No releases found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No releases found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 
@@ -57,15 +60,27 @@ func SortReleasesWithMetadata(
 ) []map[string]interface{} {
 	sorted := make([]map[string]interface{}, 0)
 
-	versions := make([]string, 0)
+	versionsStable := make([]string, 0)
+	versionsPreview := make([]string, 0)
 	for v := range r {
-		versions = append(versions, v)
+		if util.IsVersionStable(v) {
+			versionsStable = append(versionsStable, v)
+		} else {
+			versionsPreview = append(versionsPreview, v)
+		}
 	}
 
 	// the function as described in the documentation is the less function,
 	// but for the purpose of getting the latest release, it's described as
 	// a function returning the greater of the 2 versions
-	slices.SortStableFunc(versions, func(x, y string) int {
+	slices.SortStableFunc(versionsStable, func(x, y string) int {
+		compare, err := util.CompareYbVersions(x, y)
+		if err != nil {
+			return 0
+		}
+		return compare * -1
+	})
+	slices.SortStableFunc(versionsPreview, func(x, y string) int {
 		compare, err := util.CompareYbVersions(x, y)
 		if err != nil {
 			return 0
@@ -73,7 +88,12 @@ func SortReleasesWithMetadata(
 		return compare * -1
 	})
 
-	for _, key := range versions {
+	for _, key := range versionsStable {
+		r[key]["version"] = key
+		sorted = append(sorted, r[key])
+	}
+
+	for _, key := range versionsPreview {
 		r[key]["version"] = key
 		sorted = append(sorted, r[key])
 	}

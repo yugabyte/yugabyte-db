@@ -74,6 +74,7 @@ struct od_client {
 #endif
 
 	uint64_t client_id;
+	int64_t yb_db_oid;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -126,6 +127,7 @@ static inline void od_client_init(od_client_t *client)
 
 	client->prep_stmt_ids = NULL;
 	client->client_id = 0;
+	client->yb_db_oid = -1;
 }
 
 static inline od_client_t *od_client_allocate(void)
@@ -147,6 +149,10 @@ static inline void od_client_free(od_client_t *client)
 	kiwi_password_free(&client->received_password);
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
+	}
+	if (client->vars.vars) {
+		free(client->vars.vars);
+		client->vars.vars = NULL;
 	}
 	free(client);
 }

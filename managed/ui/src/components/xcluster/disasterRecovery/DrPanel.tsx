@@ -222,9 +222,10 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }
 
   const allowedTasks = currentUniverseQuery.data?.allowedTasks;
-  const universeHasTxnXCluster = xClusterConfigQueries.some(
-    (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
-  );
+  // DR config uses a txn xCluster config to implement the replication.
+  // When setting up txn xCluster config, no other xCluster config can exist
+  // on source and target.
+  const isDrCreationDisabled = universeXClusterConfigUUIDs.length > 0;
   const drConfig = drConfigQuery.data;
   const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
   const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
@@ -236,7 +237,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         </div>
         <EnableDrPrompt
           onConfigureDrButtonClick={openCreateConfigModal}
-          isDisabled={universeHasTxnXCluster}
+          isDisabled={isDrCreationDisabled}
         />
         {isCreateConfigModalOpen && (
           <CreateConfigModal

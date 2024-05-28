@@ -5,6 +5,10 @@
   display: none;
 }
 
+.mobile-search.desktop-hide {
+  display: none !important;
+}
+
 .hidden-scroll {
   overflow: hidden;
 
@@ -1086,7 +1090,7 @@ body {
 
 @media (max-width: 767px) {
   .mobile-search.desktop-hide {
-    display: block;
+    display: block !important;
   }
 
   aside.td-sidebar {

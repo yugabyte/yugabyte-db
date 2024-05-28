@@ -692,6 +692,8 @@ getYsqlStatementStats(void *cb_arg)
 		char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
 		if (qry != NULL)
 		{
+			tmp.userid       = entry->key.userid;
+			tmp.dbid         = entry->key.dbid;
 			tmp.query        = qry;
 			tmp.calls        = entry->counters.calls;
 
@@ -703,6 +705,13 @@ getYsqlStatementStats(void *cb_arg)
 
 			tmp.rows         = entry->counters.rows;
 			tmp.query_id     = entry->key.queryid;
+
+			tmp.local_blks_hit = entry->counters.local_blks_hit;
+			tmp.local_blks_read = entry->counters.local_blks_read;
+			tmp.local_blks_dirtied = entry->counters.local_blks_dirtied;
+			tmp.local_blks_written = entry->counters.local_blks_written;
+			tmp.temp_blks_read = entry->counters.temp_blks_read;
+			tmp.temp_blks_written = entry->counters.temp_blks_written;
 
 			WriteStartObjectToJson(cb_arg);
 			WriteStatArrayElemToJson(cb_arg, &tmp);

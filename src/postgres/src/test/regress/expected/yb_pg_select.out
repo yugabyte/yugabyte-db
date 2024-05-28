@@ -292,7 +292,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 (19 rows)
 
 RESET enable_seqscan;
-RESET enable_bitmapscan;
+SET enable_bitmapscan = on;
 RESET enable_sort;
 --
 -- Test ORDER BY options
@@ -617,14 +617,14 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
 
 -- partial index implies clause, but bitmap scan must recheck predicate anyway
 SET enable_indexscan TO off;
--- TODO(#4634): bitmap scan should be used when implemented.
 explain (costs off)
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
-                          QUERY PLAN
----------------------------------------------------------------
- Seq Scan on onek2
-   Storage Filter: ((stringu1 < 'B'::name) AND (unique2 = 11))
-(2 rows)
+                QUERY PLAN
+------------------------------------------
+ YB Bitmap Table Scan on onek2
+   ->  Bitmap Index Scan on onek2_u2_prtl
+         Index Cond: (unique2 = 11)
+(3 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
  unique2
@@ -634,20 +634,24 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
 
 RESET enable_indexscan;
 -- check multi-index cases too
--- TODO(#4634): bitmap scan should be used when implemented.
 -- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
 SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 or unique1 = 0) and stringu1 < 'B'
 LIMIT ALL) ybview ORDER BY unique2;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Sort
    Sort Key: onek2.unique2
-   ->  Seq Scan on onek2
-         Storage Filter: ((stringu1 < 'B'::name) AND ((unique2 = 11) OR (unique1 = 0)))
-(4 rows)
+   ->  YB Bitmap Table Scan on onek2
+         Storage Filter: (stringu1 < 'B'::name)
+         ->  BitmapOr
+               ->  Bitmap Index Scan on onek2_u2_prtl
+                     Index Cond: (unique2 = 11)
+               ->  Bitmap Index Scan on onek2_u1_prtl
+                     Index Cond: (unique1 = 0)
+(9 rows)
 
 SELECT * FROM (
 select unique1, unique2 from onek2
@@ -659,20 +663,23 @@ LIMIT ALL) ybview ORDER BY unique2;
        0 |     998
 (2 rows)
 
--- TODO(#4634): bitmap scan should be used when implemented.
 -- YB edit: add "ORDER BY unique2" for consistent ordering.
 explain (costs off)
 SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
 LIMIT ALL) ybview ORDER BY unique2;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Sort
    Sort Key: onek2.unique2
-   ->  Seq Scan on onek2
-         Storage Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
-(4 rows)
+   ->  YB Bitmap Table Scan on onek2
+         ->  BitmapOr
+               ->  Bitmap Index Scan on onek2_u2_prtl
+                     Index Cond: (unique2 = 11)
+               ->  Bitmap Index Scan on onek2_u1_prtl
+                     Index Cond: (unique1 = 0)
+(8 rows)
 
 SELECT * FROM (
 select unique1, unique2 from onek2
@@ -683,3 +690,5 @@ LIMIT ALL) ybview ORDER BY unique2;
      494 |      11
        0 |     998
 (2 rows)
+
+RESET enable_bitmapscan;

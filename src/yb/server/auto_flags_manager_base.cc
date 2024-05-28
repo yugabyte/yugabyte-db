@@ -18,14 +18,10 @@
 
 #include "yb/gutil/strings/join.h"
 
-#include "yb/master/master_cluster.pb.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/secure_stream.h"
-
-#include "yb/rpc/secure.h"
 
 #include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -100,25 +96,9 @@ AutoFlagsManagerBase::AutoFlagsManagerBase(
   current_config_.set_config_version(kInvalidAutoFlagsConfigVersion);
 }
 
-AutoFlagsManagerBase::~AutoFlagsManagerBase() {
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
-}
-
-Status AutoFlagsManagerBase::Init(const std::string& local_hosts) {
-  rpc::MessengerBuilder messenger_builder("auto_flags_client");
-  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
-      local_hosts, fs_manager_->GetDefaultRootDir(), &messenger_builder));
-
-  messenger_ = VERIFY_RESULT(messenger_builder.Build());
-
-  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
-    std::vector<HostPort> host_ports;
-    RETURN_NOT_OK(HostPort::ParseStrings(local_hosts, 0 /* default_port */, &host_ports));
-    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host_ports[0].host())));
-  }
-
+Status AutoFlagsManagerBase::Init(rpc::Messenger* server_messenger) {
+  SCHECK_NOTNULL(server_messenger);
+  server_messenger_ = server_messenger;
   return Status::OK();
 }
 
@@ -150,17 +130,16 @@ Result<bool> AutoFlagsManagerBase::LoadFromFile() {
 
 Result<std::optional<AutoFlagsConfigPB>> AutoFlagsManagerBase::GetAutoFlagConfigFromMasterLeader(
     const std::string& master_addresses) {
+  SCHECK_NOTNULL(server_messenger_);
   auto client = VERIFY_RESULT(yb::client::YBClientBuilder()
                                   .add_master_server_addr(master_addresses)
                                   .default_admin_operation_timeout(MonoDelta::FromSeconds(
                                       FLAGS_yb_client_admin_operation_timeout_sec))
-                                  .Build(messenger_.get()));
-
+                                  .Build(server_messenger_));
   return client->GetAutoFlagConfig();
 }
 
-Status AutoFlagsManagerBase::LoadFromMasterLeader(
-    const std::string& local_hosts, const server::MasterAddresses& master_addresses) {
+Status AutoFlagsManagerBase::LoadFromMasterLeader(const server::MasterAddresses& master_addresses) {
   if (FLAGS_disable_auto_flags_management) {
     LOG(WARNING) << "AutoFlags management is disabled.";
     return Status::OK();
@@ -258,7 +237,8 @@ Status AutoFlagsManagerBase::LoadFromConfigUnlocked(
     const auto delay = VERIFY_RESULT(GetTimeLeftToApplyConfig());
     if (delay) {
       LOG(INFO) << "New AutoFlags config will be applied in " << delay;
-      RETURN_NOT_OK(messenger_->ScheduleOnReactor(
+      SCHECK_NOTNULL(server_messenger_);
+      RETURN_NOT_OK(server_messenger_->ScheduleOnReactor(
           std::bind(
               &AutoFlagsManagerBase::AsyncApplyConfig, this, current_config_.config_version(),
               apply_non_runtime),

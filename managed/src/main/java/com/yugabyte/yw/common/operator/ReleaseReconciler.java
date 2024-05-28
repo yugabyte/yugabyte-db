@@ -46,6 +46,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       metadata.s3.accessKeyId = downloadConfig.getS3().getAccessKeyId();
       metadata.s3.secretAccessKey = downloadConfig.getS3().getSecretAccessKey();
       metadata.s3.paths.x86_64 = downloadConfig.getS3().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getS3().getPaths().getX86_64();
       metadata.s3.paths.x86_64_checksum = downloadConfig.getS3().getPaths().getX86_64_checksum();
       metadata.s3.paths.helmChart = downloadConfig.getS3().getPaths().getHelmChart();
       metadata.s3.paths.helmChartChecksum =
@@ -57,6 +58,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       metadata.gcs.paths = new ReleaseMetadata.PackagePaths();
       metadata.gcs.credentialsJson = downloadConfig.getGcs().getCredentialsJson();
       metadata.gcs.paths.x86_64 = downloadConfig.getGcs().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getGcs().getPaths().getX86_64();
       metadata.gcs.paths.x86_64_checksum = downloadConfig.getGcs().getPaths().getX86_64_checksum();
       metadata.gcs.paths.helmChart = downloadConfig.getGcs().getPaths().getHelmChart();
       metadata.gcs.paths.helmChartChecksum =
@@ -67,6 +69,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       metadata.http = new ReleaseMetadata.HttpLocation();
       metadata.http.paths = new ReleaseMetadata.PackagePaths();
       metadata.http.paths.x86_64 = downloadConfig.getHttp().getPaths().getX86_64();
+      metadata.filePath = downloadConfig.getHttp().getPaths().getX86_64();
       metadata.http.paths.x86_64_checksum =
           downloadConfig.getHttp().getPaths().getX86_64_checksum();
       metadata.http.paths.helmChart = downloadConfig.getHttp().getPaths().getHelmChart();
@@ -95,7 +98,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onAdd(Release release) {
-    log.info("Adding release {} ", release);
+    log.info("Adding release {} ", release.getMetadata().getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
 
@@ -131,7 +134,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         return;
       }
     }
-    log.info("Added release {} ", release);
+    log.info("Added release {} ", release.getMetadata().getName());
   }
 
   @Override
@@ -188,12 +191,15 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         log.error("Error in updating release", re);
       }
     }
-    log.info("finished update CR release old: {}, new: {}", oldRelease, newRelease);
+    log.info(
+        "finished update CR release old: {}, new: {}",
+        oldRelease.getMetadata().getName(),
+        newRelease.getMetadata().getName());
   }
 
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
-    log.info("removing Release {}", release);
+    log.info("Removing Release {}", release.getMetadata().getName());
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try {
       releaseManager.removeRelease(releasePair.getFirst());
@@ -201,7 +207,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     } catch (RuntimeException re) {
       log.error("Error in deleting release", re);
     }
-    log.info("Removed release {}", release);
+    log.info("Removed release {}", release.getMetadata().getName());
   }
 
   @Override

@@ -81,7 +81,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
@@ -245,10 +245,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Status CloneAndWait(
-      const std::string& schedule_id, const std::string& target_namespace_name,
+      const std::string& source_namespace, const std::string& target_namespace_name,
       const MonoDelta& timeout, auto... other_clone_args) {
     auto out = VERIFY_RESULT(CallJsonAdmin(
-        "clone_from_snapshot_schedule", schedule_id, target_namespace_name, other_clone_args...));
+        "clone_namespace", source_namespace, target_namespace_name,
+        other_clone_args...));
     std::string source_namespace_id = VERIFY_RESULT(
         Get(out, "source_namespace_id")).get().GetString();
     std::string seq_no = VERIFY_RESULT(Get(out, "seq_no")).get().GetString();
@@ -862,7 +863,8 @@ TEST_F(YbAdminSnapshotScheduleTest, EditIntervalLargerThanRetention) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
   auto session = client_->NewSession(60s);
   constexpr int rows_per_iter = 5;
 
@@ -906,7 +908,8 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
-      schedule_id, target_namespace_name, 30s /* timeout */, restore_time.ToFormattedString()));
+      kSourceNamespace, target_namespace_name, 30s /* timeout */,
+      restore_time.ToFormattedString()));
   auto target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   auto target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), rows_per_iter);
@@ -915,14 +918,14 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   auto secs = (ASSERT_RESULT(WallClock()->Now()).time_point - restore_time.ToInt64()) / 1000000;
   target_namespace_name = "minus_interval_namespace";
   ASSERT_OK(CloneAndWait(
-      schedule_id, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
+      kSourceNamespace, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), rows_per_iter);
 
   // No timestamp format (clone as of now). Should have both sets of rows.
   target_namespace_name = "no_timestamp_namespace";
-  ASSERT_OK(CloneAndWait(schedule_id, target_namespace_name, 30s /* timeout */));
+  ASSERT_OK(CloneAndWait(kSourceNamespace, target_namespace_name, 30s /* timeout */));
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
@@ -2126,6 +2129,56 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlTestTruncate) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+    const auto table_idx_name = prefix + "_index";
+    LOG(INFO) << "Create a table, an index and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Perform a truncate operation on the table";
+
+    ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", table_name));
+    // Verify table data.
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(Format(
+        "SELECT * FROM $0", table_name))));
+    ASSERT_TRUE(rows.empty());
+    // Verify that we can insert data into the table.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'after')", table_name));
+  };
+
+  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Select data from the table after restore";
+    const auto query = Format("SELECT value FROM $0", table_name);
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    ASSERT_OK(WaitForSelectQueryToMatchExpectation(query, "before", &conn));
+
+    // Verify table data.
+    auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>(
+        Format("SELECT * FROM $0", table_name))));
+    ASSERT_EQ(row, (decltype(row){1, "before"}));
+    // Verify index.
+    row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>(Format(
+        "SELECT * FROM $0 WHERE value='before'", table_name))));
+    ASSERT_EQ(row, (decltype(row){1, "before"}));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -2145,12 +2198,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
 
     LOG(INFO) << "Perform some table rewrite operations on the table";
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-    // Set the ddl_rollback_enabled GUC var so that we can perform an
+    // Set the yb_ddl_rollback_enabled GUC var so that we can perform an
     // ADD COLUMN ... PRIMARY KEY operation.
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = ON"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = ON"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ADD COLUMN newcol INT PRIMARY KEY DEFAULT 2", table_name));
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = OFF"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = OFF"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ALTER COLUMN value TYPE int USING length(value)", table_name));
     // Verify that we can't insert duplicate values into the pkey column (newcol).
@@ -2892,24 +2945,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestPerDbCatalogVersion,
   ASSERT_TRUE(map_before_restore.empty());
   ASSERT_TRUE(found_demo3);
   ASSERT_TRUE(found_my_ns);
-}
-
-TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestTruncateDisallowedWithPitr,
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
-  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  LOG(INFO) << "Create table 'test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1)"));
-
-  auto s = conn.Execute("TRUNCATE TABLE test_table");
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.ToString(), "Cannot truncate table test_table which has schedule");
-
-  LOG(INFO) << "Enable flag to allow truncate and validate that truncate succeeds";
-  ASSERT_OK(cluster_->SetFlagOnMasters("enable_truncate_on_pitr_table", "true"));
-  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreDroppedTablegroup,

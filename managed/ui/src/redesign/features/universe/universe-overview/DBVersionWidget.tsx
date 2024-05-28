@@ -27,12 +27,14 @@ interface DBVersionWidgetProps {
   higherVersionCount: number;
   isRollBackFeatureEnabled: boolean;
   failedTaskDetails: TaskObject;
+  isReleasesEnabled: boolean;
 }
 
 export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   higherVersionCount,
   isRollBackFeatureEnabled,
-  failedTaskDetails
+  failedTaskDetails,
+  isReleasesEnabled
 }) => {
   const { t } = useTranslation();
   const classes = dbVersionWidgetStyles();
@@ -164,6 +166,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         onClose={() => {
           setUpgradeModal(false);
         }}
+        isReleasesEnabled={isReleasesEnabled}
         universeData={currentUniverse}
       />
     </div>

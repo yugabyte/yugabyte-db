@@ -27,6 +27,13 @@ var createOnpremProviderCmd = &cobra.Command{
 		"To utilize the on-premises provider in universes, manage instance types" +
 		" and node instances using the \"yba provider onprem instance-types/node [operation]\" " +
 		"set of commands",
+	Example: `yba provider onprem create --name <provider-name> \
+	--region region-name=region1 --region region-name=region2 \
+	--zone zone-name=zone1,region-name=region1 \
+	--zone zone-name=zone2,region-name=region2 \
+	--ssh-user centos \
+	--ssh-keypair-name <keypair-name>  \
+	--ssh-keypair-file-path <path-to-ssh-key-file>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -221,12 +228,12 @@ func init() {
 		"[Optional] Can sudo actions be carried out by user without a password.")
 	createOnpremProviderCmd.Flags().Bool("skip-provisioning", false,
 		"[Optional] Set to true if YugabyteDB nodes have been prepared"+
-			" manually, set to false to provision during universe creation, defaults to false.")
+			" manually, set to false to provision during universe creation. (default false)")
 
 	createOnpremProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
-			" lacking access to the public internet for package downloads, "+
-			"defaults to false.")
+			" lacking access to the public internet for package downloads. "+
+			"(default false)")
 	createOnpremProviderCmd.Flags().Bool("install-node-exporter", true,
 		"[Optional] Install Node exporter.")
 	createOnpremProviderCmd.Flags().String("node-exporter-user", "prometheus",
@@ -245,47 +252,11 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 	res []ybaclient.Region) {
 	if len(regionStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one region is required per provider.",
+			formatter.Colorize("Atleast one region is required per provider.\n",
 				formatter.RedColor))
 	}
 	for _, regionString := range regionStrings {
-		region := map[string]string{}
-		for _, regionInfo := range strings.Split(regionString, ",") {
-			kvp := strings.Split(regionInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "latitude":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["latitude"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "longitude":
-				if len(strings.TrimSpace(val)) != 0 {
-					region["longitude"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-
-			}
-		}
-		if _, ok := region["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in region.",
-					formatter.RedColor))
-		}
+		region := providerutil.BuildRegionMapFromString(regionString, "")
 		if _, ok := region["latitude"]; !ok {
 			region["latitude"] = "0.0"
 
@@ -296,11 +267,19 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 
 		latitude, err := strconv.ParseFloat(region["latitude"], 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() + " Using latitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			latitude = 0.0
 		}
 		longitude, err := strconv.ParseFloat(region["longitude"], 64)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := err.Error() + " Using longitude as 0.0\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			longitude = 0.0
 		}
 
 		zones := buildOnpremZones(zoneStrings, region["name"])
@@ -318,41 +297,7 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 
 func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.AvailabilityZone) {
 	for _, zoneString := range zoneStrings {
-		zone := map[string]string{}
-		for _, zoneInfo := range strings.Split(zoneString, ",") {
-			kvp := strings.Split(zoneInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in zone description",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "zone-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "region-name":
-				if len(strings.TrimSpace(val)) != 0 {
-					zone["region-name"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := zone["name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Name not specified in zone.",
-					formatter.RedColor))
-		}
-		if _, ok := zone["region-name"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Region name not specified in zone.",
-					formatter.RedColor))
-		}
+		zone := providerutil.BuildZoneMapFromString(zoneString, "")
 
 		if strings.Compare(zone["region-name"], regionName) == 0 {
 			z := ybaclient.AvailabilityZone{
@@ -364,7 +309,7 @@ func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.
 	}
 	if len(res) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one zone is required per region.",
+			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
 	}
 	return res

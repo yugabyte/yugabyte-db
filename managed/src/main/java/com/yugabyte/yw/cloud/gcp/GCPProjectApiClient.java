@@ -10,9 +10,15 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.services.cloudresourcemanager.CloudResourceManager;
+import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
+import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
 import com.google.api.services.compute.Compute;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
+import com.google.api.services.compute.model.Firewall;
+import com.google.api.services.compute.model.FirewallList;
+import com.google.api.services.compute.model.FirewallPolicy;
 import com.google.api.services.compute.model.ForwardingRule;
 import com.google.api.services.compute.model.ForwardingRuleList;
 import com.google.api.services.compute.model.HTTPHealthCheck;
@@ -25,14 +31,21 @@ import com.google.api.services.compute.model.InstanceGroupsListInstancesRequest;
 import com.google.api.services.compute.model.InstanceGroupsRemoveInstancesRequest;
 import com.google.api.services.compute.model.InstanceList;
 import com.google.api.services.compute.model.InstanceReference;
+import com.google.api.services.compute.model.InstanceTemplateList;
 import com.google.api.services.compute.model.InstanceWithNamedPorts;
+import com.google.api.services.compute.model.Network;
+import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
+import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.http.HttpCredentialsAdapter;
+import com.google.auth.oauth2.ComputeEngineCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Provider;
@@ -45,10 +58,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -59,6 +74,9 @@ public class GCPProjectApiClient {
   private RuntimeConfGetter runtimeConfGetter;
   OperationPoller operationPoller;
   private Provider provider;
+  private GoogleCredentials credentials;
+  private HttpRequestInitializer requestInitializer;
+  private HttpTransport httpTransport;
 
   public class OperationPoller {
     /**
@@ -155,9 +173,17 @@ public class GCPProjectApiClient {
     return instanceGroup;
   }
 
-  public void checkInstanceTempelate(String instanceTempelateName)
-      throws IOException, GeneralSecurityException, GoogleJsonResponseException {
-    compute.instanceTemplates().get(project, instanceTempelateName).execute();
+  public boolean checkInstanceTempelate(String instanceTempelateName) {
+    try {
+      String filter = "name eq " + instanceTempelateName;
+      InstanceTemplateList instanceTemplateList =
+          compute.instanceTemplates().list(project).setFilter(filter).execute();
+      return instanceTemplateList.getItems() != null;
+    } catch (Exception e) {
+      log.error("Error in retrieving instance template: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
+    }
   }
 
   public void checkInstanceFetching() throws IOException, GeneralSecurityException {
@@ -354,12 +380,20 @@ public class GCPProjectApiClient {
 
   public Compute buildComputeClient(GCPCloudInfo cloudInfo)
       throws GeneralSecurityException, IOException {
-    ObjectMapper mapper = Json.mapper();
-    JsonNode gceCreds = mapper.readTree(cloudInfo.getGceApplicationCredentials());
-    GoogleCredentials credentials =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
-    HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
-    HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+    boolean useHostCredentials =
+        Optional.ofNullable(cloudInfo.getUseHostCredentials()).orElse(false);
+    if (useHostCredentials) {
+      log.info("using host's service account credentials for provisioning the provider");
+      credentials = ComputeEngineCredentials.create();
+    } else {
+      ObjectMapper mapper = Json.mapper();
+      JsonNode gceCreds = mapper.readTree(cloudInfo.getGceApplicationCredentials());
+      credentials =
+          GoogleCredentials.fromStream(
+              new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
+    }
+    requestInitializer = new HttpCredentialsAdapter(credentials);
+    httpTransport = GoogleNetHttpTransport.newTrustedTransport();
     // Create Compute Engine object.
     return new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
         .setApplicationName("")
@@ -518,5 +552,236 @@ public class GCPProjectApiClient {
             .update(project, region, backendServiceName, backendService)
             .execute();
     operationPoller.waitForOperationCompletion(response);
+  }
+
+  public List<String> checkTagsExistence(
+      List<String> firewallTagsList, String vpcNetwork, String vpcProject) {
+    try {
+      String networkSelfLink = String.format(GCPUtil.NETWORK_SELFLINK, vpcProject, vpcNetwork);
+      String pageToken = null;
+      String filter = "(network eq " + networkSelfLink + ")(disabled eq false)";
+      Compute.Firewalls.List listFirewallsRequest = compute.firewalls().list(vpcProject);
+      listFirewallsRequest.setFilter(filter);
+      do {
+        if (pageToken != null) {
+          listFirewallsRequest.setPageToken(pageToken);
+        }
+        FirewallList firewallList = listFirewallsRequest.execute();
+        if (firewallList.getItems() != null) {
+          // Filter out rules with null target tags
+          List<String> allTags =
+              firewallList.getItems().stream()
+                  .filter(rule -> rule.getTargetTags() != null)
+                  .flatMap(
+                      rule -> rule.getTargetTags().stream()) // Flatten target tags from all rules
+                  .distinct() // Remove duplicates
+                  .collect(Collectors.toList());
+          firewallTagsList.removeAll(allTags); // Clear the list
+        }
+        pageToken = firewallList.getNextPageToken();
+      } while (!firewallTagsList.isEmpty() && pageToken != null);
+      log.info("Sucessfully fetched all firewall rules");
+
+      return firewallTagsList;
+    } catch (Exception e) {
+      log.error("Error in retrieving tags: ", e);
+      String errorMsg = "Error in retrieving tags [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public boolean checkVpcExistence(String vpcProject, String vpcNetwork) {
+    try {
+      String filter = "name eq " + vpcNetwork;
+      NetworkList network = compute.networks().list(vpcProject).setFilter(filter).execute();
+      return network.getItems() != null;
+    } catch (Exception e) {
+      log.error("Error in retrieving vpc: ", e);
+      String errorMsg = "Error in retrieving vpc [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public List<String> testIam(List<String> reqPermissions) {
+    try {
+      CloudResourceManager crmService =
+          new CloudResourceManager.Builder(
+                  httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
+              .setApplicationName("")
+              .build();
+
+      TestIamPermissionsRequest request =
+          new TestIamPermissionsRequest().setPermissions(reqPermissions);
+      TestIamPermissionsResponse response =
+          crmService.projects().testIamPermissions(project, request).execute();
+      // Returns the list of granted permissions from the list of requested permissions
+      List<String> grantedPermissions = response.getPermissions();
+      if (grantedPermissions != null && !grantedPermissions.isEmpty()) {
+        List<String> missingPermissions =
+            reqPermissions.stream()
+                .filter(p -> !grantedPermissions.contains(p))
+                .collect(Collectors.toList());
+        return missingPermissions;
+      }
+      return reqPermissions;
+    } catch (Exception e) {
+      log.error("Error in testing permissions: ", e);
+      String errorMsg = "Error in testing permissions of the SA [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public void checkImageExistence(String imageSelflink) {
+    String imageName = imageSelflink.substring(imageSelflink.lastIndexOf("/") + 1);
+    String imageProject = Util.extractRegexValue(imageSelflink, "projects/(.*?)/");
+    try {
+      // Validate existence in the specified image project
+      compute.images().get(imageProject, imageName).execute();
+    } catch (Exception e) {
+      log.error("Error in retrieving images: ", e);
+      String errorMsg = "Error in retrieving images [check logs for more info]";
+      if (e instanceof GoogleJsonResponseException) {
+        errorMsg =
+            String.format("The resource image/%s is not found in the given GCP project", imageName);
+      }
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public void validateSubnet(
+      String regionCode, String subnet, String vpcNetwork, String vpcProject) {
+    String errorMsg;
+    try {
+      String filter = "name eq " + subnet;
+      SubnetworkList subnetworks =
+          compute.subnetworks().list(vpcProject, regionCode).setFilter(filter).execute();
+      if (subnetworks.getItems() == null) {
+        errorMsg =
+            String.format(
+                "The resource subnet/%s is not found in the given GCP project/region", subnet);
+        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      }
+
+      // if subnet exists, check if it is associated to the VPC
+      String networkUrl = subnetworks.getItems().get(0).get("network").toString();
+      // ex: networkURL:
+      // https://www.googleapis.com/compute/v1/projects/<p-name>/global/networks/<n-name>
+      if (StringUtils.isEmpty(networkUrl)
+          || !networkUrl.substring(networkUrl.lastIndexOf("/") + 1).equals(vpcNetwork)) {
+        errorMsg = String.format("The subnet/%s is not associated with the given VPC", subnet);
+        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Error in retrieving subnets: ", e);
+      errorMsg = "Error in retrieving subnets [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public List<Firewall> getFirewallRules(String filter, String vpcProject) {
+    List<Firewall> firewalls = new ArrayList<>();
+    try {
+      Compute.Firewalls.List request = compute.firewalls().list(vpcProject);
+
+      // Optional: Add filter criteria if provided
+      if (StringUtils.isNotEmpty(filter)) {
+        request.setFilter(filter);
+      }
+      FirewallList response;
+      do {
+        response = request.execute();
+        if (response.getItems() == null) {
+          continue;
+        }
+        for (Firewall firewall : response.getItems()) {
+          firewalls.add(firewall);
+        }
+        request.setPageToken(response.getNextPageToken());
+      } while (response.getNextPageToken() != null);
+      log.info("Sucessfully fetched all firewall rules");
+      return firewalls;
+    } catch (Exception e) {
+      log.error("Error in retrieving firewall rules: ", e);
+      String errorMsg = "Error in retrieving firewall rules [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  /*
+   * FirewallPolicy object looks like:
+   * {"kind": "compute#firewallPolicy",
+   * "id": "651******077",
+   * "creationTimestamp": "2024-02-14T23:14:58.536-08:00",
+   * "name": "firewall-policy",
+   * "description": "Created for GCP Provider Validation",
+   * "rules": [
+   *  {
+   *    "kind": "compute#firewallPolicyRule",
+   *    "description": "Exclude communication ....",
+   *    "priority": 1000,
+   *    "match": {
+   *      "destIpRanges": [
+   *        "10.0.0.0/8"
+   *      ],
+   *      "layer4Configs": [
+   *        {
+   *          "ipProtocol": "all"
+   *        }
+   *      ]},
+   *    "action": "goto_next",
+   *    "direction": "EGRESS",
+   *    "enableLogging": false,
+   *    "ruleTupleCount": 4
+   *  }],
+   * "fingerprint": "od7ks1hJI=",
+   * "selfLink":
+   * "https://www.googleapis.com/compute/v1/projects/yugabyte/global/firewallPolicies/policy",
+   * "selfLinkWithId":
+   * "https://www.googleapis.com/compute/v1/projects/yugabyte/global/firewallPolicies/651***648",
+   * "associations": [
+   *   {
+   *     "name": "projects/yugabyte/global/networks/test",
+   *     "attachmentTarget":
+   * "https://www.googleapis.com/compute/v1/projects/yugabyte/global/networks/test"
+   *   }],
+   * "ruleTupleCount": 22}
+   */
+  public FirewallPolicy getNetworkFirewallPolicy(String vpcNetwork, String vpcProject) {
+    FirewallPolicy policy = null;
+    try {
+      String filter = "name eq " + vpcNetwork;
+      NetworkList network = compute.networks().list(vpcProject).setFilter(filter).execute();
+      if (network.getItems() != null) {
+        Object firewallPolicy = network.getItems().get(0).get("firewallPolicy");
+        if (firewallPolicy != null) {
+          String firewallPolicyName =
+              firewallPolicy.toString().substring(firewallPolicy.toString().lastIndexOf("/") + 1);
+          policy = compute.networkFirewallPolicies().get(vpcProject, firewallPolicyName).execute();
+          return policy;
+        }
+      }
+      return policy;
+    } catch (Exception e) {
+      log.error("Error in retrieving firewall policy: ", e);
+      String errorMsg = "Error in retrieving firewall policy [check logs for more info]";
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+  }
+
+  public String getNetworkFirewallPolicyEnforcementOrder(String vpcProject, String vpcNetwork) {
+    if (checkVpcExistence(vpcProject, vpcNetwork)) {
+      try {
+        Network network = compute.networks().get(vpcProject, vpcNetwork).execute();
+        return network.getNetworkFirewallPolicyEnforcementOrder();
+      } catch (Exception e) {
+        log.error("Error in retrieving firewall policy enforcement order: ", e);
+        String errorMsg =
+            "Error in retrieving firewall policy enforcement order [check logs for more info]";
+        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      }
+    }
+    return "";
   }
 }

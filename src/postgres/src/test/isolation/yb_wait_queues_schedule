@@ -10,3 +10,4 @@ test: yb-fk-row-locking
 test: yb-user-managed-constraint
 test: yb-fk-relationship
 test: yb-check-constraint-locking
+test: yb-insert-conflict-do-nothing-2

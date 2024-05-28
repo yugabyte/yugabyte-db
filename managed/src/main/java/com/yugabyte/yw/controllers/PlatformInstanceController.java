@@ -14,6 +14,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -45,6 +47,8 @@ public class PlatformInstanceController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceController.class);
 
   @Inject private PlatformReplicationManager replicationManager;
+
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @Inject CustomerTaskManager taskManager;
 
@@ -139,6 +143,9 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instanceToDelete.get().getIsLocal()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
     }
+
+    // Clear metrics for remote instance
+    replicationManager.clearMetrics(instanceToDelete.get());
 
     auditService()
         .createAuditEntry(
@@ -256,18 +263,9 @@ public class PlatformInstanceController extends AuthenticatedController {
             instanceUUID.toString(),
             Audit.ActionType.Promote);
 
-    // Background thread to restart YBA
-    Thread shutdownThread =
-        new Thread(
-            () -> {
-              try {
-                Thread.sleep(5000);
-                System.exit(0);
-              } catch (InterruptedException e) {
-                LOG.warn("Interrupted during restart.");
-              }
-            });
-    shutdownThread.start();
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 0) {
+      Util.shutdownYbaProcess(5);
+    }
     return ok();
   }
 }

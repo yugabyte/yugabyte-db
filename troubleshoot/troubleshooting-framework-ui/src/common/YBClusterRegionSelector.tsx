@@ -1,7 +1,6 @@
 import { MenuItem, makeStyles, Divider } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBSelect } from './YBSelect';
-import { isNonEmptyArray, isNonEmptyString } from '../helpers/objectUtils';
+import { YBSelect, isNonEmptyArray, isNonEmptyString } from '@yugabytedb/ui-components';
 import { ALL_REGIONS } from '../helpers/constants';
 
 import treeIcon from '../assets/tree-icon.svg';
@@ -82,15 +81,16 @@ export const ClusterRegionSelector = ({
     const primaryMapValueObject = primaryMapValues.next().value;
     const primaryCluster = primaryMapValueObject.cluster;
     const primaryClusterRegions = primaryMapValueObject.regions;
+    const primaryClusterUuid = primaryMapValueObject.uuid;
 
     // Add Primary Zones and Nodes
     if (isNonEmptyString(primaryCluster)) {
       renderedItems.push(
         <MenuItem
-          key={primaryCluster}
-          value={primaryCluster}
+          key={primaryClusterUuid}
+          value={primaryClusterUuid}
           onClick={(e: any) => {
-            onClusterRegionSelected(true, false, primaryCluster, true);
+            onClusterRegionSelected(true, false, primaryClusterUuid, true);
           }}
           className={clsx(classes.menuItem, classes.boldText)}
         >
@@ -129,14 +129,15 @@ export const ClusterRegionSelector = ({
       const asyncMapValueObject = asyncMapValues.next().value;
       const asyncCluster = asyncMapValueObject.cluster;
       const asyncClusterRegions = asyncMapValueObject.regions;
+      const asyncClusterUuid = asyncMapValueObject.uuid;
 
       if (isNonEmptyString(asyncCluster)) {
         renderedItems.push(
           <MenuItem
-            key={asyncCluster}
-            value={asyncCluster}
+            key={asyncClusterUuid}
+            value={asyncClusterUuid}
             onClick={(e: any) => {
-              onClusterRegionSelected(true, false, asyncCluster, true);
+              onClusterRegionSelected(true, false, asyncClusterUuid, true);
             }}
             className={clsx(classes.menuItem, classes.boldText)}
           >

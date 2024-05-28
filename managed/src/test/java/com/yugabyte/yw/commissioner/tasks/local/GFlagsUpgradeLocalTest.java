@@ -3,9 +3,15 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTask;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.LocalNodeManager;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -13,14 +19,18 @@ import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
@@ -33,7 +43,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   @Test
-  public void testNonRestartUpgrade() throws InterruptedException {
+  public void testNonRestartAndNonRollingUpgrade() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = new SpecificGFlags();
     Universe universe = createUniverse(userIntent);
@@ -52,20 +62,12 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     compareGFlags(universe);
     verifyYSQL(universe);
     verifyPayload();
-  }
-
-  @Test
-  public void testNonRollingUpgrade() throws InterruptedException {
-    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
-    userIntent.specificGFlags = new SpecificGFlags();
-    Universe universe = createUniverse(userIntent);
-    initYSQL(universe);
-    SpecificGFlags specificGFlags =
+    specificGFlags =
         SpecificGFlags.construct(
-            Collections.singletonMap("max_log_size", "1805"),
-            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+            Collections.singletonMap("max_log_size", "1806"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86313"));
     universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
-    TaskInfo taskInfo =
+    taskInfo =
         doGflagsUpgrade(
             universe, UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE, specificGFlags, null);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
@@ -133,11 +135,145 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
+  // @Test
+  // Current db version doesn't support that api, so will uncomment later
+  public void testNodesAreSafeToTakeDownFails() throws InterruptedException, IOException {
+    // So that we will do only one check.
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags("TEST_set_tablet_follower_lag_ms", "20000");
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    NodeDetails node = universe.getNodes().iterator().next();
+    LocalNodeManager.NodeInfo nodeInfo = localNodeManager.getNodeInfo(node);
+    localNodeManager.killProcess(node.getNodeName(), UniverseTaskBase.ServerType.MASTER);
+    // Check that it fails (one master is absent)
+    doGflagsUpgrade(
+        universe,
+        UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+        specificGFlags,
+        null,
+        TaskInfo.State.Failure,
+        "Nodes are not safe to take down");
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // Verify that it failed before locking
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    localNodeManager.startProcessForNode(userIntent, UniverseTaskBase.ServerType.MASTER, nodeInfo);
+
+    // Now kill tserver
+    localNodeManager.killProcess(node.getNodeName(), UniverseTaskBase.ServerType.TSERVER);
+    // Check that it fails
+    doGflagsUpgrade(
+        universe,
+        UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+        specificGFlags,
+        null,
+        TaskInfo.State.Failure,
+        "Nodes are not safe to take down");
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // Verify that it failed before locking
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    localNodeManager.startProcessForNode(userIntent, UniverseTaskBase.ServerType.TSERVER, nodeInfo);
+
+    // Too small max follower lag - might fail
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.followerLagMaxThreshold.getKey(), "10s");
+    doGflagsUpgrade(
+        universe,
+        UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+        specificGFlags,
+        null,
+        TaskInfo.State.Failure,
+        "Nodes are not safe to take down");
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // Verify that it failed before locking
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+
+    // Revert setting
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.followerLagMaxThreshold.getKey(), "30s");
+
+    // Now it should be successful
+    doGflagsUpgrade(
+        universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
+    compareGFlags(universe);
+
+    verifyYSQL(universe);
+  }
+
+  // @Test
+  // Current db version doesn't support that api, so will uncomment later
+  public void testUpgradeFailsDuringExecution() throws InterruptedException, IOException {
+    // So that we will do only one check.
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "5s");
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    // Upgrading only tservers
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            new HashMap<>(), Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+
+    CommissionerBaseTest.setPausePosition(11);
+    GFlagsUpgradeParams gFlagsUpgradeParams =
+        getUpgradeParams(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, GFlagsUpgradeParams.class);
+    gFlagsUpgradeParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    UUID taskID =
+        upgradeUniverseHandler.upgradeGFlags(
+            gFlagsUpgradeParams, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
+    CommissionerBaseTest.waitForTaskPaused(taskID, commissioner);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskID);
+    String processedNodeName =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == TaskInfo.State.Success)
+            .filter(t -> t.getTaskType() == TaskType.SetNodeState)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .findFirst()
+            .get();
+
+    NodeDetails anotherNode =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.getNodeName().equals(processedNodeName))
+            .findFirst()
+            .get();
+
+    localNodeManager.killProcess(anotherNode.getNodeName(), UniverseTaskBase.ServerType.TSERVER);
+    CommissionerBaseTest.clearAbortOrPausePositions();
+
+    commissioner.resumeTask(taskID);
+    taskInfo = waitForTask(taskID);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertThat(getAllErrorsStr(taskInfo), containsString("Nodes are not safe to take down"));
+  }
+
   protected TaskInfo doGflagsUpgrade(
       Universe universe,
       UpgradeTaskParams.UpgradeOption upgradeOption,
       SpecificGFlags specificGFlags,
       SpecificGFlags rrGflags)
+      throws InterruptedException {
+    return doGflagsUpgrade(
+        universe, upgradeOption, specificGFlags, rrGflags, TaskInfo.State.Success, null);
+  }
+
+  protected TaskInfo doGflagsUpgrade(
+      Universe universe,
+      UpgradeTaskParams.UpgradeOption upgradeOption,
+      SpecificGFlags specificGFlags,
+      SpecificGFlags rrGflags,
+      TaskInfo.State expectedState,
+      String expectedFailMessage)
       throws InterruptedException {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     GFlagsUpgradeParams gFlagsUpgradeParams =
@@ -152,8 +288,10 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
                 gFlagsUpgradeParams,
                 customer,
                 Universe.getOrBadRequest(universe.getUniverseUUID())));
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-
+    assertEquals(expectedState, taskInfo.getTaskState());
+    if (expectedFailMessage != null) {
+      assertThat(getAllErrorsStr(taskInfo), containsString(expectedFailMessage));
+    }
     return taskInfo;
   }
 
@@ -168,6 +306,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   private void compareGFlags(Universe universe) {
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     for (NodeDetails node : universe.getNodes()) {
       UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
       for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
@@ -179,9 +318,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         gflags.forEach(
             (k, v) -> {
               String actual = varz.getOrDefault(k, "?????");
-              assertEquals("Compare in memory gflags", v, actual);
+              assertEquals("Compare in memory gflag " + k, v, actual);
               String onDisk = gflagsOnDisk.getOrDefault(k, "?????");
-              assertEquals("Compare on disk gflags", v, onDisk);
+              assertEquals("Compare on disk gflag " + k, v, onDisk);
             });
       }
     }

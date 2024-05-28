@@ -121,6 +121,8 @@
 
 /* Yugabyte includes */
 #include "executor/nodeYbBatchedNestloop.h"
+#include "executor/nodeYbBitmapIndexscan.h"
+#include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeYbSeqscan.h"
 #include "pg_yb_utils.h"
 
@@ -241,9 +243,19 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 														   estate, eflags);
 			break;
 
+		case T_YbBitmapIndexScan:
+			result = (PlanState *) ExecInitYbBitmapIndexScan((YbBitmapIndexScan *) node,
+														   estate, eflags);
+			break;
+
 		case T_BitmapHeapScan:
 			result = (PlanState *) ExecInitBitmapHeapScan((BitmapHeapScan *) node,
 														  estate, eflags);
+			break;
+
+		case T_YbBitmapTableScan:
+			result = (PlanState *) ExecInitYbBitmapTableScan((YbBitmapTableScan *) node,
+															 estate, eflags);
 			break;
 
 		case T_TidScan:
@@ -540,6 +552,11 @@ MultiExecProcNode(PlanState *node)
 			result = MultiExecBitmapIndexScan((BitmapIndexScanState *) node);
 			break;
 
+		case T_YbBitmapIndexScanState:
+			result = MultiExecYbBitmapIndexScan(
+				(YbBitmapIndexScanState *) node);
+			break;
+
 		case T_BitmapAndState:
 			result = MultiExecBitmapAnd((BitmapAndState *) node);
 			break;
@@ -553,6 +570,13 @@ MultiExecProcNode(PlanState *node)
 			result = NULL;
 			break;
 	}
+
+	/*
+	 * Specifically this is required after the MultiExecBitmapIndexScan, but it
+	 * doesn't hurt to call it here after any of the above.
+	 */
+	if (IsYugaByteEnabled() && node->instrument)
+		YbUpdateSessionStats(&node->instrument->yb_instr);
 
 	return result;
 }
@@ -663,8 +687,16 @@ ExecEndNode(PlanState *node)
 			ExecEndBitmapIndexScan((BitmapIndexScanState *) node);
 			break;
 
+		case T_YbBitmapIndexScanState:
+			ExecEndYbBitmapIndexScan((YbBitmapIndexScanState *) node);
+			break;
+
 		case T_BitmapHeapScanState:
 			ExecEndBitmapHeapScan((BitmapHeapScanState *) node);
+			break;
+
+		case T_YbBitmapTableScanState:
+			ExecEndYbBitmapTableScan((YbBitmapTableScanState *) node);
 			break;
 
 		case T_TidScanState:

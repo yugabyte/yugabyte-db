@@ -421,7 +421,7 @@ public class ReleaseManager {
   }
 
   public List<String> getLocalReleaseVersions() {
-    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       return new ArrayList<String>(getLocalReleases().keySet());
     } else {
       // Get the version of every release that has at least 1 "ReleaseLocalFile" artifact
@@ -627,7 +627,9 @@ public class ReleaseManager {
     String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
-        String releasePath = appConfig.getString(YB_RELEASES_PATH);
+        Set<String> currentVersions =
+            Release.getAll().stream().map(r -> r.getVersion()).collect(Collectors.toSet());
+        copyReleasesFromDockerRelease(ybReleasesPath, currentVersions);
         List<ReleaseLocalFile> currentLocalFiles = ReleaseLocalFile.getLocalFiles();
         Set<String> currentFilePaths =
             Sets.newHashSet(
@@ -635,42 +637,19 @@ public class ReleaseManager {
                     .map(rlf -> rlf.getLocalFilePath())
                     .collect(Collectors.toList()));
         try {
-          Files.walk(Paths.get(releasePath))
+          // x86/arm builds
+          Files.walk(Paths.get(ybReleasesPath))
               .filter(
                   getPackageFilter(
                       "glob:**yugabyte*{centos,alma,linux,el}*{x86_64,aarch64}.tar.gz"))
               .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
-              .forEach(
-                  p -> {
-                    ReleasesUtils.ExtractedMetadata metadata = null;
-                    releasesUtils.metadataFromPath(p);
-                    try {
-                      metadata = releasesUtils.metadataFromPath(p);
-                      if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
-                        localReleaseNameValidation(metadata.version, null, p.toString());
-                      } else {
-                        localReleaseNameValidation(metadata.version, p.toString(), null);
-                      }
-                    } catch (RuntimeException e) {
-                      log.error(
-                          "local release " + p.getFileName().toString() + " failed validation");
-                      // continue forEach
-                      return;
-                    }
-                    ReleaseLocalFile rlf = ReleaseLocalFile.create(p.toString());
-                    ReleaseArtifact artifact =
-                        ReleaseArtifact.create(
-                            metadata.sha256,
-                            metadata.platform,
-                            metadata.architecture,
-                            rlf.getFileUUID());
-                    Release release = Release.getByVersion(metadata.version);
-                    if (release == null) {
-                      release = Release.create(metadata.version, metadata.release_type);
-                    }
-                    release.addArtifact(artifact);
-                  });
-        } catch (IOException e) {
+              .forEach(p -> createLocalRelease(p));
+          // helm charts
+          Files.walk(Paths.get(ybReleasesPath))
+              .filter(ybChartFilter)
+              .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
+              .forEach(p -> createLocalRelease(p));
+        } catch (Exception e) {
           log.error("failed to read local releases", e);
         }
 
@@ -709,20 +688,43 @@ public class ReleaseManager {
     }
   }
 
+  private void createLocalRelease(Path p) {
+    ReleasesUtils.ExtractedMetadata metadata = null;
+    try {
+      log.debug("checking local file {}", p.toString());
+      metadata = releasesUtils.metadataFromPath(p);
+      String rawVersion = metadata.version.split("-")[0];
+      if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
+        localReleaseNameValidation(rawVersion, null, p.toString());
+      } else {
+        localReleaseNameValidation(rawVersion, p.toString(), null);
+      }
+    } catch (RuntimeException e) {
+      log.error(
+          "local release "
+              + p.getFileName().toString()
+              + " failed validation: "
+              + e.getLocalizedMessage());
+      return;
+    }
+    ReleaseLocalFile rlf = ReleaseLocalFile.create(p.toString());
+    ReleaseArtifact artifact =
+        ReleaseArtifact.create(
+            metadata.sha256, metadata.platform, metadata.architecture, rlf.getFileUUID());
+    Release release = Release.getByVersion(metadata.version);
+    if (release == null) {
+      release = Release.create(metadata.version, metadata.release_type, metadata.releaseTag);
+    }
+    release.addArtifact(artifact);
+  }
+
   private void importLocalLegacyReleases(
       String ybReleasePath, String ybHelmChartPath, String ybReleasesPath) {
     Map<String, Object> currentReleases = getReleaseMetadata();
 
     // Local copy pattern to account for the presence of characters prior to the file name itself.
     // (ensures that all local releases get imported prior to version checking).
-    Pattern ybPackagePatternCopy =
-        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
-
-    Pattern ybHelmChartPatternCopy =
-        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
-
-    copyFiles(ybReleasePath, ybReleasesPath, ybPackagePatternCopy, currentReleases.keySet());
-    copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPatternCopy, currentReleases.keySet());
+    copyReleasesFromDockerRelease(ybReleasesPath, currentReleases.keySet());
     Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
     localReleases.keySet().removeAll(currentReleases.keySet());
     log.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
@@ -1081,6 +1083,17 @@ public class ReleaseManager {
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
+  private void copyReleasesFromDockerRelease(String destinationDir, Set<String> skipVersions) {
+    String ybReleasePath = appConfig.getString("yb.docker.release");
+    String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
+    Pattern ybPackagePatternCopy =
+        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
+    Pattern ybHelmChartPatternCopy =
+        Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
+    copyFiles(ybReleasePath, destinationDir, ybPackagePatternCopy, skipVersions);
+    copyFiles(ybHelmChartPath, destinationDir, ybHelmChartPatternCopy, skipVersions);
+  }
+
   /**
    * This method copies release files that match a specific regex to a destination directory.
    *
@@ -1144,6 +1157,27 @@ public class ReleaseManager {
         return null;
       }
       return releaseContainerFactory.newReleaseContainer(metadataFromObject(metadata));
+    }
+  }
+
+  public Map<String, ReleaseContainer> getAllReleaseContainersByVersion() {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      return Release.getAll().stream()
+          .collect(
+              Collectors.toMap(
+                  release ->
+                      release.getReleaseTag() == null
+                          ? release.getVersion()
+                          : String.format("%s-%s", release.getVersion(), release.getReleaseTag()),
+                  release -> releaseContainerFactory.newReleaseContainer(release)));
+    } else {
+      return getReleaseMetadata().entrySet().stream()
+          .collect(
+              Collectors.toMap(
+                  entry -> entry.getKey(),
+                  entry ->
+                      releaseContainerFactory.newReleaseContainer(
+                          metadataFromObject(entry.getValue()))));
     }
   }
 

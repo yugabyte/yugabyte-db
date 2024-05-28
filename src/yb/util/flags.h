@@ -133,6 +133,7 @@ SetFlagResult SetFlag(
 // Flags are set to a dummy value
 #define DEPRECATE_FLAG(type, name, date_mm_yyyy) \
   namespace deprecated_flag_do_not_use { \
+  using std::string; \
   type default_##name; \
   DEFINE_RUNTIME_##type(name, default_##name, "Deprecated"); \
   _TAG_FLAG(name, ::yb::FlagTag::kDeprecated, deprecated); \

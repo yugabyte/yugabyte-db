@@ -71,6 +71,13 @@
  */
 #define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
 
+/*
+ * TODO : To avoid expensive seek for a key, DocDB performs a series of nexts
+ * in hope to find the key among the following tuples. This configurable
+ * parameter should be exposed in PG code to be used here.
+ */
+#define MAX_NEXTS_TO_AVOID_SEEK 2
+
 typedef enum
 {
 	CONSTRAINT_EXCLUSION_OFF,	/* do not use c_e */
@@ -130,6 +137,7 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
+extern PGDLLIMPORT bool yb_enable_parallel_append;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);
@@ -146,6 +154,9 @@ extern void cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								  ParamPathInfo *param_info,
 								  Path *bitmapqual, double loop_count);
+extern void cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
 extern void cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec);

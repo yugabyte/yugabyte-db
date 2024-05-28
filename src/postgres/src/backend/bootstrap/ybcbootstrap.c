@@ -132,6 +132,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   false /* is_matview */,
 	                                   InvalidOid /* pg_table_oid */,
 	                                   InvalidOid /* old_relfilenode_oid */,
+	                                   false /* is_truncate */,
 	                                   &yb_stmt));
 
 	/* Add all key columns first, then the regular columns */

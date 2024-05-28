@@ -201,7 +201,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try setting a flag which isn't runtime-modifiable
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
@@ -211,7 +211,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try again, but with the force flag.
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     req.set_force(true);
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
@@ -859,7 +859,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
       YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
-      0 /* schema_version */, partition_schema, "" /* pg_table_id */);
+      0 /* schema_version */, partition_schema, "" /* pg_table_id */,
+      tablet::SkipTableTombstoneCheck::kFalse);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

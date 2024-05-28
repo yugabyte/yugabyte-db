@@ -665,18 +665,10 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * We do not need CheckVarSlotCompatibility here; that was taken
 			 * care of at compilation time.  But see EEOP_INNER_VAR comments.
 			 */
-			/* Hacky way to allow YSQL upgrade INSERTs to set oid column. */
-			if (IsYsqlUpgrade && resultnum == ObjectIdAttributeNumber - 1)
-			{
-				resultslot->tts_yb_insert_oid = DatumGetObjectId(scanslot->tts_values[attnum]);
-			}
-			else
-			{
-				Assert(attnum >= 0 && attnum < scanslot->tts_nvalid);
-				Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
-				resultslot->tts_values[resultnum] = scanslot->tts_values[attnum];
-				resultslot->tts_isnull[resultnum] = scanslot->tts_isnull[attnum];
-			}
+			Assert(attnum >= 0 && attnum < scanslot->tts_nvalid);
+			Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
+			resultslot->tts_values[resultnum] = scanslot->tts_values[attnum];
+			resultslot->tts_isnull[resultnum] = scanslot->tts_isnull[attnum];
 
 			EEO_NEXT();
 		}
@@ -685,17 +677,9 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			int			resultnum = op->d.assign_tmp.resultnum;
 
-			/* Hacky way to allow YSQL upgrade INSERTs to set oid column. */
-			if (IsYsqlUpgrade && resultnum == ObjectIdAttributeNumber - 1)
-			{
-				resultslot->tts_yb_insert_oid = DatumGetObjectId(state->resvalue);
-			}
-			else
-			{
-				Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
-				resultslot->tts_values[resultnum] = state->resvalue;
-				resultslot->tts_isnull[resultnum] = state->resnull;
-			}
+			Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
+			resultslot->tts_values[resultnum] = state->resvalue;
+			resultslot->tts_isnull[resultnum] = state->resnull;
 
 			EEO_NEXT();
 		}

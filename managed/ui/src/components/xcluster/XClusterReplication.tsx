@@ -7,7 +7,6 @@ import { Typography } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
-import { ConfigureReplicationLagAlertModal } from './ConfigureMaxLagTimeModal';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
 import { api, xClusterQueryKey } from '../../redesign/helpers/api';
@@ -70,9 +69,6 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
   const showAddClusterReplicationModal = () => {
     dispatch(openDialog('addClusterReplicationModal'));
   };
-  const showConfigureMaxLagTimeModal = () => {
-    dispatch(openDialog('configureMaxLagTimeModal'));
-  };
 
   const hideModal = () => dispatch(closeDialog());
 
@@ -93,17 +89,6 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
           <Row className={styles.configActionsContainer}>
             <Row>
               <RbacValidator
-                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
-                isControl
-              >
-                <YBButton
-                  btnText={t('actionButton.configureReplicationLagAlert')}
-                  btnClass={clsx('btn', styles.setMaxAcceptableLagBtn)}
-                  btnIcon="fa fa-bell-o"
-                  onClick={showConfigureMaxLagTimeModal}
-                />
-              </RbacValidator>
-              <RbacValidator
                 accessRequiredOn={{
                   ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
                   onResource: { UNIVERSE: currentUniverseUUID }
@@ -113,7 +98,13 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
                 <YBTooltip
                   title={
                     shouldDisableCreateXClusterConfig
-                      ? t('actionButton.createXClusterConfig.tooltip.universeLinkedToTxnXCluster')
+                      ? universeHasTxnXCluster
+                        ? t('actionButton.createXClusterConfig.tooltip.universeLinkedToTxnXCluster')
+                        : UnavailableUniverseStates.includes(
+                            getUniverseStatus(universeQuery.data).state
+                          )
+                        ? t('actionButton.createXClusterConfig.tooltip.universeUnavailable')
+                        : ''
                       : ''
                   }
                   placement="top"

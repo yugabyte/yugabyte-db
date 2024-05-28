@@ -78,7 +78,7 @@ var retryTaskCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			fmt.Printf("The task - \"(%s)\" (%s) has been completed\n",
+			logrus.Infof("The task - \"(%s)\" (%s) has been completed\n",
 				formatter.Colorize(currentTask.GetTitle(), formatter.GreenColor),
 				newTaskUUID)
 			tasksCtx := formatter.Context{
@@ -102,7 +102,7 @@ var retryTaskCmd = &cobra.Command{
 			task.Write(tasksCtx, []ybaclient.CustomerTaskData{currentTask})
 
 		}
-		fmt.Println(msg)
+		logrus.Infoln(msg + "\n")
 	},
 }
 

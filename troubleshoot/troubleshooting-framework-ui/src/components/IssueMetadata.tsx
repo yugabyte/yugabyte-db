@@ -2,10 +2,14 @@ import { FC } from 'react';
 import { Box, Divider, Tooltip } from '@material-ui/core';
 import { Link } from 'react-router';
 import _ from 'lodash';
-import { YBButton, YBLabel } from '@yugabytedb/ui-components';
+import {
+  YBButton,
+  YBLabel,
+  YBTimeFormats,
+  formatDatetime,
+  isNonEmptyString
+} from '@yugabytedb/ui-components';
 import { Anomaly, AnomalyCategory, AppName, NodeInfo } from '../helpers/dtos';
-import { isNonEmptyString } from '../helpers/objectUtils';
-import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
 import { useHelperStyles } from './styles';
 
 import LightBulbIcon from '../assets/lightbulb.svg';
@@ -104,13 +108,14 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
 
         <Box mt={2.5} mb={1}>
           <img src={LightBulbIcon} alt="more" className={classes.learnMoreImage} />
-          {'To troubleshoot, '}
           {appName === AppName.YBA ? (
             <Link
               to={`/universes/${universeUuid}/troubleshoot/${troubleshootUUID}`}
               target="_blank"
             >
-              <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
+              <span className={classes.redirectLinkText}>
+                {'To troubleshoot, refer to the dashboard.'}
+              </span>
             </Link>
           ) : (
             <Box>
@@ -119,7 +124,9 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
                 data-testid="PrimaryDashboard-RouteToSecondaryButton"
                 onClick={() => routeToSecondary()}
               >
-                <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
+                <span className={classes.redirectLinkText}>
+                  {'To troubleshoot, refer to the dashboard.'}
+                </span>
               </YBButton>
             </Box>
           )}

@@ -463,6 +463,7 @@ public class NodeAgentPoller {
           iter.remove();
         }
       }
+      nodeAgentClient.cleanupCachedClients();
     } catch (Exception e) {
       log.error("Error in pollerService - " + e.getMessage(), e);
     }

@@ -128,7 +128,7 @@ static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
-static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
+static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 									double yb_estimated_num_nexts,
 									double yb_estimated_num_seeks,
@@ -168,7 +168,10 @@ static void
 YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 									 const YbInstrumentation *instr);
 static void YbExplainDistinctPrefixLen(
-	int yb_distinct_prefixlen, ExplainState *es);
+	PlanState *planstate, List *indextlist, int yb_distinct_prefixlen,
+	ExplainState *es, List *ancestors);
+static void show_ybtidbitmap_info(YbBitmapTableScanState *planstate,
+								  ExplainState *es);
 
 typedef enum YbStatLabel
 {
@@ -1916,6 +1919,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_TidRangeScan:
 		case T_SubqueryScan:
@@ -2097,8 +2101,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_BitmapIndexScan:
 			pname = sname = "Bitmap Index Scan";
 			break;
+		case T_YbBitmapIndexScan:
+			pname = sname = "Bitmap Index Scan";
+			break;
 		case T_BitmapHeapScan:
 			pname = sname = "Bitmap Heap Scan";
+			break;
+		case T_YbBitmapTableScan:
+			pname = sname = "YB Bitmap Table Scan";
 			break;
 		case T_TidScan:
 			pname = sname = "Tid Scan";
@@ -2319,6 +2329,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_YbSeqScan:
 		case T_SampleScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_TidRangeScan:
 		case T_SubqueryScan:
@@ -2364,6 +2375,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			}
 			break;
 		case T_BitmapIndexScan:
+		case T_YbBitmapIndexScan:
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
@@ -2642,7 +2654,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
-				((IndexScan *) plan)->yb_distinct_prefixlen, es);
+				planstate, ((IndexScan *) plan)->indextlist,
+				((IndexScan *) plan)->yb_distinct_prefixlen, es, ancestors);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
@@ -2652,7 +2665,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
@@ -2680,7 +2693,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
-				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
+				planstate, ((IndexOnlyScan *) plan)->indextlist,
+				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es, ancestors);
 			/*
 			 * Storage filter is applied first, so it is output first.
 			 */
@@ -2694,7 +2708,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat("Heap Fetches", NULL,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
@@ -2712,6 +2726,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
 						   "Index Cond", planstate, ancestors, es);
 			break;
+		case T_YbBitmapIndexScan:
+			show_scan_qual(((YbBitmapIndexScan *) plan)->indexqualorig,
+						   "Index Cond", planstate, ancestors, es);
+			show_scan_qual(((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals,
+						   "Storage Index Filter", planstate, ancestors, es);
+			if (es->rpc && es->analyze)
+				show_yb_rpc_stats(planstate, es);
+			break;
 		case T_BitmapHeapScan:
 			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
 						   "Recheck Cond", planstate, ancestors, es);
@@ -2725,6 +2747,45 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->analyze)
 				show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
 			break;
+		case T_YbBitmapTableScan:
+		{
+			YbBitmapTableScanState *bitmapscanstate =
+				(YbBitmapTableScanState *) planstate;
+			YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
+			List *storage_filter = bitmapscanstate->work_mem_exceeded
+				? bitmapplan->fallback_pushdown.quals
+				: bitmapplan->rel_pushdown.quals;
+			List *local_filter = bitmapscanstate->work_mem_exceeded
+				? bitmapplan->fallback_local_quals
+				: plan->qual;
+
+			/* Storage filters are applied first, so they are output first. */
+			if (bitmapscanstate->recheck_required)
+				show_scan_qual(bitmapplan->recheck_pushdown.quals,
+							   "Storage Recheck Cond", planstate, ancestors,
+							   es);
+			show_scan_qual(storage_filter, "Storage Filter", planstate,
+						   ancestors, es);
+
+			if (bitmapscanstate->recheck_required)
+			{
+				show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
+							   planstate, ancestors, es);
+				if (bitmapplan->recheck_local_quals)
+					show_instrumentation_count("Rows Removed by Index Recheck",
+											   2, planstate, es);
+			}
+
+			show_scan_qual(local_filter, "Filter", planstate, ancestors, es);
+			if (local_filter)
+				show_instrumentation_count("Rows Removed by Filter", 1,
+										   planstate, es);
+			if (es->rpc && es->analyze)
+				show_yb_rpc_stats(planstate, es);
+			if (es->analyze)
+				show_ybtidbitmap_info(bitmapscanstate, es);
+			break;
+		}
 		case T_SampleScan:
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
@@ -2741,7 +2802,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			break;
 		case T_YbSeqScan:
 			/*
@@ -2754,7 +2815,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
@@ -2900,7 +2961,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Storage Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			break;
 		case T_CustomScan:
 			{
@@ -3008,13 +3069,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			break;
 		case T_ModifyTable:
 			show_modifytable_info(castNode(ModifyTableState, planstate), ancestors,
 								  es);
 			if (is_yb_rpc_stats_required)
-				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
+				show_yb_rpc_stats(planstate, es);
 			break;
 		case T_Hash:
 			show_hash_info(castNode(HashState, planstate), es);
@@ -4079,18 +4140,42 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 	{
 		long		spacePeakKb = (hinstrument.space_peak + 1023) / 1024;
 
+		/*
+		 * Hash joins have some non-deterministic fields and some deterministic
+		 * fields.
+		 * - Original Hash Buckets and Original Hash Batches are computed at the
+		 *   beginning by ExecChooseHashTableSize.
+		 * - Hash Buckets may be updated based on the number of tuples. This
+		 *   is consistent across multiple runs.
+		 * - Hash Batches and Memory Usage depend on the size of each tuple,
+		 *   which may vary slightly.
+		 */
+		bool		show_variable_fields = !IsYugaByteEnabled() ||
+						!yb_explain_hide_non_deterministic_fields;
+
 		if (es->format != EXPLAIN_FORMAT_TEXT)
 		{
 			ExplainPropertyInteger("Hash Buckets", NULL,
 								   hinstrument.nbuckets, es);
 			ExplainPropertyInteger("Original Hash Buckets", NULL,
 								   hinstrument.nbuckets_original, es);
-			ExplainPropertyInteger("Hash Batches", NULL,
-								   hinstrument.nbatch, es);
+			if (show_variable_fields)
+				ExplainPropertyInteger("Hash Batches", NULL,
+									   hinstrument.nbatch, es);
 			ExplainPropertyInteger("Original Hash Batches", NULL,
 								   hinstrument.nbatch_original, es);
-			ExplainPropertyInteger("Peak Memory Usage", "kB",
-								   spacePeakKb, es);
+			if (show_variable_fields)
+				ExplainPropertyInteger("Peak Memory Usage", "kB",
+									   spacePeakKb, es);
+		}
+		else if (!show_variable_fields)
+		{
+			appendStringInfoSpaces(es->str, es->indent * 2);
+			appendStringInfo(es->str,
+							 "Buckets: %d (originally %d)  Original Batches: %d\n",
+							 hinstrument.nbuckets,
+							 hinstrument.nbuckets_original,
+							 hinstrument.nbatch_original);
 		}
 		else if (hinstrument.nbatch_original != hinstrument.nbatch ||
 				 hinstrument.nbuckets_original != hinstrument.nbuckets)
@@ -4410,6 +4495,21 @@ show_tidbitmap_info(BitmapHeapScanState *planstate, ExplainState *es)
 }
 
 /*
+ * If it's EXPLAIN ANALYZE, show some details about the YBBitmapTableScan node
+ */
+static void
+show_ybtidbitmap_info(YbBitmapTableScanState *planstate, ExplainState *es)
+{
+
+	if (planstate->work_mem_exceeded)
+		ExplainPropertyBool("Exceeded work_mem", true, es);
+
+	if (es->yb_debug && !yb_explain_hide_non_deterministic_fields)
+		ExplainPropertyInteger("Average ybctid Size", "B",
+							   planstate->average_ybctid_bytes, es);
+}
+
+/*
  * If it's EXPLAIN ANALYZE, show instrumentation information for a plan node
  *
  * "which" identifies which instrumentation counter to print
@@ -4717,7 +4817,7 @@ show_wal_usage(ExplainState *es, const WalUsage *usage)
  * Show YB RPC stats.
  */
 static void
-show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
+show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 {
 	YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
 	double nloops = planstate->instrument->nloops;
@@ -4863,6 +4963,7 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_TidRangeScan:
 		case T_ForeignScan:
@@ -6160,15 +6261,56 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
  * --------------
  * Distinct Index Scan
  *       ...
- * 	 Distinct Prefix: <prefix length>
+ * 	 Distinct Keys: <Index Prefix Keys>
  *       ...
  *
  * Adds Distinct Prefix to explain info
  */
 static void
-YbExplainDistinctPrefixLen(int yb_distinct_prefixlen, ExplainState *es)
+YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
+						   int yb_distinct_prefixlen, ExplainState *es,
+						   List *ancestors)
 {
 	if (yb_distinct_prefixlen > 0)
-		ExplainPropertyInteger(
-			"Distinct Prefix", NULL, yb_distinct_prefixlen, es);
+	{
+		/* Print distinct prefix keys. */
+		List		   *context;
+		List		   *result = NIL;
+		StringInfoData	distinct_prefix_key_buf;
+		bool			useprefix;
+		int				keyno;
+		ListCell	   *tlelc;
+
+		initStringInfo(&distinct_prefix_key_buf);
+
+		/* Set up deparsing context */
+		context = set_deparse_context_plan(es->deparse_cxt,
+										   planstate->plan,
+										   ancestors);
+		useprefix = (list_length(es->rtable) > 1 || es->verbose);
+
+		keyno = 0;
+		foreach(tlelc, indextlist)
+		{
+			TargetEntry	*indextle;
+			char 		*exprstr;
+
+			if (keyno >= yb_distinct_prefixlen)
+				break;
+
+			indextle = (TargetEntry *) lfirst(tlelc);
+
+			/* Deparse the expression, showing any top-level cast */
+			exprstr = deparse_expression((Node *) indextle->expr, context,
+										useprefix, true);
+			resetStringInfo(&distinct_prefix_key_buf);
+			appendStringInfoString(&distinct_prefix_key_buf, exprstr);
+			/* Emit one property-list item per key */
+			result = lappend(result, pstrdup(distinct_prefix_key_buf.data));
+
+			keyno++;
+		}
+
+		ExplainPropertyList("Distinct Keys", result, es);
+	}
 }

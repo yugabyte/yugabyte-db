@@ -52,6 +52,7 @@ DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 namespace yb {
 
+using master::GetMasterClusterConfigResponsePB;
 namespace integration_tests {
 
 class MasterHeartbeatITest : public YBTableTestBase {
@@ -146,6 +147,89 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
     return true;
   }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
 }
+
+class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {
+ public:
+  void SetUp() override {
+    // Start the cluster without the universe_uuid generation FLAG to test upgrade.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
+    YBTableTestBase::SetUp();
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  }
+
+  Status GetClusterConfig(GetMasterClusterConfigResponsePB *config_resp) {
+    const auto* master = VERIFY_RESULT(mini_cluster_->GetLeaderMiniMaster());
+    return master->catalog_manager().GetClusterConfig(config_resp);
+  }
+
+  Status ClearUniverseUuid() {
+    for (auto& ts : mini_cluster_->mini_tablet_servers()) {
+      RETURN_NOT_OK(ts->server()->ClearUniverseUuid());
+    }
+    return Status::OK();
+  }
+
+ protected:
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+};
+
+TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
+  GetMasterClusterConfigResponsePB resp;
+  ASSERT_OK(GetClusterConfig(&resp));
+  auto cluster_config_version = resp.cluster_config().version();
+  LOG(INFO) << "Cluster Config version : " << cluster_config_version;
+
+  // Attempt to clear universe uuid. Should fail when it is not set.
+  ASSERT_NOK(ClearUniverseUuid());
+
+  // Enable the flag and wait for heartbeat to propagate the universe_uuid.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = true;
+
+  // Wait for ClusterConfig version to increase.
+  ASSERT_OK(LoggedWaitFor([&]() {
+    if (!GetClusterConfig(&resp).ok()) {
+      return false;
+    }
+
+    if (!resp.cluster_config().has_universe_uuid()) {
+      return false;
+    }
+
+    return true;
+  }, 60s, "Waiting for new universe uuid to be generated"));
+
+  ASSERT_GE(resp.cluster_config().version(), cluster_config_version);
+  LOG(INFO) << "Updated cluster config version:" << resp.cluster_config().version();
+  LOG(INFO) << "Universe UUID:" << resp.cluster_config().universe_uuid();
+
+  // Wait for propagation of universe_uuid.
+  ASSERT_OK(LoggedWaitFor([&]() {
+    for (auto& ts : mini_cluster_->mini_tablet_servers()) {
+      auto uuid_str = ts->server()->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata();
+      if (!uuid_str.ok() || uuid_str.get() != resp.cluster_config().universe_uuid()) {
+        return false;
+      }
+    }
+
+    return true;
+  }, 60s, "Waiting for tservers to pick up new universe uuid"));
+
+  // Verify servers are heartbeating correctly.
+  master::TSDescriptorVector ts_descs;
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+
+  // Artificially generate a fake universe uuid and propagate that by clearing the universe_uuid.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
+
+  // Heartbeats should first fail due to universe_uuid mismatch.
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+
+  // Once t-server instance metadata is cleared, heartbeats should succeed again.
+  ASSERT_OK(ClearUniverseUuid());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+}
+
 
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:

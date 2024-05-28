@@ -22,7 +22,7 @@ A DR configuration consists of the following:
 - a DR primary universe, which serves both reads and writes.
 - a DR replica universe, which can also serve reads.
 
-Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR primary _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
+Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data not yet committed on the DR replica _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all data to be committed on the DR replica before switching over.
 
 The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
@@ -60,7 +60,7 @@ DR further allows for the role of each universe to switch during planned switcho
 
 ## Limitations
 
-- Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 - DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
@@ -68,7 +68,13 @@ DR further allows for the role of each universe to switch during planned switcho
 
     To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
 
-- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported.
+- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
+
+## Upgrading universes in DR
+
+When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
+
+Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
 ## xCluster DR vs xCluster replication
 
@@ -102,7 +108,7 @@ For example, use xCluster replication for the following:
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
 - CQL
 
-Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication configurations are hidden in the **xCluster Replication** tab (and visible only via the **Disaster Recovery** tab).
+Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
 (As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 

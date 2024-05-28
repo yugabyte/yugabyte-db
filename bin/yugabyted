@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import unicode_literals
 
 import argparse
@@ -10,7 +10,6 @@ import os
 import re
 import resource
 import shutil
-from distutils.spawn import find_executable
 import subprocess
 import sys
 import time
@@ -167,6 +166,7 @@ PREFIX = {
     'demo destroy' : "",
     'cert' : "",
     'cert generate_server_certs' : "",
+    'finalize_upgrade' : "",
 }
 
 USAGE = {
@@ -196,6 +196,7 @@ USAGE = {
     'demo destroy' : "yugabyted demo destroy [flags]",
     'cert' : "yugabyted cert [command] [flags]",
     'cert generate_server_certs' : "yugabyted cert generate_server_certs [flag]",
+    'finalize_upgrade': "yugabyted finalize_upgrade [flags]",
 }
 
 EXAMPLE = {
@@ -278,6 +279,11 @@ EXAMPLE = {
                         "# Display point-in-time recovery status for a YugabyteDB cluster:\n" +
                         "yugabyted configure point_in_time_recovery " + \
                         "--status \n\n",
+    'finalize_upgrade': "# Finalize the cluster upgrade process:\n" +
+                         "yugabyted finalize_upgrade\n\n" +
+                        "# Finalize the cluster upgrade by specifying a timeout value for" +
+                         " the YSQL catalog upgrade:\n" +
+                         "yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -294,6 +300,7 @@ EPILOG_SPECIFIC = {
     'cert' : "",
     "backup" : "",
     "restore" : "",
+    "finalize_upgrade" : "",
 }
 
 # YugabyteDB configs.
@@ -310,6 +317,7 @@ DEFAULT_YSQL_METRIC_PORT = 13000
 DEFAULT_YCQL_METRIC_PORT = 12000
 DEFAULT_WEBSERVER_PORT = 7200
 DEFAULT_YUGABYTED_UI_PORT = 15433
+DEFAULT_UPGRADE_YSQL_TIMEOUT = 60000
 DEFAULT_CALLHOME = True
 DEFAULT_YSQL_USER = "yugabyte"
 DEFAULT_YSQL_PASSWORD = "yugabyte"
@@ -336,10 +344,11 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
+PG_PARITY_FLAGS_LIST = [
+    "yb_enable_read_committed_isolation=true",
+    "ysql_enable_read_request_caching=true"
+]
 PG_PARITY_FLAGS_DICT = {
-"allowed_preview_flags_csv": "yb_enable_read_committed_isolation=true,"
-                             "ysql_enable_read_request_caching=true",
-
 "ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
                       "yb_enable_optimizer_statistics=true,"
                       "yb_bnl_batch_size=1024,"
@@ -1043,6 +1052,68 @@ class ControlScript(object):
                 output += ("| {:" + str(15 + extra_len) + "}: {:<49} |\n").format(output_k, v)
             output += "-" * 70 + "\n"
             Output.print_out(output)
+
+    # Finalize YugabyteDB cluster upgrade
+    def finalize_upgrade(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        # Find current YBDB version
+        VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
+        with open(VERSION_METADATA_PATH) as metadata:
+            version_metadata = json.load(metadata)
+            executable_version = version_metadata.get("version_number")
+
+        tserver_addresses = self.get_tserver_addresses()
+
+        # Verify if all nodes were upgraded successfully
+        Output.init_animation("Verifying version compatibility across all nodes...")
+        mismatched_nodes_version = self.verify_all_nodes_version(
+                                tserver_addresses, executable_version)
+
+        if len(mismatched_nodes_version) > 0:
+            mismatched_nodes = ', '.join(mismatched_nodes_version)
+            Output.update_animation("Version compatibility verification failed.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("Error") + ": Version mismatch detected in the " +
+            "following nodes: {}. Please upgrade these".format(mismatched_nodes) +
+            " nodes to version {} and then rerun the".format(executable_version) +
+            Output.make_yellow(" yugabyted finalize_upgrade") + " command."
+        )
+
+        # All nodes match the correct version
+        # Run post-upgrade tasks
+        Output.update_animation("Verified version compatibility across all nodes.")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        upgrade_ysql_timeout = self.configs.temp_data.get("upgrade_ysql_timeout")
+
+        Output.init_animation("Promoting Auto Flags...")
+        if not YBAdminProxy.promote_auto_flags(master_addresses):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "Promote Auto Flags.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Promote auto flags step was successful.")
+
+        Output.update_animation("Successfully Promoted Auto Flags.")
+        Output.init_animation("Upgrading YSQL...")
+        if not YBAdminProxy.upgrade_ysql(master_addresses,
+                                    upgrade_ysql_timeout):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "Upgrade YSQL.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Upgrade YSQL step was successful.")
+
+        Output.update_animation("Successfully Upgraded YSQL.")
+        status_details = []
+        status_display_info = {}
+        final_status = "Post-upgrade tasks completed successfully."
+        status_details = [
+                    (Output.make_yellow("Status"), final_status)]
+        status_display_info[final_status] = Output.make_green
+        status_details.append((Output.make_yellow("Version"), executable_version))
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
@@ -1931,8 +2002,8 @@ class ControlScript(object):
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = find_executable('ntpd')
-        chrony_check = find_executable('chronyd')
+        ntp_check = shutil.which('ntpd')
+        chrony_check = shutil.which('chronyd')
         if not ntp_check and not chrony_check:
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
@@ -2364,6 +2435,8 @@ class ControlScript(object):
                                                             get("master_webserver_port")),
                                 "-tserver_ui_port={}".format(self.configs.saved_data.
                                                             get("tserver_webserver_port")),
+                                "-data_dir={}".format(self.configs.saved_data.
+                                                            get("data_dir")),
                                 "-warnings={}".format("|".join(warnings_for_ui))
                             ]
                         if self.configs.saved_data.get("secure"):
@@ -2750,6 +2823,26 @@ class ControlScript(object):
 
         master_flags = self.configs.saved_data.get("master_flags","")
 
+        if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = master_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
+
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if master_flags and not master_flags.endswith(","):
+                        master_flags += ","
+                    # Add the missing flag to the master flags
+                    master_flags += flag
+
+            # Update the master_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["master_flags"] = master_flags
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
@@ -2832,6 +2925,23 @@ class ControlScript(object):
         tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
         if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = tserver_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
+
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    # Add the missing flag to the tserver flags
+                    tserver_flags += flag
+
+            # Process CSV flags from PG_PARITY_FLAGS_DICT
             for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
                 # If pg_parity_flag present in tserver_flags
                 # Extract the value and append any default missing pg_parity_flag_values
@@ -3469,6 +3579,46 @@ class ControlScript(object):
                 "http://{}/api/v1/tablet-servers: {}".format(master_hostport, err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
                 "present at {} is not reachable.".format(master_hostport))
+
+    # Get tserver addresses
+    def get_tserver_addresses(self):
+        leader_master = self.get_leader_master().split(':')[0]
+        leader_master_http_endpoint = "{}:{}".format(
+            leader_master, self.configs.saved_data.get("master_webserver_port"))
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+
+        tserver_addresses = []
+        for uuid in all_tserver_info:
+            tservers = all_tserver_info[uuid]
+            for tserver in tservers:
+                tserver_addresses.append(tserver)
+
+        return tserver_addresses
+
+    # Get node version
+    def get_node_version(self, tserver_hostport):
+        try:
+            versionURL = "http://{}/api/v1/version".format(tserver_hostport)
+            response = urlopen(Request(versionURL))
+            jsonResponse = json.load(response)
+            return jsonResponse.get("version_number")
+
+        except HTTPError as http_err:
+            Output.log_error_and_exit("HTTP error occurred while fetching version from " +
+                                    "tserver {}: {}".format(tserver_hostport, http_err))
+        except Exception as err:
+            Output.log_error_and_exit("Other error occurred while fetching version from " +
+                                    "tserver {}: {}".format(tserver_hostport, err))
+
+    # Verify nodes version
+    def verify_all_nodes_version(self, tserver_addresses, executable_version):
+        mismatched_nodes_version = []
+        for tserver_addr in tserver_addresses:
+            version = self.get_node_version(tserver_addr)
+            if version != executable_version:
+                mismatched_nodes_version.append(tserver_addr.split(':')[0])
+
+        return mismatched_nodes_version
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
@@ -5681,6 +5831,22 @@ class ControlScript(object):
                 self.configs.temp_data[
                     "admin_operation_master_addresses"] = args.master_addresses
 
+        if args.parser == "finalize_upgrade":
+            if args.upgrade_ysql_timeout is not None:
+                # Check if timeout is a digit and its integer value is greater than 0
+                if not args.upgrade_ysql_timeout.isdigit() or \
+                                            int(args.upgrade_ysql_timeout) <= 0:
+                    has_errors = True
+                    Output.print_and_log(Output.make_red("Error") + ": " +
+                    "--upgrade_ysql_timeout value must be" +
+                    " a positive integer greater than 0 in milliseconds." +
+                    " Please specify a valid positive integer to set the" +
+                    " YSQL upgrade timeout value.")
+                else:
+                    # Valid timeout value
+                    self.configs.temp_data["upgrade_ysql_timeout"] = \
+                                                    int(args.upgrade_ysql_timeout)
+
         if args.parser == "data_placement":
             if args.fault_tolerance is not None:
                 if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
@@ -6119,9 +6285,9 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
-            if args.enable_pg_parity:
+            if args.enable_pg_parity_tech_preview:
                 self.configs.temp_data["enable_pg_parity"] = \
-                                args.enable_pg_parity
+                                args.enable_pg_parity_tech_preview
 
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
@@ -6212,6 +6378,7 @@ class ControlScript(object):
                 ("restore", "Restore a database."),
                 ("status", "Print status of YugabyteDB cluster."),
                 ("version", "Release version of YugabyteDB cluster."),
+                ("finalize_upgrade", "Finalize the upgrade process for the YugabyteDB cluster."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
             example = ""
             if EXAMPLE.get(cmd):
@@ -6503,6 +6670,15 @@ class ControlScript(object):
                 metavar=""
             )
 
+        # Top level command: finalize_upgrade
+        for cmd in ("finalize_upgrade",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--upgrade_ysql_timeout",
+                help="Custom timeout for the YSQL upgrade in milliseconds.",
+                metavar=""
+            )
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -6577,7 +6753,7 @@ class ControlScript(object):
             "--config", help="{} user configuration file path".format(
                               SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--enable_pg_parity", help="Enable PostgreSQL compatibility features."
+                "--enable_pg_parity_tech_preview", help="Enable PostgreSQL compatibility features."
                 " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
@@ -6774,6 +6950,7 @@ class Configs(object):
             "ybc_cloud_storage_bucket": "",
             "ybc_cloud_storage_dir": "",
             "ybc_status": False,
+            "upgrade_ysql_timeout": DEFAULT_UPGRADE_YSQL_TIMEOUT,
         }
         self.config_file = config_file
 
@@ -7268,20 +7445,25 @@ class YBControllerCLIProxy(object):
         # "{}/yb-data/ybc".format(data_dir)
         backup_lock = os.path.join(
             ybc_dir,
-            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
         with open(backup_lock, "w+") as backup_lock_file:
             backup_lock_file.write(
-                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task")))
+                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task") + ","
+                    + ybc_args.get("ns_type") + "," + ybc_args.get("ns") + ","
+                    + datetime.utcnow().strftime('%B %d %Y - %H:%M:%S')))
             Output.log("Started backup with task id {}.".format(task_id))
 
     @staticmethod
     def rename_ybc_lock_file(ybc_args, ybc_dir):
         # "{}/yb-data/ybc".format(data_dir)
         backup_lock = os.path.join(
-            ybc_dir, "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"))
+            ybc_dir, "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                            ybc_args.get("ybc_task"))
         )
         rename_filename = os.path.join(
-            ybc_dir, "{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"), time.time())
+            ybc_dir, "{}_{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                          ybc_args.get("ybc_task"), time.time())
         )
         try:
             os.rename(backup_lock, rename_filename)
@@ -7292,7 +7474,8 @@ class YBControllerCLIProxy(object):
     def check_for_ongoing_ybc_task(ybc_args, ybc_dir):
         ybc_lock = os.path.join(
             ybc_dir,
-            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
         ybc_task_details = []
         if os.path.isfile(ybc_lock):
             with open(ybc_lock, 'r') as file:
@@ -7608,6 +7791,21 @@ class YBAdminProxy(object):
                                             restore_time]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return ret_code, err
+
+    # Promote Auto Flags
+    @staticmethod
+    def promote_auto_flags(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "promote_auto_flags"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Upgrade YSQL catalog
+    @staticmethod
+    def upgrade_ysql(master_addrs, timeout):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+        "-timeout_ms", str(timeout), "upgrade_ysql"]
+        out, err, ret_code = run_process(cmd, log_cmd=True)
+        return (ret_code == 0)
 
     # Passthrough method for all the yb-admin commands
     # @staticmethod

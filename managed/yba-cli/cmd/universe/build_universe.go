@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -190,7 +191,7 @@ func buildClusters(
 		if len(masterInstanceTypeList) > 0 {
 			masterInstanceType = masterInstanceTypeList[0]
 		}
-		masterDeviceInfo, err = buildMasterDeviceInfo(cmd, providerType, onpremInstanceTypeDefault)
+		masterDeviceInfo, err = buildMasterDeviceInfo(cmd, providerType, masterInstanceType, onpremInstanceTypeDefault)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +295,7 @@ func buildClusters(
 
 	logrus.Info("Using preferred regions: ", preferredRegions, "\n")
 
-	deviceInfo, err := buildDeviceInfo(cmd, providerType, noOfClusters, onpremInstanceTypeDefault)
+	deviceInfo, err := buildDeviceInfo(cmd, providerType, noOfClusters, instanceTypes, onpremInstanceTypeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -346,11 +347,6 @@ func buildClusters(
 		return nil, err
 	}
 
-	enableVolumeEncryption, err := cmd.Flags().GetBool("enable-volume-encryption")
-	if err != nil {
-		return nil, err
-	}
-
 	ybSoftwareVersion, err := cmd.Flags().GetString("yb-db-version")
 	if err != nil {
 		return nil, err
@@ -397,6 +393,9 @@ func buildClusters(
 		}
 		idKey := r[0].GetIdKey()
 		accessKeyCode = idKey.GetKeyCode()
+		logrus.Info("Using access key: ",
+			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
+	} else if len(accessKeyCode) > 0 {
 		logrus.Info("Using access key: ",
 			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	}
@@ -474,48 +473,13 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	masterGFlags := make(map[string]interface{}, 0)
-	if len(masterGFlagsString) != 0 {
-		for _, masterGFlagPair := range strings.Split(masterGFlagsString, ",") {
-			kvp := strings.Split(masterGFlagPair, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in master gflag.",
-						formatter.RedColor))
-			}
-			masterGFlags[kvp[0]] = kvp[1]
-		}
-	}
+	masterGFlags := upgrade.FetchMasterGFlags(masterGFlagsString)
 
-	tserverGFlagsList := make([]map[string]interface{}, 0)
 	tserverGFlagsStringList, err := cmd.Flags().GetStringArray("tserver-gflags")
 	if err != nil {
 		return nil, err
 	}
-	for _, tserverGFlagsString := range tserverGFlagsStringList {
-		tserverGFlags := make(map[string]interface{}, 0)
-		for _, tserverGFlagPair := range strings.Split(tserverGFlagsString, ",") {
-			kvp := strings.Split(tserverGFlagPair, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in tserver gflag.",
-						formatter.RedColor))
-			}
-			tserverGFlags[kvp[0]] = kvp[1]
-		}
-		tserverGFlagsList = append(tserverGFlagsList, tserverGFlags)
-	}
-	if len(tserverGFlagsList) == 0 {
-		for i := 0; i < noOfClusters; i++ {
-			tserverGFlagsList = append(tserverGFlagsList, make(map[string]interface{}, 0))
-		}
-	}
-	tserverGFlagsListLen := len(tserverGFlagsList)
-	if tserverGFlagsListLen < noOfClusters {
-		for i := 0; i < noOfClusters-tserverGFlagsListLen; i++ {
-			tserverGFlagsList = append(tserverGFlagsList, tserverGFlagsList[0])
-		}
-	}
+	tserverGFlagsList := upgrade.FetchTServerGFlags(tserverGFlagsStringList, noOfClusters)
 
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
@@ -550,7 +514,6 @@ func buildClusters(
 
 				EnableClientToNodeEncrypt: util.GetBoolPointer(enableCtoN),
 				EnableNodeToNodeEncrypt:   util.GetBoolPointer(enableNtoN),
-				EnableVolumeEncryption:    util.GetBoolPointer(enableVolumeEncryption),
 
 				UseSystemd:        util.GetBoolPointer(useSystemD),
 				YbSoftwareVersion: util.GetStringPointer(ybSoftwareVersion),
@@ -564,8 +527,8 @@ func buildClusters(
 				PreferredRegion:   util.GetStringPointer(preferredRegions[i]),
 				AwsArnString:      util.GetStringPointer(awsARNString),
 
-				MasterGFlags:      util.StringMap(masterGFlags),
-				TserverGFlags:     util.StringMap(tserverGFlagsList[i]),
+				MasterGFlags:      util.StringtoStringMap(masterGFlags),
+				TserverGFlags:     util.StringtoStringMap(tserverGFlagsList[i]),
 				UniverseOverrides: util.GetStringPointer(k8sUniverseOverrides),
 				AzOverrides:       util.StringtoStringMap(k8sAZOverridesMap),
 			},
@@ -612,6 +575,7 @@ func buildDeviceInfo(
 	cmd *cobra.Command,
 	providerType string,
 	noOfClusters int,
+	instanceTypes []string,
 	onpremInstanceTypeDefault ybaclient.InstanceTypeResp) (
 	deviceInfos []*ybaclient.DeviceInfo,
 	err error,
@@ -729,6 +693,9 @@ func buildDeviceInfo(
 		}
 		if i == storageTypeLen {
 			storageTypeDefault := setDefaultStorageTypes(providerType, onpremVolumeDefault)
+			if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceTypes[i]) {
+				storageTypeDefault = ""
+			}
 			storageType = append(storageType, storageTypeDefault)
 			storageTypeLen = storageTypeLen + 1
 		}
@@ -749,6 +716,7 @@ func buildDeviceInfo(
 func buildMasterDeviceInfo(
 	cmd *cobra.Command,
 	providerType string,
+	instanceType string,
 	onpremInstanceTypeDefault ybaclient.InstanceTypeResp) (
 	deviceInfos *ybaclient.DeviceInfo,
 	err error,
@@ -814,7 +782,11 @@ func buildMasterDeviceInfo(
 
 	if len(storageType) == 0 {
 		storageType = setDefaultStorageTypes(providerType, onpremVolumeDefault)
+		if providerType == util.AWSProviderType && util.AwsInstanceTypesWithEphemeralStorageOnly(instanceType) {
+			storageType = ""
+		}
 	}
+
 	if len(storageClass) == 0 {
 		storageClass = "standard"
 

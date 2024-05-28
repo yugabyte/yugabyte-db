@@ -48,6 +48,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -65,7 +66,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
           TaskType.CheckFollowerLag, // master
           TaskType.CheckFollowerLag, // tserver
           TaskType.RunHooks,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   @Override
   @Before
@@ -73,7 +75,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
-
+    setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
   }
@@ -121,6 +123,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
@@ -128,7 +131,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(66, position);
+    assertEquals(73, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -140,6 +143,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     TestUtils.setFakeHttpContext(defaultUser);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -199,7 +204,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     List<String> nodeNames = new ArrayList<>();
     for (TaskInfo subTask : subTasks) {
       if (subTask.getTaskType() == TaskType.RebootServer) {
-        nodeNames.add(subTask.getDetails().get("nodeName").textValue());
+        nodeNames.add(subTask.getTaskParams().get("nodeName").textValue());
       }
     }
     Assert.assertEquals(expected, nodeNames);

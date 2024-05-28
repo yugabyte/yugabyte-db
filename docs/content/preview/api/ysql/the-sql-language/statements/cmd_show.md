@@ -24,7 +24,7 @@ Use the `SHOW` statement to display the value of a run-time parameter.
 
 ## Semantics
 
-The parameter values in YSQL can be set and typically take effect the same way as in PostgreSQL. However, because YugabyteDB uses a different storage engine ([DocDB](../../../../../architecture/layered-architecture/#docdb)), many configurations related to the storage layer will not have the same effect in YugabyteDB as in PostgreSQL. For example, configurations related to connection and authentication, query planning, error reporting and logging, run-time statistics, client connection defaults, and so on, should work as in PostgreSQL.
+The parameter values in YSQL can be set and typically take effect the same way as in PostgreSQL. However, because YugabyteDB uses a different storage engine ([DocDB](../../../../../architecture/docdb)), many configurations related to the storage layer will not have the same effect in YugabyteDB as in PostgreSQL. For example, configurations related to connection and authentication, query planning, error reporting and logging, run-time statistics, client connection defaults, and so on, should work as in PostgreSQL.
 
 However, configurations related to write ahead log, vacuuming, or replication, may not apply to Yugabyte. Instead related configuration can be set using yb-tserver (or yb-master) [configuration flags](../../../../../reference/configuration/yb-tserver/#configuration-flags).
 

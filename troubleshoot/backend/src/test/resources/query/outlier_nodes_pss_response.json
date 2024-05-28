@@ -1,39 +1,9 @@
 [
   {
-    "name": "query_latency",
-    "successful": true,
-    "errorMessage": null,
-    "layout": {
-      "title": "Query Latency",
-      "xaxis": {
-        "type": "date",
-        "alias": {},
-        "ticksuffix": null,
-        "tickformat": null
-      },
-      "yaxis": {
-        "type": null,
-        "alias": {},
-        "ticksuffix": "&nbsp;µs",
-        "tickformat": null
-      }
-    },
-    "stepSeconds": 1200,
     "data": [
       {
+        "labels": {},
         "name": "Average",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -62,19 +32,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "Max",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -103,19 +62,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "Mean",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -130,33 +78,22 @@
           1706283600000
         ],
         "y": [
-          "174.0",
-          "158.0",
-          "142.0",
-          "126.0",
-          "110.0",
-          "94.0",
-          "78.0",
-          "62.0",
-          "46.0",
-          "30.0",
-          "14.0"
+          "174",
+          "158",
+          "142",
+          "126",
+          "110",
+          "94",
+          "78",
+          "62",
+          "46",
+          "30",
+          "14"
         ]
       },
       {
+        "labels": {},
         "name": "P90",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -185,19 +122,8 @@
         ]
       },
       {
+        "labels": {},
         "name": "P99",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
         "x": [
           1706271600000,
           1706272800000,
@@ -212,34 +138,28 @@
           1706283600000
         ],
         "y": [
-          "261.0",
-          "237.0",
-          "213.0",
-          "189.0",
-          "165.0",
-          "141.0",
-          "117.0",
-          "93.0",
-          "69.0",
-          "45.0",
-          "21.0"
+          "261",
+          "237",
+          "213",
+          "189",
+          "165",
+          "141",
+          "117",
+          "93",
+          "69",
+          "45",
+          "21"
         ]
       },
       {
-        "name": "Average",
         "instanceName": "node2",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Average",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -249,6 +169,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "82.5",
           "70.5",
           "58.5",
@@ -259,20 +183,14 @@
         ]
       },
       {
-        "name": "Max",
         "instanceName": "node2",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Max",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -282,6 +200,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "192.5",
           "164.5",
           "136.5",
@@ -292,20 +214,14 @@
         ]
       },
       {
-        "name": "Mean",
         "instanceName": "node2",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Mean",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -315,30 +231,28 @@
           1706283600000
         ],
         "y": [
-          "110.0",
-          "94.0",
-          "78.0",
-          "62.0",
-          "46.0",
-          "30.0",
-          "14.0"
+          "0",
+          "0",
+          "0",
+          "0",
+          "110",
+          "94",
+          "78",
+          "62",
+          "46",
+          "30",
+          "14"
         ]
       },
       {
-        "name": "P90",
         "instanceName": "node2",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "P90",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -348,6 +262,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "137.5",
           "117.5",
           "97.5",
@@ -358,20 +276,14 @@
         ]
       },
       {
-        "name": "P99",
         "instanceName": "node2",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "P99",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -381,30 +293,28 @@
           1706283600000
         ],
         "y": [
-          "165.0",
-          "141.0",
-          "117.0",
-          "93.0",
-          "69.0",
-          "45.0",
-          "21.0"
+          "0",
+          "0",
+          "0",
+          "0",
+          "165",
+          "141",
+          "117",
+          "93",
+          "69",
+          "45",
+          "21"
         ]
       },
       {
-        "name": "Average",
         "instanceName": "node3",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Average",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -414,6 +324,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "82.5",
           "70.5",
           "58.5",
@@ -424,20 +338,14 @@
         ]
       },
       {
-        "name": "Max",
         "instanceName": "node3",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Max",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -447,6 +355,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "192.5",
           "164.5",
           "136.5",
@@ -457,20 +369,14 @@
         ]
       },
       {
-        "name": "Mean",
         "instanceName": "node3",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "Mean",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -480,30 +386,28 @@
           1706283600000
         ],
         "y": [
-          "110.0",
-          "94.0",
-          "78.0",
-          "62.0",
-          "46.0",
-          "30.0",
-          "14.0"
+          "0",
+          "0",
+          "0",
+          "0",
+          "110",
+          "94",
+          "78",
+          "62",
+          "46",
+          "30",
+          "14"
         ]
       },
       {
-        "name": "P90",
         "instanceName": "node3",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "P90",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -513,6 +417,10 @@
           1706283600000
         ],
         "y": [
+          "0",
+          "0",
+          "0",
+          "0",
           "137.5",
           "117.5",
           "97.5",
@@ -523,20 +431,14 @@
         ]
       },
       {
-        "name": "P99",
         "instanceName": "node3",
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "nodePrefix": null,
-        "type": null,
-        "labels": {
-          "dbId": "12345",
-          "queryId": "1",
-          "universeUuid": "<universe_uuid>"
-        },
+        "labels": {},
+        "name": "P99",
         "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
           1706276400000,
           1706277600000,
           1706278800000,
@@ -546,15 +448,34 @@
           1706283600000
         ],
         "y": [
-          "165.0",
-          "141.0",
-          "117.0",
-          "93.0",
-          "69.0",
-          "45.0",
-          "21.0"
+          "0",
+          "0",
+          "0",
+          "0",
+          "165",
+          "141",
+          "117",
+          "93",
+          "69",
+          "45",
+          "21"
         ]
       }
-    ]
+    ],
+    "layout": {
+      "title": "Query Latency",
+      "type": "COMMON",
+      "xaxis": {
+        "alias": {},
+        "type": "date"
+      },
+      "yaxis": {
+        "alias": {},
+        "ticksuffix": "&nbsp;ms"
+      }
+    },
+    "name": "query_latency",
+    "stepSeconds": 1200,
+    "successful": true
   }
 ]

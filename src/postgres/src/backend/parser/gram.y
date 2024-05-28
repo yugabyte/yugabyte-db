@@ -185,13 +185,6 @@ typedef struct KeyActions
 					feature " not supported due to setting of flag --" flag,  \
 					-2, extra_hint)
 
-#define parser_ybc_signal_savepoints_disabled(pos, feature)				 \
-	parser_ybc_signal_unsupported_by_flag(pos, feature,					 \
-		"enable_pg_savepoints",											 \
-		"The flag may have been set to false because savepoints do not " \
-		"currently work with xCluster replication "						 \
-		"(see https://github.com/yugabyte/yugabyte-db/issues/14308).");
-
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " is not supported in template0/template1 yet")
 
@@ -739,7 +732,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	BACKFILL BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BREADTH BY
 
-	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
+	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHANGE CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED COMPRESSION CONCURRENTLY CONFIGURATION CONFLICT
@@ -1101,6 +1094,7 @@ stmt:
 			| RevokeRoleStmt
 			| RevokeStmt
 			| RuleStmt
+			| SecLabelStmt
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
@@ -1157,7 +1151,6 @@ stmt:
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
-			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 
 			/* Deprecated statements */
@@ -2990,7 +2983,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> REPLICA IDENTITY */
 			| REPLICA IDENTITY_P replica_identity
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_ReplicaIdentity;
@@ -3094,8 +3086,16 @@ replica_identity:
 					n->name = NULL;
 					$$ = (Node *) n;
 				}
+			| CHANGE
+				{
+					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
+					n->identity_type = YB_REPLICA_IDENTITY_CHANGE;
+					n->name = NULL;
+					$$ = (Node *) n;
+				}
 			| USING INDEX name
 				{
+					parser_ybc_signal_unsupported(@1, "ALTER TABLE REPLICA IDENTITY USING INDEX", 1124);
 					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
 
 					n->identity_type = REPLICA_IDENTITY_INDEX;
@@ -7635,7 +7635,6 @@ SecLabelStmt:
 			SECURITY LABEL opt_provider ON object_type_any_name any_name
 			IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7658,7 +7657,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON object_type_name name
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7670,7 +7668,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON TYPE_P Typename
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7682,7 +7679,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON DOMAIN_P Typename
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7694,7 +7690,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON AGGREGATE aggregate_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7706,7 +7701,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON FUNCTION function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7718,7 +7712,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON LARGE_P OBJECT_P NumericOnly
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7730,7 +7723,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON PROCEDURE function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -7742,7 +7734,6 @@ SecLabelStmt:
 			| SECURITY LABEL opt_provider ON ROUTINE function_with_argtypes
 			  IS security_label
 				{
-					parser_ybc_not_support(@1, "SECURITY LABEL");
 					SecLabelStmt *n = makeNode(SecLabelStmt);
 
 					n->provider = $3;
@@ -11755,10 +11746,6 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 
 					n->kind = TRANS_STMT_SAVEPOINT;
@@ -11767,10 +11754,6 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE SAVEPOINT <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 
 					n->kind = TRANS_STMT_RELEASE;
@@ -11779,10 +11762,6 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "RELEASE <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 
 					n->kind = TRANS_STMT_RELEASE;
@@ -11791,10 +11770,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -11803,10 +11778,6 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
-					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_savepoints_disabled(
-							@1, "ROLLBACK <transaction>");
-					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -17734,6 +17705,7 @@ unreserved_keyword:
 			| CASCADED
 			| CATALOG_P
 			| CHAIN
+			| CHANGE
 			| CHARACTERISTICS
 			| CHECKPOINT
 			| CLASS
@@ -18271,6 +18243,7 @@ bare_label_keyword:
 			| CAST
 			| CATALOG_P
 			| CHAIN
+			| CHANGE
 			| CHARACTERISTICS
 			| CHECK
 			| CHECKPOINT

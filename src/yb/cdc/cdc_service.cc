@@ -46,6 +46,7 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/colocated_util.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -177,6 +178,10 @@ DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 4 * 60 * 60,
                       "Timeout after which it can be inferred that tablet is not of interest "
                       "for the stream");
 
+DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
+                 "For testing only. When set to true, DestroyVirtualWal RPC will return RPC "
+                 "failure response.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -187,6 +192,13 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
+DEFINE_RUNTIME_bool(enable_cdcsdk_lag_collection, false,
+    "When enabled, vlog containing the lag for the getchanges call as well as last commit record "
+    "in response will be printed.");
 
 METRIC_DEFINE_entity(xcluster);
 
@@ -1761,6 +1773,14 @@ void CDCServiceImpl::GetChanges(
       // Clean all the records which got added in the resp, till the enum cache miss failure is
       // encountered.
       resp->clear_cdc_sdk_proto_records();
+      if (req->has_need_schema_info() && req->need_schema_info()) {
+        VLOG(2) << "Clearing cached schema for tablet " << req->tablet_id()
+                << "since the response needs schema details.";
+        cached_schema_details.clear();
+      }
+
+      VLOG(2) << "Handling GetChanges retry internally for tablet " << req->tablet_id()
+              << " for error: " << status.ToString();
       status = GetChangesForCDCSDK(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
@@ -1801,10 +1821,15 @@ void CDCServiceImpl::GetChanges(
   }
 
   VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
+  if (record.GetSourceType() == CDCSDK && FLAGS_enable_cdcsdk_lag_collection) {
+    LogGetChangesLagForCDCSDK(stream_id, *resp);
+  }
+
+  const auto* error_data = status.ErrorData(CDCErrorTag::kCategory);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
-      status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
+      error_data ? CDCErrorTag::Decode(error_data) : CDCErrorPB::UNKNOWN_ERROR,
       context);
   tablet_peer = context_->LookupTablet(req->tablet_id());
 
@@ -2397,6 +2422,50 @@ void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
   }
 }
 
+Result<bool> CDCServiceImpl::CheckBeforeImageActive(
+    const TabletId& tablet_id, const StreamMetadata& stream_metadata,
+    const tablet::TabletPeerPtr& tablet_peer) {
+  bool is_before_image_active = false;
+  if (FLAGS_ysql_yb_enable_replica_identity) {
+    auto replica_identity_map = stream_metadata.GetReplicaIdentities();
+    // If the tablet is colocated, we check the replica identities of all the tables residing in it.
+    // If before image is active for any one of the tables then we should return true
+    if (tablet_peer->tablet_metadata()->colocated()) {
+      auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
+      for (auto table_id : table_ids) {
+        auto table_name = tablet_peer->tablet_metadata()->table_name(table_id);
+        if ((boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+             boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+          continue;
+        }
+
+        if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+          if (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL) {
+            is_before_image_active = true;
+            break;
+          }
+        } else {
+          return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+        }
+      }
+    } else {
+      auto table_id = tablet_peer->tablet_metadata()->table_id();
+      if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+        is_before_image_active = (replica_identity_map.at(table_id) == PgReplicaIdentity::FULL);
+      } else {
+        return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+      }
+    }
+
+  } else {
+    is_before_image_active =
+        (stream_metadata.GetRecordType() == CDCRecordType::ALL ||
+         stream_metadata.GetRecordType() == CDCRecordType::PG_FULL);
+  }
+
+  return is_before_image_active;
+}
+
 Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
   TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
@@ -2435,6 +2504,13 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
     // in a regular interval.
     if (!input_tablet_id.empty() && input_tablet_id != tablet_id) {
+      continue;
+    }
+
+    auto tablet_peeer = context_->LookupTablet(tablet_id);
+    if (!tablet_peeer) {
+      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                   << ". Will not update its peers in this round";
       continue;
     }
 
@@ -2480,9 +2556,15 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
-    if (entry.cdc_sdk_safe_time &&
-       ((record.GetRecordType() == CDCRecordType::ALL ||
-         record.GetRecordType() == CDCRecordType::PG_FULL) || entry.snapshot_key.has_value())) {
+    auto is_before_image_active_result = CheckBeforeImageActive(tablet_id, record, tablet_peeer);
+    if (!is_before_image_active_result.ok()) {
+      LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
+                   << tablet_id;
+      continue;
+    }
+    bool is_before_image_active = *is_before_image_active_result;
+
+    if (entry.cdc_sdk_safe_time && (is_before_image_active || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 
@@ -4303,7 +4385,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
             session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
-    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this);
+    virtual_wal = std::make_shared<CDCSDKVirtualWAL>(this, stream_id, session_id);
     session_virtual_wal_[session_id] = virtual_wal;
   }
 
@@ -4314,7 +4396,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   HostPort hostport(context.local_address());
   Status s = virtual_wal->InitVirtualWALInternal(
-      stream_id, table_list, hostport, GetDeadline(context, client()));
+      table_list, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);
@@ -4322,13 +4404,14 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
 
     std::string error_msg = Format("VirtualWAL initialisation failed for stream_id: $0", stream_id);
-    LOG(WARNING) << error_msg;
+    LOG(WARNING) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;
   }
 
-  LOG(INFO) << "VirtualWAL instance successfully created for session_id: " << session_id;
+  LOG(INFO) << "VirtualWAL instance successfully created for stream_id: " << stream_id
+            << " with session_id: " << session_id;
   context.RespondSuccess();
 }
 
@@ -4339,7 +4422,7 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(4) << "Received GetConsistentChanges request: " << req->DebugString();
+  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4365,15 +4448,13 @@ void CDCServiceImpl::GetConsistentChanges(
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   HostPort hostport(context.local_address());
-  Status s = virtual_wal->GetConsistentChangesInternal(
-      stream_id, resp, hostport, GetDeadline(context, client()));
+  Status s =
+      virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
-    std::string msg = Format("GetConsistentChanges failed for stream_id: $0", stream_id);
+    std::string msg =
+        Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     LOG(WARNING) << msg;
   }
-
-  VLOG(4) << "Sending GetConsistentChanges response with num_records: "
-          << resp->cdc_sdk_proto_records_size();
 
   context.RespondSuccess();
 }
@@ -4386,6 +4467,17 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   }
 
   LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+
+  if (FLAGS_TEST_cdc_force_destroy_virtual_wal_failure) {
+    LOG(WARNING)
+        << "Returning error response since FLAGS_TEST_cdc_force_destroy_virtual_wal_failure. "
+           "This should only happen in TEST environment.";
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(Aborted, "Test flag FLAGS_TEST_cdc_force_destroy_virtual_wal_failure is true"),
+        CDCErrorPB::NOT_RUNNING, &context);
+    return;
+  }
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4413,6 +4505,42 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
+  // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
+  // or there are no sessions to be cleaned up.
+  if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || session_ids.empty()) {
+    return;
+  }
+
+  auto it = session_ids.begin();
+  {
+    SharedLock lock(mutex_);
+    for (; it != session_ids.end(); ++it) {
+      if (session_virtual_wal_.contains(*it)) {
+        break;
+      }
+    }
+  }
+
+  if (it == session_ids.end()) {
+    return;
+  }
+
+  // Ideally, we should not depend on this mutex_ as this function gets called from the session
+  // cleanup bg thread from pg_client_service which is time sensitive.
+  // This seems fine for now only because there isn't a lot of contention on the mutex_ due to low
+  // number of walsenders (10 by default) and here we are just deleting from an in-memory map.
+  {
+    std::lock_guard l(mutex_);
+
+    for (; it != session_ids.end(); ++it) {
+      if (session_virtual_wal_.erase(*it)) {
+        LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
+      }
+    }
+  }
+}
+
 void CDCServiceImpl::UpdateAndPersistLSN(
     const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
     rpc::RpcContext context) {
@@ -4420,7 +4548,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  VLOG(4) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+  VLOG(1) << "Received UpdateAndPersistLSN request: " << req->DebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4458,7 +4586,7 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   auto confirmed_flush_lsn = req->confirmed_flush_lsn();
   auto restart_lsn = req->restart_lsn();
-  auto res = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
+  auto res = virtual_wal->UpdateAndPersistLSNInternal(confirmed_flush_lsn, restart_lsn);
   if (!res.ok()) {
     std::string error_msg = Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id);
     LOG(WARNING) << error_msg;
@@ -4469,11 +4597,100 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  VLOG(4) << "Succesfully persisted LSN values for stream_id: " << stream_id
+  VLOG(1) << "Succesfully persisted LSN values for stream_id: " << stream_id
           << ", confirmed_flush_lsn = " << confirmed_flush_lsn
           << ", restart_lsn = " << *res;
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req, UpdatePublicationTableListResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  VLOG(4) << "Received UpdatePublicationTableList request: " << req->DebugString();
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_session_id(),
+      STATUS(InvalidArgument, "Session ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  RPC_CHECK_AND_RETURN_ERROR(
+      req->has_stream_id(),
+      STATUS(InvalidArgument, "Stream ID is required for UpdatePublicationTableList"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+  auto session_id = req->session_id();
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    SharedLock l(mutex_);
+    RPC_CHECK_AND_RETURN_ERROR(
+        session_virtual_wal_.contains(session_id),
+        STATUS_FORMAT(
+            NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
+        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+    virtual_wal = session_virtual_wal_[session_id];
+  }
+
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  HostPort hostport(context.local_address());
+  std::unordered_set<TableId> new_table_list;
+  for (const auto& table_id : req->table_id()) {
+    new_table_list.insert(table_id);
+  }
+
+  Status s = virtual_wal->UpdatePublicationTableListInternal(
+      new_table_list, hostport, GetDeadline(context, client()));
+  if (!s.ok()) {
+    std::string error_msg =
+        Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);
+    LOG(WARNING) << error_msg;
+    RPC_STATUS_RETURN_ERROR(
+        s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    return;
+  }
+
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::LogGetChangesLagForCDCSDK(
+    const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
+  auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
+  int64_t getchanges_call_lag_in_ms = -1;
+  if (resp.safe_hybrid_time() != -1) {
+    getchanges_call_lag_in_ms =
+        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time())) / 1000;
+  }
+
+  int64_t commit_time_lag_in_ms = -1;
+  uint64_t commit_record_ct = 0;
+  uint64_t safepoint_ct = 0;
+  // If there are no commit records in the response, we take the safepoint record's commit_time.
+  for (auto it = resp.cdc_sdk_proto_records().rbegin(); it != resp.cdc_sdk_proto_records().rend();
+       ++it) {
+    if (it->row_message().op() == RowMessage::SAFEPOINT) {
+      safepoint_ct = it->row_message().commit_time();
+    } else if (it->row_message().op() == RowMessage::COMMIT) {
+      commit_record_ct = it->row_message().commit_time();
+      break;
+    }
+  }
+
+  if (commit_record_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct))) / 1000;
+  } else if (safepoint_ct > 0) {
+    commit_time_lag_in_ms =
+        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct))) / 1000;
+  }
+
+  VLOG(3) << "stream_id: " << stream_id << ", GetChanges call lag: "
+          << ((getchanges_call_lag_in_ms != -1) ? Format("$0 ms", getchanges_call_lag_in_ms) : "-1")
+          << ", Commit time lag: "
+          << ((commit_time_lag_in_ms != -1) ? Format("$0 ms", commit_time_lag_in_ms) : "-1");
+}
 }  // namespace cdc
 }  // namespace yb

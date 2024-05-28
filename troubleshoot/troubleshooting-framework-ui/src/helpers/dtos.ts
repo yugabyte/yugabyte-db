@@ -62,6 +62,7 @@ export enum AnomalyCategory {
 
 export enum AnomalyType {
   SQL_QUERY_LATENCY_INCREASE = 'SQL_QUERY_LATENCY_INCREASE',
+  HOT_NODE_READS_WRITES = 'HOT_NODE_READS_WRITES',
   HOT_NODE_CPU = 'HOT_NODE_CPU',
   HOT_NODE_QUERIES = 'HOT_NODE_QUERIES',
   HOT_NODE_DATA = 'HOT_NODE_DATA',
@@ -97,17 +98,28 @@ export interface GraphMetadata {
 }
 
 export interface GraphQuery {
-  start?: Date | string;
-  end?: Date | string;
-  name?: string;
-  filters?: GraphFilters;
-  settings?: GraphSettings;
+  start: Date | string;
+  end: Date | string;
+  name: string;
+  filters: GraphFilters;
+  settings: GraphSettings;
+  groupBy?: GraphLabel;
+}
+
+export enum GraphLabel {
+  WAIT_EVENT_COMPONENT = 'waitEventComponent',
+  WAIT_EVENT_CLASS = 'waitEventClass',
+  WAIT_EVENT = 'waitEvent'
 }
 
 export interface GraphFilters {
   universeUuid: string[];
   queryId?: string[];
   dbId?: string[];
+  instanceName?: string[];
+  clusterUuid?: string[];
+  regionCode?: string[];
+  azCode?: string[];
 }
 
 export interface GraphSettings {

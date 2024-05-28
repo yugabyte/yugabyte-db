@@ -47,7 +47,10 @@ DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
+DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb {
 using client::YBClient;
@@ -64,6 +67,7 @@ constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kEnumTypeName = "coupon_discount_type";
 static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
@@ -126,6 +130,7 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
@@ -178,18 +183,20 @@ class CDCSDKTestBase : public YBTest {
   Status AddColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& add_column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status DropColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status RenameColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& old_column_name,
-      const std::string& new_column_name, const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      const std::string& new_column_name, pgwrapper::PGConn *conn,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 

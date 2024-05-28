@@ -137,5 +137,15 @@ export const replicationSlotStyles = makeStyles((theme) => ({
     color: '#E73E36',
     fontWeight: 600,
     fontSize: '16px'
+  },
+  expiryStatus: {
+    color: '#4e5f6d',
+    fontWeight: 600,
+    fontSize: '16px'
+  },
+  interactiveIcon: {
+    '&:hover': {
+      cursor: 'pointer'
+    }
   }
 }));

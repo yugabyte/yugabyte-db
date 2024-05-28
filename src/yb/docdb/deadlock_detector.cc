@@ -14,6 +14,7 @@
 #include "yb/docdb/deadlock_detector.h"
 
 #include <atomic>
+#include <ctime>
 #include <memory>
 #include <mutex>
 
@@ -38,6 +39,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_uuid.h"
@@ -82,7 +85,7 @@ YB_STRONGLY_TYPED_UUID(DetectorId);
 using LocalProbeProcessorCallback = std::function<void(
     const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
 using WaiterTxnTuple = std::tuple<
-    const TransactionId, const std::string, std::shared_ptr<const WaiterData>>;
+    const TransactionId, const std::string, std::shared_ptr<const BlockingData>>;
 
 // Container class which supports efficiently fetching items uniquely indexed by probe_num as well
 // as efficiently removing items which were added before a threshold time or which are associated
@@ -205,11 +208,12 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
  public:
   LocalProbeProcessor(
       const std::string& detector_log_prefix, const DetectorId& origin_detector_id,
-      uint32_t probe_num, uint32_t min_probe_num, const TransactionId& waiter_id, rpc::Rpcs* rpcs,
-      client::YBClient* client, scoped_refptr<EventStats> probe_latency)
+      uint32_t probe_num, uint32_t min_probe_num, const TransactionId& probe_origin_txn_id,
+      rpc::Rpcs* rpcs, client::YBClient* client, scoped_refptr<EventStats> probe_latency)
       : detector_log_prefix_(detector_log_prefix), origin_detector_id_(origin_detector_id),
-        waiter_(waiter_id), probe_num_(probe_num), min_probe_num_(min_probe_num), rpcs_(rpcs),
-        client_(client), probe_latency_(std::move(probe_latency)) {
+        probe_origin_txn_id_(probe_origin_txn_id), probe_num_(probe_num),
+        min_probe_num_(min_probe_num), rpcs_(rpcs), client_(client),
+        probe_latency_(std::move(probe_latency)) {
           DCHECK_GE(probe_num_, min_probe_num_);
         }
 
@@ -217,10 +221,10 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     return Format("$0- probe($1, $2) ", detector_log_prefix_, origin_detector_id_, probe_num_);
   }
 
-  void AddBlocker(const BlockerTransactionInfo& blocker_info) {
-    auto& blocker_id = blocker_info.id;
-    auto& blocker_status_tablet = blocker_info.status_tablet;
-    auto& blocking_subtxn_info = blocker_info.blocking_subtxn_info;
+  void AddBlocker(const BlockingInfo& info) {
+    auto& blocker_id = info.blocker_txn_info.id;
+    auto& blocker_status_tablet = info.blocker_txn_info.status_tablet;
+    auto& blocking_subtxn_info = info.blocker_txn_info.blocking_subtxn_info;
     handles_.push_back(rpcs_->Prepare());
     auto handle = handles_.back();
     if (handle == rpcs_->InvalidHandle()) {
@@ -229,25 +233,23 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     }
 
     tserver::ProbeTransactionDeadlockRequestPB req;
-    req.set_detector_uuid(origin_detector_id_.data(), origin_detector_id_.size());
+    req.set_detector_id(origin_detector_id_.data(), origin_detector_id_.size());
     req.set_probe_num(probe_num_);
     req.set_min_probe_num(min_probe_num_);
-    req.set_waiting_txn_id(waiter_.data(), waiter_.size());
+    req.set_probe_origin_txn_id(probe_origin_txn_id_.data(), probe_origin_txn_id_.size());
     req.set_blocking_txn_id(blocker_id.data(), blocker_id.size());
     req.set_tablet_id(blocker_status_tablet);
     *req.mutable_blocking_subtxn_set() = blocking_subtxn_info->pb();
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "waiting_txn_id: " << waiter_ << ", "
-        << "blocking_txn_id: " << blocker_id << ", "
-        << "blocking_subtxn(s): " << blocking_subtxn_info->ToString() << ", "
-        << "blocker_status_tablet: " << blocker_status_tablet << ", "
+        << "waiting_txn_id: " << probe_origin_txn_id_ << ", "
+        <<  info.ToString() << ", "
         << "probe_num: " << probe_num_ << ", "
         << "min_probe_num: " << min_probe_num_;
 
     auto wrapped_callback = [instance = shared_from_this(), handle](
         const auto& status, const auto& req, const auto& resp) {
-      instance->callback(status, req, resp);
+      instance->callback(status, resp);
       instance->rpcs_->Unregister(handle);
     };
 
@@ -272,6 +274,10 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     if (probe_latency_) {
       sent_at_ = CoarseMonoClock::Now();
     }
+    VLOG(4) << "Sending probes for txn: " << probe_origin_txn_id_
+            << " from detector: " << origin_detector_id_
+            << " with probe_num:" << probe_num_
+            << " and " << handles_.size() << " rpcs";
     for (auto& handle : handles_) {
       (**handle).SendRpc();
     }
@@ -287,7 +293,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   }
 
   void callback(
-      const Status& status, const tserver::ProbeTransactionDeadlockRequestPB& req,
+      const Status& status,
       const tserver::ProbeTransactionDeadlockResponsePB& resp) EXCLUDES(mutex_) {
     auto remaining_requests = remaining_requests_.fetch_sub(1) - 1;
     if (remaining_requests < 0 || did_send_response_) {
@@ -336,7 +342,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
  private:
   const std::string& detector_log_prefix_;
   const DetectorId& origin_detector_id_;
-  const TransactionId& waiter_;
+  const TransactionId& probe_origin_txn_id_;
   uint32_t probe_num_;
   uint32_t min_probe_num_;
   rpc::Rpcs* rpcs_;
@@ -386,14 +392,20 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
               LOG_WITH_FUNC(INFO) << "Abort deadlocked transaction request for " << txn_id
                                   << " completed: " << resp.ShortDebugString();
               shared_this->rpcs_->Unregister(shared_this->handle_);
+              shared_this->callback_();
             }),
         &handle_);
+  }
+
+  void SetCallback(std::function<void()>&& callback) {
+    callback_ = std::move(callback);
   }
 
  private:
   rpc::Rpcs* rpcs_;
   client::YBClient* client_;
   rpc::Rpcs::Handle handle_;
+  std::function<void()> callback_ = [](){};
 };
 
 using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
@@ -436,6 +448,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   }
 
   void Shutdown() {
+    VLOG_WITH_PREFIX(1) << "Shutting down";
     rpcs_.Shutdown();
   }
 
@@ -459,15 +472,34 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     processor->SetCallback(
         [callback = std::move(callback), detector = shared_from_this(), req, resp]
         (const auto& status, const auto& remote_resp) {
-      if (remote_resp.deadlocked_txn_ids_size() > 0) {
+      if (remote_resp.deadlocked_txn_ids_size() > 0 || remote_resp.deadlock_size() > 0) {
+        auto local_txn_id_or_status = FullyDecodeTransactionId(req.blocking_txn_id());
+        if (!local_txn_id_or_status.ok()) {
+          static const std::string kDeserializeError =
+              "Processing probe callback for invalid transaction id. "
+              "This should never happen.";
+          LOG(DFATAL) << kDeserializeError << " Request: " << req.ShortDebugString();
+          callback(STATUS(InternalError, kDeserializeError));
+          return;
+        }
+        const auto& local_blocking_txn_id = *local_txn_id_or_status;
+
+        // TODO: this field should be deprecated in-favor of the deadlock field once it is safe
+        // to do so.
         *resp->mutable_deadlocked_txn_ids() = remote_resp.deadlocked_txn_ids();
-        resp->add_deadlocked_txn_ids(req.blocking_txn_id());
+        resp->add_deadlocked_txn_ids(local_blocking_txn_id.data(), local_blocking_txn_id.size());
+
+        if (remote_resp.deadlock_size() > 0) {
+          resp->mutable_deadlock()->CopyFrom(remote_resp.deadlock());
+          detector->AddLocalDeadlock(local_blocking_txn_id, resp);
+        }
+
         callback(Status::OK());
       } else {
         callback(status);
       }
 #ifndef NDEBUG
-      auto detector_id_or_status = FullyDecodeDetectorId(req.detector_uuid());
+      auto detector_id_or_status = FullyDecodeDetectorId(req.detector_id());
       if (!detector_id_or_status.ok()) {
         LOG(DFATAL) << detector_id_or_status->ToString();
         return;
@@ -511,56 +543,50 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       for (const auto& waiter : req.waiting_transactions()) {
         auto waiter_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(waiter.transaction_id()));
         auto waiter_txn_key = std::make_pair(waiter_txn_id, tserver_uuid);
+        // Note: request_id could be 0 if the probe was sent by a node running an older version.
+        // Also, request_id is -1 in case the wait-for dependency is generated by a read request
+        // with explicit locks. In either case, this wouldn't lead to overwriting/loss of wait-for
+        // information of waiter requests across different tablets. Refer structure 'BlockingInfo'.
+        auto waiter_request_id = waiter.request_id();
         if (waiter.blocking_transaction_size() == 0) {
           LOG_WITH_PREFIX(WARNING) << "Received WaitFor relationship for waiter " << waiter_txn_id
+                                   << " with request id " << waiter_request_id
                                    << " with no blockers";
           continue;
         }
         auto wait_start_time = HybridTime::FromPB(waiter.wait_start_time());
-        VLOG_WITH_PREFIX(4) << "Processing waiter " << waiter_txn_id;
+        VLOG_WITH_PREFIX(4) << "Processing waiter " << waiter_txn_id
+                            << " with request id " << waiter_request_id;
 
-        std::shared_ptr<WaiterData> waiter_data = nullptr;
+        std::shared_ptr<BlockingData> blocking_data = nullptr;
+        std::shared_ptr<BlockingData> old_blocking_data = nullptr;
         auto waiter_it = waiters_.find(waiter_txn_key);
         if (waiter_it != waiters_.end()) {
-          auto existing_waiter_start_time = waiter_it->waiter_data()->wait_start_time;
-          if (existing_waiter_start_time == wait_start_time) {
-            VLOG_WITH_PREFIX(1) << "Skipping stored waiter " << waiter_txn_id
-                                << " with start time " << wait_start_time;
-            continue;
-          } else if (existing_waiter_start_time > wait_start_time) {
-            VLOG_WITH_PREFIX(1) << "Skipping stored waiter " << waiter_txn_id
-                                << " with earlier start time " << existing_waiter_start_time
-                                << " than request " << wait_start_time;
-            continue;
-          }
-          VLOG_WITH_PREFIX(1) << "Overwriting stored waiter " << waiter_txn_id
-                              << " from " << existing_waiter_start_time
-                              << " with newer request at " << wait_start_time;
-          waiter_data = std::make_shared<WaiterData>(WaiterData{
-            .wait_start_time = std::move(wait_start_time),
-            .blockers = std::make_shared<BlockerData>(BlockerData())
-          });
+          old_blocking_data = waiter_it->blocking_data();
+          VLOG_WITH_PREFIX(1) << "Refreshing stored waiter " << waiter_txn_id
+                              << " with newer dependency info at " << wait_start_time;
+          // Clear the existing blocker(s) data for the waiter so as to additionally trigger probes
+          // for the new dependencies being added in this iteration alone. The old blockers data is
+          // restored back into the waiter record post updating 'waiters_to_probe'.
+          blocking_data = std::make_shared<BlockingData>(BlockingData());
           // waiters_ map is guarded by mutex_, hence resetting the value field (shared_ptr)
           // is thread safe. Copies of the shared_ptr that might operate outside the scope of
           // mutex_ continue to work on older objects.
-          waiters_.modify(waiter_it, [&waiter_data](WaiterInfoEntry& entry) {
-            entry.ResetWaiterData(waiter_data);
+          waiters_.modify(waiter_it, [&blocking_data](WaiterInfoEntry& entry) {
+            entry.ResetBlockingData(blocking_data);
           });
         } else {
           VLOG_WITH_PREFIX(1) << "Creating new stored waiter " << waiter_txn_id
                               << " with start time " << wait_start_time;
-          waiter_data = std::make_shared<WaiterData>(WaiterData {
-            .wait_start_time = std::move(wait_start_time),
-            .blockers = std::make_shared<BlockerData>(BlockerData()),
-          });
+          blocking_data = std::make_shared<BlockingData>(BlockingData());
           auto it = waiters_.emplace(
-                WaiterInfoEntry(waiter_txn_id, tserver_uuid, waiter_data));
+                WaiterInfoEntry(waiter_txn_id, tserver_uuid, blocking_data));
           DCHECK(it.second);
           waiter_it = it.first;
         }
 
-        auto& blockers = DCHECK_NOTNULL(waiter_data)->blockers;
-        blockers->reserve(waiter.blocking_transaction_size());
+        DCHECK(blocking_data) << "Expected blocking_data to be non null shared_ptr";
+        blocking_data->reserve(waiter.blocking_transaction_size());
         for (const auto& blocker : waiter.blocking_transaction()) {
           if (blocker.status_tablet_id().empty()) {
             LOG_WITH_PREFIX_AND_FUNC(DFATAL)
@@ -570,26 +596,38 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
           // TODO(wait-queues): SubtxnSetAndPB::Create internally copies the passed in SubtxnSetPB
           // object. Check if we can avoid the copy and use std::move on the proto subfield instead.
-          blockers->push_back(BlockerTransactionInfo {
-            .id = VERIFY_RESULT(FullyDecodeTransactionId(blocker.transaction_id())),
-            .status_tablet = blocker.status_tablet_id(),
-            .blocking_subtxn_info = VERIFY_RESULT(SubtxnSetAndPB::Create(blocker.subtxn_set())),
-          });
-          const BlockerTransactionInfo& blocker_txn = blockers->back();
+          auto blocking_info = BlockingInfo {
+            .blocker_txn_info = BlockerTransactionInfo {
+              .id = VERIFY_RESULT(FullyDecodeTransactionId(blocker.transaction_id())),
+              .status_tablet = blocker.status_tablet_id(),
+              .blocking_subtxn_info = VERIFY_RESULT(SubtxnSetAndPB::Create(blocker.subtxn_set())),
+            },
+            .waiting_requests_info = WaitingRequestsInfo {
+              .waiting_requests = {
+                {waiter_request_id, wait_start_time},
+              }
+            },
+          };
           VLOG_WITH_PREFIX(4)
-              << "Adding new wait-for relationship --"
-              << "blocker txn id: " << blocker_txn.id << " "
-              << "blocker status tablet: " << blocker_txn.status_tablet << " "
-              << "blocking subtxn(s): " << blocker_txn.blocking_subtxn_info->ToString() << " "
+              << "Adding new wait-for relationship -- "
               << "waiter txn id: " << waiter_txn_id << " "
-              << "received from TS: " << tserver_uuid << " "
-              << "start time: " << waiter_data->wait_start_time;
+              << blocking_info.ToString() << " "
+              << "received from TS: " << tserver_uuid;
+          blocking_data->insert(std::move(blocking_info));
         }
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
         // for both 'waiters_'  as well as 'waiters_to_probe'.
         waiters_to_probe.push_back(
-            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->waiter_data()});
+            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data()});
+        // Restore the old blocker(s) data for the waiter entry, if any.
+        if (old_blocking_data) {
+          CHECK(waiter_it != waiters_.end());
+          waiters_.modify(waiter_it, [&old_blocking_data](WaiterInfoEntry& entry) {
+            entry.UpdateBlockingData(old_blocking_data);
+          });
+          VLOG_WITH_PREFIX(4) << "Updated blocking data -- " << waiter_it->ToString();
+        }
       }
       return Status::OK();
     }(req);
@@ -640,6 +678,92 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   }
 
  private:
+  void AddLocalDeadlock(
+      const TransactionId& local_txn, tserver::ProbeTransactionDeadlockResponsePB* resp) {
+    auto local_txn_start = controller_->GetTxnStart(local_txn);
+    if (!local_txn_start) {
+      LOG(WARNING) << "Local transaction committed or aborted after deadlock detected: "
+                    << local_txn << ". "
+                    << "Clearing deadlock status from probe response.";
+      resp->clear_deadlock();
+      resp->clear_deadlocked_txn_ids();
+      return;
+    }
+
+    auto* new_entry = resp->add_deadlock();
+    new_entry->set_id(local_txn.data(), local_txn.size());
+    new_entry->set_txn_start_us(*local_txn_start);
+    new_entry->set_tablet_id(status_tablet_);
+    new_entry->set_detector_id(detector_id_.data(), detector_id_.size());
+  }
+
+  void ResolveDeadlock(
+      const tserver::ProbeTransactionDeadlockResponsePB& resp, const TransactionId& origin_txn_id) {
+    DCHECK_GT(resp.deadlock_size(), 0);
+    deadlock_size_->Increment(resp.deadlock_size());
+
+    TransactionId newest_txn_id = TransactionId::Nil();
+    MicrosTime max_txn_start = 0;
+    TabletId newest_txn_status_tablet;
+    std::ostringstream deadlock_debug_msg;
+    for (const auto& txn_info : resp.deadlock()) {
+      auto waiter_or_status = FullyDecodeTransactionId(txn_info.id());
+      if (!waiter_or_status.ok()) {
+        LOG(DFATAL) << "Failed to decode transaction id in detected deadlock. "
+                    << "This should never happen";
+        deadlock_debug_msg << "<DECODE_ERROR>->";
+        continue;
+      }
+      auto& waiter = *waiter_or_status;
+      auto s = ScopeExit([&waiter, &deadlock_debug_msg]() {
+        deadlock_debug_msg << waiter.ToString() << "->";
+      });
+      if (!txn_info.has_txn_start_us()) {
+        LOG(DFATAL) << "txn_start_us not set in deadlock info. This should never happen.";
+        deadlock_debug_msg << "<no txn_start_us>";
+      } else {
+        if (txn_info.txn_start_us() > max_txn_start ||
+            (txn_info.txn_start_us() == max_txn_start && waiter > newest_txn_id)) {
+          max_txn_start = txn_info.txn_start_us();
+          newest_txn_id = waiter;
+          newest_txn_status_tablet = txn_info.tablet_id();
+        }
+        deadlock_debug_msg << "<" << txn_info.txn_start_us() << ">";
+      }
+    }
+    auto deadlock_msg = Format(
+        "Transaction $0 aborted due to a deadlock: $1",
+        newest_txn_id.ToString(), deadlock_debug_msg.str());
+    LOG_WITH_PREFIX(INFO) << deadlock_msg;
+
+    if (newest_txn_id.IsNil()) {
+      LOG(DFATAL) << "Deadlock detected, but no transaction was properly decoded - "
+                  << deadlock_msg;
+      return;
+    }
+
+    VLOG_WITH_PREFIX(1) << "Remote abort " << newest_txn_id;
+    auto resolver = std::make_shared<RemoteDeadlockResolver>(&rpcs_, &client());
+    if (newest_txn_id != origin_txn_id) {
+      resolver->SetCallback([detector = shared_from(this), origin_txn_id] {
+        std::vector<WaiterTxnTuple> waiters_to_probe;
+        {
+          SharedLock<decltype(mutex_)> l(detector->mutex_);
+          auto waiter_entries = boost::make_iterator_range(
+              detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
+          for (auto entry : waiter_entries) {
+            waiters_to_probe.push_back(
+                {origin_txn_id, "" /* tserver uuid */, entry.blocking_data()});
+          }
+        }
+        for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {
+          probe->Send();
+        }
+      });
+    }
+    resolver->AbortRemoteTransaction(newest_txn_id, newest_txn_status_tablet, deadlock_msg);
+  }
+
   template <class T>
   std::vector<LocalProbeProcessorPtr> GetProbesToSend(const T& waiters) {
     std::vector<LocalProbeProcessorPtr> probes_to_send;
@@ -651,8 +775,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     //
     // TODO(wait-queues): Coalesce multiple entries in waiters with the same waiter_txn_id into a
     // single LocalProbeProcessor.
-    for (const auto& [waiter_txn_id, _, waiter_data] : waiters) {
-      if (waiter_data->blockers->empty()) {
+    for (const auto& [waiter_txn_id, _, blocking_infos] : waiters) {
+      if (blocking_infos->empty()) {
         LOG_WITH_PREFIX(WARNING) << "Tried getting probes for waiter with no blockers "
                                  << waiter_txn_id;
         continue;
@@ -667,13 +791,16 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       auto processor = std::make_shared<LocalProbeProcessor>(
           log_prefix_, detector_id_, probe_num, min_probe_num,
           waiter_txn_id, &rpcs_, &client(), probe_latency_);
-      for (const auto& blocker : *waiter_data->blockers) {
+      for (const auto& info : *blocking_infos) {
         AtomicFlagSleepMs(&FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
-        DCHECK(!blocker.status_tablet.empty());
-        processor->AddBlocker(blocker);
+        DCHECK(!info.blocker_txn_info.status_tablet.empty());
+        processor->AddBlocker(info);
       }
-      processor->SetCallback([detector = shared_from_this(), outstanding_probes, probe_num]
-          (const auto& status, const auto& resp) {
+      processor->SetCallback([
+          detector = shared_from_this(),
+          outstanding_probes,
+          probe_num,
+          origin_txn_id = waiter_txn_id] (const auto& status, const auto& resp) {
         VLOG(4) << "Got callback for probe "
                 << Format("($0, $1)", probe_num, detector->detector_id_);
         detector->created_probes_.Remove(probe_num);
@@ -681,7 +808,15 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           UniqueLock<decltype(mutex_)> l(detector->mutex_);
           detector->is_probe_scan_active_ = false;
         }
-        if (resp.deadlocked_txn_ids_size() > 0) {
+        if (resp.deadlocked_txn_ids_size() > 0 || resp.deadlock_size() > 0) {
+          if (resp.deadlock_size() >= resp.deadlocked_txn_ids_size()) {
+            detector->ResolveDeadlock(resp, origin_txn_id);
+            return;
+          }
+          // If there are fewer entries in the newer deadlock field than the deprecated
+          // deadlocked_txn_ids field, then it's possible that some coordinator in this deadlock
+          // is still not upgraded. In this case, we process the deadlocked_txn_ids field since the
+          // deadlock field is incomplete and abort the originating transaction.
           detector->deadlock_size_->Increment(resp.deadlocked_txn_ids_size());
           auto waiter_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(0));
           if (!waiter_or_status.ok()) {
@@ -701,47 +836,51 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     return probes_to_send;
   }
 
-  std::vector<std::shared_ptr<const BlockerData>> GetBlockersUnlocked(
-      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& blocking_txn_id)
+  std::vector<std::shared_ptr<const BlockingData>> GetBlockingDataUnlocked(
+      const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id)
       REQUIRES_SHARED(mutex_) {
-    std::vector<std::shared_ptr<const BlockerData>> blockers;
+    std::vector<std::shared_ptr<const BlockingData>> blocking_datas;
     auto waiter_entries =
-        boost::make_iterator_range(waiters_.get<TransactionIdTag>().equal_range(blocking_txn_id));
+        boost::make_iterator_range(waiters_.get<TransactionIdTag>().equal_range(waiting_txn_id));
     for (auto entry : waiter_entries) {
-      if (entry.waiter_data()->blockers->empty()) {
+      if (entry.blocking_data()->empty()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Found empty blockers list while processing probe from "
             << "detector  " << detector_id.ToString() << " "
             << "with probe_num " << probe_num << " "
-            << "and blocking_txn " << blocking_txn_id;
+            << "and waiter " << waiting_txn_id;
       }
-      blockers.push_back(entry.waiter_data()->blockers);
+      blocking_datas.push_back(entry.blocking_data());
     }
 
-    return blockers;
+    return blocking_datas;
   }
 
   Result<LocalProbeProcessorPtr> GetProbesToForward(
       const tserver::ProbeTransactionDeadlockRequestPB& req,
       tserver::ProbeTransactionDeadlockResponsePB* resp) {
-    auto detector_id = VERIFY_RESULT(FullyDecodeDetectorId(req.detector_uuid()));
+    auto detector_id = VERIFY_RESULT(FullyDecodeDetectorId(req.detector_id()));
     auto probe_num = req.probe_num();
-    auto waiting_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.waiting_txn_id()));
-    auto blocking_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.blocking_txn_id()));
+    auto probe_origin_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.probe_origin_txn_id()));
+    auto local_blocking_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.blocking_txn_id()));
+    VLOG_WITH_PREFIX(4) << "Processing probe for txn: " << probe_origin_txn_id
+                        << " from detector: " << detector_id
+                        << " with probe_num: " << probe_num
+                        << " and local blocker: " << local_blocking_txn_id;
 
     auto blocking_subtxn_set = VERIFY_RESULT(SubtxnSet::FromPB(req.blocking_subtxn_set().set()));
     auto blocking_subtxn_active =
-        controller_->IsAnySubtxnActive(blocking_txn_id, blocking_subtxn_set);
+        controller_->IsAnySubtxnActive(local_blocking_txn_id, blocking_subtxn_set);
     // If no subtxn of the blocker txn's blocking_subtxn_set is active, drop the probe.
     if (!blocking_subtxn_active) {
       LOG_WITH_PREFIX_AND_FUNC(INFO)
-              << "Dropping probe_num: " << probe_num << ", waiter: " << waiting_txn_id
-              << ", blocked on: " << blocking_txn_id << " with inactive/aborted"
+              << "Dropping probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
+              << ", blocked on: " << local_blocking_txn_id << " with inactive/aborted"
               << " subtxns:" << yb::ToString(blocking_subtxn_set) << ".";
       return nullptr;
     }
 
-    std::vector<std::shared_ptr<const BlockerData>> blockers_per_ts;
+    std::vector<std::shared_ptr<const BlockingData>> blockers_per_ts;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
       if (detector_id == detector_id_) {
@@ -759,18 +898,23 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           LOG_WITH_PREFIX_AND_FUNC(INFO) << "Did not find probe_num: " << probe_num;
           return nullptr;
         }
-        if (*probe_originating_txn == blocking_txn_id) {
+        if (*probe_originating_txn == local_blocking_txn_id) {
           LOG_WITH_PREFIX_AND_FUNC(INFO)
-              << "Found deadlock: probe_num: " << probe_num << ", waiter: " << waiting_txn_id
-              << ", blocked on: " << blocking_txn_id
+              << "Found deadlock: probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
+              << ", blocked on: " << local_blocking_txn_id
               << " with subtxn(s): " << yb::ToString(blocking_subtxn_set);
-          resp->add_deadlocked_txn_ids(req.blocking_txn_id());
+
+          // TODO: this field should be deprecated in-favor of the deadlock field once it is safe
+          // to do so.
+          resp->add_deadlocked_txn_ids(local_blocking_txn_id.data(), local_blocking_txn_id.size());
+          AddLocalDeadlock(local_blocking_txn_id, resp);
+
           return nullptr;
         }
         LOG_WITH_PREFIX_AND_FUNC(INFO)
             << "Found probe_num " << probe_num
             << " with different transaction_id "<< *probe_originating_txn << " "
-            << "than blocker " << blocking_txn_id << ". Not marking as deadlock.";
+            << "than blocker " << local_blocking_txn_id << ". Not marking as deadlock.";
       }
 
       auto processing_it = forwarded_probes_.emplace(
@@ -792,7 +936,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         return nullptr;
       }
 
-      auto blocking_it = seen_blockers->emplace(blocking_txn_id);
+      auto blocking_it = seen_blockers->emplace(local_blocking_txn_id);
       if (!blocking_it.second) {
         VLOG_WITH_PREFIX_AND_FUNC(1) << "Dropping already seen probe"
                 << " from detector " << detector_id
@@ -803,19 +947,25 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         VLOG_WITH_PREFIX_AND_FUNC(1) << "Tracking probe"
                 << " from detector " << detector_id
                 << " with probe_num " << probe_num
-                << " from waiter " << waiting_txn_id
-                << " to blocker " << blocking_txn_id
+                << " from origin waiter " << probe_origin_txn_id
+                << " to blocker " << local_blocking_txn_id
                 << " at detector " << detector_id_;
       }
 
-      blockers_per_ts = GetBlockersUnlocked(detector_id, probe_num, blocking_txn_id);
+      blockers_per_ts = GetBlockingDataUnlocked(detector_id, probe_num, local_blocking_txn_id);
     }
     if (blockers_per_ts.empty()) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Dropping probe with no blocker"
+              << " from detector " << detector_id
+              << " with probe_num " << probe_num
+              << " from origin waiter " << probe_origin_txn_id
+              << " to blocker " << local_blocking_txn_id
+              << " at detector " << detector_id_;
       return nullptr;
     }
 
     auto local_processor = std::make_shared<LocalProbeProcessor>(
-        log_prefix_, detector_id, probe_num, req.min_probe_num(), waiting_txn_id, &rpcs_,
+        log_prefix_, detector_id, probe_num, req.min_probe_num(), probe_origin_txn_id, &rpcs_,
         &client(), nullptr /* probe_latency */);
 
     for (const auto& blockers : blockers_per_ts) {

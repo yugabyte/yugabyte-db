@@ -36,13 +36,13 @@ Use the `pg_stat_activity` view to get information on currently running tasks. U
 
 To get the output of `pg_stat_activity` in JSON format, visit `https://<yb-tserver-ip>:13000/rpcz` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
-For more information, refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/).
+For more information, refer to [View live queries with pg_stat_activity](../observability/pg-stat-activity/).
 
 ### View COPY operation status
 
 Use the `pg_stat_progress_copy` view to get status information of a COPY command execution. In addition to the COPY status, `pg_stat_progress_copy` provides the number of tuples processed and other additional information, and retains the COPY progress report after the command execution.
 
-For more information, refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/). -->
+For more information, refer to [View COPY progress with pg_stat_progress_copy](../observability/pg-stat-progress-copy/). -->
 
 ### View plans with EXPLAIN
 

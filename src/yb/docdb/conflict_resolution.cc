@@ -1484,7 +1484,8 @@ Status PopulateLockInfoFromParsedIntent(
   tablet::TableInfoPtr table_info;
   if (doc_key.has_colocation_id()) {
     table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(doc_key.colocation_id()));
-    lock_info->set_table_id(table_info->table_id);
+    lock_info->set_pg_table_id(table_info->pg_table_id.empty() ?
+        table_info->table_id : table_info->pg_table_id);
   } else {
     table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(kColocationIdNotSet));
   }

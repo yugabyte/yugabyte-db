@@ -1,10 +1,12 @@
 package com.yugabyte.troubleshoot.ts.service.anomaly;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.troubleshoot.ts.models.*;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
-import java.time.Duration;
+import io.prometheus.client.Summary;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -15,7 +17,11 @@ import org.apache.commons.lang3.tuple.Pair;
 
 public abstract class AnomalyDetectorBase implements AnomalyDetector {
 
-  private static final long MIN_ANOMALY_SIZE_MILLIS = Duration.ofMinutes(5).toMillis();
+  private static String ANOMALY_TYPE = "anomaly_type";
+
+  static final Summary DETECTION_FULL_TIME =
+      buildSummary(
+          "ts_anomaly_detection_full_time_millis", "Graph data retrieval time", ANOMALY_TYPE);
 
   protected final GraphService graphService;
   protected final AnomalyMetadataProvider metadataProvider;
@@ -30,6 +36,18 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
     this.metadataProvider = metadataProvider;
     this.anomalyDetectionService = anomalyDetectionService;
   }
+
+  @Override
+  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
+    long startTime = System.currentTimeMillis();
+    AnomalyDetectionResult result = findAnomaliesInternal(context);
+    DETECTION_FULL_TIME
+        .labels(getAnomalyType().name())
+        .observe(System.currentTimeMillis() - startTime);
+    return result;
+  }
+
+  protected abstract AnomalyDetectionResult findAnomaliesInternal(AnomalyDetectionContext context);
 
   protected Pair<Instant, Instant> calculateGraphStartEndTime(
       AnomalyDetectionContext context, Instant anomalyStartTime, Instant anomalyEndTime) {
@@ -84,9 +102,11 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
             .setEnd(context.getEndTime())
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
+            .setReplaceNaN(false)
+            .setFillMissingPoints(false)
             .setFilters(
                 ImmutableMap.of(
-                    GraphFilter.universeUuid,
+                    GraphLabel.universeUuid,
                     ImmutableList.of(context.getUniverseUuid().toString())));
 
     GraphResponse response =
@@ -102,16 +122,67 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
     return response;
   }
 
-  protected void createAnomalies(
-      AnomalyDetectionResult result,
+  private GraphMetadata fillGraphMetadata(
+      GraphMetadata template, GraphAnomaly graphAnomaly, AnomalyDetectionContext context) {
+    GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
+    Map<GraphLabel, List<String>> filters = new HashMap<>(template.getFilters());
+    for (GraphLabel filterKey : template.getFilters().keySet()) {
+      if (graphAnomaly.getLabels().containsKey(filterKey.name())) {
+        filters.put(filterKey, new ArrayList<>(graphAnomaly.getLabels().get(filterKey.name())));
+      }
+    }
+    if (template.getFilters().containsKey(GraphLabel.universeUuid)) {
+      filters.put(GraphLabel.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
+    }
+    return metadataBuilder.filters(filters).build();
+  }
+
+  protected List<List<GraphData>> groupGraphLines(List<GraphData> lines) {
+    return new ArrayList<>(
+        lines.stream()
+            .collect(Collectors.groupingBy(this::graphLinesGroupBy, Collectors.toList()))
+            .values());
+  }
+
+  protected List<List<GraphAnomaly>> groupGraphAnomalies(List<GraphAnomaly> anomalies) {
+    return new ArrayList<>(
+        anomalies.stream()
+            .collect(Collectors.groupingBy(this::anomaliesGroupBy, Collectors.toList()))
+            .values());
+  }
+
+  protected String graphLinesGroupBy(GraphData graphData) {
+    return graphData.getName();
+  }
+
+  protected String anomaliesGroupBy(GraphAnomaly anomaly) {
+    return StringUtils.EMPTY;
+  }
+
+  protected void groupAndCreateAnomalies(
+      AnomalyDetectionContext context,
       List<GraphAnomaly> graphAnomalies,
-      AnomalyDetectionContext context) {
+      AnomalyDetectionResult result) {
+    List<List<GraphAnomaly>> groupedAnomalies = groupGraphAnomalies(graphAnomalies);
+
+    List<List<GraphAnomaly>> mergedAnomalies =
+        groupedAnomalies.stream().map(anomalyDetectionService::mergeAnomalies).toList();
+
+    mergedAnomalies.forEach(anomalyGroup -> createAnomalies(context, anomalyGroup, result));
+  }
+
+  protected void createAnomalies(
+      AnomalyDetectionContext context,
+      List<GraphAnomaly> graphAnomalies,
+      AnomalyDetectionResult result) {
     graphAnomalies.forEach(
         graphAnomaly -> {
           AnomalyMetadata metadata = metadataProvider.getMetadata(getAnomalyType());
           AnomalyMetadata.AnomalyMetadataBuilder metadataBuilder = metadata.toBuilder();
           metadataBuilder.mainGraphs(
-              metadata.getMainGraphs().stream().map(t -> fillGraphMetadata(t, context)).toList());
+              metadata.getMainGraphs().stream()
+                  .map(t -> fillGraphMetadata(t, graphAnomaly, context))
+                  .toList());
           metadataBuilder.rcaGuidelines(
               metadata.getRcaGuidelines().stream()
                   .map(
@@ -131,7 +202,8 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
                                                               .stream()
                                                               .map(
                                                                   t ->
-                                                                      fillGraphMetadata(t, context))
+                                                                      fillGraphMetadata(
+                                                                          t, graphAnomaly, context))
                                                               .toList())
                                                       .build())
                                       .toList())
@@ -139,7 +211,7 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
                   .toList());
 
           List<Anomaly.NodeInfo> affectedNodes =
-              graphAnomaly.getLabels().get(GraphFilter.instanceName.name()).stream()
+              graphAnomaly.getLabels().get(GraphLabel.instanceName.name()).stream()
                   .filter(Objects::nonNull)
                   .map(nodeName -> Anomaly.NodeInfo.builder().name(nodeName).build())
                   .toList();
@@ -180,22 +252,5 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
         });
   }
 
-  private GraphMetadata fillGraphMetadata(GraphMetadata template, AnomalyDetectionContext context) {
-    GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
-    Map<GraphFilter, List<String>> filters = new HashMap<>(template.getFilters());
-    if (template.getFilters().containsKey(GraphFilter.universeUuid)) {
-      filters.put(GraphFilter.universeUuid, ImmutableList.of(context.getUniverseUuid().toString()));
-    }
-    if (template.getFilters().containsKey(GraphFilter.dbId)) {
-      filters.put(GraphFilter.dbId, ImmutableList.of(context.getDbId()));
-    }
-    if (template.getFilters().containsKey(GraphFilter.queryId)) {
-      filters.put(GraphFilter.queryId, ImmutableList.of(context.getQueryId()));
-    }
-    return metadataBuilder.filters(filters).build();
-  }
-
-  protected long getMinAnomalySizeMillis() {
-    return MIN_ANOMALY_SIZE_MILLIS;
-  }
+  protected abstract RuntimeConfigKey getMinAnomalyDurationKey();
 }

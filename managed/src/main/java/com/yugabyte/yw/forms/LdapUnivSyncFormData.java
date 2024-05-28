@@ -45,8 +45,13 @@ public class LdapUnivSyncFormData {
   private String ldapBindPassword;
 
   @ApiModelProperty(
-      value = "LDAP search filter to get the user entries",
-      example = "(objectclass=person)")
+      value =
+          "LDAP search filter to get the user entries. This filter can also be used to search for"
+              + " the users based on their group memberships.",
+      example =
+          "(objectclass=person),"
+              + " (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)"
+              + "(groupName=CN=group2,CN=Groups,DC=example,DC=com)))")
   private String ldapSearchFilter;
 
   @ApiModelProperty(value = "Dn of the search starting point.", example = "dc=example,dc=org")

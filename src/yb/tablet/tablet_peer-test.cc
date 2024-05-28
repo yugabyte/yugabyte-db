@@ -523,6 +523,13 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
 }
 
+TEST_F(TabletPeerTest, TestRollLogAfterTabletPeerShutdown) {
+  ASSERT_OK(tablet_peer_->Shutdown(
+      ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse));
+  auto s = tablet_peer_->log()->AsyncAllocateSegmentAndRollover();
+  ASSERT_NOK_STR_CONTAINS(s, "Invalid log state");
+}
+
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
  public:
   TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {

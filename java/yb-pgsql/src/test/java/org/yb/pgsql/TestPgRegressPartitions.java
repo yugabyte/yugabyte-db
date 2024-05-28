@@ -38,7 +38,7 @@ public class TestPgRegressPartitions extends BasePgSQLTest {
 
   @Test
   public void pruning() throws Exception {
-    runPgRegressTest("yb_pg_partition_prune_schedule");
+    runPgRegressTest("yb_partition_prune_schedule");
   }
 
   @Test

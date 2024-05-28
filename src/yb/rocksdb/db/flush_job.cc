@@ -120,8 +120,9 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       event_logger_(event_logger),
       wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()) {
   if (wait_state_) {
-    wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush));
-    wait_state_->set_rpc_request_id(job_context_->job_id);
+    wait_state_->UpdateMetadata(
+        {.query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForFlush),
+         .rpc_request_id = job_context_->job_id});
     wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Flush"});
     SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
     yb::ash::FlushAndCompactionWaitStatesTracker().Track(wait_state_);

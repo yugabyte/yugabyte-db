@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.models.Customer;
@@ -110,6 +111,11 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     UUID universeUUID = universe.getUniverseUUID();
     UUID storageConfigUUID = getStorageConfigUUIDFromName(backup.getSpec().getStorageConfig());
 
+    KeyspaceTable kT = new KeyspaceTable();
+    kT.keyspace = backup.getSpec().getKeyspace();
+    ((ObjectNode) crJsonNode).remove("keyspace");
+    ((ObjectNode) crJsonNode).set("keyspaceTableList", Json.toJson(kT));
+
     ((ObjectNode) crJsonNode).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crJsonNode).put("storageConfigUUID", storageConfigUUID.toString());
     ((ObjectNode) crJsonNode).put("expiryTimeUnit", "MILLISECONDS");
@@ -119,6 +125,14 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
   @Override
   public void onAdd(Backup backup) {
+    BackupStatus status = backup.getStatus();
+    if (status != null) {
+      // We don't need to do a retry because the backup state machine will take care of it.
+      // Even in the case of failure, we expect customer to create a new backup CR.
+      log.info("Early return because we already started this backup once");
+      return;
+    }
+
     log.info("Creating backup {} ", backup);
     BackupRequestParams backupRequestParams = null;
     try {
@@ -160,7 +174,10 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
   @Override
   public void onUpdate(Backup oldBackup, Backup newBackup) {
-    log.info("Got backup update {} {}", oldBackup, newBackup);
+    log.info(
+        "Got backup update {} {}, ignoring as backup does not support update.",
+        oldBackup,
+        newBackup);
   }
 
   @Override

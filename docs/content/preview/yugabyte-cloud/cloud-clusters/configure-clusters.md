@@ -18,6 +18,7 @@ You can scale the following cluster properties:
 - Number of nodes (horizontal).
 - Number of vCPUs per node (vertical).
 - Disk size per node.
+- IOPS (AWS clusters only)
 
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
@@ -31,7 +32,7 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 
 - Most production applications require 4 to 8 vCPUs per node. Scale up smaller instance sizes; when the total number of vCPUs for your cluster exceeds 16, consider scaling out. For example, if you have a 3-node cluster with 2 vCPUs per node, scale up to 8 vCPUs per node before adding nodes.
 - Adding or removing nodes incurs a load on the cluster. Depending on the amount of data in your database, horizontal scaling can also take time, as adding or removing nodes requires moving data between nodes. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade application performance and increase the length of time of the scaling operation.
-- Scaling operations block other cluster operations, such as backups and maintenance. Avoid scaling operations before maintenance windows and during scheduled backups. The operation will block a backup from running.
+- Scaling operations [lock the cluster](../#locking-operations), blocking other cluster operations, such as backups and maintenance. Avoid scaling operations before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - Before removing nodes from a cluster, make sure the reduced disk space will be sufficient for the existing and anticipated data.
 
 ## Limitations
@@ -40,9 +41,11 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - You can't change the [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of a cluster after it is created.
-- You can't scale single node clusters (fault tolerance none), you can only increase disk size.
+- You can't change vCPUs on clusters with fault tolerance of none, you can only increase disk size, or change IOPS (AWS only).
+- Changing disk size or IOPS on a cluster with fault tolerance of none results in downtime.
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Some scaling operations require a rolling restart or, in the case of clusters with a fault tolerance of none, downtime.
 - On AWS, you can't make further modifications to disk (size, IOPS) for six hours after changing either disk size or IOPS (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
 ## Scale and configure clusters
@@ -122,9 +125,7 @@ To scale a partition-by-region cluster:
 
 1. To scale the cluster horizontally, enter the number of nodes for each region.
 
-1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only).
-
-    You can scale the number of nodes in each region independently, however the same node sizes apply across all regions.
+1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for each region.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 

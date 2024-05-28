@@ -242,8 +242,7 @@ class PrecastRequestSender {
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables,
-                            const bool keep_order) {
+                            const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -279,9 +278,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     exec_params.rowmark = ROW_MARK_KEYSHARE;
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
+    RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it), keep_order}));
+    }), static_cast<size_t>(end - it)}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -898,12 +897,13 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_matview,
                                  const PgObjectId& pg_table_oid,
                                  const PgObjectId& old_relfilenode_oid,
+                                 bool is_truncate,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
       tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-      old_relfilenode_oid);
+      old_relfilenode_oid, is_truncate);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -995,6 +995,16 @@ Status PgApiImpl::AlterTableDropColumn(PgStatement *handle, const char *name) {
   return pg_stmt->DropColumn(name);
 }
 
+Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->SetReplicaIdentity(identity_type);
+}
+
 Status PgApiImpl::AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                         const char *newname) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
@@ -1034,6 +1044,16 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
+}
+
+Status PgApiImpl::AlterTableInvalidateTableCacheEntry(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  pg_stmt->InvalidateTableCacheEntry();
+  return Status::OK();
 }
 
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
@@ -1193,7 +1213,8 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       is_colocated_via_database, tablegroup_oid, colocation_id,
-      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id);
+      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id,
+      false /* is_truncate */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1233,11 +1254,12 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
+                               bool ddl_rollback_enabled,
                                PgStatement **handle) {
   SCHECK(pg_txn_manager_->IsDdlMode(),
          IllegalState,
          "Index is being dropped outside of DDL mode");
-  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
+  auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist, ddl_rollback_enabled);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -1686,6 +1708,83 @@ Status PgApiImpl::SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_
   return Status::OK();
 }
 
+Slice PgApiImpl::GetYbctidAsSlice(uint64_t ybctid) {
+  char* value = NULL;
+  int64_t bytes = 0;
+  FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
+  return Slice(value, bytes);
+}
+
+Status PgApiImpl::RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters *exec_params,
+                                      int natts, SliceVector *ybctids, size_t *count,
+                                      bool *exceeded_work_mem) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+
+  auto vec = new std::vector<Slice>();
+
+  // If there's a secondary index request (secondary index scans or primary key scans on
+  // non-colocated tables) return the ybctids from the secondary index request.
+  if (dml_read.has_secondary_index_with_doc_op()) {
+    RETURN_NOT_OK(dml_read.RetrieveYbctidsFromSecondaryIndex(exec_params, vec,
+                                                             exceeded_work_mem));
+  } else {
+    // Otherwise (colocated case): fetch the results one at a time.
+    RETURN_NOT_OK(dml_read.Exec(exec_params));
+
+    uint64_t       *values = new uint64_t[natts];
+    bool           *nulls = new bool[natts];
+    YBCPgSysColumns syscols;
+    bool            has_data;
+    size_t          consumed_bytes = 0;
+
+    do {
+      RETURN_NOT_OK(dml_read.Fetch(natts, values, nulls, &syscols, &has_data));
+
+      if (has_data && syscols.ybctid != NULL) {
+        Slice s = GetYbctidAsSlice((uintptr_t) syscols.ybctid);
+        uint8_t *slice_data = new uint8_t[s.size()];
+        consumed_bytes += s.size();
+        s.relocate(slice_data);
+        vec->emplace_back(s);
+      }
+
+      if (consumed_bytes >= (size_t) exec_params->work_mem * 1024L) {
+        *exceeded_work_mem = true;
+        break;
+      }
+    } while (has_data);
+
+    delete[] values;
+    delete[] nulls;
+  }
+
+  if (*exceeded_work_mem)
+    // delete these allocated ybctids, we won't use them
+    for (auto ybctid : *vec)
+      delete[] ybctid.cdata(), ybctid.size();
+
+  *count = vec->size();
+  *ybctids = vec;
+  return Status::OK();
+}
+
+Status PgApiImpl::FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
+                                        ConstSliceVector ybctids) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+
+  RETURN_NOT_OK(dml_read.SetRequestedYbctids((const std::vector<Slice> *) ybctids));
+
+  return dml_read.Exec(exec_params);
+}
+
 Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
@@ -1939,7 +2038,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
         10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set shared memory",
+        "catalog_version_table_in_perdb_mode is not set in shared memory",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -2129,7 +2228,7 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
             return FetchExistingYbctids(
-                pg_session_, database_id, ybctids, region_local_tables, false);
+                pg_session_, database_id, ybctids, region_local_tables);
           }));
 }
 
@@ -2224,8 +2323,16 @@ uint64_t PgApiImpl::GetReadTimeSerialNo() {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
+uint64_t PgApiImpl::GetTxnSerialNo() {
+  return pg_txn_manager_->GetTxnSerialNo();
+}
+
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+  return pg_txn_manager_->GetActiveSubTransactionId();
+}
+
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  pg_txn_manager_->RestoreSessionParallelData(session_data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2264,6 +2371,11 @@ Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
 }
 
+Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().UpdatePublicationTableList(stream_id, table_ids);
+}
+
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
   return pg_session_->pg_client().DestroyVirtualWALForCDC();
 }
@@ -2294,8 +2406,16 @@ Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Result<tserver::PgYCQLStatementStatsResponsePB> PgApiImpl::YCQLStatementStats() {
+  return pg_session_->YCQLStatementStats();
+}
+
 Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {
   return pg_session_->ActiveSessionHistory();
+}
+
+Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
+  return pg_session_->TabletsMetadata();
 }
 
 } // namespace pggate

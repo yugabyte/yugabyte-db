@@ -17,7 +17,12 @@ namespace cdc {
 
 class CDCSDKBeforeImageTest : public CDCSDKYsqlTest {
  public:
-  void SetUp() override { CDCSDKYsqlTest::SetUp(); }
+  void SetUp() override {
+    CDCSDKYsqlTest::SetUp();
+    // These tests work on older RECORD_TYPE support, so we disable replica identity support here so
+    // that the record_type mode is used.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+  }
 };
 
 TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
@@ -681,7 +686,6 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(
 
   uint32_t seen_dml_records = 0;
   for (const auto& record : change_resp.cdc_sdk_proto_records()) {
-    LOG(INFO) << "DRDR test record: " << record.DebugString();
     if (record.row_message().op() == RowMessage::BEGIN ||
         record.row_message().op() == RowMessage::COMMIT) {
       continue;
@@ -1228,12 +1232,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)
 
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 1, 2, 0, 0, 0};
@@ -1469,7 +1470,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 2)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 2)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -1512,10 +1513,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 5 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
-  // Sleep to ensure that alter table is committed in docdb
-  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
-  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
 

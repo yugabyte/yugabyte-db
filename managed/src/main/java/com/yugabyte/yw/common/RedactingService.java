@@ -34,6 +34,8 @@ public class RedactingService {
           .addAll(SECRET_PATHS_FOR_APIS)
           .add("$..password")
           .add("$..confirmPassword")
+          .add("$..newPassword")
+          .add("$..currentPassword")
           .add("$..['config.AWS_ACCESS_KEY_ID']")
           .add("$..['config.AWS_SECRET_ACCESS_KEY']")
           // GCP private key

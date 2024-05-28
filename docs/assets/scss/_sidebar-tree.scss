@@ -73,7 +73,8 @@
         width: 10px;
         color: #6d7c88;
         height: 10px;
-        font-family: "Font Awesome 6 Free";
+        font-family: $font-awesome-font-name;
+        font-weight: 700;
         transition: margin-right 0.2s linear;
         font-size: 11px;
         line-height: 10px;
@@ -206,7 +207,8 @@
 
             &::before {
               content: "\f0da";
-              font-family: "Font Awesome 6 Free";
+              font-family: $font-awesome-font-name;
+              font-weight: 700;
               color: #97a5b0;
             }
           }

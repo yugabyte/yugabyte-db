@@ -150,9 +150,18 @@ class CDCServiceImpl : public CDCServiceIf {
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Destroy a batch of Virtual WAL instances managed by this CDC service.
+  // Intended to be called from background jobs and hence only logs warnings in case of errors.
+  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids);
+
   void UpdateAndPersistLSN(
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
       rpc::RpcContext context) override;
+
+  void UpdatePublicationTableList(
+    const UpdatePublicationTableListRequestPB* req,
+    UpdatePublicationTableListResponsePB* resp, rpc::RpcContext context) override;
+
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
@@ -431,6 +440,10 @@ class CDCServiceImpl : public CDCServiceIf {
       TabletIdCDCCheckpointMap* tablet_checkpoint_map,
       std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
 
+  Result<bool> CheckBeforeImageActive(
+      const TabletId& tablet_id, const StreamMetadata& stream_metadata,
+      const tablet::TabletPeerPtr& tablet_peer);
+
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
       TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
@@ -476,6 +489,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // when the config version does not match.
   bool ValidateAutoFlagsConfigVersion(
       const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
+
+  void LogGetChangesLagForCDCSDK(
+      const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp);
 
   rpc::Rpcs rpcs_;
 

@@ -717,7 +717,7 @@ EXPLAIN (COSTS OFF) SELECT DISTINCT int_8 FROM ybaggtest;
  HashAggregate
    Group Key: int_8
    ->  Distinct Index Only Scan using ybaggtestindex on ybaggtest
-         Distinct Prefix: 2
+         Distinct Keys: int_8, int_2
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;

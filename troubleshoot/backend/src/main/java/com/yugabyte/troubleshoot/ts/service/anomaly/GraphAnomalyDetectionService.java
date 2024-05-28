@@ -1,7 +1,10 @@
 package com.yugabyte.troubleshoot.ts.service.anomaly;
 
+import static com.yugabyte.troubleshoot.ts.MetricsUtil.buildSummary;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.troubleshoot.ts.models.*;
+import io.prometheus.client.Summary;
 import java.util.*;
 import java.util.function.Supplier;
 import lombok.AllArgsConstructor;
@@ -18,6 +21,12 @@ import org.springframework.stereotype.Service;
 public class GraphAnomalyDetectionService {
   public static final String LINE_NAME = "line_name";
 
+  private static String GRAPH_ANOMALY_TYPE = "graph_anomaly_type";
+
+  static final Summary DETECTION_TIME =
+      buildSummary(
+          "ts_anomaly_detection_time_millis", "Graph data retrieval time", GRAPH_ANOMALY_TYPE);
+
   public List<GraphAnomaly> getAnomalies(
       GraphAnomaly.GraphAnomalyType type, GraphData graphData, AnomalyDetectionSettings settings) {
     return getAnomalies(type, ImmutableList.of(graphData), settings);
@@ -27,6 +36,7 @@ public class GraphAnomalyDetectionService {
       GraphAnomaly.GraphAnomalyType type,
       List<GraphData> graphDatas,
       AnomalyDetectionSettings settings) {
+    long startTime = System.currentTimeMillis();
     List<GraphAnomaly> result = new ArrayList<>();
     switch (type) {
       case INCREASE:
@@ -68,6 +78,7 @@ public class GraphAnomalyDetectionService {
       default:
         throw new RuntimeException("Unsupported anomaly type " + type.name());
     }
+    DETECTION_TIME.labels(type.name()).observe(System.currentTimeMillis() - startTime);
     return result;
   }
 
@@ -160,9 +171,8 @@ public class GraphAnomalyDetectionService {
       Double value = graphPoint.getY();
       Double baseline = beselineGraph.getPoints().get(i).getY();
       if (value.isNaN() || value.isInfinite()) {
-        // For simplicity, we assume this value as 0 -
-        // as that's how we show that on the graph typically;
-        value = 0.0;
+        // NaN mens we don't know the value - so we just ignore this data point and move on.
+        continue;
       }
       Long timestamp = graphPoint.getX();
       if (currentWindow.isEmpty()) {
@@ -276,7 +286,16 @@ public class GraphAnomalyDetectionService {
     }
     Map<String, String> additionalLabels = new HashMap<>();
     if (graphData.getInstanceName() != null) {
-      additionalLabels.put(GraphFilter.instanceName.name(), graphData.getInstanceName());
+      additionalLabels.put(GraphLabel.instanceName.name(), graphData.getInstanceName());
+    }
+    if (graphData.getNamespaceName() != null) {
+      additionalLabels.put(GraphLabel.dbName.name(), graphData.getNamespaceName());
+    }
+    if (graphData.getTableName() != null) {
+      additionalLabels.put(GraphLabel.tableName.name(), graphData.getTableName());
+    }
+    if (graphData.getTableId() != null) {
+      additionalLabels.put(GraphLabel.tableId.name(), graphData.getTableId());
     }
     if (graphData.getName() != null) {
       additionalLabels.put(LINE_NAME, graphData.getName());

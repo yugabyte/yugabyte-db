@@ -58,9 +58,11 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     ReleaseArtifact artifact =
         ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, gcsFile);
     ReleaseArtifact found = ReleaseArtifact.get(artifact.getArtifactUUID());
+    String expectedPath = artifact.getGcsFile().path;
+    String expectedJson = artifact.getGcsFile().credentialsJson;
     assertEquals(artifact.getArtifactUUID(), found.getArtifactUUID());
-    assertEquals(artifact.getGcsFile().path, found.getGcsFile().path);
-    assertEquals(artifact.getGcsFile().credentialsJson, found.getGcsFile().credentialsJson);
+    assertEquals(expectedPath, found.getGcsFile().path);
+    assertEquals(expectedJson, found.getGcsFile().credentialsJson);
   }
 
   @Test

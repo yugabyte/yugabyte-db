@@ -238,19 +238,17 @@ public class PlatformReplicationHelper {
     }
   }
 
-  boolean demoteRemoteInstance(PlatformInstance remoteInstance) {
-    try {
+  boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
+    HighAvailabilityConfig config = remoteInstance.getConfig();
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstance.getAddress(),
+            config.getAcceptAnyCertificateOverrides())) {
       if (remoteInstance.getIsLocal()) {
         LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
         return false;
       }
-
-      HighAvailabilityConfig config = remoteInstance.getConfig();
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(
-              config.getClusterKey(),
-              remoteInstance.getAddress(),
-              config.getAcceptAnyCertificateOverrides());
 
       // Ensure all local records for remote instances are set to follower state.
       remoteInstance.demote();
@@ -261,7 +259,7 @@ public class PlatformReplicationHelper {
               localInstance -> {
                 // Send step down request to remote instance.
                 client.demoteInstance(
-                    localInstance.getAddress(), config.getLastFailover().getTime());
+                    localInstance.getAddress(), config.getLastFailover().getTime(), promote);
 
                 return true;
               })
@@ -273,13 +271,22 @@ public class PlatformReplicationHelper {
     return false;
   }
 
+  public void clearMetrics(HighAvailabilityConfig config, String remoteInstanceAddr) {
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
+      client.clearMetrics();
+    }
+  }
+
   boolean exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
-    try {
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(
-              config.getClusterKey(),
-              remoteInstanceAddr,
-              config.getAcceptAnyCertificateOverrides());
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
 
       // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
@@ -378,14 +385,16 @@ public class PlatformReplicationHelper {
       File backupFile) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     Optional<PlatformInstance> leaderInstance = config.getLeader();
-    return localInstance.isPresent()
-        && leaderInstance.isPresent()
-        && remoteClientFactory
-            .getClient(clusterKey, remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())
-            .syncBackups(
-                leaderInstance.get().getAddress(),
-                localInstance.get().getAddress(), // sender is same as leader for now.
-                backupFile);
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(
+            clusterKey, remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())) {
+      return localInstance.isPresent()
+          && leaderInstance.isPresent()
+          && client.syncBackups(
+              leaderInstance.get().getAddress(),
+              localInstance.get().getAddress(), // sender is same as leader for now.
+              backupFile);
+    }
   }
 
   boolean testConnection(
@@ -408,11 +417,10 @@ public class PlatformReplicationHelper {
         WS_TIMEOUT_CONNECTION_KEY,
         ConfigValueFactory.fromAnyRef(
             String.format("%d seconds", getTestConnectionConnectionTimeout().getSeconds())));
-    return localInstance.isPresent()
-        && leaderInstance.isPresent()
-        && remoteClientFactory
-            .getClient(clusterKey, remoteInstanceAddr, ybWsOverrides)
-            .testConnection();
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(clusterKey, remoteInstanceAddr, ybWsOverrides)) {
+      return localInstance.isPresent() && leaderInstance.isPresent() && client.testConnection();
+    }
   }
 
   void cleanupBackups(List<File> backups, int numToRetain) {
@@ -451,7 +459,7 @@ public class PlatformReplicationHelper {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demoteRemoteInstance(remoteInstance)) {
+    if (!this.demoteRemoteInstance(remoteInstance, false)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
       return false;
     }

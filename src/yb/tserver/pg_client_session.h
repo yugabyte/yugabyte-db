@@ -39,7 +39,6 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
-#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/coding_consts.h"
 #include "yb/util/enums.h"
@@ -56,6 +55,7 @@ class ConsistentReadPoint;
 namespace tserver {
 
 class PgMutationCounter;
+class TserverXClusterContextIf;
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
@@ -104,10 +104,15 @@ class PgClientSession {
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
-  struct UsedReadTime {
-    simple_spinlock lock;
+  struct UsedReadTimeData {
     ReadHybridTime value;
     TabletId tablet_id;
+  };
+
+  struct UsedReadTime {
+    simple_spinlock lock;
+    std::optional<UsedReadTimeData> data GUARDED_BY(lock);
+    size_t signature GUARDED_BY(lock) = {};
   };
 
   struct SessionData {
@@ -115,13 +120,12 @@ class PgClientSession {
     client::YBTransactionPtr transaction;
   };
 
-  using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
+  using UsedReadTimeApplier = std::function<void(UsedReadTimeData&&)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
-      client::YBClient* client,
-      const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-      const std::optional<XClusterContext>& xcluster_context,
+      client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
+      const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache);
 
@@ -148,6 +152,27 @@ class PgClientSession {
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
+  Status GetReplicaIdentityEnumValue(
+      PgReplicaIdentityType replica_identity_proto, PgReplicaIdentity *replica_identity_enum) {
+    switch (replica_identity_proto) {
+      case DEFAULT:
+        *replica_identity_enum = PgReplicaIdentity::DEFAULT;
+        break;
+      case FULL:
+        *replica_identity_enum = PgReplicaIdentity::FULL;
+        break;
+      case NOTHING:
+        *replica_identity_enum = PgReplicaIdentity::NOTHING;
+        break;
+      case CHANGE:
+        *replica_identity_enum = PgReplicaIdentity::CHANGE;
+        break;
+      default:
+        RSTATUS_DCHECK(false, InvalidArgument, "Invalid Replica Identity Type");
+    }
+    return Status::OK();
+  }
+
  private:
   std::string LogPrefix();
 
@@ -161,13 +186,12 @@ class PgClientSession {
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
-  Result<std::pair<SessionData, PgClientSession::UsedReadTimePtr>> SetupSession(
+  Result<std::pair<SessionData, UsedReadTimeApplier>> SetupSession(
       const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
-  Result<PgClientSession::UsedReadTimePtr> ProcessReadTimeManipulation(
-      ReadTimeManipulation manipulation, uint64_t txn_serial_no);
+  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation, uint64_t txn_serial_no);
 
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);
@@ -189,6 +213,10 @@ class PgClientSession {
     return GetSessionData(kind).session;
   }
 
+  const client::YBSessionPtr& Session(PgClientSessionKind kind) const {
+    return GetSessionData(kind).session;
+  }
+
   client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
     return GetSessionData(kind).transaction;
   }
@@ -196,8 +224,6 @@ class PgClientSession {
   const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {
     return GetSessionData(kind).transaction;
   }
-
-  Status CheckPlainSessionReadTime();
 
   // Set the read point to the databases xCluster safe time if consistent reads are enabled
   Status UpdateReadPointForXClusterConsistentReads(
@@ -236,14 +262,23 @@ class PgClientSession {
   // For kPlain sessions, also reset the plain session used read time since the tserver will pick a
   // read time and send back as "used read time" in the response for use by future rpcs of the
   // session.
-  PgClientSession::UsedReadTimePtr ResetReadPoint(PgClientSessionKind kind);
+  [[nodiscard]] UsedReadTimeApplier ResetReadPoint(PgClientSessionKind kind);
 
   // NOTE: takes ownership of paging_state.
   void GetTableKeyRanges(
       client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
-      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback);
+      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback,
+      UsedReadTimeApplier&& applier);
+
+  Status CheckPlainSessionPendingUsedReadTime();
+  Status CheckPlainSessionReadTimeIsSet() const;
+
+  struct PendingUsedReadTime {
+    UsedReadTime value;
+    bool pending_update = {false};
+  };
 
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
@@ -251,7 +286,7 @@ class PgClientSession {
   scoped_refptr<ClockBase> clock_;
   const TransactionBuilder transaction_builder_;
   PgTableCache& table_cache_;
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
   PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;
@@ -261,7 +296,7 @@ class PgClientSession {
   uint64_t read_time_serial_no_ = 0;
   std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
-  UsedReadTime plain_session_used_read_time_;
+  PendingUsedReadTime plain_session_used_read_time_;
 
   simple_spinlock pending_data_mutex_;
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);

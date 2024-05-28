@@ -80,6 +80,11 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
     return itr->second;
   }
 
+  // Special case: if kYBIdxBaseTupleId is not in the attr_num_map_, treat it as
+  // kYBTupleId. This allows us to easily request ybctids on secondary indexes.
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId))
+    return num_columns();
+
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 

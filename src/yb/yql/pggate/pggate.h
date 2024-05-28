@@ -54,6 +54,7 @@
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -126,6 +127,8 @@ class PgApiImpl {
   const YBCPgCallbacks* pg_callbacks() {
     return &pg_callbacks_;
   }
+
+  Slice GetYbctidAsSlice(uint64_t ybctid);
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
@@ -311,6 +314,7 @@ class PgApiImpl {
                         bool is_matview,
                         const PgObjectId& pg_table_oid,
                         const PgObjectId& old_relfilenode_oid,
+                        bool is_truncate,
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -335,6 +339,8 @@ class PgApiImpl {
 
   Status AlterTableDropColumn(PgStatement *handle, const char *name);
 
+  Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
+
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                const char *newname);
 
@@ -343,6 +349,8 @@ class PgApiImpl {
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
   Status ExecAlterTable(PgStatement *handle);
+
+  Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
                       bool if_exist,
@@ -400,6 +408,7 @@ class PgApiImpl {
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,
+                      bool ddl_rollback_enabled,
                       PgStatement **handle);
 
   Status ExecPostponedDdlStmt(PgStatement *handle);
@@ -587,6 +596,12 @@ class PgApiImpl {
   Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
 
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
+  Status RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters *exec_params, int natts,
+                         SliceVector *ybctids, size_t *count,
+                         bool *exceeded_work_mem);
+  Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
+                               ConstSliceVector ybctids);
+
 
   //------------------------------------------------------------------------------------------------
   // Functions.
@@ -733,7 +748,11 @@ class PgApiImpl {
 
   uint64_t GetReadTimeSerialNo();
 
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
+  uint64_t GetTxnSerialNo();
+
+  SubTransactionId GetActiveSubTransactionId();
+
+  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -754,6 +773,9 @@ class PgApiImpl {
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
   Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
@@ -767,7 +789,10 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
   class Interrupter;

@@ -149,7 +149,8 @@ class PgCreateTable : public PgDdl {
                 const PgObjectId& tablespace_oid,
                 bool is_matview,
                 const PgObjectId& pg_table_oid,
-                const PgObjectId& old_relfilenode_oid);
+                const PgObjectId& old_relfilenode_oid,
+                bool is_truncate);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
@@ -228,13 +229,16 @@ class PgTruncateTable : public PgDdl {
 
 class PgDropIndex : public PgDropTable {
  public:
-  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist);
+  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist,
+              bool ddl_rollback_enabled);
   virtual ~PgDropIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
 
   // Execute.
   Status Exec();
+ private:
+  bool ddl_rollback_enabled_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -261,7 +265,11 @@ class PgAlterTable : public PgDdl {
 
   Status SetTableId(const PgObjectId& table_id);
 
+  Status SetReplicaIdentity(const char identity_type);
+
   Status Exec();
+
+  void InvalidateTableCacheEntry();
 
   virtual ~PgAlterTable();
 

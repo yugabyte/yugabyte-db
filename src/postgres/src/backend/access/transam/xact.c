@@ -3922,10 +3922,6 @@ IsInTransactionBlock(bool isTopLevel)
 	if (!isTopLevel)
 		return true;
 
-	if (CurrentTransactionState->blockState != TBLOCK_DEFAULT &&
-		CurrentTransactionState->blockState != TBLOCK_STARTED)
-		return true;
-
 	return false;
 }
 
@@ -5646,6 +5642,7 @@ PushTransaction(void)
 	s->topXidLogged = false;
 
 	s->ybDataSentForCurrQuery = p->ybDataSentForCurrQuery;
+	s->ybDataSent = p->ybDataSent;
 
 	CurrentTransactionState = s;
 
@@ -5677,6 +5674,11 @@ PopTransaction(void)
 
 	if (s->parent == NULL)
 		elog(FATAL, "PopTransaction with no parent");
+
+	/* Propagate the data sent information to the parent. */
+	s->parent->ybDataSent = s->parent->ybDataSent || s->ybDataSent;
+	s->parent->ybDataSentForCurrQuery = s->parent->ybDataSentForCurrQuery ||
+										s->ybDataSentForCurrQuery;
 
 	CurrentTransactionState = s->parent;
 	YBUpdateActiveSubTransaction(CurrentTransactionState);

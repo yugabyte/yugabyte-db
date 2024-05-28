@@ -154,4 +154,4 @@ SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 
 ## Read more
 
-- [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](../../../../tutorials/azure/azure-openai/)
+- [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](/preview/tutorials/azure/azure-openai/)

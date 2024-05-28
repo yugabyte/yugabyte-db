@@ -63,67 +63,157 @@ public class ResizeNode extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  private static class NodesToApply {
+    LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
+    List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
+    List<NodeDetails> mastersToUpgradeGFlags = new ArrayList<>();
+    List<NodeDetails> tserversToUpgradeGFlags = new ArrayList<>();
+    boolean applyGFlagsToAllNodes = false;
+  }
+
+  private NodesToApply nodesToApplyCalculated;
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    NodesToApply nodesToApply = calclulateNodesToApply();
+    List<NodeDetails> masters = new ArrayList<>(nodesToApply.mastersToUpgradeGFlags);
+    List<NodeDetails> tservers = new ArrayList<>(nodesToApply.tserversToUpgradeGFlags);
+    masters.addAll(nodesToApply.instanceChangingNodes);
+    tservers.addAll(nodesToApply.instanceChangingNodes);
+    return new MastersAndTservers(masters, tservers);
+  }
+
+  private NodesToApply calclulateNodesToApply() {
+    if (nodesToApplyCalculated != null) {
+      return nodesToApplyCalculated;
+    }
+    Universe universe = getUniverse();
+    boolean flagsProvided = taskParams().flagsProvided(universe);
+    UserIntent userIntentForFlags = getUserIntent();
+    nodesToApplyCalculated = new NodesToApply();
+    LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
+    LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
+        taskParams().getNewVersionsOfClusters(universe);
+    // Create task sequence to resize allNodes.
+    for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
+      if (flagsProvided) {
+        Map<String, String> masterGFlags =
+            GFlagsUtil.getBaseGFlags(
+                ServerType.MASTER,
+                newVersionsOfClusters.get(cluster.uuid),
+                newVersionsOfClusters.values());
+        Map<String, String> tserverGFlags =
+            GFlagsUtil.getBaseGFlags(
+                ServerType.TSERVER,
+                newVersionsOfClusters.get(cluster.uuid),
+                newVersionsOfClusters.values());
+        boolean updatedByMasterFlags =
+            GFlagsUtil.syncGflagsToIntent(masterGFlags, userIntentForFlags);
+        boolean updatedByTserverFlags =
+            GFlagsUtil.syncGflagsToIntent(tserverGFlags, userIntentForFlags);
+        nodesToApplyCalculated.applyGFlagsToAllNodes =
+            updatedByMasterFlags || updatedByTserverFlags;
+      }
+      LinkedHashSet<NodeDetails> clusterNodes =
+          allNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toCollection(LinkedHashSet::new));
+
+      final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+
+      UniverseDefinitionTaskParams.UserIntent currentIntent =
+          universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+
+      for (NodeDetails node : clusterNodes) {
+        if (isInstanceChanging(node, userIntent, currentIntent)) {
+          nodesToApplyCalculated.instanceChangingNodes.add(node);
+        } else if (isModifyingDevice(node, userIntent, currentIntent)) {
+          nodesToApplyCalculated.justModifyDeviceNodes.add(node);
+        }
+      }
+      // The nodes that are being resized will be restarted, so the gflags can be
+      // upgraded in one go.
+      nodesNotUpdated.removeAll(nodesToApplyCalculated.instanceChangingNodes);
+    }
+    // Need to run gflag upgrades for the nodes that weren't updated.
+    if (flagsProvided) {
+      nodesToApplyCalculated.mastersToUpgradeGFlags =
+          nodesNotUpdated.stream()
+              .filter(n -> n.isMaster)
+              .filter(
+                  n -> {
+                    UniverseDefinitionTaskParams.Cluster curCluster =
+                        universe.getCluster(n.placementUuid);
+                    UniverseDefinitionTaskParams.Cluster newCluster =
+                        newVersionsOfClusters.get(n.placementUuid);
+                    return nodesToApplyCalculated.applyGFlagsToAllNodes
+                        || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                            n,
+                            ServerType.MASTER,
+                            curCluster,
+                            universe.getUniverseDetails().clusters,
+                            newCluster,
+                            newVersionsOfClusters.values());
+                  })
+              .collect(Collectors.toList());
+      nodesToApplyCalculated.tserversToUpgradeGFlags =
+          nodesNotUpdated.stream()
+              .filter(n -> n.isTserver)
+              .filter(
+                  n -> {
+                    UniverseDefinitionTaskParams.Cluster curCluster =
+                        universe.getCluster(n.placementUuid);
+                    UniverseDefinitionTaskParams.Cluster newCluster =
+                        newVersionsOfClusters.get(n.placementUuid);
+                    return nodesToApplyCalculated.applyGFlagsToAllNodes
+                        || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                            n,
+                            ServerType.TSERVER,
+                            curCluster,
+                            universe.getUniverseDetails().clusters,
+                            newCluster,
+                            newVersionsOfClusters.values());
+                  })
+              .collect(Collectors.toList());
+    }
+    return nodesToApplyCalculated;
   }
 
   @Override
   public void run() {
     runUpgrade(
         () -> {
+          NodesToApply nodesToApply = calclulateNodesToApply();
           Universe universe = getUniverse();
 
           UserIntent userIntentForFlags = getUserIntent();
 
           boolean flagsProvided = taskParams().flagsProvided(universe);
 
-          LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
-          // Since currently gflags are global (primary and read-replica nodes use the same gflags),
-          // we will need to roll all servers that weren't upgraded as part of the resize.
-          LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
               taskParams().getNewVersionsOfClusters(universe);
           AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
-            if (flagsProvided) {
-              Map<String, String> masterGFlags =
-                  GFlagsUtil.getBaseGFlags(
-                      ServerType.MASTER,
-                      newVersionsOfClusters.get(cluster.uuid),
-                      newVersionsOfClusters.values());
-              Map<String, String> tserverGFlags =
-                  GFlagsUtil.getBaseGFlags(
-                      ServerType.TSERVER,
-                      newVersionsOfClusters.get(cluster.uuid),
-                      newVersionsOfClusters.values());
-              boolean updatedByMasterFlags =
-                  GFlagsUtil.syncGflagsToIntent(masterGFlags, userIntentForFlags);
-              boolean updatedByTserverFlags =
-                  GFlagsUtil.syncGflagsToIntent(tserverGFlags, userIntentForFlags);
-              applyGFlagsToAllNodes.set(updatedByMasterFlags || updatedByTserverFlags);
-            }
-            LinkedHashSet<NodeDetails> clusterNodes =
-                allNodes.stream()
-                    .filter(n -> cluster.uuid.equals(n.placementUuid))
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
-            List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
-            LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
-            for (NodeDetails node : clusterNodes) {
-              if (isInstanceChanging(node, userIntent, currentIntent)) {
-                instanceChangingNodes.add(node);
-              } else if (isModifyingDevice(node, userIntent, currentIntent)) {
-                justModifyDeviceNodes.add(node);
-              }
-            }
-            // The nodes that are being resized will be restarted, so the gflags can be
-            // upgraded in one go.
-            nodesNotUpdated.removeAll(instanceChangingNodes);
+            LinkedHashSet<NodeDetails> instanceChangingNodes =
+                nodesToApply.instanceChangingNodes.stream()
+                    .filter(n -> n.isInPlacement(cluster.uuid))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            List<NodeDetails> justModifyDeviceNodes =
+                nodesToApply.justModifyDeviceNodes.stream()
+                    .filter(n -> n.isInPlacement(cluster.uuid))
+                    .collect(Collectors.toList());
 
             createPreResizeNodeTasks(instanceChangingNodes, currentIntent);
             createRollingNodesUpgradeTaskFlow(
@@ -162,51 +252,14 @@ public class ResizeNode extends UpgradeTaskBase {
                 justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
-
-            // Persist changes in the universe.
-            createPersistResizeNodeTask(userIntent, cluster.uuid)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+            if (!instanceChangingNodes.isEmpty() || !justModifyDeviceNodes.isEmpty()) {
+              // Persist changes in the universe.
+              createPersistResizeNodeTask(userIntent, cluster.uuid)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+            }
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (flagsProvided) {
-            List<NodeDetails> masterNodes =
-                nodesNotUpdated.stream()
-                    .filter(n -> n.isMaster)
-                    .filter(
-                        n -> {
-                          UniverseDefinitionTaskParams.Cluster curCluster =
-                              universe.getCluster(n.placementUuid);
-                          UniverseDefinitionTaskParams.Cluster newCluster =
-                              newVersionsOfClusters.get(n.placementUuid);
-                          return applyGFlagsToAllNodes.get()
-                              || GFlagsUpgradeParams.nodeHasGflagsChanges(
-                                  n,
-                                  ServerType.MASTER,
-                                  curCluster,
-                                  universe.getUniverseDetails().clusters,
-                                  newCluster,
-                                  newVersionsOfClusters.values());
-                        })
-                    .collect(Collectors.toList());
-            List<NodeDetails> tserverNodes =
-                nodesNotUpdated.stream()
-                    .filter(n -> n.isTserver)
-                    .filter(
-                        n -> {
-                          UniverseDefinitionTaskParams.Cluster curCluster =
-                              universe.getCluster(n.placementUuid);
-                          UniverseDefinitionTaskParams.Cluster newCluster =
-                              newVersionsOfClusters.get(n.placementUuid);
-                          return applyGFlagsToAllNodes.get()
-                              || GFlagsUpgradeParams.nodeHasGflagsChanges(
-                                  n,
-                                  ServerType.TSERVER,
-                                  curCluster,
-                                  universe.getUniverseDetails().clusters,
-                                  newCluster,
-                                  newVersionsOfClusters.values());
-                        })
-                    .collect(Collectors.toList());
             // Only rolling restart supported.
             createRollingUpgradeTaskFlow(
                 (nodes, processTypes) ->
@@ -217,8 +270,8 @@ public class ResizeNode extends UpgradeTaskBase {
                         universe,
                         newVersionsOfClusters,
                         applyGFlagsToAllNodes.get()),
-                masterNodes,
-                tserverNodes,
+                nodesToApply.mastersToUpgradeGFlags,
+                nodesToApply.tserversToUpgradeGFlags,
                 RUN_BEFORE_STOPPING,
                 taskParams().isYbcInstalled());
 

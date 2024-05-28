@@ -257,7 +257,6 @@ The following overrides are available:
       app: "yb-tserver"
       ports:
         ycql-port: "9042"
-        yedis-port: "6379"
         ysql-port: "5433"
   ```
 
@@ -360,7 +359,6 @@ The following overrides are available:
       app: "yb-tserver"
       ports:
         tcp-yql-port: "9042"
-        tcp-yedis-port: "6379"
         tcp-ysql-port: "5433"
   ```
 

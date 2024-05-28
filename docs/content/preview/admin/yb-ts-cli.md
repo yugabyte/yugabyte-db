@@ -39,6 +39,7 @@ The following commands are available:
 
 * [are_tablets_running](#are-tablets-running)
 * [is_server_ready](#is-server-ready)
+* [clear_server_metacache](#clear-server-metacache)
 * [compact_all_tablets](#compact-all-tablets)
 * [compact_tablet](#compact-tablet)
 * [count_intents](#count-intents)
@@ -79,6 +80,17 @@ yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
+##### clear_server_metacache
+
+Clears all metacaches that are stored on a specified server. Works on both YB-Master (port 9100) and YB-TServer (port 7100) processes. Tablet servers and masters use MetaCaches to cache information about which tablet server hosts which tablet. Because these caches could become stale in some cases, you may want to use this command to clear the MetaCaches on a particular tablet server or master.
+
+**Syntax**
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
+```
+
+* *host*:*port*: The *host* and *port* of the tablet/master server. Default is `localhost:9100`.
+
 ##### compact_all_tablets
 
 Compact all tablets on the tablet server.
@@ -118,7 +130,7 @@ yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 
 ##### current_hybrid_time
 
-Prints the value of the current [hybrid time](../../architecture/transactions/transactions-overview/#mvcc-using-hybrid-time).
+Prints the value of the current [hybrid time](../../architecture/transactions/transactions-overview/#hybrid-logical-clocks).
 
 **Syntax**
 

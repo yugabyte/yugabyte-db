@@ -340,7 +340,7 @@ A number of other issue can occur while installing and upgrading YugabyteDB Anyw
 
 ### Cross-Origin Resource Sharing (CORS) error
 
-You might encounter a CORS error while accessing YugabyteDB Anywhere through a load balancer. The condition can manifest itself by the initial setup or any login attempts not working or resulting in a blank screen.
+You might encounter a CORS error while accessing YugabyteDB Anywhere through a load balancer. The condition can manifest itself by the initial setup or any sign in attempts not working or resulting in a blank screen.
 
 To start diagnostics, check the developer tools of your browser for any errors. In addition, check the logs of the YugabyteDB Anywhere pod by executing the following command:
 

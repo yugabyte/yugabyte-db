@@ -520,9 +520,9 @@ typedef struct IndexOnlyScan
  *
  * BitmapIndexScan delivers a bitmap of potential tuple locations;
  * it does not access the heap itself.  The bitmap is used by an
- * ancestor BitmapHeapScan node, possibly after passing through
- * intermediate BitmapAnd and/or BitmapOr nodes to combine it with
- * the results of other BitmapIndexScans.
+ * ancestor BitmapHeapScan or YbBitmapTableScan node, possibly after
+ * passing through intermediate BitmapAnd and/or BitmapOr nodes to
+ * combine it with the results of other BitmapIndexScans.
  *
  * The fields have the same meanings as for IndexScan, except we don't
  * store a direction flag because direction is uninteresting.
@@ -542,6 +542,34 @@ typedef struct BitmapIndexScan
 } BitmapIndexScan;
 
 /* ----------------
+ *		yb bitmap index scan node
+ *
+ * BitmapIndexScan delivers a bitmap of potential tuple locations;
+ * it does not access the heap itself.  The bitmap is used by an
+ * ancestor BitmapHeapScan or YbBitmapTableScan node, possibly after
+ * passing through intermediate BitmapAnd and/or BitmapOr nodes to
+ * combine it with the results of other BitmapIndexScans.
+ *
+ * The fields have the same meanings as for IndexScan, except we don't
+ * store a direction flag because direction is uninteresting.
+ *
+ * In a BitmapIndexScan plan node, the targetlist and qual fields are
+ * not used and are always NIL.  The indexqualorig field is unused at
+ * run time too, but is saved for the benefit of EXPLAIN.
+ * ----------------
+ */
+typedef struct YbBitmapIndexScan
+{
+	Scan		scan;
+	Oid			indexid;		/* OID of index to scan */
+	bool		isshared;		/* Create shared bitmap if set */
+	List	   *indexqual;		/* list of index quals (OpExprs) */
+	List	   *indexqualorig;	/* the same in original form */
+	List	   *indextlist;		/* TargetEntry list describing index's cols */
+	PushdownExprs yb_idx_pushdown;
+} YbBitmapIndexScan;
+
+/* ----------------
  *		bitmap sequential scan node
  *
  * This needs a copy of the qual conditions being used by the input index
@@ -555,6 +583,27 @@ typedef struct BitmapHeapScan
 	Scan		scan;
 	List	   *bitmapqualorig; /* index quals, in standard expr form */
 } BitmapHeapScan;
+
+/* ----------------
+ *		yb bitmap sequential scan node
+ *
+ * This needs a copy of the qual conditions being used by the input index
+ * scans because there are various cases where we need to recheck the quals;
+ * for example, when the bitmap is lossy about the specific rows on a page
+ * that meet the index condition.
+ * ----------------
+ */
+typedef struct YbBitmapTableScan
+{
+	Scan		scan;
+	PushdownExprs rel_pushdown;		/* any pushable quals that aren't already
+									 * guaranteed by the Bitmap Index Scan
+									 * nodes. */
+	PushdownExprs recheck_pushdown;		/* pushable index quals */
+	List		 *recheck_local_quals;	/* non-pushable index quals */
+	PushdownExprs fallback_pushdown;	/* all pushable quals */
+	List		 *fallback_local_quals;	/* all non-pushable quals */
+} YbBitmapTableScan;
 
 /* ----------------
  *		tid scan node

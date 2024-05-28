@@ -676,6 +676,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
  *    - Table can be systable or usertable.
  *    - Both target and bind descriptors are specifed by the IndexTable.
  *    - For this scan, YugaByte ALWAYS return index-tuple, which is expected by Postgres layer.
+ * 5. BitmapIndexScan(Index)
+ *    - Table is null because we are only interested in getting ybctids from the index.
  */
 static void
 ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
@@ -683,6 +685,9 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	TableScanDesc tsdesc = (TableScanDesc)ybScan;
 	Relation relation = tsdesc->rs_rd;
 	Relation index = ybScan->index;
+	YbTableProperties yb_table_prop_relation = YbGetTableProperties(relation);
+	bool			  is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
 
@@ -697,23 +702,46 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * table in YugaByte.
 	 */
 
-	ybScan->prepare_params.querying_colocated_table =
-		IsSystemRelation(relation) ||
-		YbGetTableProperties(relation)->is_colocated;
+	if (!is_colocated_tables_with_tablespace_enabled)
+	{
+		ybScan->prepare_params.querying_colocated_table =
+			IsSystemRelation(relation) || yb_table_prop_relation->is_colocated;
+	}
+	else
+	{
+		/*
+		 * If ysql_enable_colocated_tables_with_tablespaces is enabled then we enable
+		 * querying_colocated_table for the following cases:
+		 * 	1. If the relation is a system catalog or TOAST table.
+		 *	2. If the index used for scan is a primary key index of the colocated table.
+		 * 	3. If the base table and it's index are part of the same tablegroup.
+		 */
+		ybScan->prepare_params.querying_colocated_table =
+			IsSystemRelation(relation) ||
+			(yb_table_prop_relation->is_colocated && index &&
+			 (index->rd_index->indisprimary ||
+			  yb_table_prop_relation->tablegroup_oid ==
+				  YbGetTableProperties(index)->tablegroup_oid));
+	}
 
 	if (index)
 	{
 		ybScan->prepare_params.index_relfilenode_oid =
-			YbGetRelfileNodeId(index);
+			ybScan->prepare_params.fetch_ybctids_only && index->rd_index->indisprimary
+				? YbGetRelfileNodeId(relation)
+				: YbGetRelfileNodeId(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
-		ybScan->prepare_params.use_secondary_index = !index->rd_index->indisprimary;
+		ybScan->prepare_params.use_secondary_index =
+			!index->rd_index->indisprimary ||
+			(ybScan->prepare_params.fetch_ybctids_only &&
+			 !ybScan->prepare_params.querying_colocated_table);
 	}
 
 	/* Setup descriptors for target and bind. */
 	if (!index || index->rd_index->indisprimary)
 	{
 		/*
-		 * SequentialScan or PrimaryIndexScan
+		 * SequentialScan or PrimaryIndexScan or BitmapIndexScan on the primary index
 		 * - YugaByte does not have a separate table for PrimaryIndex.
 		 * - The target table descriptor, where data is read and returned, is the main table.
 		 * - The binding table descriptor, whose column is bound to values, is also the main table.
@@ -730,7 +758,16 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		 *
 		 */
 
-		if (ybScan->prepare_params.index_only_scan)
+		if (ybScan->prepare_params.fetch_ybctids_only)
+		{
+			/*
+			 * BitmapIndexScan
+			 * - A BitmapIndexScan accesses only the index, not the main table.
+			 */
+			scan_plan->target_relation = index;
+			ybScan->target_desc = RelationGetDescr(index);
+		}
+		else if (ybScan->prepare_params.index_only_scan || relation == NULL)
 		{
 			/*
 			 * IndexOnlyScan
@@ -886,6 +923,12 @@ static bool
 YbIsRowHeader(ScanKey key)
 {
 	return key->sk_flags & SK_ROW_HEADER;
+}
+
+static bool
+YbIsRowMember(ScanKey key)
+{
+	return key->sk_flags & (SK_ROW_HEADER | SK_ROW_MEMBER);
 }
 
 /*
@@ -1044,6 +1087,13 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 		 */
 		return key->sk_strategy == BTEqualStrategyNumber;
 	}
+
+	if (YbIsRowMember(key))
+	{
+		/* We'll recheck if this is a valid row comparison key later. */
+		return true;
+	}
+
 	/* No other operators are supported. */
 	return false;
 }
@@ -1146,12 +1196,11 @@ static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
 }
 
 /*
- * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
- * for BTEqualStrategyNumber.
+ * Return true if a scan key column type is compatible with value type.
  */
 static bool YbIsScanCompatible(Oid column_typid,
 							   Oid value_typid,
-							   bool equal_strategy,
+							   bool is_value_scalar,
 							   Datum value) {
 	if (column_typid == value_typid)
 		return true;
@@ -1161,24 +1210,33 @@ static bool YbIsScanCompatible(Oid column_typid,
 		case INT2OID:
 
 			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
-			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
-			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently applied for equality/
-			 * inequality conditions. For example, "c0 = 65539" will be applied again to filter out
-			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
-			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 * If column c0 has INT2OID type and value type is INT4OID, the
+			 * value may overflow INT2OID. For example, where clause condition
+			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
+			 * a row with key of 3. This will not affect correctness
+			 * because at upper Postgres layer filtering will be subsequently
+			 * applied for equality/inequality conditions. For example, "c0 =
+			 * 65539" will be applied again to filter out this row.
+			 * We prefer to bind scan key c0 to account for the
+			 * common case where INT4OID value does not overflow INT2OID,
+			 * which happens in some system relation scan queries.
 			 *
-			 * For this purpose, specifically for inequalities, we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has INT2OID and value type is
-			 * INT4OID, and its an inequality strategy, we check if the actual value is within the
+			 * For this purpose, specifically for when the value is scalar,
+			 * we return true when we are sure that
+			 * there isn't a data overflow. For instance, if column c0 has
+			 * INT2OID and value type is INT4OID, and its an inequality
+			 * strategy, we check if the actual value is within the
 			 * bounds of INT2OID. If yes, then we return true, otherwise false.
 			 */
-			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) :
-				   YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX);
+			return !is_value_scalar ?
+				(value_typid == INT4OID || value_typid == INT8OID) :
+					YbIsIntegerInRange(
+						value, value_typid, SHRT_MIN, SHRT_MAX);
 		case INT4OID:
-			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
-				   YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX);
+			return !is_value_scalar ?
+				(value_typid == INT2OID || value_typid == INT8OID) :
+					YbIsIntegerInRange(
+						value, value_typid, INT_MIN, INT_MAX);
 		case INT8OID:
 			return value_typid == INT2OID || value_typid == INT4OID;
 
@@ -1323,14 +1381,15 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	return !OidIsValid(valtypid) ||
 	       key->sk_strategy == InvalidStrategy ||
 	       YbIsScanCompatible(atttypid, valtypid,
-	                          key->sk_strategy == BTEqualStrategyNumber,
+	                          !YbIsRowHeader(key) && !YbIsSearchArray(key),
 	                          key->sk_argument) ||
 	       IsPolymorphicType(valtypid);
 }
 
 static bool
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
-						int skey_index, bool is_for_precheck)
+						int skey_index, bool is_not_null[],
+						bool is_for_precheck)
 {
 	int last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation index = ybScan->index;
@@ -1492,6 +1551,10 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 			if (is_column_specified)
 			{
+				int att_idx = YBAttnumToBmsIndex(
+				((TableScanDesc)ybScan)->rs_rd, subkeys[subkey_index]->sk_attno);
+				is_not_null[att_idx] = true;
+
 				subkey_index++;
 			}
 		}
@@ -1709,8 +1772,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 {
-	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
-
+	Relation relation = scan_plan->target_relation;
 	/*
 	 * Best-effort try to determine if all non-yb_hash_code keys are bound.
 	 * - GUCs: these are AUTO_PG_FLAGs for rolling-upgrade purposes.  Until
@@ -1773,10 +1835,10 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	FmgrInfo *end_cmp_fn[max_idx];
 
 	/*
-	 * find an order of relevant keys such that for the same column, an EQUAL
+	 * Find an order of relevant keys such that for the same column, an EQUAL
 	 * condition is encountered before IN or BETWEEN. is_column_bound is then
-	 * used to establish priority order EQUAL > IN > BETWEEN. IS NOT NULL is
-	 * treated as a special case of BETWEEN.
+	 * used to establish priority order ROW IN > EQUAL > IN > BETWEEN.
+	 * IS NOT NULL is treated as a special case of BETWEEN.
 	 */
 	int noffsets = 0;
 	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
@@ -1791,14 +1853,14 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			!YbIsSearchArray(key))
 		{
 			bool needs_recheck =
-				YbBindRowComparisonKeys(ybScan, scan_plan, i, is_for_precheck);
+				YbBindRowComparisonKeys(ybScan, scan_plan, i,
+					is_not_null, is_for_precheck);
 			ybScan->all_ordinary_keys_bound &= !needs_recheck;
 			/*
 			 * Full primary-key RowComparison bindings don't interact
-			 * or interfere with other bindings to the same columns. They
-			 * just set the upper/lower bounds of the requested scan. We
-			 * can just continue looking at the next keys without recording this
-			 * key in the offsets array below.
+			 * or interfere too much with other bindings to the same columns.
+			 * They set the upper/lower bounds of the requested scan and also
+			 * apply IS NOT NULL filters on the bound LHS columns.
 			 */
 			continue;
 		}
@@ -1812,7 +1874,18 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			continue;
 		}
 
-		/* Assign key offsets */
+		/* Assign key offsets. Where n is the number of keys, and i is the
+		 * clause's index in the list (i < n):
+		 *   Clause Type |    Value
+		 *  -------------+--------------
+		 *   ROW IN      | -(n * 2 + i)
+		 *   EQUAL       |  -(n + i)
+		 *   IN          |     -i
+		 *   BETWEEN     |      i
+		 *
+		 * qsort will place the larger negative values first, and a modulo
+		 * operation will return the clause's original index.
+		 */
 		switch (key->sk_strategy)
 		{
 			case InvalidStrategy:
@@ -1829,13 +1902,13 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
 					/* Use a -ve value so that qsort places EQUAL before others */
-					offsets[noffsets++] = -i;
+					offsets[noffsets++] = -(ybScan->nkeys + i);
 				}
 				else if (YbIsSearchArray(key))
 				{
 					/* Row IN expressions take priority over all. */
 					offsets[noffsets++] =
-						length_of_key > 1 ? - (i + ybScan->nkeys) : i;
+						length_of_key > 1 ? -(ybScan->nkeys * 2 + i) : -i;
 				}
 				break;
 			case BTGreaterEqualStrategyNumber:
@@ -2122,7 +2195,14 @@ YbPredetermineNeedsRecheck(Relation relation,
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
 	 */
-	return (YbNeedsPgRecheck(&ybscan) || YbMayFailPreliminaryCheck(&ybscan));
+	bool needs_recheck = YbNeedsPgRecheck(&ybscan) ||
+						 YbMayFailPreliminaryCheck(&ybscan);
+
+	bms_free(scan_plan.hash_key);
+	bms_free(scan_plan.primary_key);
+	bms_free(scan_plan.sk_cols);
+
+	return needs_recheck;
 }
 
 typedef struct {
@@ -2282,11 +2362,12 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 
 	Bitmapset *columns = NULL;
 	ScanKey *keys = ybScan->keys;
+	const bool is_ioscan = ybScan->prepare_params.index_only_scan;
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
-		if (ybScan->prepare_params.index_only_scan ||
-			(ybScan->target_key_attnums[i] != InvalidAttrNumber &&
-			 keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL)))
+		if (is_ioscan ||
+			ybScan->target_key_attnums[i] == InvalidAttrNumber ||
+			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
 				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
@@ -2300,9 +2381,10 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 static void
 ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 {
-	Relation index = ybScan->index;
-	bool is_index_only_scan = ybScan->prepare_params.index_only_scan;
-	const int min_attr = YBFirstLowInvalidAttributeNumber;
+	Relation	index = ybScan->index;
+	bool		is_index_only_scan = ybScan->prepare_params.index_only_scan;
+	const int	min_attr = YBFirstLowInvalidAttributeNumber;
+	bool		all_attrs_required = !ybScan->prepare_params.fetch_ybctids_only;
 
 	/*
 	 * required_attrs struct stores list of target columns required by scan
@@ -2314,19 +2396,18 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 * - all qual columns (not bound to the scan keys), they are required for
 	 * filtering results on the postgres side
 	 */
-	Bitmapset *required_attrs = NULL;
-	bool all_attrs_required = true;
+	Bitmapset  *required_attrs = NULL;
 
 	/*
 	 * Catalog requests do not have a pg_scan_plan and require ybctid
-	*/
+	 */
 	if (!pg_scan_plan)
 	{
 		required_attrs = bms_add_member(
 			required_attrs,
 			YBAttnumToBmsIndexWithMinAttr(min_attr, YBTupleIdAttributeNumber));
 	}
-	else
+	else if (!ybScan->prepare_params.fetch_ybctids_only)
 	{
 		Index target_relid = ybScan->prepare_params.index_only_scan ?
 								 INDEX_VAR :
@@ -2452,6 +2533,13 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		else if (attnum < 0)
 			YbDmlAppendTargetSystem(attnum, ybScan->handle);
 	}
+
+	// If we are using a Bitmap Index scan on non-colocated primary keys
+	if (index && index->rd_index->indisprimary &&
+		ybScan->prepare_params.fetch_ybctids_only &&
+		!ybScan->prepare_params.querying_colocated_table)
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								ybScan->handle);
 
 	if (!is_index_only_scan && index && !index->rd_index->indisprimary)
 		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
@@ -2685,7 +2773,8 @@ ybcBeginScan(Relation relation,
 			 List *aggrefs,
 			 int distinct_prefixlen,
 			 YBCPgExecParameters *exec_params,
-			 bool is_internal_scan)
+			 bool is_internal_scan,
+			 bool fetch_ybctids_only)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
@@ -2705,6 +2794,7 @@ ybcBeginScan(Relation relation,
 	ybScan->exec_params = exec_params;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
+	ybScan->prepare_params.fetch_ybctids_only = fetch_ybctids_only;
 
 	/* Set up the scan plan */
 	YbScanPlanData scan_plan;
@@ -2922,9 +3012,23 @@ ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 
 void ybc_free_ybscan(YbScanDesc ybscan)
 {
-	Assert(PointerIsValid(ybscan));
-	YBCPgDeleteStatement(ybscan->handle);
-	pfree(ybscan);
+	/*
+	 * YB Bitmap Table Scans instantiate the biss_ScanDesc of their children
+	 * Bitmap Index Scans, even if it will not be executed. Other nodes
+	 * (like Index Scan) have their ScanDesc set when ExecInitIndexScan is
+	 * called.
+	 *
+	 * If the index scan is never executed, then we never even reach this point.
+	 *
+	 * If the bitmap scan is never executed, it still has a valid biss_ScanDesc,
+	 * even though it's YbScanDesc was not set. We need to cleanup after the
+	 * biss_ScanDesc but not the YbScanDesc.
+	 */
+	if (PointerIsValid(ybscan))
+	{
+		YBCPgDeleteStatement(ybscan->handle);
+		pfree(ybscan);
+	}
 }
 
 static SysScanDesc
@@ -3050,7 +3154,8 @@ SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 								NULL /* aggrefs */,
 								0 /* distinct_prefixlen */,
 								NULL /* exec_params */,
-								true /* is_internal_scan */);
+								true /* is_internal_scan */,
+								false /* fetch_ybctids_only */);
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -3079,7 +3184,8 @@ TableScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */,
-									 true /* is_internal_scan */);
+									 true /* is_internal_scan */,
+									 false /* fetch_ybctids_only */);
 
 	/* Set up Postgres sys table scan description */
 	TableScanDesc tsdesc = (TableScanDesc)ybScan;
@@ -3817,8 +3923,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * value.
  */
 void
-ybFetchNext(YBCPgStatement handle,
-			TupleTableSlot *slot, Oid relid)
+ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid)
 {
 	Assert(slot != NULL);
 	Assert(TTS_IS_VIRTUAL(slot));
@@ -3929,7 +4034,6 @@ yb_init_partition_key_data(void *data)
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
 	ppk->table_relfilenode_oid = InvalidOid;
-	ppk->read_time_serial_no = 0;
 	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
 	ppk->low_offset = 0;
@@ -4299,16 +4403,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		ppk->database_oid = YBCGetDatabaseOid(relation);
 		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
 		ppk->is_forward = is_forward;
-		ppk->read_time_serial_no = YBCPgGetReadTimeSerialNo();
 		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
 	}
 	else
 	{
-		/*
-		 * Parallel worker should propagate shared session details to the local
-		 * execution environment.
-		 */
-		YBCPgForceReadTimeSerialNo(ppk->read_time_serial_no);
 		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
 		return;
 	}

@@ -98,7 +98,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   // Should be ok to split before creating a stream.
-  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -106,7 +106,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
 
   // Split disallowed since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is false and we have
   // a CDCSDK stream on the table.
-  auto s = XreplValidateSplitCandidateTable(table_id);
+  auto s = XReplValidateSplitCandidateTable(table_id);
   ASSERT_NOK(s);
   ASSERT_NE(
       s.message().AsStringView().find(
@@ -116,7 +116,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   // Should be ok to split since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is true.
-  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeImage)) {
@@ -127,6 +127,9 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeI
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   // Testing compaction without compaction file filtering for TTL expiration.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+  // When replica identity is enabled, it takes precedence over what is passed in the command, so we
+  // disable it here since we want to use the record type syntax (see PG_FULL below).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -253,11 +256,14 @@ void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   int64 initial_num_intents;
   PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
   LOG(INFO) << "Number of intents before tablet split: " << initial_num_intents;
 
-  ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
   LOG(INFO) << "All nodes will be restarted";
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
@@ -268,15 +274,16 @@ void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
   LOG(INFO) << "All nodes restarted";
 
   int64 num_intents_after_restart;
+  // Original tablet + two split tablets.
   PollForIntentCount(
-      initial_num_intents, 0, IntentCountCompareOption::EqualTo, &num_intents_after_restart);
+      initial_num_intents * 3, 0, IntentCountCompareOption::EqualTo, &num_intents_after_restart);
   LOG(INFO) << "Number of intents after tablet split: " << num_intents_after_restart;
-  ASSERT_EQ(num_intents_after_restart, initial_num_intents);
+  ASSERT_EQ(num_intents_after_restart, 3 * initial_num_intents);
 
   std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
   int64 received_records = ASSERT_RESULT(GetChangeRecordCount(
       stream_id, table, tablets, tablet_to_checkpoint,
-      checkpoint_type == CDCCheckpointType::EXPLICIT));
+      100 /* expected_total_records */, checkpoint_type == CDCCheckpointType::EXPLICIT));
   ASSERT_EQ(received_records, 100);
 }
 
@@ -894,7 +901,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
 
@@ -2158,8 +2165,21 @@ void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
   ASSERT_TRUE(DeleteCDCStream(stream_id));
 }
 
-CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKTabletSplitTest,
-                                        TestCleanUpCDCStreamsMetadataDuringTabletSplit);
+// TODO(#22095): Enable the test after changing the test design to not block the main bg thread
+// executing CleanUpCDCSDKStreamsMetadata().
+TEST_F(
+    CDCSDKTabletSplitTest,
+    YB_DISABLE_TEST(TestCleanUpCDCStreamsMetadataDuringTabletSplitExplicit)) {
+  TestCleanUpCDCStreamsMetadataDuringTabletSplit(CDCCheckpointType::EXPLICIT);
+}
+
+// TODO(#22095): Enable the test after changing the test design to not block the main bg thread
+// executing CleanUpCDCSDKStreamsMetadata().
+TEST_F(
+    CDCSDKTabletSplitTest,
+    YB_DISABLE_TEST(TestCleanUpCDCStreamsMetadataDuringTabletSplitImplicit)) {
+  TestCleanUpCDCStreamsMetadataDuringTabletSplit(CDCCheckpointType::IMPLICIT);
+}
 
 TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDuringConsistentSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;

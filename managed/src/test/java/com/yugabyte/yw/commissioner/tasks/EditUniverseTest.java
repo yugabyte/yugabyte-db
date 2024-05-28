@@ -31,7 +31,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -210,25 +210,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
-      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
-                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
-                      + "    Stratum         : 3\n"
-                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
-                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
-                      + "    Last offset     : +0.000019514 seconds\n"
-                      + "    RMS offset      : 0.000011283 seconds\n"
-                      + "    Frequency       : 99.154 ppm slow\n"
-                      + "    Residual freq   : +0.009 ppm\n"
-                      + "    Skew            : 0.106 ppm\n"
-                      + "    Root delay      : 0.000162946 seconds\n"
-                      + "    Root dispersion : 0.000101734 seconds\n"
-                      + "    Update interval : 32.3 seconds\n"
-                      + "    Leap status     : Normal"));
-
+      mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
 
       when(mockClient.getLoadMoveCompletion())
@@ -284,7 +266,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         instanceActions.stream()
             .map(t -> t.getTaskType())
             .collect(Collectors.toCollection(ArrayList::new)));
-    JsonNode details = instanceActions.get(0).getDetails();
+    JsonNode details = instanceActions.get(0).getTaskParams();
     assertEquals(Json.toJson(newTags), details.get("tags"));
     assertEquals("q1,q3", details.get("deleteTags").asText());
 
@@ -364,7 +346,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     added.forEach(
         nodeInstance -> {
-          nodeInstance.setInUse(true);
+          nodeInstance.setState(NodeInstance.State.USED);
           nodeInstance.save();
         });
     TaskInfo taskInfo = submitTask(taskParams);
@@ -398,10 +380,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         TaskType.EditUniverse,
         taskParams);
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    taskParams = performShrink(universe);
+    // It may not be a master but works as long as it in the universe.
+    NodeDetails liveNode =
+        taskParams.nodeDetailsSet.stream()
+            .filter(n -> n.state != NodeState.ToBeRemoved)
+            .findFirst()
+            .get();
     setDumpEntitiesMock(universe, "", false);
     when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
-    taskParams = performShrink(universe);
+        .thenReturn(HostAndPort.fromHost(liveNode.cloudInfo.private_ip));
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.Edit,
@@ -414,7 +402,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testVolumeSizeValidationIncNum() {
     Universe universe = defaultUniverse;
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
