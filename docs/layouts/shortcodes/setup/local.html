@@ -12,7 +12,7 @@
 {{- $status := default "yes" (.Get "status") }}
 {{- $locations := default "aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c" (.Get "locations") -}}
 {{- $locations = split (replace (replace $locations "\n" "") " " "") "," -}}
-{{- $collapse := default "Setup a local cluster" (.Get "collapse") -}}
+{{- $collapse := default "Set up a local cluster" (.Get "collapse") -}}
 
 {{- if ne $collapse "no" -}}
 <details> <summary>{{$collapse}}</summary>

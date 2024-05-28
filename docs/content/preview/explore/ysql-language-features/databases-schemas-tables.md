@@ -189,8 +189,7 @@ yugabyte=# \l
 
 ## Tables
 
-A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns.
-Tables are created within a specific schema and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries. Tables are created within a specific schema (by default public) and contain the data that applications and users interact with.
+A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns. Tables are created in a specific schema (by default public) and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
 
 Create a table using the CREATE TABLE statement.
 
@@ -254,7 +253,7 @@ Indexes:
 
 ## Schemas
 
-A schema is a logical container within a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts.
+A schema is a logical container in a database that holds database objects such as tables, views, functions, and indexes. Schemas provide a way to organize objects into logical groups, making it easier to manage large databases with many objects and avoiding name conflicts.
 
 To create the schema with name `myschema`, run the following command:
 
