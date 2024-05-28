@@ -1836,6 +1836,12 @@ ReorderBufferCopySnap(ReorderBuffer *rb, Snapshot orig_snap,
 static void
 ReorderBufferFreeSnap(ReorderBuffer *rb, Snapshot snap)
 {
+	/*
+	 * Should never be called for YSQL as we do not rely on the snapshot
+	 * mechanism used by PG.
+	 */
+	Assert(!IsYugaByteEnabled());
+
 	if (snap->copied)
 		pfree(snap);
 	else
@@ -2512,7 +2518,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		 */
 		if (streaming)
 			ReorderBufferSaveTXNSnapshot(rb, txn, snapshot_now, command_id);
-		else if (snapshot_now->copied)
+		else if (!IsYugaByteEnabled() && snapshot_now->copied)
 			ReorderBufferFreeSnap(rb, snapshot_now);
 
 		/* cleanup */

@@ -478,17 +478,15 @@ static void
 CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 {
 	ListCell					*cell;
-	ListCell					*next;
 	YBUnackedTransactionInfo	*txn;
 
-	for (cell = list_head(unacked_transactions); cell; cell = next)
+	foreach(cell, unacked_transactions)
 	{
 		txn = (YBUnackedTransactionInfo *) lfirst(cell);
-		next = lnext(unacked_transactions, cell);
 
 		if (txn->commit_lsn <= confirmed_flush)
 			unacked_transactions =
-				list_delete_cell(unacked_transactions, cell);
+				foreach_delete_current(unacked_transactions, cell);
 		else
 			break;
 	}

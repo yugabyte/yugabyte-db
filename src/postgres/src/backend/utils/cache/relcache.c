@@ -7605,8 +7605,18 @@ RelationGetIdentityKeyBitmap(Relation relation)
 	if (!RelationGetForm(relation)->relhasindex)
 		return NULL;
 
-	/* Historic snapshot must be set. */
-	Assert(HistoricSnapshotActive());
+	/*
+	 * YB NOTE: We do not rely on the historical snapshot mechanism of PG. We
+	 * utilize the yb_read_time variable to read the catalog entries at the time
+	 * of the transaction.
+	 *
+	 * YB_TODO(#22555): Update the function to handle replica identity CHANGE.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		/* Historic snapshot must be set. */
+		Assert(HistoricSnapshotActive());
+	}
 
 	replidindex = RelationGetReplicaIndex(relation);
 
