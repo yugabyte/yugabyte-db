@@ -13,6 +13,13 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.7.1 - May 28, 2024
+
+### Bug Fixes
+
+- Fixed a bug where [export data](../reference/data-migration/export-data/) command (live-migration) from Oracle source fails with a "table already exists" error, when stopped and re-run (resuming CDC phase of export-data).
+- Fixed a known issue in the dockerised version of yb-voyager commands [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) and [end migration](../reference/end-migration/) do not work if you have previously passed ssl-cert/ssl-key/ssl-root-cert in [export data](../reference/data-migration/export-data/) or [import data](../reference/data-migration/import-data/) or [import data to source replica](../reference/data-migration/import-data/#import-data-to-source-replica) commands.
+
 ## v1.7 - May 16, 2024
 
 ### New features
