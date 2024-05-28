@@ -122,6 +122,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplicationOnSource;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig;
@@ -5280,17 +5281,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
-
     // Delete the replication CDC streams on the target universe.
     createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-
-    // Delete bootstrap IDs created by bootstrap universe subtask.
-    createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      // TODO: add forceDelete.
+      createDeleteReplicationOnSourceTask(xClusterConfig)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    } else {
+      // Delete bootstrap IDs created by bootstrap universe subtask.
+      createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    }
 
     if (deletePitrConfigs
-        && xClusterConfig.getType().equals(ConfigType.Txn)
+        && (xClusterConfig.getType() == ConfigType.Txn || xClusterConfig.getType() == ConfigType.Db)
         && xClusterConfig.getTargetUniverseUUID() != null) {
       List<PitrConfig> pitrConfigs = xClusterConfig.getPitrConfigs();
       for (PitrConfig pitrConfig : pitrConfigs) {
@@ -5708,6 +5713,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               }
             });
   }
+
+  // DB Scoped replication methods.
+  // --------------------------------------------------------------------------------
+
+  /**
+   * Deletes db scope replication on the source universe db side.
+   *
+   * @param xClusterConfig config used
+   * @return the created subtask group
+   */
+  protected SubTaskGroup createDeleteReplicationOnSourceTask(XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteReplicationOnSource");
+    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
+    xClusterConfigParams.xClusterConfig = xClusterConfig;
+
+    DeleteReplicationOnSource task = createTask(DeleteReplicationOnSource.class);
+    task.initialize(xClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  // --------------------------------------------------------------------------------
+  // End of DB Scoped replication methods.
+
   // --------------------------------------------------------------------------------
   // End of XCluster.
 }

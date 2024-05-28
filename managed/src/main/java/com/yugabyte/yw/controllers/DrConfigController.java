@@ -156,16 +156,20 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, targetUniverse);
     }
 
+    boolean isDbScoped =
+        createForm.dbScoped != null
+            ? createForm.dbScoped
+            : confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled);
     if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it"
+          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
     }
 
     DrConfig drConfig;
     DrConfigTaskParams taskParams;
-    if (createForm.dbScoped) {
+    if (isDbScoped) {
       if (createForm.dryRun) {
         return YBPSuccess.withMessage("The pre-checks are successful");
       }
