@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/gutil/strings/util.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
@@ -304,8 +305,9 @@ Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpo
 }
 
 namespace {
-template <typename PBList>
-std::string PBListAsString(const PBList& pb, const char* delim = ",") {
+template <typename Element>
+std::string PBListAsString(
+    const ::google::protobuf::RepeatedPtrField<Element>& pb, const char* delim = ",") {
   std::stringstream ostream;
   for (int i = 0; i < pb.size(); i++) {
     ostream << (i ? delim : "") << pb.Get(i).ShortDebugString();
@@ -313,9 +315,33 @@ std::string PBListAsString(const PBList& pb, const char* delim = ",") {
 
   return ostream.str();
 }
+
+std::string ShortReplicationErrorName(ReplicationErrorPb error) {
+  return StringReplace(
+      ReplicationErrorPb_Name(error), "REPLICATION_", "",
+      /*replace_all=*/false);
+}
+
+std::string PBListAsString(
+    const ::google::protobuf::RepeatedPtrField<ReplicationStatusErrorPB>& pb,
+    const char* delim = ",") {
+  std::stringstream ostream;
+  for (int i = 0; i < pb.size(); i++) {
+    ostream << (i ? delim : "") << ShortReplicationErrorName(pb.Get(i).error());
+    if (!pb.Get(i).error_detail().empty()) {
+      ostream << ": " << pb.Get(i).error_detail();
+    }
+  }
+
+  return ostream.str();
+}
+
 }  // namespace
 
-Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_status) const {
+Result<std::vector<XClusterInboundReplicationGroupStatus>>
+XClusterTargetManager::GetXClusterStatus() const {
+  std::vector<XClusterInboundReplicationGroupStatus> result;
+
   GetReplicationStatusResponsePB replication_status;
   GetReplicationStatusRequestPB req;
   RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
@@ -329,92 +355,113 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
     const auto stream_id =
         VERIFY_RESULT(xrepl::StreamId::FromString(table_stream_status.stream_id()));
     stream_status[stream_id] = PBListAsString(table_stream_status.errors(), ";");
-    auto s = table_stream_status.ShortDebugString();
   }
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
-  const auto& consumer_registry = cluster_config.consumer_registry();
+  SysClusterConfigEntryPB cluster_config_pb;
+  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config_pb));
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
   for (const auto& replication_info : replication_infos) {
-    XClusterInboundReplicationGroupStatus replication_group_status;
-    replication_group_status.replication_group_id =
-        xcluster::ReplicationGroupId(replication_info.replication_group_id());
-    replication_group_status.state =
-        SysUniverseReplicationEntryPB::State_Name(replication_info.state());
-    replication_group_status.transactional = replication_info.transactional();
-    replication_group_status.validated_local_auto_flags_config_version =
-        replication_info.validated_local_auto_flags_config_version();
+    auto replication_group_status =
+        VERIFY_RESULT(GetUniverseReplicationInfo(replication_info, cluster_config_pb));
 
-    for (const auto& namespace_info : replication_info.db_scoped_info().namespace_infos()) {
-      replication_group_status.db_scoped_info += Format(
+    for (auto& [_, tables] : replication_group_status.table_statuses_by_namespace) {
+      for (auto& table : tables) {
+        if (table.stream_id.IsNil()) {
+          static const auto repl_error_uninitialized =
+              ShortReplicationErrorName(ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED);
+          table.status = repl_error_uninitialized;
+        } else {
+          static const auto repl_ok = ShortReplicationErrorName(ReplicationErrorPb::REPLICATION_OK);
+          table.status = FindWithDefault(stream_status, table.stream_id, repl_ok);
+        }
+      }
+    }
+
+    result.push_back(std::move(replication_group_status));
+  }
+
+  return result;
+}
+
+Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverseReplicationInfo(
+    const SysUniverseReplicationEntryPB& replication_info_pb,
+    const SysClusterConfigEntryPB& cluster_config_pb) const {
+  XClusterInboundReplicationGroupStatus result;
+  result.replication_group_id =
+      xcluster::ReplicationGroupId(replication_info_pb.replication_group_id());
+  result.state = SysUniverseReplicationEntryPB::State_Name(replication_info_pb.state());
+  result.replication_type = replication_info_pb.transactional()
+                                ? XClusterReplicationType::XCLUSTER_YSQL_TRANSACTIONAL
+                                : XClusterReplicationType::XCLUSTER_NON_TRANSACTIONAL;
+  result.validated_local_auto_flags_config_version =
+      replication_info_pb.validated_local_auto_flags_config_version();
+
+  if (IsDbScoped(replication_info_pb)) {
+    result.replication_type = XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED;
+    for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
+      result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
+          namespace_info.producer_namespace_id();
+      result.db_scoped_info += Format(
           "\n  namespace: $0\n    consumer_namespace_id: $1\n    producer_namespace_id: $2",
           catalog_manager_.GetNamespaceName(namespace_info.consumer_namespace_id()),
           namespace_info.consumer_namespace_id(), namespace_info.producer_namespace_id());
     }
-
-    auto* producer_map =
-        FindOrNull(consumer_registry.producer_map(), replication_info.replication_group_id());
-    if (producer_map) {
-      replication_group_status.master_addrs = PBListAsString(producer_map->master_addrs());
-      replication_group_status.disable_stream = producer_map->disable_stream();
-      replication_group_status.compatible_auto_flag_config_version =
-          producer_map->compatible_auto_flag_config_version();
-      replication_group_status.validated_remote_auto_flags_config_version =
-          producer_map->validated_auto_flags_config_version();
-    }
-
-    for (const auto& source_table_id : replication_info.tables()) {
-      NamespaceName namespace_name = "<Unknown>";
-
-      InboundXClusterReplicationGroupTableStatus table_status;
-      table_status.source_table_id = source_table_id;
-
-      auto* stream_id_it = FindOrNull(replication_info.table_streams(), source_table_id);
-      if (stream_id_it) {
-        table_status.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(*stream_id_it));
-        auto it = FindOrNull(stream_status, table_status.stream_id);
-        table_status.status = it ? *it : "OK";
-
-        if (producer_map) {
-          auto* stream_info =
-              FindOrNull(producer_map->stream_map(), table_status.stream_id.ToString());
-          if (stream_info) {
-            table_status.target_table_id = stream_info->consumer_table_id();
-
-            auto table_info_res = catalog_manager_.GetTableById(table_status.target_table_id);
-            if (table_info_res) {
-              const auto& table_info = table_info_res.get();
-              namespace_name = table_info->namespace_name();
-              table_status.full_table_name = GetFullTableName(*table_info);
-            }
-
-            table_status.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
-            table_status.local_tserver_optimized = stream_info->local_tserver_optimized();
-            table_status.source_schema_version =
-                stream_info->schema_versions().current_producer_schema_version();
-            table_status.target_schema_version =
-                stream_info->schema_versions().current_consumer_schema_version();
-            for (const auto& [_, producer_tablets] : stream_info->consumer_producer_tablet_map()) {
-              table_status.source_tablet_count += producer_tablets.tablets_size();
-            }
-          }
-        }
-      } else {
-        table_status.status = "Not Ready";
-      }
-
-      replication_group_status.table_statuses_by_namespace[namespace_name].push_back(
-          std::move(table_status));
-    }
-
-    xcluster_status.inbound_replication_group_statuses.push_back(
-        std::move(replication_group_status));
   }
 
-  return Status::OK();
+  auto* producer_map = FindOrNull(
+      cluster_config_pb.consumer_registry().producer_map(),
+      replication_info_pb.replication_group_id());
+  if (producer_map) {
+    result.master_addrs = PBListAsString(producer_map->master_addrs());
+    result.disable_stream = producer_map->disable_stream();
+    result.compatible_auto_flag_config_version =
+        producer_map->compatible_auto_flag_config_version();
+    result.validated_remote_auto_flags_config_version =
+        producer_map->validated_auto_flags_config_version();
+  }
+
+  for (const auto& source_table_id : replication_info_pb.tables()) {
+    NamespaceName namespace_name = "<Unknown>";
+
+    InboundXClusterReplicationGroupTableStatus table_status;
+    table_status.source_table_id = source_table_id;
+
+    auto* stream_id_it = FindOrNull(replication_info_pb.table_streams(), source_table_id);
+    if (stream_id_it) {
+      table_status.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(*stream_id_it));
+
+      if (producer_map) {
+        auto* stream_info =
+            FindOrNull(producer_map->stream_map(), table_status.stream_id.ToString());
+        if (stream_info) {
+          table_status.target_table_id = stream_info->consumer_table_id();
+
+          auto table_info_res = catalog_manager_.GetTableById(table_status.target_table_id);
+          if (table_info_res) {
+            const auto& table_info = table_info_res.get();
+            namespace_name = table_info->namespace_name();
+            table_status.full_table_name = GetFullTableName(*table_info);
+          }
+
+          table_status.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
+          table_status.local_tserver_optimized = stream_info->local_tserver_optimized();
+          table_status.source_schema_version =
+              stream_info->schema_versions().current_producer_schema_version();
+          table_status.target_schema_version =
+              stream_info->schema_versions().current_consumer_schema_version();
+          for (const auto& [_, producer_tablets] : stream_info->consumer_producer_tablet_map()) {
+            table_status.source_tablet_count += producer_tablets.tablets_size();
+          }
+        }
+      }
+    }
+
+    result.table_statuses_by_namespace[namespace_name].push_back(std::move(table_status));
+  }
+
+  return result;
 }
 
 Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
@@ -451,6 +498,31 @@ XClusterTargetManager::GetTransactionalReplicationGroups() const {
     }
   }
   return result;
+}
+
+std::vector<xcluster::ReplicationGroupId> XClusterTargetManager::GetUniverseReplications(
+    const NamespaceId& consumer_namespace_id) const {
+  std::vector<xcluster::ReplicationGroupId> result;
+  auto universe_replications = catalog_manager_.GetAllUniverseReplications();
+  for (const auto& replication_info : universe_replications) {
+    if (!consumer_namespace_id.empty() && !HasNamespace(*replication_info, consumer_namespace_id)) {
+      continue;
+    }
+    result.push_back(replication_info->ReplicationGroupId());
+  }
+
+  return result;
+}
+
+Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverseReplicationInfo(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
+
+  SysClusterConfigEntryPB cluster_config_pb;
+  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config_pb));
+  auto l = replication_info->LockForRead();
+  return GetUniverseReplicationInfo(l->pb, cluster_config_pb);
 }
 
 }  // namespace yb::master

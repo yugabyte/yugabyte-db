@@ -42,6 +42,7 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/path-handler-util.h"
@@ -3032,9 +3033,11 @@ void MasterPathHandlers::HandleXCluster(
     auto group_fs = AutoFieldsetScope(
         output, Format("Group: $0", inbound_replication_group.replication_group_id));
 
-    output << "<pre class=\"prettyprint\">" << "state: " << inbound_replication_group.state
+    output << "<pre class=\"prettyprint\">"
+           << "state: " << inbound_replication_group.state
            << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
-           << "\ntransactional: " << BoolToString(inbound_replication_group.transactional)
+           << "\ntype: "
+           << xcluster::ShortReplicationType(inbound_replication_group.replication_type)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
     if (!inbound_replication_group.db_scoped_info.empty()) {
       output << "\ndb_scoped_info: " << inbound_replication_group.db_scoped_info;
