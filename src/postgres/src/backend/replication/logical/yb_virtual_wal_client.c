@@ -198,14 +198,24 @@ InitVirtualWal(List *publication_names)
 	List		*tables;
 	Oid			*table_oids;
 
+	elog(DEBUG2,
+		 "Setting yb_read_time to last_pub_refresh_time for "
+		 "InitVirtualWal: %" PRIu64,
+		 MyReplicationSlot->data.yb_last_pub_refresh_time);
 	YBCUpdateYbReadTimeAndInvalidateRelcache(
 		MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
-	table_oids = YBCGetTableOids(tables);	
+	table_oids = YBCGetTableOids(tables);
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables));
+
+	elog(DEBUG2,
+		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+		 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(
+		MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 
 	pfree(table_oids);
 	list_free(tables);
@@ -242,6 +252,9 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 
 			Assert(yb_read_time < publication_refresh_time);
 
+			elog(DEBUG2,
+				 "Setting yb_read_time to new pub_refresh_time: %" PRIu64,
+				 publication_refresh_time);
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
 			/* Get tables in publication and call UpdatePublicationTableList. */
@@ -534,7 +547,7 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 /*
  * Get the table Oids for the list of tables provided as arguments. It is the
  * responsibility of the caller to free the array of Oid values returned from
- * this function. 
+ * this function.
  */
 static Oid *
 YBCGetTableOids(List *tables)
@@ -546,11 +559,11 @@ YBCGetTableOids(List *tables)
 	size_t table_idx = 0;
 	foreach (lc, tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
-	
+
 	return table_oids;
 }
 
-static void 
+static void
 YBCRefreshReplicaIdentities()
 {
 	YBCReplicationSlotDescriptor 	*yb_replication_slot;
