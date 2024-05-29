@@ -208,8 +208,8 @@ public class OtelCollectorConfigGenerator {
             + "user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\\d+)[|]"
             + "source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\\d+)[|]"
             + "timestamp:(?P<timestamp>\\d+)[|]type:(?P<type>[^|]+)[|]"
-            + "category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]"
-            + "scope:(?P<scope>[^|]+)[|]operation:(?P<statement>(.|\\n|\\r|\\s)*)");
+            + "category:(?P<category>[^|]+)([|]ks:(?P<keyspace>[^|]+))?([|]"
+            + "scope:(?P<scope>[^|]+))?[|]operation:(?P<statement>(.|\\n|\\r|\\s)*)");
     regexOperator.setOn_error("drop");
     OtelCollectorConfigFormat.OperatorTimestamp timestamp =
         new OtelCollectorConfigFormat.OperatorTimestamp();
@@ -253,6 +253,9 @@ public class OtelCollectorConfigGenerator {
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
     Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     String exporterName;
+    List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
+    OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
+        new OtelCollectorConfigFormat.AttributesProcessor();
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -265,6 +268,13 @@ public class OtelCollectorConfigGenerator {
         dataDogExporter.setApi(apiConfig);
         exporterName = "datadog/" + telemetryProvider.getUuid();
         exporters.put(exporterName, setExporterCommonConfig(dataDogExporter, true, true));
+
+        // Add Datadog specific labels.
+        attributeActions.add(
+            new OtelCollectorConfigFormat.AttributeAction("ddsource", "yugabyte", "upsert"));
+        attributeActions.add(
+            new OtelCollectorConfigFormat.AttributeAction(
+                "service", "yb-otel-collector", "upsert"));
         break;
       case SPLUNK:
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
@@ -316,9 +326,10 @@ public class OtelCollectorConfigGenerator {
                 + " is not supported.");
     }
 
-    OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
-        new OtelCollectorConfigFormat.AttributesProcessor();
-    List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
+    // Add some common collector labels.
+    attributeActions.add(new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert"));
+
+    // Override or add tags from the exporter config.
     if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
       attributeActions.addAll(
           telemetryProvider.getTags().entrySet().stream()
@@ -328,6 +339,8 @@ public class OtelCollectorConfigGenerator {
                           e.getKey(), e.getValue(), "upsert"))
               .toList());
     }
+
+    // Override or add additional tags from the audit log config payload.
     if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
       attributeActions.addAll(
           logsExporterConfig.getAdditionalTags().entrySet().stream()
@@ -337,8 +350,7 @@ public class OtelCollectorConfigGenerator {
                           e.getKey(), e.getValue(), "upsert"))
               .toList());
     }
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction("host.name", nodeName, "upsert"));
+
     attributesProcessor.setActions(attributeActions);
 
     String processorName = "attributes/" + telemetryProvider.getUuid();
