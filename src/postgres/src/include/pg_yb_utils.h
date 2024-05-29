@@ -1015,4 +1015,8 @@ extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
  */
 extern void YBCheckDdlForDBCatalogVersionMode(bool is_catalog_version_increment);
 
+static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
+	return db_oid == kYBCPgSequencesDataDatabaseOid;
+}
+
 #endif /* PG_YB_UTILS_H */

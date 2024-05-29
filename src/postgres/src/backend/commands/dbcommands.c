@@ -627,7 +627,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		do
 		{
 			dboid = GetNewOid(pg_database_rel);
-		} while (check_db_file_conflict(dboid));
+		} while (check_db_file_conflict(dboid) || YbIsNormalDbOidReserved(dboid));
 
 		retry_on_oid_collision = false;
 		if (IsYugaByteEnabled())
