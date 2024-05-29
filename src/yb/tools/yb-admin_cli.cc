@@ -2611,7 +2611,7 @@ Status get_universe_replication_info_action(
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
     std::cout << std::endl
               << "DB Scoped info(s):" << std::endl
-              << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID";
+              << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
     for (const auto& [target_namespace_id, source_namespace_id] :
          group_info.db_scope_namespace_id_map) {
       auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);
@@ -2622,7 +2622,7 @@ Status get_universe_replication_info_action(
 
   std::cout << std::endl
             << "Tables:" << std::endl
-            << "Target Table ID\t\tSource Table ID\t\tStreamId";
+            << "Target Table ID\t\tSource Table ID\t\tStreamId" << std::endl;
   for (const auto& tables : group_info.table_infos) {
     std::cout << tables.target_table_id << "\t\t" << tables.source_table_id << "\t\t"
               << tables.stream_id << std::endl;
