@@ -143,6 +143,28 @@ class XClusterClient {
   Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
   GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
 
+  // Returns list of all universe replication group ids if consumer_namespace_id is empty. If
+  // consumer_namespace_id is not empty then returns DB scoped replication groups that contain the
+  // namespace.
+  Result<std::vector<xcluster::ReplicationGroupId>> GetUniverseReplications(
+      const NamespaceId& consumer_namespace_id);
+
+  struct XClusterInboundReplicationGroupInfo {
+    XClusterReplicationType replication_type = XClusterReplicationType::XCLUSTER_NON_TRANSACTIONAL;
+    std::string source_master_addrs;
+    // Map of target namespace id to source namespace id. Only used in db scope replication.
+    std::unordered_map<NamespaceId, NamespaceId> db_scope_namespace_id_map;
+
+    struct XClusterInboundReplicationGroupTableInfo {
+      TableId target_table_id;
+      TableId source_table_id;
+      xrepl::StreamId stream_id = xrepl::StreamId::Nil();
+    };
+    std::vector<XClusterInboundReplicationGroupTableInfo> table_infos;
+  };
+  Result<XClusterInboundReplicationGroupInfo> GetUniverseReplicationInfo(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
  private:
   CoarseTimePoint GetDeadline() const;
 

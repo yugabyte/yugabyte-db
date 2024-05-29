@@ -4008,4 +4008,53 @@ TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
   }
 }
 
+TEST_F_EX(XClusterTest, TestYbAdmin, XClusterTestNoParam) {
+  // Create 2 tables with 1 tablet each.
+  ASSERT_OK(SetUpWithParams({1, 1}, /*replication_factor=*/1));
+
+  auto result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications"));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  ASSERT_OK(SetupReplication());
+
+  result =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "NonExistent"));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  // This is not a db scoped replication group so it should not be listed.
+  result = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "list_universe_replications",
+      producer_tables_[0]->name().namespace_id()));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications"));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "get_universe_replication_info", kReplicationGroupId));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  constexpr auto host_port_str = "host: \"$0\" port: $1";
+  const auto& source_addr =
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr();
+  ASSERT_STR_CONTAINS(result, Format(host_port_str, source_addr.host(), source_addr.port()));
+  const auto& consumer_addr =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr();
+  ASSERT_STR_NOT_CONTAINS(
+      result, Format(host_port_str, consumer_addr.host(), consumer_addr.port()));
+  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_NON_TRANSACTIONAL));
+  ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
+  ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
+
+  ASSERT_OK(DeleteUniverseReplication());
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables_, {LeaderOnly::kFalse, Transactional::kTrue}));
+
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "get_universe_replication_info", kReplicationGroupId));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_TRANSACTIONAL));
+  ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
+  ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
+}
+
 }  // namespace yb
