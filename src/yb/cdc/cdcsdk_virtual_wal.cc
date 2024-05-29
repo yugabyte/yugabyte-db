@@ -37,6 +37,10 @@ DEFINE_test_flag(
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
+DEFINE_RUNTIME_PREVIEW_bool(
+    cdcsdk_enable_dynamic_table_support, false,
+    "This flag can be used to switch the dynamic addition of tables ON or OFF.");
+
 namespace yb {
 namespace cdc {
 
@@ -308,6 +312,9 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators() {
 
   pub_refresh_times = ParsePubRefreshTimes(*entry_opt->pub_refresh_times);
 
+  last_decided_pub_refresh_time =
+      ParseLastDecidedPubRefreshTime(*entry_opt->last_decided_pub_refresh_time);
+
   auto commit_time = *entry_opt->record_id_commit_time;
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
@@ -420,15 +427,23 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // records in the response. Set the fields 'needs_publication_table_list_refresh' and
     // 'publication_refresh_time' and return the response.
     if (unique_id->IsPublicationRefreshRecord()) {
-      last_pub_refresh_time = unique_id->GetCommitTime();
-      resp->set_needs_publication_table_list_refresh(true);
-      resp->set_publication_refresh_time(last_pub_refresh_time);
-      metadata.contains_publication_refresh_record = true;
-      VLOG_WITH_PREFIX(2)
-          << "Notifying walsender to refresh publication list in the GetConsistentChanges "
-             "response at commit_time: "
-          << last_pub_refresh_time;
-      break;
+      // The dummy transaction id is set in the publication refresh message only when the value of
+      // the flag 'cdcsdk_enable_dynamic_table_support' is true. In other words, the VWAL notifies
+      // the walsender to refresh publication when the pub refresh message has a dummy transaction
+      // id.
+      if (record->row_message().has_transaction_id() &&
+          record->row_message().transaction_id() == kDummyTransactionID) {
+        last_pub_refresh_time = unique_id->GetCommitTime();
+        resp->set_needs_publication_table_list_refresh(true);
+        resp->set_publication_refresh_time(last_pub_refresh_time);
+        metadata.contains_publication_refresh_record = true;
+        VLOG_WITH_PREFIX(2)
+            << "Notifying walsender to refresh publication list in the GetConsistentChanges "
+               "response at commit_time: "
+            << last_pub_refresh_time;
+        break;
+      }
+      continue;
     }
 
     auto row_message = record->mutable_row_message();
@@ -948,11 +963,17 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::UpdatePubRefreshTimesInCDCState() {
+Status CDCSDKVirtualWAL::UpdatePubRefreshInfoInCDCState(bool update_pub_refresh_times) {
   CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id_);
-  entry.pub_refresh_times = GetPubRefreshTimesString();
+  if (update_pub_refresh_times) {
+    entry.pub_refresh_times = GetPubRefreshTimesString();
+    VLOG_WITH_PREFIX(2) << "Updating the slot entry for stream id: " << stream_id_
+                        << " with pub_refresh_times: " << *entry.pub_refresh_times;
+  }
+  entry.last_decided_pub_refresh_time = GetLastDecidedPubRefreshTimeString();
   VLOG_WITH_PREFIX(2) << "Updating the slot entry for stream id: " << stream_id_
-          << " with pub_refresh_times: " << *entry.pub_refresh_times;
+                      << " with last_decided_pub_refresh_time: "
+                      << *entry.last_decided_pub_refresh_time;
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
   return Status::OK();
 }
@@ -977,35 +998,58 @@ Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
       "Publication Refresh Tablet Queue already exists");
   tablet_queues_[kPublicationRefreshTabletID] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
 
-  // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we need
-  // to persist the next pub_refresh_time.
-  if (pub_refresh_times.empty()) {
+  // This will be true in the very first instance of InitVirtualWAL, before any GetConsistentChanges
+  // call is made. In the subsequent InitVirtualWAL calls due to restarts, the last txn shipped
+  // before restart will have the previous pub refresh time stored in the
+  // last_pub_refresh_time, while the last_decided_pub_refresh_time will contain the next pub
+  // refresh time.
+  if (pub_refresh_times.empty() && last_decided_pub_refresh_time.first == last_pub_refresh_time) {
     return PushNextPublicationRefreshRecord();
   }
 
+  // The commit times present in the pub_refresh_times represent the times at which publication
+  // refresh message was sent to the walsender. Inorder to maintain LSN determinism, the pub refresh
+  // will be performed at these points in time across restarts.
   for (auto pub_refresh_time : pub_refresh_times) {
-    RETURN_NOT_OK(PushPublicationRefreshRecord(pub_refresh_time));
+    RETURN_NOT_OK(PushPublicationRefreshRecord(pub_refresh_time, true));
+  }
+
+  // The last_decided_pub_refresh_time gives us the value of the last record that was pushed
+  // into the pub refresh queue. The last_decided_pub_refresh_time.second tells us about the value
+  // of the flag cdcsdk_enable_dynamic_table_support corresponding to that record, i.e whether the
+  // publication refresh was performed corresponding to the record or not. If true, then the entry
+  // would be present in the pub_refresh_times and hence we need not add it to the pub_refresh_queue
+  // again.
+  if (!last_decided_pub_refresh_time.second) {
+    RETURN_NOT_OK(PushPublicationRefreshRecord(last_decided_pub_refresh_time.first, false));
   }
 
   return Status::OK();
 }
 
 Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
-  auto last_pub_refresh_time_hybrid = HybridTime(last_pub_refresh_time);
+  auto last_decided_pub_refresh_time_hybrid = HybridTime(last_decided_pub_refresh_time.first);
   HybridTime hybrid_sum;
   if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
-    hybrid_sum = last_pub_refresh_time_hybrid.AddMicroseconds(
+    hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
         GetAtomicFlag(&FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros));
   } else {
-    hybrid_sum = last_pub_refresh_time_hybrid.AddSeconds(
+    hybrid_sum = last_decided_pub_refresh_time_hybrid.AddSeconds(
         GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_secs));
   }
+  DCHECK(hybrid_sum.ToUint64() > last_decided_pub_refresh_time.first);
 
-  // Persist the updated pub_refresh_times in cdc_state table.
+  bool should_apply = GetAtomicFlag(&FLAGS_cdcsdk_enable_dynamic_table_support);
+  if (should_apply) {
+    pub_refresh_times.insert(hybrid_sum.ToUint64());
+  }
+  last_decided_pub_refresh_time = {hybrid_sum.ToUint64(), should_apply};
+
   // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we need
-  // to persist the next pub_refresh_time.
-  pub_refresh_times.insert(hybrid_sum.ToUint64());
-  RETURN_NOT_OK(UpdatePubRefreshTimesInCDCState());
+  // to persist the next pub_refresh_time in last_decided_pub_refresh_time field of slot entry. If a
+  // publication refresh is to be performed at the next pub_refresh_time, then we also persist it in
+  // pub_refresh_times list.
+  RETURN_NOT_OK(UpdatePubRefreshInfoInCDCState(should_apply));
 
   RSTATUS_DCHECK(
       tablet_queues_[kPublicationRefreshTabletID].empty(), InternalError,
@@ -1013,13 +1057,18 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
              "to it, but it had $0 records"),
       tablet_queues_[kPublicationRefreshTabletID].size());
 
-  return PushPublicationRefreshRecord(hybrid_sum.ToUint64());
+  return PushPublicationRefreshRecord(hybrid_sum.ToUint64(), should_apply);
 }
 
-Status CDCSDKVirtualWAL::PushPublicationRefreshRecord(uint64_t pub_refresh_time) {
+Status CDCSDKVirtualWAL::PushPublicationRefreshRecord(
+    uint64_t pub_refresh_time, bool should_apply) {
   auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
   auto row_message = publication_refresh_record->mutable_row_message();
   row_message->set_commit_time(pub_refresh_time);
+  // Set the transaction id in the pub refresh record if it should be sent to the walsender.
+  if (should_apply) {
+    row_message->set_transaction_id(kDummyTransactionID);
+  }
   std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue =
       tablet_queues_[kPublicationRefreshTabletID];
   tablet_queue.push(publication_refresh_record);
@@ -1126,6 +1175,22 @@ std::set<uint64_t> CDCSDKVirtualWAL::ParsePubRefreshTimes(
   return pub_refresh_times_result;
 }
 
+std::pair<uint64_t, bool> CDCSDKVirtualWAL::ParseLastDecidedPubRefreshTime(
+    const std::string& last_decided_pub_refresh_time_str) {
+  DCHECK(!last_decided_pub_refresh_time_str.empty());
+
+  char lastChar = last_decided_pub_refresh_time_str.back();
+  DCHECK(lastChar == 'T' || lastChar == 'F');
+
+  std::string commit_time_str =
+      last_decided_pub_refresh_time_str.substr(0, last_decided_pub_refresh_time_str.size() - 1);
+  uint64_t commit_time;
+
+  commit_time = std::stoull(commit_time_str);
+
+  return std::make_pair(commit_time, lastChar == 'T');
+}
+
 std::string CDCSDKVirtualWAL::GetPubRefreshTimesString() {
   if (pub_refresh_times.empty()) {
     return "";
@@ -1137,6 +1202,21 @@ std::string CDCSDKVirtualWAL::GetPubRefreshTimesString() {
   ++iter;
   for (; iter != pub_refresh_times.end(); ++iter) {
     oss << "," << *iter;
+  }
+  return oss.str();
+}
+
+std::string CDCSDKVirtualWAL::GetLastDecidedPubRefreshTimeString() {
+  if (last_decided_pub_refresh_time.first == 0) {
+    return "";
+  }
+  std::ostringstream oss;
+
+  oss << last_decided_pub_refresh_time.first;
+  if (last_decided_pub_refresh_time.second) {
+    oss << 'T';
+  } else {
+    oss << 'F';
   }
   return oss.str();
 }

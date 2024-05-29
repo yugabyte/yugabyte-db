@@ -3743,12 +3743,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         slot_row->record_id_commit_time = HybridTime(*(row.record_id_commit_time));
         slot_row->last_pub_refresh_time = HybridTime(*(row.last_pub_refresh_time));
         slot_row->pub_refresh_times = *(row.pub_refresh_times);
+        slot_row->last_decided_pub_refresh_time = *(row.last_decided_pub_refresh_time);
         LOG(INFO) << "Read cdc_state table slot entry for slot with stream id: " << stream_id
                   << " confirmed_flush_lsn: " << slot_row->confirmed_flush_lsn
                   << " restart_lsn: " << slot_row->restart_lsn << " xmin: " << slot_row->xmin
                   << " record_id_commit_time: " << slot_row->record_id_commit_time.ToUint64()
                   << " last_pub_refresh_time: " << slot_row->last_pub_refresh_time.ToUint64()
-                  << " pub_refresh_times: " << slot_row->pub_refresh_times;
+                  << " pub_refresh_times: " << slot_row->pub_refresh_times
+                  << " last_decided_pub_refresh_time: " << slot_row->last_decided_pub_refresh_time;
       }
     }
     RETURN_NOT_OK(s);
