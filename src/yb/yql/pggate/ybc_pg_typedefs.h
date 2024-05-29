@@ -738,6 +738,10 @@ typedef struct PgTabletsDescriptor {
   size_t partition_key_end_len;
 } YBCPgTabletsDescriptor;
 
+// The reserved database oid for system_postgres. Must be the same as
+// kPgSequencesDataTableOid (defined in entity_ids.h).
+static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
