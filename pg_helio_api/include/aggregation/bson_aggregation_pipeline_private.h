@@ -188,7 +188,8 @@ inline static Oid
 GetMergeDocumentsFunctionOid(void)
 {
 	if (IsClusterVersionAtleastThis(1, 18, 0) ||
-		IsClusterVersionEqualToAndAtLeastPatch(1, 17, 1))
+		IsClusterVersionEqualToAndAtLeastPatch(1, 17, 1) ||
+		IsClusterVersionEqualToAndAtLeastPatch(1, 16, 1))
 	{
 		return BsonDollaMergeDocumentsFunctionOid();
 	}
