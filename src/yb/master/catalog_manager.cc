@@ -12889,5 +12889,52 @@ std::optional<UniverseUuid> CatalogManager::GetUniverseUuidIfExists() const {
   return *universe_uuid_res;
 }
 
+Result<std::vector<CatalogManager::StatefulServiceStatus>>
+CatalogManager::GetStatefulServicesStatus() const {
+  std::vector<CatalogManager::StatefulServiceStatus> result;
+  std::vector<TableInfoPtr> tables_hosting_services;
+
+  {
+    SharedLock lock(mutex_);
+    for (const auto& table_info : tables_->GetAllTables()) {
+      if (!table_info->GetHostedStatefulServices().empty()) {
+        tables_hosting_services.emplace_back(table_info);
+      }
+    }
+  }
+
+  for (const auto& table_info : tables_hosting_services) {
+    const auto services = table_info->GetHostedStatefulServices();
+    if (services.empty()) {
+      continue;
+    }
+    for (const auto& service_kind : services) {
+      CatalogManager::StatefulServiceStatus service_status;
+      RSTATUS_DCHECK(
+          StatefulServiceKind_IsValid(service_kind), IllegalState,
+          Format("Unknown service kind $0", service_kind));
+      service_status.service_name = StatefulServiceKind_Name((StatefulServiceKind)service_kind);
+
+      service_status.service_table_id = table_info->id();
+      if (!table_info->GetTablets().empty()) {
+        const auto tablet = table_info->GetTablets().front();
+        service_status.service_tablet_id = tablet->tablet_id();
+        auto leader_result = tablet->GetLeader();
+        if (leader_result.ok()) {
+          service_status.hosting_node = leader_result.get();
+        } else {
+          VLOG(1) << Format(
+              "Failed to get leader for Stateful Service $0: $1", service_status.service_name,
+              leader_result.status());
+        }
+      }
+
+      result.emplace_back(std::move(service_status));
+    }
+  }
+
+  return result;
+}
+
 }  // namespace master
 }  // namespace yb

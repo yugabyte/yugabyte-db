@@ -328,6 +328,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema,
       const LeaderEpoch& epoch);
 
+  struct StatefulServiceStatus {
+    std::string service_name;
+    const TSDescriptor* hosting_node = nullptr;
+    TableId service_table_id;
+    TabletId service_tablet_id;
+  };
+  Result<std::vector<StatefulServiceStatus>> GetStatefulServicesStatus() const EXCLUDES(mutex_);
+
   Status CreateTestEchoService(const LeaderEpoch& epoch);
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);

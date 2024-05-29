@@ -51,6 +51,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -78,6 +79,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
+DECLARE_bool(TEST_echo_service_enabled);
 
 namespace yb {
 namespace master {
@@ -1538,6 +1540,52 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
       20s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
+}
+
+TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(StatefulServices)) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto service_name = StatefulServiceKind_Name(StatefulServiceKind::TEST_ECHO);
+
+  faststring out;
+  ASSERT_OK(GetUrl("/stateful-services", &out));
+  auto out_str = out.ToString();
+  ASSERT_STR_NOT_CONTAINS(out_str, service_name);
+
+  ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
+  {
+    JsonReader r(out.ToString());
+    ASSERT_OK(r.Init());
+    const rapidjson::Value* json_obj = nullptr;
+    ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
+    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
+    const auto services = (*json_obj)["stateful_services"].GetArray();
+    ASSERT_EQ(services.Size(), 0);
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_echo_service_enabled) = true;
+  ASSERT_OK(client->WaitForCreateTableToFinish(
+      stateful_service::GetStatefulServiceTableName(StatefulServiceKind::TEST_ECHO)));
+
+  ASSERT_OK(GetUrl("/stateful-services", &out));
+  out_str = out.ToString();
+  ASSERT_STR_CONTAINS(out_str, service_name);
+
+  ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
+  {
+    JsonReader r(out.ToString());
+    ASSERT_OK(r.Init());
+    const rapidjson::Value* json_obj = nullptr;
+    ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
+    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
+    const auto services = (*json_obj)["stateful_services"].GetArray();
+    ASSERT_EQ(services.Size(), 1);
+    ASSERT_TRUE(services.Begin()->HasMember("service_name"));
+    ASSERT_EQ(services.Begin()->FindMember("service_name")->value.GetString(), service_name);
+  }
 }
 
 }  // namespace master

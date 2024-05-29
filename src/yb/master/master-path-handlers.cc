@@ -3280,6 +3280,71 @@ void MasterPathHandlers::HandleLoadBalancer(
   RenderLoadBalancerViewPanel(*tserver_tree_result, descs, tables, output);
 }
 
+void MasterPathHandlers::HandleStatefulServices(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+
+  if (!stateful_service_result.ok()) {
+    output << "<div class=\"alert alert-warning\">"
+           << EscapeForHtmlToString(stateful_service_result.status().ToString()) << "</div>";
+    return;
+  }
+
+  output << "<h1>Stateful Services</h1>\n";
+  HTML_PRINT_TABLE_WITH_HEADER_ROW(
+      stateful_services, "Service Name", "Hosting server", "Table Id", "Tablet ID");
+  for (const auto& service : *stateful_service_result) {
+    const auto& reg = service.hosting_node->GetRegistration();
+    const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
+    const auto& cloud_info = reg.common().cloud_info();
+    const auto& host_server = Format(
+        "$0<br/>$1<br/>$2", RegistrationToHtml(reg.common(), host_port),
+        service.hosting_node->permanent_uuid(),
+        EscapeForHtmlToString(Format(
+            "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+            cloud_info.placement_zone())));
+
+    HTML_PRINT_TABLE_ROW(
+        service.service_name, host_server,
+        Format("<a href=\"/table?id=$0\">$0</a>", service.service_table_id),
+        service.service_tablet_id);
+  }
+  HTML_END_TABLE;
+  HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+}
+
+void MasterPathHandlers::HandleStatefulServicesJson(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  JsonWriter jw(&resp->output, JsonWriter::COMPACT);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  jw.StartObject();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+  if (!stateful_service_result.ok()) {
+    jw.String("error");
+    jw.String(stateful_service_result.status().ToString());
+  } else {
+    jw.String("stateful_services");
+    jw.StartArray();
+    for (const auto& service : *stateful_service_result) {
+      jw.StartObject();
+      jw.String("service_name");
+      jw.String(service.service_name);
+      jw.String("hosting_server");
+      jw.String(service.hosting_node->permanent_uuid());
+      jw.String("table_id");
+      jw.String(service.service_table_id);
+      jw.String("tablet_id");
+      jw.String(service.service_tablet_id);
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+  jw.EndObject();
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   const bool is_styled = true;
   const bool is_on_nav_bar = true;
@@ -3332,9 +3397,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
       is_styled);
-  server->RegisterPathHandler(
-      "/api/v1/meta-cache", "MetaCache",
-      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
+
+  RegisterLeaderOrRedirect(
+      server, "/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServices, is_styled);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(
@@ -3381,6 +3447,14 @@ Status MasterPathHandlers::Register(Webserver* server) {
 
   RegisterLeaderOrRedirect(
       server, "/api/v1/xcluster", "xCluster", &MasterPathHandlers::HandleGetXClusterJSON);
+
+  server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServicesJson);
 
   return Status::OK();
 }
