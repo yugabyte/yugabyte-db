@@ -431,8 +431,8 @@ RI_FKey_check(TriggerData *trigdata)
 	if (IsYBRelation(pk_rel))
 	{
 		/* YB_TODO(later): Do away with TTS to heaptuple conversion. */
-		bool shouldFree = true;
-		HeapTuple new_row = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
+		bool shouldFree;
+		HeapTuple new_row = ExecFetchSlotHeapTuple(newslot, false, &shouldFree);
 
 		/*
 		 * Use fast path for FK check in case ybctid for row in source table can be build from

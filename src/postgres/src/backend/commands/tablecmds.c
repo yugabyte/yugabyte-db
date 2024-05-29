@@ -6567,7 +6567,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 					HeapTuple	tuple;
 					bool		shouldFree;
 
-					tuple = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
+					tuple = ExecFetchSlotHeapTuple(newslot, false, &shouldFree);
 					Assert(!shouldFree);
 					YBCExecuteInsert(newrel,
 									 RelationGetDescr(newrel),

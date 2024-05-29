@@ -606,8 +606,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		if (IsYBRelation(myState->rel))
 		{
 			/* YB_TODO(later) Wait for slot API */
-			bool shouldFree = true;
-			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+			bool shouldFree;
+			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 			/* Update the tuple with table oid */
 			slot->tts_tableOid = RelationGetRelid(myState->rel);
