@@ -47,15 +47,20 @@ Features in stable releases are considered to be {{<badge/ga>}} unless marked ot
 
 ## Release versioning convention for Preview releases
 
-YugabyteDB follows the [semantic versioning (SemVer)](https://semver.org/) convention for numbering release versions, modified slightly to use even and odd minor releases denote stable and development releases, respectively. Release versions follow the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used for:
+Preview releases, which include features under active development, are recommended for development and testing only.
+
+YugabyteDB follows the below-described convention for preview release version numbering. Preview release versions follow the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used for:
 
 - `MAJOR` — Includes substantial changes.
-- `MINOR` — Incremented when new features and changes are introduced.
-  - `ODD` — Preview minor release, intended for development and testing.
+- `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
 - `PATCH` - Patches in the preview release series (`MAJOR.ODD.PATCH`) focus on bug fixes that do not break backward compatibility. At the same time however, new features and changes may be are introduced that might break backward compatibility.
-- `REVISION` - Occasionally, a revision is required to address an issue without delay. Most releases are a `.0` revision level.
+- `HOTFIX` - On rare occasions, a hot fix is required to address an issue without delay.
 
-Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduce new features and changes, and are intended for development, testing, and proof-of-concept projects. The v2.13 preview release series became the basis for the v2.14 LTS release series. **The current preview version is {{< yb-version version="preview" format="">}}**.
+Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally (with each MINOR release) introduce new features and changes.
+
+Preview releases are the basis from which stable releases are derived. That is, the code base from a preview release is branched, and then hardened to become a stable release. The v2.21 preview release series, for example became the basis for the v2024.1 STS release series.
+
+Note that while most features in a preview release series do appear in the derivative stable release, this cannot be guaranteed; some features may remain internally _disabled_ in the derivative stable release series to allow more time for the feature to be completed.
 
 Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
 
@@ -121,7 +126,7 @@ Documentation for EA features is marked as such.
 
 ### General Availability (GA)
 
-A feature in General Availability (GA) is enabled by default for all customers.
+A feature in General Availability (GA) is enabled and accessible by default for all customers.
 
 GA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](../#stable-release-support-policy).
 
