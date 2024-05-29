@@ -343,6 +343,22 @@ select distinct min(f1), max(f1) from minmaxtest;
 
 drop table minmaxtest cascade;
 
+-- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
+begin;
+set local enable_sort = off;
+-- YB note: t1 access path differs from upstream because we favor index scan
+-- when the table is unanalyzed or CBO is not enabled.
+-- YB note: add consistent ordering that matches upstream:
+-- 1. mainly order by absolute value of f1.
+-- 2. order positives before negatives by adding an offset of -1/+1 using the
+--    sign function.
+explain (costs off)
+  select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+  from int4_tbl t0 order by abs(f1) - sign(f1);
+select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+from int4_tbl t0 order by abs(f1) - sign(f1);
+rollback;
+
 -- check for correct detection of nested-aggregate errors
 select max(min(unique1)) from tenk1;
 select (select max(min(unique1)) from int8_tbl) from tenk1;
