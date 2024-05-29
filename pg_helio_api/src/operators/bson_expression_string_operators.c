@@ -2739,7 +2739,16 @@ ProcessDollarReplace(bson_value_t *input,
 			}
 
 			ReplaceSubstring(result, find, replacement, substrPosition);
-			substrPosition += replacement->value.v_utf8.len + 1;
+
+			/* This is to handle case when find is empty string. */
+			if (find->value.v_utf8.len == 0)
+			{
+				substrPosition += replacement->value.v_utf8.len + 1;
+			}
+			else
+			{
+				substrPosition += replacement->value.v_utf8.len;
+			}
 		}
 	}
 }
