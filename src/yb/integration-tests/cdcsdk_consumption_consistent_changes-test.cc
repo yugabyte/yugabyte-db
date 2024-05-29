@@ -2966,7 +2966,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
         auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
         return !slot_row.has_value();
       },
-      MonoDelta::FromSeconds(10), "Timed out waiting for slot entry deletion from state table"));
+      MonoDelta::FromSeconds(10 * kTimeMultiplier),
+      "Timed out waiting for slot entry deletion from state table"));
 
   if (multiple_streams) {
     // Since one stream still exists, the retention barriers will not be lifted.
