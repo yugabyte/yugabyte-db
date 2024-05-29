@@ -1032,7 +1032,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
               + " on login, etc.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> installLocalesDbNodes =
       new ConfKeyInfo<>(
           "yb.install_locales_db_nodes",
