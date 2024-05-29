@@ -115,6 +115,10 @@ Note that if you had made both `author` and `book_title` partition key columns, 
 
 A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugabyteDB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
 
+{{<tip>}}
+In YugabyteDB indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
+{{</tip>}}
+
 ### Benefits of secondary indexes
 
 Secondary indexes can be used to speed up queries and to enforce uniqueness of values in a column.

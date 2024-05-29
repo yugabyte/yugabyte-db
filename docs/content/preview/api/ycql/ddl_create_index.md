@@ -17,6 +17,10 @@ type: docs
 
 Use the `CREATE INDEX` statement to create a new index on a table. It defines the index name, index columns, and additional columns to include.
 
+{{<note>}}
+In YugabyteDB indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
+{{</note>}}
+
 ## Syntax
 
 ### Diagram
@@ -116,7 +120,7 @@ CREATE INDEX ON orders (warehouse)
 ```
 
 {{< warning title="Syncing table and index">}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. 
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
 
 Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically depending on the setting of the `disable_index_backfill_for_non_txn_tables` flag. If set to `true`, then it is the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) command, which will trigger the backfill after a small delay of about a minute. This delay is controlled by the `index_backfill_upperbound_for_user_enforced_txn_duration_ms` flag.
 {{< /warning >}}
