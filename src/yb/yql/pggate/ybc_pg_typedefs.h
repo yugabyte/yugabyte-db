@@ -779,6 +779,10 @@ typedef enum PgYbrowidMode {
   PG_YBROWID_MODE_RANGE,  // ...add ybrowid ASC
 } YBCPgYbrowidMode;
 
+// The reserved database oid for system_postgres. Must be the same as
+// kPgSequencesDataTableOid (defined in entity_ids.h).
+static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
