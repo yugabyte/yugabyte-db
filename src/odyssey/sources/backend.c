@@ -698,8 +698,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
-	/* ignore caching of role, only store role_oid */
-	if (strcmp("role", name) == 0)
+	/* ignore caching of role-dependent parameters, only store oid */
+	if (strcmp("role", name) == 0 || strcmp("session_authorization", name) == 0)
 		return 0;
 
 	/* update server only or client and server parameter */
@@ -713,8 +713,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
 
-		/* reset role oid whenever session_authorization is changed by the user */
-		if (strcmp(name, "session_authorization") == 0)
+		/* reset role whenever session_authorization is changed by the user */
+		if (strcmp(name, "session_authorization_oid") == 0)
 			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
