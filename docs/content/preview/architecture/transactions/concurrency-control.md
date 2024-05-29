@@ -308,12 +308,15 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 ## Wait-on-Conflict
 
+<<<<<<< HEAD
 {{< note >}}
 
 Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 {{</note >}}
 
+=======
+>>>>>>> master
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
