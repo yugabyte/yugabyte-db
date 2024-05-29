@@ -119,6 +119,8 @@ extern bool innerrel_is_unique(PlannerInfo *root,
  * prototypes for plan/setrefs.c
  */
 extern Plan *set_plan_references(PlannerInfo *root, Plan *plan);
+extern Param *find_minmax_agg_replacement_param(PlannerInfo *root,
+												Aggref *aggref);
 extern void record_plan_function_dependency(PlannerInfo *root, Oid funcid);
 extern void extract_query_dependencies(Node *query,
 						   List **relationOids,
