@@ -187,8 +187,15 @@ MakeFloat8Const(float8 floatValue)
 inline static Oid
 GetMergeDocumentsFunctionOid(void)
 {
-	return IsClusterVersionAtleastThis(1, 18, 0) ?
-		   BsonDollaMergeDocumentsFunctionOid() : BsonDollarAddFieldsFunctionOid();
+	if (IsClusterVersionAtleastThis(1, 18, 0) ||
+		IsClusterVersionEqualToAndAtLeastPatch(1, 17, 1))
+	{
+		return BsonDollaMergeDocumentsFunctionOid();
+	}
+	else
+	{
+		return BsonDollarAddFieldsFunctionOid();
+	}
 }
 
 
