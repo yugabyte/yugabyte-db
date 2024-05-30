@@ -320,7 +320,6 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
 
-
 ## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
@@ -579,6 +578,18 @@ When enabled, all databases created in the cluster are colocated by default. If 
 For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
 
 Default: `false`
+
+##### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support.
+
+Default: `0` for no limit.
+
+##### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
 
 ## Geo-distribution flags
 

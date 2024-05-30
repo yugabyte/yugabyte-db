@@ -320,7 +320,6 @@ Also shown is an estimate of how many Postgres connections that node can handle 
 
 Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
 
-
 ### Flags controlling the split of memory among processes
 
 Note that in general these flags will have different values for TServer and master processes.
@@ -336,7 +335,6 @@ Default: `0`
 The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
 Default: `0.10` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
-
 
 ### Flags controlling the split of memory within a master process
 
@@ -359,7 +357,6 @@ Percentage of the process' hard memory limit to use for tablet-related overheads
 Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
-
 
 ## Raft flags
 
@@ -611,6 +608,30 @@ When enabled, all databases created in the cluster are colocated by default. If 
 For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
 
 Default: `false`
+
+##### enforce_tablet_replica_limits
+
+Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
+
+Default: `false`. No limits will be enforced if this is false.
+
+##### split_respects_tablet_replica_limits
+
+If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
+
+Default: `false`
+
+##### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support.
+
+Default: `0` for no limit.
+
+##### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
 
 ## Tablet splitting flags
 
