@@ -29,7 +29,7 @@ type: docs
   </li>
 </ul>
 
-The [YugabyteDB Rust-Postgres Smart Driver](https://github.com/yugabyte/rust-postgres) is a rust driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL rust-postgres driver,](https://github.com/sfackler/rust-postgres), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB Rust-Postgres Smart Driver](https://github.com/yugabyte/rust-postgres) is a rust driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL rust-postgres driver](https://github.com/sfackler/rust-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
 {{< note title="YugabyteDB Managed" >}}
 
@@ -56,8 +56,8 @@ The following table describes the connection parameters required to connect, inc
 | password | User password |  |
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
-| yb_servers_refresh_interval | If load_balance is true, the interval in seconds to refresh the servers list | 300 seconds|
-| fallback_to_topology_keys_only | When set to true, if all the servers in the primary and fallback placements are down, the smart driver does not fallback to the rest of the servers in the cluster, instead to the nodes given in the connection URL. | false |
+| yb_servers_refresh_interval | If load_balance is true, the interval in seconds to refresh the servers list | 300 |
+| fallback_to_topology_keys_only | If all the servers in the primary and fallback topology key placements are down, fall back to the host(s) specified in the connection URL, instead of to nodes across the entire cluster. | false |
 | failed_host_reconnect_delay_secs | Mark the server as "UP" only if the server is currently present in `yb_servers()` response and `failed-host-reconnect-delay-secs` duration has elapsed from the last time it was marked "DOWN". | 5 seconds |
 
 The following is an example connection string for connecting to YugabyteDB:
@@ -108,7 +108,7 @@ Make sure that you have created a new rust project as part of the [prerequisites
     yb-postgres = "0.19.7-yb-1-beta"
     ```
 
-1. Replace the existing code in `src/main.rs` with the following sample code to set up tables and query the table contents. Replace the connection string `connection_url` with the cluster credential, if required.
+1. Replace the existing code in `src/main.rs` with the following sample code to set up tables and query the table contents. Replace the values in the connection string `connection_url` with the database credentials, if required.
 
     ```rust
     use yb_postgres::{Client, NoTls, Error};

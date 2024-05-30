@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: create-deployments
-    weight: 620
+    weight: 630
 type: indexpage
 ---
 

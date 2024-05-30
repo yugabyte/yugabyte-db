@@ -79,4 +79,4 @@ You can expand the list to see all databases available to the Yugabyte User, as 
 
 ## What's Next
 
-For sample databases to explore YugabyteDB using DBeaver, see [Sample datasets](../../sample-data/).
+For sample databases to explore YugabyteDB using DBeaver, see [Sample datasets](/preview/sample-data/).

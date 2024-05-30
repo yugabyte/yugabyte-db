@@ -32,7 +32,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using YugabyteDB Managed? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Managed? Install the [prerequisites](../../../../tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Managed cluster, do the following:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+1. Download your [cluster certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 
