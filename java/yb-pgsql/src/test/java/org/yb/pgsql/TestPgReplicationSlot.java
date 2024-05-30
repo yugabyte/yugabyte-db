@@ -52,7 +52,6 @@ import com.yugabyte.util.PSQLException;
 @RunWith(value = YBTestRunner.class)
 public class TestPgReplicationSlot extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReplicationSlot.class);
-  private static int kMaxClockSkewMs = 100;
 
   private static int kMultiplier = BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private static int kPublicationRefreshIntervalSec = 5;
@@ -76,7 +75,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     flagMap.put("ysql_log_min_messages", "DEBUG1");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
@@ -95,30 +93,16 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
-    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     return flagMap;
   }
 
-  void waitForSnapshotTimeToPass() throws Exception {
-    // When a slot (stream) is created, we choose the current time as the consistent snapshot time
-    // to tackle clock skew. This time could be `max_clock_skew_usec` in the future. Any inserts
-    // done before this time could end up being part of the snapshot instead of the changes. This is
-    // not a correctness issue and just an unintuitive behavior.
-    //
-    // In the tests, we want to wait for this time to pass, so that any DMLs we do end up being part
-    // of the changes and not the snapshot.
-    Thread.sleep(kMaxClockSkewMs);
-  }
-
-  void createStreamAndWaitForSnapshotTimeToPass(
-      PGReplicationConnection replConnection, String slotName, String pluginName) throws Exception {
+  void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
+      throws Exception {
     replConnection.createReplicationSlot()
         .logical()
         .withSlotName(slotName)
         .withOutputPlugin(pluginName)
         .make();
-
-    waitForSnapshotTimeToPass();
   }
 
   @Test
@@ -268,7 +252,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       // Do more than 2 DMLs, since replicationConnectionConsumptionMultipleBatches tests the
       // case when #records > cdcsdk_max_consistent_records.
@@ -535,7 +519,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
 
     PGReplicationStream stream = replConnection.replicationStream()
       .logical()
@@ -638,7 +622,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
@@ -800,7 +784,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn =
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-    createStreamAndWaitForSnapshotTimeToPass(
+    createSlot(
         replConnection, "test_slot_repl_conn_all_data_types", "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
@@ -950,7 +934,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withDatabase("col_db").withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn2.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = conn2.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abc')");
       stmt.execute("INSERT INTO t2 VALUES(2, 'def')");
@@ -1085,7 +1069,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-    createStreamAndWaitForSnapshotTimeToPass(
+    createSlot(
         replConnection, "test_slot_repl_conn_attribute_dropped", "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
@@ -1136,7 +1120,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
     String slotName = "test_inner_lsn_values";
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
     }
@@ -1203,7 +1187,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1311,7 +1295,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1434,7 +1418,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1652,7 +1636,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
     String slotName = "test_repl_slot_graceful_shutdown";
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO test VALUES(1, 'xyz')");
@@ -1688,7 +1672,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
@@ -1869,7 +1853,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       for (int i = 0; i < numInserts; i++) {
@@ -1944,7 +1928,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(999999, '999999')");
 
@@ -2081,7 +2065,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
     try (Statement stmt = connection.createStatement()) {
       // After the stream creation, we are changing the replica identity of each table.
       stmt.execute("ALTER TABLE t1 REPLICA IDENTITY NOTHING");
@@ -2155,7 +2139,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "test_decoding");
+    createSlot(replConnection, slotName, "test_decoding");
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd', true)");
       stmt.execute("INSERT INTO t1 VALUES(2, 'defg', true)");
@@ -2256,7 +2240,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
@@ -2316,7 +2300,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
@@ -2426,7 +2410,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
 
-    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName, "pgoutput");
+    createSlot(replConnection, slotName, "pgoutput");
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
