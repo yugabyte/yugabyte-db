@@ -153,7 +153,7 @@ After HA is operational, it is recommended that you enable certificate validatio
 
 ### Use a load balancer
 
-To set up a single URL for signing in to YBA that points to the current primary, even after a switchover or failover, it is recommended to use an application (L7) load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/api/v1/ha_leader`. (Specify any custom port configuration if you changed the default 443 configuration.) Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/). Configure the load balancer to forward ports 443 for the YBA UI and 9090 for Prometheus.
+To set up a single URL for signing in to YBA that points to the current active YBA, even after a switchover or failover, it is recommended to use an application (L7) load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/api/v1/ha_leader`. (Specify any custom port configuration if you changed the default 443 configuration.) Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/). Configure the load balancer to forward ports 443 for the YBA UI and 9090 for Prometheus.
 
 ## Promote a standby instance to active
 
