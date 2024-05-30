@@ -232,3 +232,9 @@ export const InstanceTypeOperationLabel = {
 // Data Refetching Constants
 // --------------------------------------------------------------------------------------
 export const PROVIDER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
+
+export const AzuProviderCredentialType = {
+  HOST_INSTANCE_MI: 'hostInstanceMI',
+  SPECIFIED_SERVICE_PRINCIPAL: 'specifiedServicePrincipal'
+} as const;
+export type AzuProviderCredentialType = typeof AzuProviderCredentialType[keyof typeof AzuProviderCredentialType];

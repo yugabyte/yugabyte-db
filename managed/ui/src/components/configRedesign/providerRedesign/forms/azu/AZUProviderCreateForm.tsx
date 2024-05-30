@@ -28,7 +28,8 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
-  VPCSetupType
+  VPCSetupType,
+  AzuProviderCredentialType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import {
@@ -73,11 +74,6 @@ interface AZUProviderCreateFormProps {
   onBack: () => void;
 }
 
-enum ProviderCredentialType {
-  HOST_INSTANCE_MI = 'hostInstanceMI',
-  SPECIFIED_SERVICE_PRINCIPAL = 'specifiedServicePrincipal'
-}
-
 export interface AZUProviderCreateFormFieldValues {
   azuClientId: string;
   azuClientSecret: string;
@@ -98,7 +94,7 @@ export interface AZUProviderCreateFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   imageBundles: ImageBundle[];
-  providerCredentialType: ProviderCredentialType;
+  providerCredentialType: AzuProviderCredentialType;
 }
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
@@ -109,7 +105,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
   sshPort: DEFAULT_SSH_PORT,
-  providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
+  providerCredentialType: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
 } as const;
 
 const VALIDATION_SCHEMA = object().shape({
@@ -121,7 +117,7 @@ const VALIDATION_SCHEMA = object().shape({
     ),
   azuClientId: string().required('Azure Client ID is required.'),
   azuClientSecret: mixed().when('providerCredentialType', {
-    is: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+    is: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
     then: mixed().required('Azure Client Secret is required.')
   }),
   azuRG: string().required('Azure Resource Group is required.'),
@@ -256,11 +252,11 @@ export const AZUProviderCreateForm = ({
 
   const credentialOptions: OptionProps[] = [
     {
-      value: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+      value: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
       label: 'Specify Client Secret'
     },
     {
-      value: ProviderCredentialType.HOST_INSTANCE_MI,
+      value: AzuProviderCredentialType.HOST_INSTANCE_MI,
       label: `Use Managed Identity from this YBA host's instance`,
       disabled: hostInfoQuery.data === undefined || getYBAHost(hostInfoQuery.data) !== YBAHost.AZU
     }
@@ -316,7 +312,7 @@ export const AZUProviderCreateForm = ({
                   orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && (
+              {providerCredentialType === AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && (
                 <>
                   <FormField>
                     <FieldLabel>Client Secret</FieldLabel>
@@ -587,7 +583,7 @@ const constructProviderPayload = async (
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
           ...(formValues.providerCredentialType ===
-            ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
+            AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
             azuClientSecret: formValues.azuClientSecret
           }),
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
