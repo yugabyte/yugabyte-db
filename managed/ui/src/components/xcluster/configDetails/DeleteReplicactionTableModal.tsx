@@ -20,7 +20,7 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
   return (
     <YBConfirmModal
       name="delete-replication-modal"
-      title="Confirm remove table"
+      title="Confirm Remove Table from Replication"
       currentModal={XClusterModalName.REMOVE_TABLE_FROM_CONFIG}
       visibleModal={visibleModal}
       confirmLabel="Delete"
@@ -32,7 +32,7 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
         onCancel();
       }}
     >
-      {`Do you want to remove the table "${deleteTableName}"?`}
+      {`Do you want to remove the table "${deleteTableName}" from the replication stream? Note that this does not drop the table from the database.`}
     </YBConfirmModal>
   );
 };
