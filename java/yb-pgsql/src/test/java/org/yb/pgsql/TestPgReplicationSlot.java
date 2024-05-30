@@ -68,7 +68,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("allowed_preview_flags_csv",
         "ysql_yb_enable_replication_commands," +
         "yb_enable_cdc_consistent_snapshot_streams," +
-        "ysql_yb_enable_replica_identity");
+        "ysql_yb_enable_replica_identity," +
+        "cdcsdk_enable_dynamic_table_support");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
@@ -79,6 +80,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_log_min_messages", "DEBUG1");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
+    flagMap.put("cdcsdk_enable_dynamic_table_support", "true");
     return flagMap;
   }
 

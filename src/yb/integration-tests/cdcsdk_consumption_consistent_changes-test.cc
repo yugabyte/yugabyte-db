@@ -24,6 +24,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
     google::SetVLOGLevel("cdcsdk_virtual_wal*", 3);
   }
 
@@ -2830,6 +2831,173 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestLSNDeterminismWithChangingPub
       MonoDelta::FromSeconds(60), "Timed out waiting to receive the records"));
 
   ASSERT_FALSE(contains_pub_refresh);
+  ASSERT_EQ(records_before_restart.size(), records_after_restart.size());
+  for (size_t i = 0; i < records_after_restart.size(); i++) {
+    AssertCDCSDKProtoRecords(records_before_restart[i], records_after_restart[i]);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesSwitch) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test2"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Txn 1.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_before_restart;
+  GetConsistentChangesResponsePB change_resp;
+  bool contains_pub_refresh = false;
+
+  // Call GetConsistentChanges to consume the records of first txn.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+        return records_before_restart.size() == 3;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // This will be false since the flag cdcsdk_enable_dynamic_table_support is false.
+  ASSERT_FALSE(contains_pub_refresh);
+
+  // Verify slot entry.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'F');
+
+  // Txn 2
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (2,2)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Turn dynamic tables support ON.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
+
+  // Call GetConsistentChanges till we receive a pub refresh notification.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+        return contains_pub_refresh;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // Verfiy slot entry.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_NE(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'T');
+
+  // Update the tables list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // Txn 3.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (3,3)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,3)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Turn dynamic tables support OFF.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  contains_pub_refresh = false;
+
+  // Sleep to ensure that a pub refresh record is popped from the PQ between txn 3 and txn 4.
+  SleepFor(MonoDelta::FromSeconds(
+      FLAGS_cdcsdk_publication_list_refresh_interval_secs * kTimeMultiplier));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (4,4)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (4,4)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Call GetConsistentChanges to consume txn 3 and txn 4. No pub refresh notification should be
+  // received as the flag cdcsdk_enable_dynamic_table_support is FALSE.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+
+        return records_before_restart.size() == 14;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  ASSERT_FALSE(contains_pub_refresh);
+
+  // Verify slot entry.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_NE(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'F');
+
+  // Restart.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_after_restart;
+
+  // Call GetConsistentChanges till we consume records of all 4 txns. Update Publication's tables
+  // list if a pub refresh notification is received.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_after_restart.insert(
+              records_after_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+
+        if (contains_pub_refresh) {
+          RETURN_NOT_OK(
+              UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+        }
+        return records_after_restart.size() == 14;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // Check for LSN determinism.
   ASSERT_EQ(records_before_restart.size(), records_after_restart.size());
   for (size_t i = 0; i < records_after_restart.size(); i++) {
     AssertCDCSDKProtoRecords(records_before_restart[i], records_after_restart[i]);

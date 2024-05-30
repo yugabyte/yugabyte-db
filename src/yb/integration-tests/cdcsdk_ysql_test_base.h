@@ -114,6 +114,7 @@ DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_bool(cdcsdk_enable_dynamic_table_support);
 
 namespace yb {
 
@@ -169,6 +170,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     HybridTime record_id_commit_time = HybridTime::kInvalid;
     HybridTime last_pub_refresh_time = HybridTime::kInvalid;
     std::string pub_refresh_times = "";
+    std::string last_decided_pub_refresh_time = "";
   };
 
   struct GetAllPendingChangesResponse {
