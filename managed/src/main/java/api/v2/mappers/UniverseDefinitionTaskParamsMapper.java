@@ -149,14 +149,16 @@ public interface UniverseDefinitionTaskParamsMapper {
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     return new YSQLSpec()
         .enable(primaryUserIntent.enableYSQL)
-        .enableAuth(primaryUserIntent.enableYSQLAuth);
+        .enableAuth(primaryUserIntent.enableYSQLAuth)
+        .password(primaryUserIntent.ysqlPassword);
   }
 
   default YCQLSpec toV2YcqlSpec(UniverseDefinitionTaskParams universeDetails) {
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     return new YCQLSpec()
         .enable(primaryUserIntent.enableYCQL)
-        .enableAuth(primaryUserIntent.enableYCQLAuth);
+        .enableAuth(primaryUserIntent.enableYCQLAuth)
+        .password(primaryUserIntent.ycqlPassword);
   }
 
   String taskTypeEnumString(TaskType taskType);
