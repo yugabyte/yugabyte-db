@@ -666,12 +666,17 @@ public class AWSUtil implements CloudUtil {
   public ProxySpec getOldProxySpec(CustomerConfigData configData) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     if (s3Data.proxySetting != null) {
-      return ProxySpec.newBuilder()
-          .setHost(s3Data.proxySetting.proxy)
-          .setPort(s3Data.proxySetting.port)
-          .setUsername(s3Data.proxySetting.username)
-          .setPassword(s3Data.proxySetting.password)
-          .build();
+      ProxySpec.Builder proxyBuilder = ProxySpec.newBuilder();
+      proxyBuilder.setHost(s3Data.proxySetting.proxy);
+      if (s3Data.proxySetting.port > 0) {
+        proxyBuilder.setPort(s3Data.proxySetting.port);
+      }
+      if (StringUtils.isNotBlank(s3Data.proxySetting.username)
+          && StringUtils.isNotBlank(s3Data.proxySetting.password)) {
+        proxyBuilder.setPassword(s3Data.proxySetting.password);
+        proxyBuilder.setUsername(s3Data.proxySetting.username);
+      }
+      return proxyBuilder.build();
     }
     return null;
   }
