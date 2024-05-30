@@ -1421,6 +1421,14 @@ Controls whether to use the PostgreSQL relcache init file, which caches critical
 
 Default: `true`
 
+##### ysql_yb_toast_catcache_threshold
+
+Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
+
+To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+Default: -1 (disabled). Minimum: 128 bytes.
+
 ##### ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
@@ -1487,6 +1495,42 @@ response. As there is one row in the table `pg_yb_catalog_version` for each
 database, the cost of reading `table pg_yb_catalog_version` becomes more
 expensive when the number of yb-tservers, or the number of databases goes up.
 
+{{< /note >}}
+
+## DDL atomicity flags
+
+##### ysql_yb_ddl_rollback_enabled
+
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+
+Default: true
+
+{{< note title="Important" >}}
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table.
+(for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
+<br>Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
+automatically to prevent metadata corruption.
+{{< /note >}}
+
+##### report_ysql_ddl_txn_status_to_master
+
+If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+
+Default: true
+
+{{< note title="Important" >}}
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.<br> This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+{{< /note >}}
+
+##### ysql_ddl_transaction_wait_for_ddl_verification
+
+If set, DDL transactions will wait for DDL verification to complete before returning to the client.
+
+Default: true
+
+{{< note title="Important" >}}
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.<br>
+When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
 ## Advanced flags
@@ -1602,10 +1646,9 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
-<!-- TODO 2024.1 >
 ##### enable_bitmapscan
 
-Enables or disables the query planner's use of bitmap-scan plan types.
+{{<badge/tp>}} Enables or disables the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
@@ -1614,7 +1657,6 @@ Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bi
 Bitmap scans are only supported for LSM indexes.
 
 Default: false
--->
 
 ##### yb_bnl_batch_size
 
