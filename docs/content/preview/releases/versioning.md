@@ -24,7 +24,7 @@ Additionally, individual features may also be designated as tech preview or earl
 
 YugabyteDB follows the below-described convention for numbering release versions.
 
-Release versions follow the versioning format of `YYYY.N.MAINTENANCE.PATCH` where,
+Release versions follow the versioning format of `YYYY.N.MAINTENANCE.PATCH` as follows:
 
 - `YYYY.N` - Includes substantial changes, such as new features and possibly incompatible API changes. `YYYY` is the year (for example, 2024). `N` is either 1 or 2 designating either the first release of the year, or the second. Such major releases occur roughly every 6 months. Generally, one of these releases (and its derivative maintenance and patch releases) per year is designated as LTS, and the other is designated as STS.
 
@@ -49,7 +49,7 @@ Features in stable releases are considered to be {{<badge/ga>}} unless marked ot
 
 Preview releases, which include features under active development, are recommended for development and testing only.
 
-YugabyteDB follows the below-described convention for preview release version numbering. Preview release versions follow the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used for:
+Preview release versions use the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used as follows:
 
 - `MAJOR` — Includes substantial changes.
 - `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
