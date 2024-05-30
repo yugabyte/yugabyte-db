@@ -3074,7 +3074,7 @@ class YBBackup:
         # Create Manifest file and upload it to tmp dir on the main host.
         metadata_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
         self.manifest.save_into_file(metadata_path)
-        os.chmod(metadata_path, 0o400)
+        os.chmod(metadata_path, 0o600)
         if not self.args.local_yb_admin_binary:
             self.upload_local_file_to_server(
                 self.get_main_host_ip(), metadata_path, self.get_tmp_dir())
