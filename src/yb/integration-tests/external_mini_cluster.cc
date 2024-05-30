@@ -295,8 +295,7 @@ void ExternalMiniClusterOptions::AdjustMasterRpcPorts() {
 // ExternalMiniCluster
 // ------------------------------------------------------------------------------------------------
 
-ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
-    : opts_(opts), add_new_master_at_(-1) {
+ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts) : opts_(opts) {
   opts_.AdjustMasterRpcPorts();
   // These "extra mini cluster options" are added in the end of the command line.
   const auto common_extra_flags = {
@@ -396,7 +395,6 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
   LOG(INFO) << "Starting " << opts_.num_masters << " masters";
   RETURN_NOT_OK_PREPEND(StartMasters(), "Failed to start masters.");
-  add_new_master_at_ = opts_.num_masters;
 
   if (opts_.num_tablet_servers > 0) {
     LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
@@ -552,60 +550,58 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags, size_t index)
 
 }  // anonymous namespace
 
-Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string& peer_addrs) {
-  uint16_t rpc_port = AllocateFreePort();
+Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
+    const std::string& peer_addrs, uint16_t rpc_port, bool shell_mode) {
+  if (rpc_port == 0) {
+    rpc_port = AllocateFreePort();
+  }
+
   uint16_t http_port = AllocateFreePort();
-  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
+  LOG(INFO) << "Using " << YB_STRUCT_TO_STRING(peer_addrs, rpc_port, shell_mode)
+            << " to start a new external mini-cluster master with index " << add_new_master_at_;
 
   string addr = MasterAddressForPort(rpc_port);
   string exe = GetBinaryPath(GetMasterBinaryName());
 
-  ExternalMaster* master =
-      new ExternalMaster(add_new_master_at_, messenger_, proxy_cache_.get(), exe,
-                         GetDataPath(Format("master-$0", add_new_master_at_)),
-                         opts_.extra_master_flags, addr, http_port, peer_addrs);
+  vector<string> flags = opts_.extra_master_flags;
+  // Disable WAL fsync for tests
+  flags.push_back("--durable_wal_write=false");
+  flags.push_back("--enable_leader_failure_detection=true");
+  if (opts_.replication_factor > 0) {
+    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
+  }
+  // Limit number of transaction table tablets to help avoid timeouts.
+  flags.push_back(
+      Format("--transaction_table_num_tablets=$0", NumTabletsPerTransactionTable(opts_)));
+  // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
+  // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
+  if (IsSanitizer()) {
+    flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
+  }
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
+    flags.push_back("--master_auto_run_initdb");
+  } else {
+    flags.push_back("--enable_ysql=false");
+  }
 
-  RETURN_NOT_OK(master->Start());
+  ExternalMasterPtr master = new ExternalMaster(
+      add_new_master_at_, messenger_, proxy_cache_.get(), exe,
+      GetDataPath(Format("master-$0", add_new_master_at_)),
+      SubstituteInFlags(flags, add_new_master_at_), addr, http_port, peer_addrs);
 
+  RETURN_NOT_OK(master->Start(shell_mode));
   add_new_master_at_++;
+
   return master;
+}
+
+Result<ExternalMasterPtr> ExternalMiniCluster::StartShellMaster() {
+  return StartMaster(/*peer_addrs=*/"", /*rpc_port=*/0, /*shell_mode=*/true);
 }
 
 std::string ExternalMiniCluster::MasterAddressForPort(uint16_t port) const {
   return Format(opts_.use_even_ips ? "127.0.0.2:$0" : "127.0.0.1:$0", port);
-}
-
-void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
-  uint16_t rpc_port = AllocateFreePort();
-  uint16_t http_port = AllocateFreePort();
-  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start a new external mini-cluster shell master.";
-
-  string addr = MasterAddressForPort(rpc_port);
-
-  string exe = GetBinaryPath(GetMasterBinaryName());
-
-  ExternalMaster* master = new ExternalMaster(
-      add_new_master_at_,
-      messenger_,
-      proxy_cache_.get(),
-      exe,
-      GetDataPath(Format("master-$0", add_new_master_at_)),
-      opts_.extra_master_flags,
-      addr,
-      http_port,
-      "");
-
-  Status s = master->Start(true);
-
-  if (!s.ok()) {
-    LOG(FATAL) << Format("Unable to start 'shell' mode master at index $0, due to error $1.",
-                             add_new_master_at_, s.ToString());
-  }
-
-  add_new_master_at_++;
-  *new_master = master;
 }
 
 Status ExternalMiniCluster::CheckPortAndMasterSizes() const {
@@ -620,7 +616,7 @@ Status ExternalMiniCluster::CheckPortAndMasterSizes() const {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::AddMaster(ExternalMaster* master) {
+Status ExternalMiniCluster::AddMaster(const ExternalMasterPtr& master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter != masters_.end()) {
@@ -637,7 +633,7 @@ Status ExternalMiniCluster::AddMaster(ExternalMaster* master) {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
+Status ExternalMiniCluster::RemoveMaster(const ExternalMasterPtr& master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter == masters_.end()) {
@@ -718,10 +714,9 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
-                                         ChangeConfigType type,
-                                         consensus::PeerMemberType member_type,
-                                         bool use_hostport) {
+Status ExternalMiniCluster::ChangeConfig(
+    const ExternalMasterPtr& master, ChangeConfigType type, consensus::PeerMemberType member_type,
+    bool use_hostport) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
     return STATUS(InvalidArgument, Format("Invalid Change Config type $0", type));
   }
@@ -792,9 +787,9 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 
   if (type == consensus::ADD_SERVER || type == consensus::REMOVE_SERVER) {
     if (type == consensus::ADD_SERVER) {
-      RETURN_NOT_OK(AddMaster(master));
+      RETURN_NOT_OK(AddMaster(master.get()));
     } else if (type == consensus::REMOVE_SERVER) {
-      RETURN_NOT_OK(RemoveMaster(master));
+      RETURN_NOT_OK(RemoveMaster(master.get()));
     }
 
     UpdateMasterAddressesOnTserver();
@@ -1288,50 +1283,17 @@ Status ExternalMiniCluster::StartMasters() {
 
   vector<string> peer_addrs;
   for (size_t i = 0; i < num_masters; i++) {
-    string addr = MasterAddressForPort(opts_.master_rpc_ports[i]);
-    peer_addrs.push_back(addr);
+    peer_addrs.push_back(MasterAddressForPort(opts_.master_rpc_ports[i]));
   }
-  string peer_addrs_str = JoinStrings(peer_addrs, ",");
-  vector<string> flags = opts_.extra_master_flags;
-  // Disable WAL fsync for tests
-  flags.push_back("--durable_wal_write=false");
-  flags.push_back("--enable_leader_failure_detection=true");
-  if (opts_.replication_factor > 0) {
-    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
-  }
-  // Limit number of transaction table tablets to help avoid timeouts.
-  int num_transaction_table_tablets = NumTabletsPerTransactionTable(opts_);
-  flags.push_back(Format("--transaction_table_num_tablets=$0", num_transaction_table_tablets));
-  // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
-  // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
-  if (IsSanitizer()) {
-    flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
-  }
-  if (opts_.enable_ysql) {
-    flags.push_back("--enable_ysql=true");
-    flags.push_back("--master_auto_run_initdb");
-  } else {
-    flags.push_back("--enable_ysql=false");
-  }
-  string exe = GetBinaryPath(GetMasterBinaryName());
+  const auto peer_addrs_str = JoinStrings(peer_addrs, ",");
 
   // Start the masters.
   for (size_t i = 0; i < num_masters; i++) {
-    uint16_t http_port = AllocateFreePort();
-    scoped_refptr<ExternalMaster> peer =
-      new ExternalMaster(
-        i,
-        messenger_,
-        proxy_cache_.get(),
-        exe,
-        GetDataPath(Format("master-$0", i)),
-        SubstituteInFlags(flags, i),
-        peer_addrs[i],
-        http_port,
-        peer_addrs_str);
-    RETURN_NOT_OK_PREPEND(peer->Start(),
-                          Format("Unable to start Master at index $0", i));
-    masters_.push_back(peer);
+    auto master = VERIFY_RESULT_PREPEND(
+        StartMaster(peer_addrs_str, opts_.master_rpc_ports[i]),
+        Format("Unable to start Master at index $0", i));
+
+    masters_.push_back(master);
   }
 
   if (opts_.enable_ysql) {
