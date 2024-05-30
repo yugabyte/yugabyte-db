@@ -49,7 +49,7 @@ Features in stable releases are considered to be {{<badge/ga>}} unless marked ot
 
 Preview releases, which include features under active development, are recommended for development and testing only.
 
-Preview release versions use the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used as follows:
+Preview release versions use the versioning format of `MAJOR.MINOR.PATCH.HOTFIX`, where non-negative integers are used as follows:
 
 - `MAJOR` — Includes substantial changes.
 - `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
