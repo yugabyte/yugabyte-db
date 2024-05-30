@@ -13,9 +13,9 @@ YB_LISCENCE = '''
 
 '''
 
-AWS_OS_VERSION = "8.8"
-GCP_OS_VERSION = "8.7"
-AZU_OS_VERSION = "8.5"
+AWS_OS_VERSION = "8.9"
+GCP_OS_VERSION = "8"
+AZU_OS_VERSION = "8-gen2"
 
 AWS_METADATA_FILENAME = "aws-metadata.yml"
 GCP_METADATA_FILENAME = "gcp-metadata.yml"
@@ -40,22 +40,20 @@ AWS_X86_CMD = 'aws ec2 describe-images \
 GCP_X86_CMD = f'gcloud compute images \
                 --project almalinux-cloud list \
                     --filter="architecture="X86_64" AND \
-                              family="almalinux-{GCP_OS_VERSION.split(".")[0]}"" \
+                              family="almalinux-{GCP_OS_VERSION}"" \
                     --format=json'
 
 AZU_X86_CMD = f'az vm image list \
-                --architecture x64 \
                 --offer almalinux \
                 --publisher almalinux \
-                --sku {AZU_OS_VERSION.replace(".", "_")} \
+                --sku {AZU_OS_VERSION} \
                 --all'
 
-AZU_ARM_CMD = f'az vm image list \
-                --architecture Arm64 \
-                --offer almalinux \
-                --publisher almalinux \
-                --sku {AZU_OS_VERSION.replace(".", "_")} \
-                --all'
+# AZU_ARM_CMD = f'az vm image list \
+#                 --offer almalinux \
+#                 --publisher almalinux \
+#                 --sku {AZU_OS_VERSION} \
+#                 --all'
 
 
 def get_aws_image_for_cmd(cmd, reg):
@@ -72,14 +70,14 @@ def get_aws_image_for_cmd(cmd, reg):
         return None
 
 
-def get_azu_image_for_cmd(cmd):
+def get_azu_image_for_cmd(cmd, arch):
     try:
         result = os.popen(cmd).read()
         if 'AuthFailure' in result:
             print('Auth Error')
             return None
         result_json = json.loads(result)
-        filtered_result = [x for x in result_json if x['sku'] == AZU_OS_VERSION.replace(".", "_")]
+        filtered_result = [x for x in result_json if x['sku'] == AZU_OS_VERSION and (arch in x['offer'])]
         filtered_result.sort(key=lambda image: image['version'])
         latest_image = filtered_result[-1]
         return latest_image['urn']
@@ -152,15 +150,15 @@ def update_azure_metadata_file(path):
     with open(path) as config_file:
         config = yaml.load(config_file, yaml.SafeLoader)
     try:
-        x86_image = get_azu_image_for_cmd(AZU_X86_CMD)
+        x86_image = get_azu_image_for_cmd(AZU_X86_CMD, 'x86_64')
         if x86_image is None:
             print('Failed to fetch latest x86 image')
-        arm_image = get_azu_image_for_cmd(AZU_ARM_CMD)
-        if arm_image is None:
-            print('Failed to get latest arm image')
+        # arm_image = get_azu_image_for_cmd(AZU_ARM_CMD)
+        # if arm_image is None:
+        #     print('Failed to get latest arm image')
         for region in config['regions']:
-            if arm_image is not None:
-                config['regions'][region]['arm_image'] = arm_image
+            # if arm_image is not None:
+            #     config['regions'][region]['arm_image'] = arm_image
             if x86_image is not None:
                 config['regions'][region]['image'] = x86_image
         print('Azure Metadata file updated successfully')

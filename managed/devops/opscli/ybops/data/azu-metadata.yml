@@ -16,82 +16,82 @@ region_cidr_format: '{}.0.0/16'
 regions:
   australiacentral:
     cidr_prefix: '10.40'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   australiaeast:
     cidr_prefix: '10.20'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   australiasoutheast:
     cidr_prefix: '10.30'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   brazilsouth:
     cidr_prefix: '10.29'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   canadacentral:
     cidr_prefix: '10.35'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   canadaeast:
     cidr_prefix: '10.36'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   centralindia:
     cidr_prefix: '10.31'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   centralus:
     cidr_prefix: '10.13'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   eastasia:
     cidr_prefix: '10.25'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   eastus:
     cidr_prefix: '10.14'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   eastus2:
     cidr_prefix: '10.15'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   francecentral:
     cidr_prefix: '10.22'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   germanywestcentral:
     cidr_prefix: '10.44'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
@@ -112,40 +112,40 @@ regions:
     - '3'
   japaneast:
     cidr_prefix: '10.18'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   japanwest:
     cidr_prefix: '10.28'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   koreacentral:
     cidr_prefix: '10.38'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   koreasouth:
     cidr_prefix: '10.39'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   northcentralus:
     cidr_prefix: '10.26'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   northeurope:
     cidr_prefix: '10.17'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   norwayeast:
     cidr_prefix: '10.45'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
@@ -166,28 +166,28 @@ regions:
     - '3'
   southafricanorth:
     cidr_prefix: '10.41'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   southcentralus:
     cidr_prefix: '10.27'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   southeastasia:
     cidr_prefix: '10.19'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   southindia:
     cidr_prefix: '10.33'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   swedencentral:
     cidr_prefix: '10.51'
@@ -198,58 +198,58 @@ regions:
     - '3'
   switzerlandnorth:
     cidr_prefix: '10.43'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   uaenorth:
     cidr_prefix: '10.42'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   uksouth:
     cidr_prefix: '10.21'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   ukwest:
     cidr_prefix: '10.37'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   westcentralus:
     cidr_prefix: '10.24'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   westeurope:
     cidr_prefix: '10.16'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   westindia:
     cidr_prefix: '10.34'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   westus:
     cidr_prefix: '10.23'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones: []
   westus2:
     cidr_prefix: '10.12'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
     - '3'
   westus3:
     cidr_prefix: '10.46'
-    image: almalinux:almalinux:8_5:8.5.20220311
+    image: almalinux:almalinux-x86_64:8-gen2:8.9.2023112501
     zones:
     - '1'
     - '2'
