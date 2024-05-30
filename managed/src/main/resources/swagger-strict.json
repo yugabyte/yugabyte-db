@@ -5394,7 +5394,7 @@
         "description" : "GCPCloudMonitoringConfig Config",
         "properties" : {
           "project" : {
-            "description" : "Project",
+            "description" : "Project ID",
             "type" : "string"
           }
         },

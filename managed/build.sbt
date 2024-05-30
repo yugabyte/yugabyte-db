@@ -231,7 +231,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
-
+  "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -258,7 +258,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % "test",
+  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
 )
 
 // Clear default resolvers.
@@ -934,6 +934,31 @@ dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
+
+// Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
+// jackson-module-jaxb-annotations are needed by the openapi java client. The
+// datadog-api-client library also needs them, but the newer versions
+// pulled by datadog-api-client are not compatible with the openapi java client. So
+// fixing these to older versions.
+val jerseyVersion = "2.30.1"
+dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.core" % "jersey-common" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.ext" % "jersey-entity-filtering" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.inject" % "jersey-hk2" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.media" % "jersey-media-json-jackson" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.media" % "jersey-media-multipart" % jerseyVersion % Test
+
+val hk2Version = "2.6.1"
+dependencyOverrides += "org.glassfish.hk2.external" % "aopalliance-repackaged" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2.external" % "javax.inject" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-api" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-locator" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-utils" % hk2Version % Test
+
+dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Test
+dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
+dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
 val jacksonVersion         = "2.15.3"
 
