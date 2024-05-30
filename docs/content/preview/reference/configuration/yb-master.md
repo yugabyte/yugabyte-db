@@ -875,7 +875,7 @@ Default: `true`
 
 ## Catalog flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
@@ -921,7 +921,7 @@ To re-enable the per database catalog version mode, use the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
@@ -945,15 +945,15 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Advanced flags
 
-##### ysql_index_backfill_rpc_timeout_ms
+##### --ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
 Default: 60000 (1 minute)
 
-##### hide_dead_node_threshold_mins
+##### --hide_dead_node_threshold_mins
 
-After this many minutes of no heartbeat from a node, hide it from the UI (we presume it has been removed from the cluster). If -1, this flag is ignored and the node is never hidden from the UI
+Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
 
 Default: 1440 (1 day)
 
