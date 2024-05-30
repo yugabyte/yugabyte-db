@@ -6,6 +6,7 @@ import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.YBATask;
@@ -53,5 +54,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
     return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+  }
+
+  @Override
+  public YBATask deleteUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseDeleteSpec universeDeleteSpec)
+      throws Exception {
+    return universeHandler.deleteUniverse(cUUID, uniUUID, universeDeleteSpec);
   }
 }

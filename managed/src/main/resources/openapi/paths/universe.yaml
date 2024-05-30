@@ -77,6 +77,38 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+  delete:
+    operationId: deleteUniverse
+    summary: Delete a universe
+    description: Delete Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseDeleteReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Delete
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: DELETE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes':
   parameters:
     - name: cUUID

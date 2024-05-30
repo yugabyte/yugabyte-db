@@ -9,10 +9,12 @@ import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -206,5 +208,26 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     UUID taskUUID = universeCRUDHandler.clusterDelete(customer, universe, clsUUID, forceDelete);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  public YBATask deleteUniverse(UUID cUUID, UUID uniUUID, UniverseDeleteSpec universeDeleteSpec)
+      throws JsonProcessingException {
+    boolean isForceDelete =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsForceDelete() : false;
+    boolean isDeleteBackups =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsDeleteBackups() : false;
+    boolean isDeleteAssociatedCerts =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsDeleteAssociatedCerts() : false;
+    log.info("Starting v2 delete universe with UUID: {}", uniUUID);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid =
+        universeCRUDHandler.destroy(
+            customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started delete universe task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
   }
 }
