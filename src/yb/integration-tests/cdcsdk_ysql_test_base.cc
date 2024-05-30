@@ -1683,6 +1683,34 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry) {
+    GetChangesResponsePB change_resp;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          GetChangesResponsePB resp;
+          RpcController get_changes_rpc;
+          auto status = cdc_proxy_->GetChanges(change_req, &resp, &get_changes_rpc);
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+          }
+
+          // Retry only on LeaderNotReadyToServe or NotFound errors
+          if (should_retry && (status.IsLeaderNotReadyToServe() || status.IsNotFound())) {
+            LOG(INFO) << "Retrying GetChanges in test";
+            return false;
+          }
+
+          change_resp = resp;
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return change_resp;
+  }
+
+  Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp,

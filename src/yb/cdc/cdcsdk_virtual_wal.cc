@@ -25,6 +25,11 @@ DEFINE_RUNTIME_uint64(
     cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
+DEFINE_RUNTIME_uint64(
+    cdcsdk_vwal_getchanges_resp_max_size_bytes, 1_MB,
+    "Max size (in bytes) of GetChanges response for all GetChanges requests sent "
+    "from Virtual WAL.");
+
 DEFINE_test_flag(
     bool, cdcsdk_use_microseconds_refresh_interval, false,
     "Used in tests to simulate commit time ties of publication refresh record with transactions. "
@@ -644,6 +649,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   // Make the CDC service return the values as QLValuePB.
   req->set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
   req->set_tablet_id(tablet_id);
+  req->set_getchanges_resp_max_size_bytes(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes);
   req->set_safe_hybrid_time(next_req_info.safe_hybrid_time);
   req->set_wal_segment_index(next_req_info.wal_segment_index);
 
