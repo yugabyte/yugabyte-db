@@ -80,10 +80,10 @@ import {
 import styles from './TableSelect.module.scss';
 
 interface CommonTableSelectProps {
-  sourceUniverseUUID: string;
-  targetUniverseUUID: string;
-  selectedTableUUIDs: string[];
-  setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  sourceUniverseUuid: string;
+  targetUniverseUuid: string;
+  selectedTableUuids: string[];
+  setSelectedTableUuids: (tableUuids: string[]) => void;
   isDrInterface: boolean;
   isFixedTableType: boolean;
   tableType: XClusterTableType;
@@ -105,7 +105,8 @@ export type TableSelectProps =
       configAction:
         | typeof XClusterConfigAction.ADD_TABLE
         | typeof XClusterConfigAction.MANAGE_TABLE;
-      xClusterConfigUUID: string;
+      xClusterConfigUuid: string;
+      sourceDroppedTableUuids: Set<string>;
     });
 
 const DEFAULT_TABLE_TYPE_OPTION = {
@@ -198,10 +199,10 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
  */
 export const TableSelect = (props: TableSelectProps) => {
   const {
-    sourceUniverseUUID,
-    targetUniverseUUID,
-    selectedTableUUIDs,
-    setSelectedTableUUIDs,
+    sourceUniverseUuid,
+    targetUniverseUuid,
+    selectedTableUuids,
+    setSelectedTableUuids,
     tableType,
     isDrInterface,
     isFixedTableType,
@@ -224,30 +225,29 @@ export const TableSelect = (props: TableSelectProps) => {
   const theme = useTheme();
 
   const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
-    universeQueryKey.namespaces(sourceUniverseUUID),
-    () => api.fetchUniverseNamespaces(sourceUniverseUUID)
+    universeQueryKey.namespaces(sourceUniverseUuid),
+    () => api.fetchUniverseNamespaces(sourceUniverseUuid)
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
         (response) => response.data
       )
   );
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(targetUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(targetUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(targetUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+      fetchTablesInUniverse(targetUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
         (response) => response.data
       )
   );
-
-  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUUID), () =>
-    api.fetchUniverse(sourceUniverseUUID)
+  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
+    api.fetchUniverse(sourceUniverseUuid)
   );
-  const targetUniverseQuery = useQuery<Universe>(universeQueryKey.detail(targetUniverseUUID), () =>
-    api.fetchUniverse(targetUniverseUUID)
+  const targetUniverseQuery = useQuery<Universe>(universeQueryKey.detail(targetUniverseUuid), () =>
+    api.fetchUniverse(targetUniverseUuid)
   );
 
   const sharedXClusterConfigUUIDs =
@@ -312,7 +312,7 @@ export const TableSelect = (props: TableSelectProps) => {
     tableReplicationCandidates: TableReplicationCandidate[]
   ) => {
     if (isSelected) {
-      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUuids);
 
       tableReplicationCandidates.forEach((tableReplicationCandidate) => {
         currentSelectedTableUuids.add(getTableUuid(tableReplicationCandidate));
@@ -334,7 +334,7 @@ export const TableSelect = (props: TableSelectProps) => {
           );
         }
       });
-      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
+      setSelectedTableUuids(Array.from(currentSelectedTableUuids));
     } else {
       const removedTableUuids = new Set();
       tableReplicationCandidates.forEach((tableReplicationCandidate) => {
@@ -349,8 +349,8 @@ export const TableSelect = (props: TableSelectProps) => {
           );
         }
       });
-      setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
+      setSelectedTableUuids(
+        selectedTableUuids.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
@@ -419,7 +419,7 @@ export const TableSelect = (props: TableSelectProps) => {
       // Clear current item selection.
       // Form submission should only contain tables of the same type (YSQL or YCQL).
       setSelectedNamespaceUuids([]);
-      setSelectedTableUUIDs([]);
+      setSelectedTableUuids([]);
     }
   };
 
@@ -434,6 +434,17 @@ export const TableSelect = (props: TableSelectProps) => {
     sharedXClusterConfigs.push(xClusterConfigQuery.data);
   }
 
+  // Deselect any tables which are dropped on the source universe.
+  if (
+    props.configAction === XClusterConfigAction.ADD_TABLE ||
+    props.configAction === XClusterConfigAction.MANAGE_TABLE
+  ) {
+    if (selectedTableUuids.some((tableUuid) => props.sourceDroppedTableUuids.has(tableUuid))) {
+      setSelectedTableUuids(
+        selectedTableUuids.filter((tableUUID) => !props.sourceDroppedTableUuids.has(tableUUID))
+      );
+    }
+  }
   const replicationItems =
     props.configAction === XClusterConfigAction.ADD_TABLE ||
     props.configAction === XClusterConfigAction.MANAGE_TABLE
@@ -441,7 +452,7 @@ export const TableSelect = (props: TableSelectProps) => {
           sourceUniverseNamespaceQuery.data,
           sourceUniverseTablesQuery.data,
           sharedXClusterConfigs,
-          props.xClusterConfigUUID
+          props.xClusterConfigUuid
         )
       : getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
@@ -458,6 +469,7 @@ export const TableSelect = (props: TableSelectProps) => {
     selectedNamespaceUuids,
     tableType
   );
+
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
@@ -576,7 +588,7 @@ export const TableSelect = (props: TableSelectProps) => {
                   selectedNamespaceUuids.includes(namespaceItem.uuid))
               }
               isTransactionalConfig={isTransactionalConfig}
-              selectedTableUUIDs={selectedTableUUIDs}
+              selectedTableUUIDs={selectedTableUuids}
               tableType={tableType}
               xClusterConfigAction={props.configAction}
               handleTableSelect={handleTableToggle}
@@ -638,7 +650,7 @@ export const TableSelect = (props: TableSelectProps) => {
       props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
         <Typography variant="body2">
           {t('tableSelectionCount', {
-            selectedTableCount: selectedTableUUIDs.length,
+            selectedTableCount: selectedTableUuids.length,
             availableTableCount: replicationItems[tableType].tableCount
           })}
         </Typography>
@@ -671,6 +683,22 @@ export const TableSelect = (props: TableSelectProps) => {
         </div>
       )}
       <Box display="flex" flexDirection="column" marginTop={2} gridGap={theme.spacing(2)}>
+        {props.configAction !== XClusterConfigAction.CREATE &&
+          props.sourceDroppedTableUuids.size > 0 && (
+            <YBBanner variant={YBBannerVariant.INFO}>
+              <Typography variant="body2">
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.${
+                    props.isDrInterface
+                      ? 'droppedTablesInfoTextDr'
+                      : 'droppedTablesInfoTextXCluster'
+                  }`}
+                  values={{ droppedTableCount: props.sourceDroppedTableUuids.size }}
+                  components={{ bold: <b /> }}
+                />
+              </Typography>
+            </YBBanner>
+          )}
         <YBBanner variant={YBBannerVariant.INFO}>
           <Typography variant="body2">
             <Trans
@@ -839,7 +867,7 @@ const getUntoggleableNamespaceUuids = (
     .filter((namespaceItem) => {
       if (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE) {
         // We want to allow removing a namespace with ineligible tables
-        // if they got into that state some how.
+        // if they got into that state somehow.
         return !(
           (initialNamespaces.includes(namespaceItem.uuid) &&
             selectedNamespaces.includes(namespaceItem.uuid)) ||

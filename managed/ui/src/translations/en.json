@@ -916,12 +916,12 @@
           },
           "editTablesModal": {
             "title": "Select Databases and Tables",
-            "instruction": {
-              "dr": "Select the tables to enable disaster recovery for",
-              "xCluster": "Select the tables to enable xCluster replication for"
-            },
             "step": {
               "selectTables": {
+                "instruction": {
+                  "dr": "Select the tables to enable disaster recovery for",
+                  "xCluster": "Select the tables to enable xCluster replication for"
+                },
                 "nextButton": "Next: Confirm Full Copy"
               },
               "configureBootstrap": {
@@ -967,11 +967,26 @@
           },
           "configureReplicationLagAlert": "Max acceptable lag time"
         },
+        "config": {
+          "tableStatus": {
+            "Running": "Operational",
+            "Warning": "Warning",
+            "Failed": "Failed",
+            "Error": "Error",
+            "Updating": "In Progress",
+            "Validated": "Validated",
+            "Bootstrapping": "Bootstrapping",
+            "UnableToFetch": "Unable to Fetch",
+            "Dropped": "Dropped from DB"
+          }
+        },
         "selectTable": {
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
           "databaseSelectionCount": "{{selectedDatabaseCount}} out of {{availableDatabaseCount}} database(s) selected",
+          "droppedTablesInfoTextDr": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster DR configuration have been dropped on the DR primary univese. These table(s) will be removed from the configuration upon submission of this select table request.",
+          "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "error": {

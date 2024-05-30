@@ -6,7 +6,7 @@ import { getTableName } from '../../../utils/tableUtils';
 
 import { XClusterTable } from '../XClusterTypes';
 
-import styles from './ReplicationLagGraphModal.module.scss';
+import styles from './TableLagGraphModal.module.scss';
 
 interface Props {
   tableDetails: XClusterTable;
@@ -18,8 +18,7 @@ interface Props {
   onHide: () => void;
 }
 
-// TODO: rename to TableLagGraphModal
-export const ReplicationLagGraphModal: FC<Props> = ({
+export const TableLagGraphModal: FC<Props> = ({
   tableDetails,
   replicationUUID,
   universeUUID,

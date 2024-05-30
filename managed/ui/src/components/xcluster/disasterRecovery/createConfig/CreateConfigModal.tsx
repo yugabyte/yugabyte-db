@@ -363,15 +363,15 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             isTransactionalConfig: true,
             initialNamespaceUuids: [],
             selectedNamespaceUuids: selectedNamespaceUuids,
-            selectedTableUUIDs: selectedTableUuids,
+            selectedTableUuids: selectedTableUuids,
             selectionError: tableSelectionError,
             selectionWarning: undefined,
             setSelectedNamespaceUuids: setSelectedNamespaceUuids,
-            setSelectedTableUUIDs: setSelectedTableUuids,
+            setSelectedTableUuids: setSelectedTableUuids,
             setTableType: () => {}, // DR is only available for YSQL
-            sourceUniverseUUID: sourceUniverseUuid,
+            sourceUniverseUuid: sourceUniverseUuid,
             tableType: TableType.PGSQL_TABLE_TYPE,
-            targetUniverseUUID: targetUniverseUuid
+            targetUniverseUuid: targetUniverseUuid
           }}
         />
       </FormProvider>

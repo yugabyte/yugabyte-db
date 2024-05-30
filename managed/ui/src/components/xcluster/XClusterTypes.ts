@@ -6,6 +6,7 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   XClusterTableEligibility,
+  XClusterTableStatus,
   XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
@@ -18,7 +19,20 @@ import { XClusterTableDetails } from './dtos';
 export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
 export type XClusterTable = YBTable &
-  Omit<XClusterTableDetails, 'tableId'> & { replicationLag?: number };
+  Omit<XClusterTableDetails, 'tableId'> & {
+    replicationLag?: number;
+    statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
+  };
+/**
+ * A table which is in the replcation config but dropped from the database.
+ */
+export type XClusterDroppedTable = Omit<XClusterTableDetails, 'tableId'> & {
+  tableUUID: string;
+  status: typeof XClusterTableStatus.DROPPED;
+  statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
+  replicationLag?: number;
+};
+export type XClusterReplicationTable = XClusterTable | XClusterDroppedTable;
 
 //------------------------------------------------------------------------------------
 // Table Selection Types

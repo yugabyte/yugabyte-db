@@ -409,16 +409,16 @@ export const CreateConfigModal = ({
                     isTransactionalConfig: values.isTransactionalConfig,
                     initialNamespaceUuids: [],
                     selectedNamespaceUuids: selectedKeyspaces,
-                    selectedTableUUIDs: values.tableUUIDs,
+                    selectedTableUuids: values.tableUUIDs,
                     selectionError: errors.tableUUIDs,
                     selectionWarning: formWarnings?.tableUUIDs,
                     setSelectedNamespaceUuids: setSelectedKeyspaces,
-                    setSelectedTableUUIDs: (tableUUIDs: string[]) =>
+                    setSelectedTableUuids: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
                     setTableType,
-                    sourceUniverseUUID: sourceUniverseUUID,
+                    sourceUniverseUuid: sourceUniverseUUID,
                     tableType: tableType,
-                    targetUniverseUUID: values.targetUniverse.value.universeUUID
+                    targetUniverseUuid: values.targetUniverse.value.universeUUID
                   }}
                 />
               </>
