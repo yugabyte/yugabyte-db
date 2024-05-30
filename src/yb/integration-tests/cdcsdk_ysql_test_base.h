@@ -115,6 +115,8 @@ DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
 DECLARE_bool(cdcsdk_enable_dynamic_table_support);
+DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
+DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
 
 namespace yb {
 
@@ -472,6 +474,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const bool populate_checkpoint = true,
       const bool should_retry = true,
       const bool need_schema_info = false);
+
+  Result<GetChangesResponsePB> GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry = true);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,

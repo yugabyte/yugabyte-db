@@ -2427,7 +2427,8 @@ Status GetChangesForCDCSDK(
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
-    const CoarseTimePoint deadline) {
+    const CoarseTimePoint deadline,
+    const std::optional<uint64> getchanges_resp_max_size_bytes) {
   // Delete the memory context if it was created for decoding the QLValuePB.
   auto scope_exit = ScopeExit([&] { docdb::DeleteMemoryContextForCDCWrapper(); });
 
@@ -2622,11 +2623,15 @@ Status GetChangesForCDCSDK(
           resp_records_size += resp->cdc_sdk_proto_records(resp_num_records).ByteSizeLong();
         }
 
-        if (resp_records_size >= FLAGS_cdc_stream_records_threshold_size_bytes) {
+        auto resp_max_size = getchanges_resp_max_size_bytes.has_value()
+                                 ? *getchanges_resp_max_size_bytes
+                                 : FLAGS_cdc_stream_records_threshold_size_bytes;
+
+        if (resp_records_size >= resp_max_size) {
           VLOG(1) << "Response records size crossed the thresold size. Will stream rest of the "
                      "records in next GetChanges Call. resp_records_size: "
                   << resp_records_size
-                  << ", threshold: " << FLAGS_cdc_stream_records_threshold_size_bytes
+                  << ", threshold: " << resp_max_size
                   << ", resp_num_records: " << resp_num_records << ", tablet_id: " << tablet_id;
           break;
         }

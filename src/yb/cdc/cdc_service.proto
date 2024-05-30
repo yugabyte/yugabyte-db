@@ -328,6 +328,11 @@ message GetChangesRequestPB {
   optional uint32 auto_flags_config_version = 13;
 
   optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
+
+  // Used only in CDCSDK streams. If the field is set, use its value to
+  // limit the size of GetChanges response. Otherwise consider the value
+  // of the gflag 'cdc_stream_records_threshold_size_bytes'
+  optional uint64 getchanges_resp_max_size_bytes = 16;
 }
 
 message KeyValuePairPB {
