@@ -10,7 +10,7 @@ import {
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBDropdown } from "@app/components";
-import { MigrationList } from "./NewMigrationList";
+import { MigrationList } from "./MigrationList";
 import TriangleDownIcon from "@app/assets/caret-down.svg";
 import { MigrationDetails } from "./MigrationDetails";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";

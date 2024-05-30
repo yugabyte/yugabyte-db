@@ -31,6 +31,8 @@ import PlusIcon from "@app/assets/plus_icon.svg";
 import MinusIcon from "@app/assets/minus_icon.svg";
 import { MigrationRefactoringSidePanel } from "./AssessmentRefactoringSidePanel";
 
+const ENABLE_MORE_DETAILS = false;
+
 const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(3),
@@ -96,13 +98,19 @@ export type RefactoringDataItems = ReadonlyArray<{
 }>;
 
 interface MigrationAssessmentRefactoringProps {
-  schemaList: readonly string[];
   sqlObjects: ReadonlyArray<{
-    objectType: string;
-    automaticDDLImport: number;
-    manualRefactoring: number;
+    ObjectType: string;
+    TotalCount: number;
+    ObjectNames: string;
   }>;
-  suggestionsErrors: RefactoringDataItems;
+  unsupportedDataTypes: null | ReadonlyArray<{
+    DataType: string;
+    ObjectNames: string[];
+  }>;
+  unsupportedFeatures: null | ReadonlyArray<{
+    FeatureName: string;
+    ObjectNames: string[];
+  }>;
 }
 
 const getRowCellComponent = (
@@ -211,64 +219,20 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>, onClick: () => vo
 };
 
 export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringProps> = ({
-  schemaList,
   sqlObjects,
-  suggestionsErrors,
+  unsupportedDataTypes,
+  unsupportedFeatures,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const uniqueTypes = useMemo(
+  const featureOverview = useMemo(
     () =>
-      Array.from(new Set(suggestionsErrors.flatMap((item) => item.objects.map((obj) => obj.type)))),
-    [suggestionsErrors]
-  );
-
-  const overviewData = useMemo(
-    () =>
-      suggestionsErrors.map((item) => ({
-        objectCount: item.objects.length,
-        ...item,
-      })),
-    [suggestionsErrors]
-  );
-
-  const subOverviewData = useMemo(
-    () =>
-      uniqueTypes
-        .map((type) => {
-          const objects = suggestionsErrors.flatMap((item) =>
-            item.objects.filter((obj) => obj.type === type)
-          );
-
-          return {
-            type,
-            totalViews: objects.length,
-            ackedViews: objects.filter((obj) => obj.ack).length,
-          };
-        })
-        .filter((item) => item.totalViews > 0),
-    [uniqueTypes, suggestionsErrors]
-  );
-
-  const detailedData = useMemo(
-    () =>
-      subOverviewData.map((item) => {
-        const details = suggestionsErrors.flatMap((suggestion) =>
-          suggestion.objects.filter((obj) => obj.type === item.type)
-        );
-
-        const uniqueFiles = Array.from(new Set(details.map((obj) => obj.filePath)));
-
-        return {
-          ...item,
-          details: uniqueFiles.map((file) => ({
-            file,
-            sql: details.filter((item) => item.filePath === file).map((item) => item.sql),
-          })),
-        };
-      }),
-    [subOverviewData, suggestionsErrors]
+      unsupportedFeatures?.map((item) => ({
+        objectCount: item.ObjectNames.length,
+        feature: item.FeatureName,
+      })) ?? [],
+    [unsupportedFeatures]
   );
 
   const [selectedDataType, setSelectedDataType] = React.useState<RefactoringDataItems[number]>();
@@ -279,28 +243,32 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
   const [expandedSuggestions, setExpandedSuggestions] = React.useState<boolean[]>([]);
 
   const refactoringOverviewColumns = [
+    ...(ENABLE_MORE_DETAILS
+      ? [
+          {
+            name: "",
+            label: "",
+            options: {
+              sort: false,
+              customBodyRenderLite: (dataIndex: number) => (
+                <Box
+                  px={1}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    const newExpandedSuggestions = [...expandedSuggestions];
+                    newExpandedSuggestions[dataIndex] = !expandedSuggestions[dataIndex];
+                    setExpandedSuggestions(newExpandedSuggestions);
+                  }}
+                >
+                  {expandedSuggestions[dataIndex] ? <MinusIcon /> : <PlusIcon />}
+                </Box>
+              ),
+            },
+          },
+        ]
+      : []),
     {
-      name: "",
-      label: "",
-      options: {
-        sort: false,
-        customBodyRenderLite: (dataIndex: number) => (
-          <Box
-            px={1}
-            style={{ cursor: "pointer" }}
-            onClick={() => {
-              const newExpandedSuggestions = [...expandedSuggestions];
-              newExpandedSuggestions[dataIndex] = !expandedSuggestions[dataIndex];
-              setExpandedSuggestions(newExpandedSuggestions);
-            }}
-          >
-            {expandedSuggestions[dataIndex] ? <MinusIcon /> : <PlusIcon />}
-          </Box>
-        ),
-      },
-    },
-    {
-      name: "datatype",
+      name: "feature",
       label: t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -315,16 +283,20 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
-    {
-      name: "",
-      label: "",
-      options: {
-        sort: false,
-        customBodyRenderLite: (dataIndex: number) =>
-          ArrowComponent(classes, () => onSelectDataType(dataIndex))(),
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
+    ...(ENABLE_MORE_DETAILS
+      ? [
+          {
+            name: "",
+            label: "",
+            options: {
+              sort: false,
+              customBodyRenderLite: (dataIndex: number) =>
+                ArrowComponent(classes, () => onSelectDataType(dataIndex))(),
+              setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+            },
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -342,31 +314,23 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         </Box>
 
         <Box my={4}>
-          <ResponsiveContainer width="100%" height={sqlObjects.length * 60}>
+          <ResponsiveContainer width="100%" height={sqlObjects.length * 45}>
             <BarChart
               data={[...sqlObjects]}
               layout="vertical"
               margin={{
                 right: 30,
-                left: 20,
+                left: 30,
               }}
+              barSize={16}
               barCategoryGap={34}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" />
-              <YAxis type="category" dataKey="objectType" />
+              <YAxis type="category" dataKey="ObjectType" />
               <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="automaticDDLImport"
-                fill="#2FB3FF"
-                stackId="stack"
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="automaticDDLImport"
-                  position="insideRight"
-                  style={{ fill: "black" }}
-                />
+              <Bar dataKey="TotalCount" fill="#2FB3FF" stackId="stack" isAnimationActive={false}>
+                <LabelList dataKey="TotalCount" position="right" style={{ fill: "black" }} />
               </Bar>
               <Bar
                 dataKey="manualRefactoring"
@@ -403,7 +367,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                         paddingLeft: "70px",
                       }}
                     >
-                      {payload.map((entry) => (
+                      {payload.map((entry, index) => (
                         <li
                           key={entry.value}
                           style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -416,7 +380,9 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                               backgroundColor: entry.color,
                             }}
                           />
-                          <div style={{ color: "#4E5F6D" }}>{formatter(entry.value)}</div>
+                          <div style={{ color: "#4E5F6D" }}>
+                            {index === 0 ? "Automatic DDL Import" : formatter(entry.value)}
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -437,38 +403,42 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
 
         <Box position="relative">
           <YBTable
-            data={overviewData}
+            data={featureOverview}
             columns={refactoringOverviewColumns}
             options={{
-              customRowRender: getRowCellComponent(overviewData, expandedSuggestions, classes),
+              customRowRender: ENABLE_MORE_DETAILS
+                ? getRowCellComponent(featureOverview, expandedSuggestions, classes)
+                : undefined,
               pagination: true,
             }}
             withBorder
           />
 
-          <Box display="flex" justifyContent="end" position="absolute" right={10} top={6}>
-            <YBButton
-              variant="ghost"
-              startIcon={
-                expandedSuggestions.filter((s) => s).length < overviewData.length ? (
-                  <ExpandIcon />
-                ) : (
-                  <CollpaseIcon />
-                )
-              }
-              onClick={() => {
-                setExpandedSuggestions(
-                  new Array(overviewData.length).fill(
-                    expandedSuggestions.filter((s) => s).length < overviewData.length
+          {ENABLE_MORE_DETAILS && (
+            <Box display="flex" justifyContent="end" position="absolute" right={10} top={6}>
+              <YBButton
+                variant="ghost"
+                startIcon={
+                  expandedSuggestions.filter((s) => s).length < featureOverview.length ? (
+                    <ExpandIcon />
+                  ) : (
+                    <CollpaseIcon />
                   )
-                );
-              }}
-            >
-              {expandedSuggestions.filter((s) => s).length < overviewData.length
-                ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
-                : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
-            </YBButton>
-          </Box>
+                }
+                onClick={() => {
+                  setExpandedSuggestions(
+                    new Array(featureOverview.length).fill(
+                      expandedSuggestions.filter((s) => s).length < featureOverview.length
+                    )
+                  );
+                }}
+              >
+                {expandedSuggestions.filter((s) => s).length < featureOverview.length
+                  ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
+                  : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
+              </YBButton>
+            </Box>
+          )}
         </Box>
       </Box>
 
@@ -490,7 +460,9 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
           <Typography>{label}</Typography>
         </Box>
         <Box color={payload[0].color}>Automatic DDL Import: {payload[0].value}</Box>
-        <Box color={payload[1].color}>Manual Refactoring: {payload[1].value}</Box>
+        <Box color={payload[1]?.color ?? "#FFA400"}>
+          Manual Refactoring: {payload[1]?.value ?? 0}
+        </Box>
       </Box>
     );
   }

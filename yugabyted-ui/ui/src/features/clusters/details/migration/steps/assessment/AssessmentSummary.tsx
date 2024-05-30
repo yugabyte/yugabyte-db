@@ -33,7 +33,7 @@ const ComplexityComponent = (complexity: string) => {
 
 interface MigrationAssessmentSummaryProps {
   complexity: string;
-  estimatedMigrationTime: string;
+  estimatedMigrationTime: string | number;
 }
 
 export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = ({
@@ -42,6 +42,17 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const convertTime = (timeInMin: string | number) => {
+    if (typeof timeInMin === "string") {
+      return timeInMin;
+    }
+
+    const hours = Math.floor(timeInMin / 60);
+    const minutes = timeInMin % 60;
+
+    return `${hours}h ${minutes}m`;
+  };
 
   return (
     <Paper>
@@ -69,7 +80,7 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
             <Typography variant="body1" className={classes.label}>
               {t("clusterDetail.voyager.planAndAssess.summary.estimatedMigrationTime")}
             </Typography>
-            <Typography variant="body2">{estimatedMigrationTime}</Typography>
+            <Typography variant="body2">{convertTime(estimatedMigrationTime)}</Typography>
           </Box>
         </Box>
 

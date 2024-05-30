@@ -43,42 +43,34 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationRecommendationSidePanel {
   open: boolean;
   onClose: () => void;
+  data: any;
 }
 
 export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePanel> = ({
   open,
   onClose,
+  data,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const recommendationData = [
-    {
-      tableName: "table-01",
-      diskSize: "16.2 GB",
+  const recommendationData = useMemo(() => {
+    const colocatedTables = data.ColocatedTables.map((tableName: string) => ({
+      tableName,
+      diskSize: "?? GB",
       schemaRecommendation: "Colocated",
-    },
-    {
-      tableName: "table-02",
-      diskSize: "12.2 GB",
+    }));
+
+    const shardedTables = data.ShardedTables.map((tableName: string) => ({
+      tableName,
+      diskSize: "?? GB",
       schemaRecommendation: "Sharded",
-    },
-    {
-      tableName: "table-03",
-      diskSize: "5.6 GB",
-      schemaRecommendation: "Colocated",
-    },
-    {
-      tableName: "table-04",
-      diskSize: "3.1 GB",
-      schemaRecommendation: "Colocated",
-    },
-    {
-      tableName: "table-05",
-      diskSize: "24.2 GB",
-      schemaRecommendation: "Colocated",
-    },
-  ];
+    }));
+
+    return [...colocatedTables, ...shardedTables].sort((a: any, b: any) =>
+      a.tableName.localeCompare(b.tableName)
+    );
+  }, [data]);
 
   const recommendationObjects = useMemo(
     () => ({
@@ -88,7 +80,8 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
         totalSize:
           recommendationData
             .filter((obj) => obj.schemaRecommendation === "Colocated")
-            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0).toFixed(2) + " GB",
+            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0)
+            .toFixed(2) + " GB",
       },
       sharded: {
         totalCount: recommendationData.filter((obj) => obj.schemaRecommendation === "Sharded")
@@ -96,7 +89,8 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
         totalSize:
           recommendationData
             .filter((obj) => obj.schemaRecommendation === "Sharded")
-            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0).toFixed(2) + " GB",
+            .reduce((acc, obj) => acc + parseFloat(obj.diskSize), 0)
+            .toFixed(2) + " GB",
       },
     }),
     [recommendationData]
@@ -203,7 +197,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
                   {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {recommendationObjects.sharded.totalCount}
+                  {recommendationObjects.sharded.totalSize}
                 </Typography>
               </Grid>
             </Grid>

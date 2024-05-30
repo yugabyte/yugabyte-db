@@ -30,30 +30,17 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface MigrationAssessmentRecommendationProps {
-  description: string;
-  clusterSize: {
-    nodeCount: string;
-    vcpuPerNode: string;
-    memoryPerNode: string;
-    optSelectConnPerNode: string;
-    optInsertConnPerNode: string;
-  };
-  schemaRecommendation: {
-    colocatedTables: string;
-    colocatedSize: string;
-    shardedTables: string;
-    shardedSize: string;
-  };
+  data: any;
 }
 
 export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommendationProps> = ({
-  description,
-  clusterSize,
-  schemaRecommendation,
+  data,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
+
+  const recommendationData = data?.Sizing?.SizingRecommendation ?? {};
 
   const [showRecommendation, setShowRecommendation] = React.useState<boolean>(false);
 
@@ -76,7 +63,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
           </Box>
         </Box>
 
-        <Box mb={4}>{description}</Box>
+        <Box mb={4}>{recommendationData.ColocatedReasoning}</Box>
 
         <Box display="flex">
           <Box>
@@ -92,7 +79,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.clusterSize.noOfNodes")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {clusterSize.nodeCount}
+                  {recommendationData.NumNodes}
                 </Typography>
               </Grid>
               <Grid item xs={6} />
@@ -101,7 +88,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.clusterSize.vcpuPerNode")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {clusterSize.vcpuPerNode}
+                  {recommendationData.VCPUsPerInstance}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -111,7 +98,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   )}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {clusterSize.memoryPerNode}
+                  {recommendationData.MemoryPerInstance} GB
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -121,7 +108,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   )}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {clusterSize.optSelectConnPerNode}
+                  {recommendationData.OptimalSelectConnectionsPerNode}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -131,7 +118,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   )}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {clusterSize.optInsertConnPerNode}
+                  {recommendationData.OptimalInsertConnectionsPerNode}
                 </Typography>
               </Grid>
             </Grid>
@@ -169,7 +156,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {schemaRecommendation.colocatedTables}
+                  {recommendationData.ColocatedTables?.length}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -177,7 +164,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.schema.noOfTables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {schemaRecommendation.shardedTables}
+                  {recommendationData.ShardedTables?.length}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -185,7 +172,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {schemaRecommendation.colocatedSize}
+                  ?? GB
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -193,7 +180,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                   {t("clusterDetail.voyager.planAndAssess.recommendation.schema.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {schemaRecommendation.shardedSize}
+                  ?? GB
                 </Typography>
               </Grid>
             </Grid>
@@ -202,6 +189,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
       </Box>
 
       <MigrationRecommendationSidePanel
+        data={recommendationData}
         open={showRecommendation}
         onClose={() => setShowRecommendation(false)}
       />
