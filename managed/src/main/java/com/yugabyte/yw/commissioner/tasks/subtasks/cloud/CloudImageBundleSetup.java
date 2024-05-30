@@ -54,7 +54,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   public static final Map<String, CloudOS> CLOUD_OS_MAP =
       ImmutableMap.of(
           "aws", new CloudOS("8.9", "AlmaLinux"),
-          "gcp", new CloudOS("8.9", "AlmaLinux"),
+          "gcp", new CloudOS("8.9_v20240515", "AlmaLinux"),
           "azu", new CloudOS("8.9", "AlmaLinux"));
 
   @Inject
