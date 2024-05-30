@@ -18,7 +18,7 @@ YugabyteDB and YugabyteDB Anywhere have three kinds of releases:
 - Stable, with Standard-term support (STS)
 - Preview, with no official support
 
-Additionally, individual features may also be designated as tech preview or early access, which have different documentation and support standards than general availability features, defined in the following sections.
+Additionally, individual features may also be designated as tech preview or early access, or generally available. These designations indicate the feature maturity level, and provide different levels of documentation and support as described in the following sections.
 
 ## Release versioning convention for Stable releases
 
