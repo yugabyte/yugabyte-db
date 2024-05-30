@@ -2,6 +2,7 @@ import { FC, useRef, useState } from 'react';
 import { Field, FormikActions, FormikProps } from 'formik';
 import moment from 'moment';
 import * as Yup from 'yup';
+import { useSelector } from 'react-redux';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
 import { Alert } from 'react-bootstrap';
@@ -15,6 +16,7 @@ import { YBCheckBox, YBFormSelect } from '../../common/forms/fields';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import InfoIcon from '../../../redesign/assets/info-message.svg';
 import { YBInput, YBTooltip } from '../../../redesign/components';
+import { formatDatetime, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
 import './PromoteInstanceModal.scss';
 
@@ -39,10 +41,12 @@ const validationSchema = Yup.object().shape({
   backupFile: Yup.object().nullable().required('Backup file is required')
 });
 
-const adaptHaBackupToFormFieldOption = (value: string): PromoteInstanceFormValues['backupFile'] => {
+const adaptHaBackupToFormFieldOption = (value: string, currentUserTimezone?: string): PromoteInstanceFormValues['backupFile'] => {
   // backup_21-02-20-00-40.tgz --> 21-02-20-00-40
   const timestamp = value.replace('backup_', '').replace('.tgz', '');
-  const label = moment.utc(timestamp, 'YY-MM-DD-HH:mm').local().format('LLL');
+  // we always get the backup list time in UTC
+  const formattedTimestamp = moment.utc(timestamp, 'YY-MM-DD-HH:mm').toDate();
+  const label = formatDatetime(formattedTimestamp, YBTimeFormats.YB_DEFAULT_TIMESTAMP , currentUserTimezone);
 
   return { value, label };
 };
@@ -70,6 +74,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
   const theme = useTheme();
   const classes = useStyles();
   const queryClient = useQueryClient();
+  const currentUserTimezone = useSelector((state: any) => state?.customer?.currentUser?.data?.timezone);
 
   const { isLoading, data } = useQuery(
     [QUERY_KEY.getHABackups, configId],
@@ -79,7 +84,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
       onSuccess: (data) => {
         // pre-select first backup file from the list
         if (Array.isArray(data) && data.length) {
-          formik.current.setFieldValue('backupFile', adaptHaBackupToFormFieldOption(data[0]));
+          formik.current.setFieldValue('backupFile', adaptHaBackupToFormFieldOption(data[0], currentUserTimezone));
         }
       }
     }
@@ -101,7 +106,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
     }
   );
 
-  const backupsList = (data ?? []).map(adaptHaBackupToFormFieldOption);
+  const backupsList = (data ?? []).map(backup => adaptHaBackupToFormFieldOption(backup, currentUserTimezone));
 
   const closeModal = () => {
     if (!formik.current.isSubmitting) {
