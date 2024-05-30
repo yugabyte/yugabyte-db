@@ -345,13 +345,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                               .withName(resourceName)
                               .patch(ybUniverse);
                         }
-                        universeDeletionReferenceMap.remove(mapKey);
                       } catch (Exception e) {
-                        log.info(
+                        log.error(
                             "Got error in finalizing YbUniverse object name: {}, namespace: {}"
                                 + " delete",
                             resourceName,
-                            resourceNamespace);
+                            resourceNamespace,
+                            e);
+                      } finally {
+                        universeDeletionReferenceMap.remove(mapKey);
                       }
                     },
                     deleteFinalizerThread);
