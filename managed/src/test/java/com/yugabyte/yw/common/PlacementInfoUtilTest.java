@@ -2740,6 +2740,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // All zones in one region.
     "2, r1, 1, 3, r1, 1, 3, r1, 1, 3,,",
     "2, r1, 1, 3, r1, 1, 3, r1, 1, 3, r1,",
+    // Special case rf3 1-1
+    "2, r1, 1, 3, r1, 1, 0, r1, 0, 3,,",
   })
   // @formatter:on
   public void testSetPerAZRF(
@@ -2775,11 +2777,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi);
     PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+    if (numNodesInAZ3 > 0) {
+      PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+    }
 
     getPlacementAZ(pi, r1.getUuid(), az1.getUuid()).numNodesInAZ = numNodesInAZ1;
     getPlacementAZ(pi, r2.getUuid(), az2.getUuid()).numNodesInAZ = numNodesInAZ2;
-    getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).numNodesInAZ = numNodesInAZ3;
+    if (numNodesInAZ3 > 0) {
+      getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).numNodesInAZ = numNodesInAZ3;
+    }
 
     Region defaultRegion = Region.getByCode(provider, defaultRegionCode);
     UUID defaultRegionUUID = defaultRegion == null ? null : defaultRegion.getUuid();
@@ -2803,10 +2809,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         "AZ2 rf differs from expected one",
         expectedRFAZ2,
         getPlacementAZ(pi, r2.getUuid(), az2.getUuid()).replicationFactor);
-    assertEquals(
-        "AZ3 rf differs from expected one",
-        expectedRFAZ3,
-        getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).replicationFactor);
+    if (numNodesInAZ3 > 0) {
+      assertEquals(
+          "AZ3 rf differs from expected one",
+          expectedRFAZ3,
+          getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).replicationFactor);
+    }
   }
 
   /**

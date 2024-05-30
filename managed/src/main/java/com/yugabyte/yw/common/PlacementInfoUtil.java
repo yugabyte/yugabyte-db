@@ -849,7 +849,10 @@ public class PlacementInfoUtil {
         placedReplicas++;
       }
     }
-
+    if (rf == 3 && sortedAZs.size() == 2 && placedReplicas == 2) {
+      LOG.debug("Special case when RF=3 and number of zones= 2, using 1-1 distribution");
+      return;
+    }
     // Set per-AZ RF according to node distribution across AZs.
     // We already have one replica in each region. Now placing other.
     int i = 0;
