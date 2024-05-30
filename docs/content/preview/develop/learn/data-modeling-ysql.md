@@ -205,7 +205,7 @@ The primary key was specified with `ASC` order. However, if the queries are goin
 The primary goal of an index is to enhance the performance of data retrieval operations on the data in the tables. Indexes are designed to quickly locate data without having to search every row in a database table and provide fast access for patterns other than that of the primary key of the table. In YugabyteDB, indexes are internally designed just like tables and operate as such. The main difference between a table and an index is that the primary key of the table has to be unique but it need not be unique for an index.
 
 {{<note>}}
-In YugabyteDB indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
 {{</note>}}
 
 Indexes can be created using the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement, which has the following format:
