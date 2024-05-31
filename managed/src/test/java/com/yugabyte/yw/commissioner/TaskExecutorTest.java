@@ -126,7 +126,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CertsRotate,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
-          TaskType.StartMasterOnNode);
+          TaskType.StartMasterOnNode,
+          TaskType.MasterFailover,
+          TaskType.SyncMasterAddresses);
 
   @Override
   protected Application provideApplication() {

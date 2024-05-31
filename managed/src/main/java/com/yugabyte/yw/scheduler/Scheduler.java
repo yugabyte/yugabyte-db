@@ -87,26 +87,24 @@ public class Scheduler {
 
   /** Resets every schedule's running state to false in case of platform restart. */
   public void resetRunningStatus() {
-    Schedule.getAll()
+    Schedule.getAll().stream()
+        .filter(Schedule::isRunningState)
         .forEach(
-            (schedule) -> {
-              if (schedule.isRunningState()) {
-                schedule.setRunningState(false);
-                schedule.save();
-                log.debug(
-                    "Updated scheduler {} running state to false", schedule.getScheduleUUID());
-              }
+            schedule -> {
+              schedule.setRunningState(false);
+              schedule.save();
+              log.debug("Updated scheduler {} running state to false", schedule.getScheduleUUID());
             });
   }
 
   /** Updates expired next expected task time of active schedules in case of platform restarts. */
   public void updateExpiredNextScheduledTaskTime() {
-    Schedule.getAll()
+    Schedule.getAll().stream()
+        .filter(Schedule::isRunningState)
         .forEach(
-            (schedule) -> {
-              if (schedule.getStatus().equals(Schedule.State.Active)
-                  && (schedule.getNextScheduleTaskTime() == null
-                      || Util.isTimeExpired(schedule.getNextScheduleTaskTime()))) {
+            schedule -> {
+              if (schedule.getNextScheduleTaskTime() == null
+                  || Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
                 schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
                 if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
                   schedule.updateNextIncrementScheduleTaskTime(
@@ -121,11 +119,11 @@ public class Scheduler {
    * restarts.
    */
   public void updateExpiredNextIncrementScheduledTaskTime() {
-    Schedule.getAll()
+    Schedule.getAll().stream()
+        .filter(Schedule::isRunningState)
         .forEach(
-            (schedule) -> {
-              if (schedule.getStatus().equals(Schedule.State.Active)
-                  && (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID()))
+            schedule -> {
+              if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())
                   && (schedule.getNextIncrementScheduleTaskTime() == null
                       || Util.isTimeExpired(schedule.getNextIncrementScheduleTaskTime()))) {
                 schedule.updateNextIncrementScheduleTaskTime(

@@ -1099,26 +1099,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Percentage of current disk usage that may consume on the target nodes",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableAutomatedMasterFailoverForUniverse =
+  public static final ConfKeyInfo<Boolean> enableAutoMasterFailover =
       new ConfKeyInfo<>(
-          "yb.automated_master_failover.enabled",
+          "yb.auto_master_failover.enabled",
           ScopeType.UNIVERSE,
           "Enable Automated Master Failover",
           "Enable Automated Master Failover for universes in background process",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterFollowerLag =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterFollowerLag =
       new ConfKeyInfo<>(
-          "yb.automated_master_failover.max_master_follower_lag",
+          "yb.auto_master_failover.max_master_follower_lag",
           ScopeType.UNIVERSE,
           "Max Master Follower Lag for Automated Master Failover",
           "Max lag allowed for a master follower, after which the master is considered for"
               + " failover",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> automatedMasterFailoverMaxMasterHeartbeatDelay =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterHeartbeatDelay =
       new ConfKeyInfo<>(
-          "yb.automated_master_failover.max_master_heartbeat_delay",
+          "yb.auto_master_failover.max_master_heartbeat_delay",
           ScopeType.UNIVERSE,
           "Max master heartbeat delay",
           "Maximum value of heartbeat delay allowed before master is considered to have failed",
@@ -1148,6 +1148,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Maximum number of nodes to stop simultaneously during upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.detect_interval",
+          ScopeType.UNIVERSE,
+          "Automated Master Failover Detection Interval",
+          "Automated master failover detection interval for a universe in background process",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskInterval =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.task_interval",
+          ScopeType.UNIVERSE,
+          "Automated Master Failover Task Interval",
+          "Automated master failover task submission interval for a universe in background process",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
       new ConfKeyInfo<>(
           "yb.node_agent.node_action.use_java_client",
@@ -1164,4 +1180,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable automatic synchronization of XCluster on Universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverCooldown =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.cooldown",
+          ScopeType.UNIVERSE,
+          "Cooldown period for consecutive master failovers",
+          "Minimum duration that the platform waits after the last master failover task completion"
+              + " before considering the next master failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> autoMasterFailoverMaxTaskRetries =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.max_task_retries",
+          ScopeType.UNIVERSE,
+          "Max retries for Master Failover Task",
+          "Maximum number of times the master failover task will be retried in case of failures,"
+              + " before giving up and requiring manual intervention",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

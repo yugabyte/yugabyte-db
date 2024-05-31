@@ -1,32 +1,38 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.nodeui.MetricGroup;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -38,26 +44,23 @@ import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
-public class AutomatedMasterFailoverTest extends FakeDBApplication {
+public class AutoMasterFailoverTest extends FakeDBApplication {
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private RuntimeConfGetter mockRuntimeConfGetter;
   @Mock private YBClientService mockYbClientService;
   @Mock private NodeUIApiHelper mockApiHelper;
   @Mock private Config mockUniverseConfig;
   @Mock private YBClient mockYbClient;
+  @Mock private Commissioner mockCommissioner;
+  @Mock private CustomerTaskManager mockCustomerTaskManager;
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
-  private AutomatedMasterFailover automatedMasterFailover;
+  private AutoMasterFailover automatedMasterFailover;
   private Map<String, Long> mockMasterHeartbeatDelays;
-  private List<MetricGroup> mockMetrics;
   private List<ServerInfo> mockServerInfoList;
   private ListMastersResponse mockListMastersResponse;
   private GetMasterHeartbeatDelaysResponse mockMasterHeartbeatDelaysResponse;
-  private Long defaultMaxFollowerLag = 30000L;
-
-  private static final String YB_AUTOMATED_MASTER_FAILOVER_SCHEDULED_RUN_INTERVAL =
-      "yb.automated_master_failover.run_interval";
 
   private final String[] masterUUIDs = {
     "f2c8d521452f4e47b4816636eece478b",
@@ -82,11 +85,10 @@ public class AutomatedMasterFailoverTest extends FakeDBApplication {
     when(mockMasterHeartbeatDelaysResponse.hasError()).thenReturn(false);
 
     when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse), eq(UniverseConfKeys.automatedMasterFailoverMaxMasterFollowerLag)))
+            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterFollowerLag)))
         .thenReturn(Duration.ofMinutes(10));
     when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse),
-            eq(UniverseConfKeys.automatedMasterFailoverMaxMasterHeartbeatDelay)))
+            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterHeartbeatDelay)))
         .thenReturn(Duration.ofMinutes(10));
 
     mockListMastersResponse = mock(ListMastersResponse.class);
@@ -99,37 +101,56 @@ public class AutomatedMasterFailoverTest extends FakeDBApplication {
 
     when(mockYbClient.getMasterHeartbeatDelays()).thenReturn(mockMasterHeartbeatDelaysResponse);
     when(mockYbClient.listMasters()).thenReturn(mockListMastersResponse);
+    when(mockYbClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     automatedMasterFailover =
-        new AutomatedMasterFailover(
-            mockPlatformScheduler, mockRuntimeConfGetter, mockYbClientService, mockApiHelper);
+        spy(
+            new AutoMasterFailover(
+                mockRuntimeConfGetter,
+                mockYbClientService,
+                mockApiHelper,
+                mockCommissioner,
+                mockCustomerTaskManager));
     automatedMasterFailover = spy(automatedMasterFailover);
-    when(automatedMasterFailover.getFollowerLagMs(anyString(), anyInt()))
-        .thenReturn(
-            new HashMap<String, Long>() {
-              {
-                put("tablet-id-1", 100L);
-              }
-            });
+    Map<String, Long> followerLags = new HashMap<>();
+    followerLags.put("tablet-id-1", 100L);
+    doReturn(followerLags).when(automatedMasterFailover).getFollowerLagMs(anyString(), anyInt());
+  }
+
+  private void setupMockUniverse() {
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    defaultUniverse = spy(Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()));
+    doAnswer(
+            inv -> {
+              String ip = (String) inv.getArguments()[0];
+              NodeDetails node = new NodeDetails();
+              node.masterHttpPort = 7100;
+              node.masterRpcPort = 7000;
+              node.nodeName = "test-node";
+              node.cloudInfo = new CloudSpecificInfo();
+              node.cloudInfo.private_ip = ip;
+              return node;
+            })
+        .when(defaultUniverse)
+        .getNodeByAnyIP(anyString());
   }
 
   @Test
   public void testNoFailedMasters() throws Exception {
-    List<String> failedMasters =
+    Set<String> failedMasters =
         automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
     assertEquals(0, failedMasters.size());
   }
 
   @Test
   public void testLaggingMasterDetection() throws Exception {
-    when(automatedMasterFailover.getFollowerLagMs(eq("127.0.0.2"), anyInt()))
-        .thenReturn(
-            new HashMap<String, Long>() {
-              {
-                put("tablet-id-1", 4000000L);
-              }
-            });
-    List<String> failedMasters =
+    Map<String, Long> followerLags = new HashMap<>();
+    followerLags.put("tablet-id-1", 4000000L);
+    doReturn(followerLags)
+        .when(automatedMasterFailover)
+        .getFollowerLagMs(eq("127.0.0.2"), anyInt());
+    Set<String> failedMasters =
         automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
     assertEquals(1, failedMasters.size());
   }
@@ -137,35 +158,17 @@ public class AutomatedMasterFailoverTest extends FakeDBApplication {
   @Test
   public void testMasterUnreachableDetection() throws Exception {
     mockMasterHeartbeatDelays.remove(masterUUIDs[1]);
-    Exception exception =
-        assertThrows(
-            Exception.class,
-            () ->
-                automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient));
-    assertEquals(
-        "Cannot find heartbeat delay for master with uuid "
-            + masterUUIDs[1]
-            + " in universe "
-            + defaultUniverse.getUniverseUUID().toString(),
-        exception.getMessage());
+    Set<String> failedMasters =
+        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    // No action to be conservative.
+    assertEquals(0, failedMasters.size());
   }
 
   @Test
   public void testMasterExceedingHeartbeatDelay() throws Exception {
     mockMasterHeartbeatDelays.put(masterUUIDs[1], 1000000L);
-    List<String> failedMasters =
+    Set<String> failedMasters =
         automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
     assertEquals(1, failedMasters.size());
-  }
-
-  private void setupMockUniverse() {
-    defaultCustomer = ModelFactory.testCustomer();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
-    defaultUniverse = spy(Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()));
-
-    NodeDetails mockNode = mock(NodeDetails.class);
-    mockNode.masterHttpPort = 7100;
-    mockNode.nodeName = "test-node";
-    when(defaultUniverse.getNodeByPrivateIP(any())).thenReturn(mockNode);
   }
 }
