@@ -233,6 +233,10 @@ bool EnableGroupAddToSetSupport = DEFAULT_ENABLE_ADD_TO_SET_SUPPORT;
 #define DEFAULT_ENABLE_RUM_INDEX_SCAN false
 bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
 
+#define DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE false
+bool EnableCursorsOnAggregationQueryRewrite =
+	DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -619,6 +623,17 @@ InitApiConfigurations(char *prefix)
 		NULL,
 		&EnableRumIndexScan,
 		DEFAULT_ENABLE_RUM_INDEX_SCAN,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableCursorsOnAggregationQueryRewrite",
+		gettext_noop(
+			"Whether or not to add the cursors on aggregation style queries."),
+		NULL,
+		&EnableCursorsOnAggregationQueryRewrite,
+		DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);

@@ -464,7 +464,19 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 	bool queryFullyDrained;
 	pgbson *continuationDoc;
 	bool persistConnection = false;
-	if (queryData->isStreamableCursor)
+	if (queryData->isSingleBatch)
+	{
+		bool isHoldCursor = false;
+		bool closeCursor = true;
+		CreateAndDrainPersistedQuery("singleBatchCursor", query,
+									 queryData->batchSize,
+									 &numIterations,
+									 accumulatedSize, &arrayWriter,
+									 isHoldCursor, closeCursor);
+		queryFullyDrained = true;
+		continuationDoc = NULL;
+	}
+	else if (queryData->isStreamableCursor)
 	{
 		Assert(queryData->cursorStateParamNumber == 1);
 		HTAB *cursorMap = CreateCursorHashSet();
@@ -478,18 +490,6 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 															 cursorId, queryKind,
 															 numIterations);
 		hash_destroy(cursorMap);
-	}
-	else if (queryData->isSingleBatch)
-	{
-		bool isHoldCursor = false;
-		bool closeCursor = true;
-		CreateAndDrainPersistedQuery("singleBatchCursor", query,
-									 queryData->batchSize,
-									 &numIterations,
-									 accumulatedSize, &arrayWriter,
-									 isHoldCursor, closeCursor);
-		queryFullyDrained = true;
-		continuationDoc = NULL;
 	}
 	else
 	{

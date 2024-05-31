@@ -111,7 +111,8 @@ typedef struct
 static void TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest);
 static void AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 									  QueryData *queryData,
-									  AggregationPipelineBuildContext *context);
+									  AggregationPipelineBuildContext *context,
+									  bool addCursorAsConst);
 static void SetBatchSize(const char *fieldName, const bson_value_t *value,
 						 QueryData *queryData);
 
@@ -171,6 +172,7 @@ static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
 extern bool EnableGroupAddToSetSupport;
+extern bool EnableCursorsOnAggregationQueryRewrite;
 
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
@@ -1141,7 +1143,15 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	if (addCursorParams)
 	{
-		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context);
+		bool addCursorAsConst = false;
+		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
+								  addCursorAsConst);
+	}
+	else if (EnableCursorsOnAggregationQueryRewrite)
+	{
+		bool addCursorAsConst = true;
+		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
+								  addCursorAsConst);
 	}
 
 	return query;
@@ -1342,7 +1352,15 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	queryData->namespaceName = context.namespaceName;
 	if (addCursorParams)
 	{
-		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context);
+		bool addCursorAsConst = false;
+		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
+								  addCursorAsConst);
+	}
+	else if (EnableCursorsOnAggregationQueryRewrite)
+	{
+		bool addCursorAsConst = true;
+		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
+								  addCursorAsConst);
 	}
 
 	return query;
@@ -4119,9 +4137,10 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 static void
 AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 						  QueryData *queryData,
-						  AggregationPipelineBuildContext *context)
+						  AggregationPipelineBuildContext *context,
+						  bool addCursorAsConst)
 {
-	if (!queryData->isStreamableCursor)
+	if (!queryData->isStreamableCursor || queryData->isSingleBatch)
 	{
 		return;
 	}
@@ -4142,16 +4161,25 @@ AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 	}
 
 	/* Add a parameter for the cursor state */
-	context->currentParamCount++;
-	queryData->cursorStateParamNumber = context->currentParamCount;
-	Param *param = makeNode(Param);
-	param->paramid = queryData->cursorStateParamNumber;
-	param->paramkind = PARAM_EXTERN;
-	param->paramtype = BsonTypeId();
-	param->paramtypmod = -1;
+	Node *cursorNode;
+	if (addCursorAsConst)
+	{
+		cursorNode = (Node *) MakeBsonConst(PgbsonInitEmpty());
+	}
+	else
+	{
+		context->currentParamCount++;
+		queryData->cursorStateParamNumber = context->currentParamCount;
+		Param *param = makeNode(Param);
+		param->paramid = queryData->cursorStateParamNumber;
+		param->paramkind = PARAM_EXTERN;
+		param->paramtype = BsonTypeId();
+		param->paramtypmod = -1;
+		cursorNode = (Node *) param;
+	}
 
 	/* Create the WHERE cursor_state(document, continuationParam) and add it to the WHERE */
-	List *cursorArgs = list_make2(CreateDocumentVar(), param);
+	List *cursorArgs = list_make2(CreateDocumentVar(), cursorNode);
 	FuncExpr *cursorQual = makeFuncExpr(ApiCursorStateFunctionId(), BOOLOID,
 										cursorArgs, InvalidOid, InvalidOid,
 										COERCE_EXPLICIT_CALL);

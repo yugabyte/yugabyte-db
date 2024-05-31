@@ -514,11 +514,20 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 		if (inputPath->pathtype == T_IndexScan)
 		{
 			IndexPath *indexPath = (IndexPath *) inputPath;
+			bool isIndexPathCostZero = inputPath->total_cost == 0;
 			if (indexPath->indexinfo->amhasgetbitmap)
 			{
 				inputPath = (Path *) create_bitmap_heap_path(root, rel,
 															 inputPath,
 															 rel->lateral_relids, 1.0, 0);
+				if (isIndexPathCostZero)
+				{
+					/* Force the output path to also be cost 0
+					 * Since the base was cost 0 (see helio api's planner.c)
+					 */
+					inputPath->total_cost = 0;
+					inputPath->startup_cost = 0;
+				}
 			}
 		}
 
