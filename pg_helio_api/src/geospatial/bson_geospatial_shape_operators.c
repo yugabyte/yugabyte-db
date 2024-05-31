@@ -45,6 +45,7 @@ static Datum BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *
 /* Error margin for $center radius */
 static const double RADIUS_ERROR_MARGIN = 9e-15;
 
+
 /*
  * Shape operators that can be used by $geoWithin operator
  */
@@ -83,6 +84,14 @@ static const ShapeOperator GeoWithinShapeOperators[] = {
 		.isSpherical = false,
 		.getShapeDatum = BsonValueGetPolygon,
 		.shouldSegmentize = true
+	},
+	{
+		/* This is a deprecated shape operator but tests still use it to make assertions, ignore this */
+		.shapeOperatorName = "$uniqueDocs",
+		.op = GeospatialShapeOperator_UNIQUEDOCS,
+		.isSpherical = false,
+		.getShapeDatum = NULL,
+		.shouldSegmentize = false
 	},
 	{
 		.shapeOperatorName = NULL,
@@ -156,6 +165,13 @@ GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePoint
 								"unknown geo specifier operator %s with argument of type %s",
 								shapeOperatorName,
 								BsonTypeName(shapeOperatorValue->value_type))));
+		}
+
+		if (shapeOperator->op == GeospatialShapeOperator_UNIQUEDOCS)
+		{
+			/* Ignore $unique for shape operators, this is deprecated but tests */
+			/* assert this jstests/core/geo_uniqueDocs.js */
+			continue;
 		}
 		indexOfValidShapeOperator++;
 	}
@@ -717,7 +733,7 @@ BsonValueGetCenterSphere(const bson_value_t *shapeValue, ShapeOperatorInfo *opIn
 				memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
 				errCtxt.errCode = MongoBadValue;
 
-				ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
+				ParseBsonValueAsPointWithBounds(value, throwError, &errCtxt, &point);
 			}
 		}
 

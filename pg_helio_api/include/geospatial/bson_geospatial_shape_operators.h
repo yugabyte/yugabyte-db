@@ -27,6 +27,9 @@ typedef enum GeospatialShapeOperator
 	GeospatialShapeOperator_CENTER,
 	GeospatialShapeOperator_GEOMETRY,
 	GeospatialShapeOperator_CENTERSPHERE,
+
+	/* Deprecated !! It is part of the types so that this can be ignored */
+	GeospatialShapeOperator_UNIQUEDOCS,
 } GeospatialShapeOperator;
 
 /*

@@ -669,6 +669,7 @@ BuildBsonDocumentFromQuery(pgbson *sourceDoc, pgbson *querySpec,
 		.isPositionalAlreadyEvaluated = false,
 		.parentDocument = sourceDoc,
 		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = false,
 	};
 
 	bool isInNestedArray = false;

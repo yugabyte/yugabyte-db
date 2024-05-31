@@ -104,6 +104,14 @@
 /* Radius of earth in meters for spherical calculations */
 static const int32 RADIUS_OF_EARTH_M = 6378100;
 
+/*
+ * Radius of earth in meters for spherical calculations
+ * Earth is not a perfect sphere, but this is a good approximation of the radius
+ * based on ellipsoid to sphere conversion model.
+ * For more info: https://en.wikipedia.org/wiki/Earth_ellipsoid
+ */
+static const float8 RADIUS_OF_ELLIPSOIDAL_EARTH_M = 6371008.7714150595;
+
 
 /*
  * GeoJSON types specified by the GeoJSON standard

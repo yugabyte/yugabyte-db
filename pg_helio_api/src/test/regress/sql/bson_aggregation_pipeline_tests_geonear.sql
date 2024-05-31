@@ -8,14 +8,14 @@ SET helio_api.enableGeospatial to on;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "agg_geonear", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}');
 
 SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 2, "a": { "b": [ 1, 1]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 3, "a": { "b": [ 2, 2]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 4, "a": { "b": [ 3, 3]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 5, "a": { "b": [ 4, 4]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 6, "a": { "b": [ 5, 5]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 7, "a": { "b": [ 6, 6]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 8, "a": { "b": [ 7, 7]} }', NULL);
-SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 9, "a": { "b": [ 8, 8]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
+SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
 
 -- Validations (more validations to follow)
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',

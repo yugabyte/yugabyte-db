@@ -2432,7 +2432,7 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 
 	EnsureGeospatialFeatureEnabled();
 
-	if (!IsClusterVersionAtleastThis(1, 16, 0))
+	if (!IsClusterVersionAtleastThis(1, 18, 0))
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg(
@@ -2444,6 +2444,17 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 		ereport(ERROR, (errcode(MongoLocation40603),
 						errmsg(
 							"$geoNear was not the first stage in the pipeline.")));
+	}
+
+
+	RangeTblEntry *rte = linitial(query->rtable);
+	if (rte->rtekind != RTE_RELATION)
+	{
+		ereport(ERROR, (
+					errcode(MongoBadValue),
+					errmsg("$geoNear is only supported on collections."),
+					errhint("$geoNear is only supported on collections. RTE KIND: %d",
+							rte->rtekind)));
 	}
 
 	const pgbson *geoNearQueryDoc = PgbsonInitFromDocumentBsonValue(existingValue);
@@ -2501,43 +2512,30 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	nullTest->arg = validateExpr;
 	quals = lappend(quals, nullTest);
 
-	/* Add $minDistance and $maxDistance checks
-	 * TODO: Make these index operators in next PR
+	/*
+	 * Add $minDistance and $maxDistance checks as range distance operator
 	 */
-	Oid geoNearDistanceOperatorId = BsonGeonearDistanceOperatorId();
 	if (request->minDistance != NULL || request->maxDistance != NULL)
 	{
-		Expr *distanceExpr = make_opclause(geoNearDistanceOperatorId, FLOAT8OID, false,
-										   (Expr *) docExpr, (Expr *) queryConst,
-										   InvalidOid, InvalidOid);
-		bool is2dSpherical = Is2dWithSphericalDistance(request);
-		if (request->minDistance != NULL)
-		{
-			float8 minDistance = is2dSpherical ?
-								 ConvertRadiansToMeters(*request->minDistance) :
-								 *request->minDistance;
-			Expr *minDistanceConst = (Expr *) MakeFloat8Const(minDistance);
-			Expr *minDistanceExpr = make_opclause(Float8GreaterThanEqualOperatorId(),
+		/*
+		 * make the range operator of this form {<key>: <geoNearSpec>}
+		 * here key is usually the path for index. We do this so that index
+		 * support correctly matches the geo index for this operator.
+		 */
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+		PgbsonWriterAppendDocument(&writer, request->key, strlen(request->key),
+								   geoNearQueryDoc);
+		pgbson *rangeQueryDoc = PgbsonWriterGetPgbson(&writer);
+		Const *rangeQueryDocConst = makeConst(BsonTypeId(), -1, InvalidOid, -1,
+											  PointerGetDatum(rangeQueryDoc),
+											  false, false);
+		Expr *distanceRangeOpExpr = make_opclause(BsonGeonearDistanceRangeOperatorId(),
 												  BOOLOID, false,
-												  distanceExpr,
-												  minDistanceConst, InvalidOid,
-												  InvalidOid);
-			quals = lappend(quals, minDistanceExpr);
-		}
-
-		if (request->maxDistance != NULL)
-		{
-			float8 maxDistance = is2dSpherical ? ConvertRadiansToMeters(
-				*request->maxDistance) :
-								 *request->maxDistance;
-			Expr *maxDistanceConst = (Expr *) MakeFloat8Const(maxDistance);
-			Expr *maxDistanceExpr = make_opclause(Float8LessThanEqualOperatorId(),
-												  BOOLOID, false,
-												  distanceExpr,
-												  maxDistanceConst, InvalidOid,
-												  InvalidOid);
-			quals = lappend(quals, maxDistanceExpr);
-		}
+												  (Expr *) validateExpr,
+												  (Expr *) rangeQueryDocConst,
+												  InvalidOid, InvalidOid);
+		quals = lappend(quals, distanceRangeOpExpr);
 	}
 
 	/* Add any query filters available */
@@ -2545,14 +2543,6 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	{
 		query = HandleMatch(&(request->query), query, context);
 		ValidateQueryOperatorsForGeoNear((Node *) query->jointree->quals, NULL);
-	}
-
-	RangeTblEntry *rte = linitial(query->rtable);
-	if (rte->rtekind != RTE_RELATION)
-	{
-		ereport(ERROR, (
-					errcode(MongoBadValue),
-					errmsg("$geoNear is only supported on collections.")));
 	}
 
 	if (query->jointree->quals != NULL)
@@ -2563,7 +2553,7 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	query->jointree->quals = (Node *) make_ands_explicit(quals);
 
 	/* Add the sort clause and also add the expression in targetlist */
-	Expr *opExpr = make_opclause(geoNearDistanceOperatorId, FLOAT8OID, false,
+	Expr *opExpr = make_opclause(BsonGeonearDistanceOperatorId(), FLOAT8OID, false,
 								 (Expr *) validateExpr,
 								 (Expr *) queryConst,
 								 InvalidOid, InvalidOid);
@@ -2587,7 +2577,12 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 
 	firstEntry->expr = (Expr *) projectionExpr;
 
-	context->requiresSubQueryAfterProject = true;
+	if (context->nestedPipelineLevel > 0)
+	{
+		/* For nested pipelines this will require a subquery */
+		context->requiresSubQueryAfterProject = true;
+	}
+
 	return query;
 }
 

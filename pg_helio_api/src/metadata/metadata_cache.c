@@ -669,8 +669,14 @@ typedef struct HelioApiOidCacheData
 	/* Oid of bson_gist_geography_distance function id */
 	Oid BsonGistGeographyDistanceFunctionOid;
 
+	/* Oid of bson_gist_geography_consistent function id */
+	Oid BsonGistGeographyConsistentFunctionOid;
+
 	/* Oid of <|-|> geonear distance operator id */
 	Oid BsonGeonearDistanceOperatorId;
+
+	/* Oid of @|><| geonear distance range opeartor id */
+	Oid BsonGeonearDistanceRangeOperatorId;
 
 	/* Oid of bson_dollar_project_geonear function id*/
 	Oid BsonDollarProjectGeonearFunctionOid;
@@ -1461,6 +1467,27 @@ BsonGeonearDistanceOperatorId(void)
 {
 	return GetBinaryOperatorId(&Cache.BsonGeonearDistanceOperatorId,
 							   BsonTypeId(), "<|-|>", BsonTypeId());
+}
+
+
+/*
+ * Returns the OID of  helio_api_internal.@|><| geoNear distance range operator
+ */
+Oid
+BsonGeonearDistanceRangeOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonGeonearDistanceRangeOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("helio_api_internal"),
+											makeString("@|><|"));
+
+		Cache.BsonGeonearDistanceRangeOperatorId =
+			OpernameGetOprid(operatorNameList, BsonTypeId(), BsonTypeId());
+	}
+
+	return Cache.BsonGeonearDistanceRangeOperatorId;
 }
 
 
@@ -3701,6 +3728,22 @@ BsonGistGeographyDistanceFunctionOid(void)
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.BsonGistGeographyDistanceFunctionOid,
 		ApiCatalogSchemaName, "bson_gist_geography_distance", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * BsonGistGeographyDistanceFunctionOid returns the OID of bson_gist_geography_distance
+ */
+Oid
+BsonGistGeographyConsistentFunctionOid(void)
+{
+	int nargs = 3;
+	Oid argTypes[3] = { INTERNALOID, BsonTypeId(), INT4OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.BsonGistGeographyConsistentFunctionOid,
+		ApiCatalogSchemaName, "bson_gist_geography_consistent", nargs,
 		argTypes, missingOk);
 }
 

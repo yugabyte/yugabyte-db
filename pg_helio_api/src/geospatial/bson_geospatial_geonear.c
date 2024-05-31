@@ -9,23 +9,30 @@
  */
 
 #include <postgres.h>
+#include <float.h>
+#include <math.h>
 #include <miscadmin.h>
 #include <catalog/pg_am.h>
 #include <nodes/makefuncs.h>
 #include <nodes/pg_list.h>
 #include <nodes/nodeFuncs.h>
 #include <optimizer/optimizer.h>
+#include <optimizer/pathnode.h>
 
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "utils/fmgr_utils.h"
 #include "utils/version_utils.h"
 
+static bool GeonearDistanceWithinRange(const GeonearDistanceState *state,
+									   const pgbson *document);
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
 
 PG_FUNCTION_INFO_V1(bson_geonear_distance);
+PG_FUNCTION_INFO_V1(bson_geonear_within_range);
 
 
 /*
@@ -56,7 +63,40 @@ bson_geonear_distance(PG_FUNCTION_ARGS)
 		PG_RETURN_FLOAT8(GeonearDistanceFromDocument(&projectionState, document));
 	}
 
-	PG_RETURN_FLOAT8(GeonearDistanceFromDocument(state, document));
+	float8 distance = GeonearDistanceFromDocument(state, document);
+	PG_RETURN_FLOAT8(distance);
+}
+
+
+/*
+ * Implements the distance range checks for the $geoNear stage using
+ * $minDistance and $maxDistance.
+ */
+Datum
+bson_geonear_within_range(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+	const pgbson *queryBson = PG_GETARG_PGBSON_PACKED(1);
+
+	const GeonearDistanceState *state;
+	int argPosition = 1;
+
+	SetCachedFunctionState(
+		state,
+		GeonearDistanceState,
+		argPosition,
+		BuildGeoNearRangeDistanceState,
+		queryBson);
+
+	if (state == NULL)
+	{
+		GeonearDistanceState projectionState;
+		memset(&projectionState, 0, sizeof(GeonearDistanceState));
+		BuildGeoNearRangeDistanceState(&projectionState, queryBson);
+		PG_RETURN_BOOL(GeonearDistanceWithinRange(&projectionState, document));
+	}
+
+	PG_RETURN_BOOL(GeonearDistanceWithinRange(state, document));
 }
 
 
@@ -81,8 +121,34 @@ GeonearDistanceFromDocument(const GeonearDistanceState *state,
 		points = BsonExtractGeographyRuntime(document, &state->key);
 	}
 
-	return DatumGetFloat8(FunctionCall2(state->distanceFnInfo, points,
-										state->referencePoint));
+	float8 distance = DatumGetFloat8(FunctionCall2(state->distanceFnInfo, points,
+												   state->referencePoint));
+	return distance;
+}
+
+
+/*
+ * Checks if the distance is within the range of min and max distance
+ */
+static bool
+GeonearDistanceWithinRange(const GeonearDistanceState *state,
+						   const pgbson *document)
+{
+	float8 distance = GeonearDistanceFromDocument(state, document);
+
+	if (state->maxDistance != NULL && distance > *(state->maxDistance) &&
+		fabs(distance - *(state->maxDistance)) > DBL_EPSILON)
+	{
+		return false;
+	}
+
+	if (state->minDistance != NULL && distance < *(state->minDistance) &&
+		fabs(distance - *(state->minDistance)) > DBL_EPSILON)
+	{
+		return false;
+	}
+
+	return true;
 }
 
 
@@ -117,6 +183,20 @@ BuildGeoNearDistanceState(GeonearDistanceState *state,
 		state->mode = DistanceMode_Cartesian;
 	}
 	state->distanceFnInfo = palloc0(sizeof(FmgrInfo));
+	state->minDistance = request->minDistance;
+	state->maxDistance = request->maxDistance;
+
+	if (state->mode == DistanceMode_Radians)
+	{
+		if (request->minDistance != NULL)
+		{
+			*(state->minDistance) = ConvertRadiansToMeters(*(request->minDistance));
+		}
+		if (request->maxDistance != NULL)
+		{
+			*(state->maxDistance) = ConvertRadiansToMeters(*(request->maxDistance));
+		}
+	}
 
 	/* Write a simple point in the buffer */
 	StringInfo wkbBuffer = makeStringInfo();
@@ -148,6 +228,29 @@ BuildGeoNearDistanceState(GeonearDistanceState *state,
 
 
 /*
+ * The only difference for this function is it gets the query in {"key": {geoNearSpec}}
+ * format for the distance range operator
+ */
+void
+BuildGeoNearRangeDistanceState(GeonearDistanceState *state,
+							   const pgbson *geoNearRangeQuery)
+{
+	pgbsonelement filterElement;
+	PgbsonToSinglePgbsonElement(geoNearRangeQuery, &filterElement);
+	Assert(filterElement.bsonValue.value_type == BSON_TYPE_DOCUMENT);
+
+	const pgbson *geoNearDoc = PgbsonInitFromBuffer(
+		(char *) filterElement.bsonValue.value.v_doc.data,
+		filterElement.bsonValue.value.v_doc.
+		data_len);
+	BuildGeoNearDistanceState(state, geoNearDoc);
+
+	/* Free the buffer, this additional buffer is only allocated once per query for building function cache */
+	pfree((void *) geoNearDoc);
+}
+
+
+/*
  * Parses a given $geoNear aggregation stage fields and returns the parsed request.
  */
 GeonearRequest *
@@ -175,6 +278,14 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 							errhint(
 								"$geoNear parameter 'key' must be of type string but found type: %s",
 								BsonTypeName(value->value_type))));
+			}
+
+			if (value->value.v_utf8.len == 0)
+			{
+				ereport(ERROR, (
+							errcode(MongoBadValue),
+							errmsg(
+								"$geoNear parameter 'key' cannot be the empty string")));
 			}
 
 			request->key = value->value.v_utf8.str;
@@ -233,7 +344,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 			*(request->maxDistance) = BsonValueAsDouble(value);
 			if (*request->maxDistance < 0.0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(MongoTypeMismatch),
 								errmsg("maxDistance must be nonnegative")));
 			}
 		}
@@ -250,7 +361,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 
 			if (*request->minDistance < 0.0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(MongoTypeMismatch),
 								errmsg("minDistance must be nonnegative")));
 			}
 		}
@@ -294,7 +405,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				if (!BsonValueIsNumber(pointValue))
 				{
 					ereport(ERROR, (
-								errcode(MongoTypeMismatch),
+								errcode(MongoBadValue),
 								errmsg("invalid argument in geo near query: %s",
 									   (request->isGeoJsonPoint ? "coordinates" :
 										lastkey)),
@@ -371,12 +482,12 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 		if (request->isGeoJsonPoint)
 		{
 			ereport(ERROR, (
-						errcode(MongoTypeMismatch),
+						errcode(MongoBadValue),
 						errmsg("invalid argument in geo near query: coordinates")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoTypeMismatch),
+			ereport(ERROR, (errcode(MongoBadValue),
 							errmsg("Legacy point is out of bounds for spherical query")));
 		}
 	}

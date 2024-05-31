@@ -452,6 +452,7 @@ BsonUnwindElement(pgbson *document, char *path, char *indexFieldName, long index
 		.isPositionalAlreadyEvaluated = false,
 		.parentDocument = document,
 		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = false,
 	};
 
 	bool isInNestedArray = false;

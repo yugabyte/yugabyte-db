@@ -115,6 +115,7 @@ static void PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 static void SegmentizeQuery(IndexBsonGeospatialState *state);
 static float8 GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const
 										   GeonearDistanceState *state);
+static bool GeonearRangeConsistent(PG_FUNCTION_ARGS);
 
 
 /*
@@ -238,6 +239,11 @@ bson_gist_geometry_distance_2d(PG_FUNCTION_ARGS)
 
 	const GeonearDistanceState *state;
 	int argPosition = 1;
+	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+	if (strategy != BSON_INDEX_STRATEGY_GEONEAR)
+	{
+		ereport(ERROR, errmsg("Strategy not supported for geonear"));
+	}
 
 	SetCachedFunctionState(
 		state,
@@ -268,6 +274,17 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 	const pgbson *queryBson = PG_GETARG_PGBSON(1);
 	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+
+	if (strategy == BSON_INDEX_STRATEGY_GEONEAR_RANGE)
+	{
+		/*
+		 * For a $geoNear range check using $minDistance and $maxDistance we are not dependent on Postgis and
+		 * have our own index push down logic, so we can directly return the result here.
+		 */
+		PG_RETURN_BOOL(GeonearRangeConsistent(fcinfo));
+	}
+
+
 	IndexBsonGeospatialState *state;
 	int stateArgPositions[2] = { 1, 2 };
 
@@ -545,6 +562,11 @@ bson_gist_geography_distance(PG_FUNCTION_ARGS)
 
 	const GeonearDistanceState *state;
 	int argPosition = 1;
+	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+	if (strategy != BSON_INDEX_STRATEGY_GEONEAR)
+	{
+		ereport(ERROR, errmsg("Strategy not supported for geonear"));
+	}
 
 	SetCachedFunctionState(
 		state,
@@ -575,6 +597,16 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 	const pgbson *queryBson = PG_GETARG_PGBSON(1);
 	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+
+	if (strategy == BSON_INDEX_STRATEGY_GEONEAR_RANGE)
+	{
+		/*
+		 * For a $geoNear range check using $minDistance and $maxDistance we are not dependent on Postgis and
+		 * have our own index push down logic, so we can directly return the result here.
+		 */
+		PG_RETURN_BOOL(GeonearRangeConsistent(fcinfo));
+	}
+
 	IndexBsonGeospatialState *state;
 	int stateArgPositions[2] = { 1, 2 };
 
@@ -840,8 +872,8 @@ GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state
 	GISTENTRY *gistEntry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 	float8 distance = DBL_MAX;
-	bool isBoundingBoxPoint = false;
-	if (fcinfo->flinfo->fn_oid == BsonGistGeographyDistanceFunctionOid())
+	if (fcinfo->flinfo->fn_oid == BsonGistGeographyDistanceFunctionOid() ||
+		fcinfo->flinfo->fn_oid == BsonGistGeographyConsistentFunctionOid())
 	{
 		/* This infers that the we are using a 2dsphere index and want to use spherical distance, here the
 		 * GistEntry is a GIDX box already and we can calculate the spherical distances b/w boundig boxes straight
@@ -862,73 +894,39 @@ GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state
 		 */
 		if (state->mode == DistanceMode_Radians)
 		{
-			/*
-			 * there is a need to calculate spherical distances then we need a geography object out of
-			 * the bounding box and calculate spherical distance
-			 */
 			BSON_BOUNDING_BOXF *box = (BSON_BOUNDING_BOXF *) gistEntry->key;
-
-			/*
-			 * Make a copy of the bounding box so that we don't accidently modify the original bounding box
-			 * and make the max actual max between the 2, sometime because of precision issues of floats
-			 * 2 equal floats can have different representation and min can become max.
-			 * e.g. 3.1 can be represented as 3.09999991 or 3.100000001 etc
-			 */
-			BSON_BOUNDING_BOXF copyBox = {
-				.xMax = Max(box->xMax, box->xMin),
-				.xMin = Min(box->xMax, box->xMin),
-				.yMax = Max(box->yMax, box->yMin),
-				.yMin = Min(box->yMax, box->yMin)
-			};
-
-			if ((copyBox.xMax - copyBox.xMin <= FLT_EPSILON) &&
-				(copyBox.yMax - copyBox.yMin <= FLT_EPSILON))
-			{
-				isBoundingBoxPoint = true;
-			}
 
 			Point point;
 			memset(&point, 0, sizeof(Point));
 
 			StringInfo boxGeography = makeStringInfo();
 
-			if (isBoundingBoxPoint)
-			{
-				WriteHeaderToWKBBuffer(boxGeography, WKBGeometryType_Point);
+			/* Write a polygon for the box */
+			WriteHeaderToWKBBuffer(boxGeography, WKBGeometryType_Polygon);
+			int32 numOfRings = 1;
+			int32 numOfPoints = 5;
+			appendBinaryStringInfoNT(boxGeography, (char *) &numOfRings,
+									 WKB_BYTE_SIZE_NUM);
+			appendBinaryStringInfoNT(boxGeography, (char *) &numOfPoints,
+									 WKB_BYTE_SIZE_NUM);
 
-				point.x = copyBox.xMin;
-				point.y = copyBox.yMin;
-				WritePointToWKBBuffer(boxGeography, &point);
-			}
-			else
-			{
-				/* Write a polygon for the box */
-				WriteHeaderToWKBBuffer(boxGeography, WKBGeometryType_Polygon);
-				int32 numOfRings = 1;
-				int32 numOfPoints = 5;
-				appendBinaryStringInfoNT(boxGeography, (char *) &numOfRings,
-										 WKB_BYTE_SIZE_NUM);
-				appendBinaryStringInfoNT(boxGeography, (char *) &numOfPoints,
-										 WKB_BYTE_SIZE_NUM);
+			point.x = box->xMin;
+			point.y = box->yMin;
+			WritePointToWKBBuffer(boxGeography, &point);
 
-				point.x = copyBox.xMin;
-				point.y = copyBox.yMin;
-				WritePointToWKBBuffer(boxGeography, &point);
+			point.y = box->yMax;
+			WritePointToWKBBuffer(boxGeography, &point);
 
-				point.y = copyBox.yMax;
-				WritePointToWKBBuffer(boxGeography, &point);
+			point.x = box->xMax;
+			point.y = box->yMax;
+			WritePointToWKBBuffer(boxGeography, &point);
 
-				point.x = copyBox.xMax;
-				point.y = copyBox.yMax;
-				WritePointToWKBBuffer(boxGeography, &point);
+			point.y = box->yMin;
+			WritePointToWKBBuffer(boxGeography, &point);
 
-				point.y = copyBox.yMin;
-				WritePointToWKBBuffer(boxGeography, &point);
-
-				point.x = copyBox.xMin;
-				point.y = copyBox.yMin;
-				WritePointToWKBBuffer(boxGeography, &point);
-			}
+			point.x = box->xMin;
+			point.y = box->yMin;
+			WritePointToWKBBuffer(boxGeography, &point);
 
 			bytea *wkbWithSRID = WKBBufferGetByteaWithSRID(boxGeography);
 			Datum geographyBox = GetGeographyFromWKB(wkbWithSRID);
@@ -937,6 +935,14 @@ GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state
 										  state->distanceFnInfo,
 										  geographyBox,
 										  state->referencePoint));
+
+			/*
+			 * Set the leaf GIST nodes to be rechecked
+			 */
+			if (GIST_LEAF(gistEntry))
+			{
+				*recheck = true;
+			}
 		}
 		else
 		{
@@ -952,12 +958,53 @@ GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state
 		}
 	}
 
-	/* TODO: test performance with recheck, in case the document is a point then distance calculated should not be lossy
-	 * as bounding boxes are equivalent to the geographies/ geometries
-	 */
-	if (GIST_LEAF(gistEntry) && !isBoundingBoxPoint)
-	{
-		*recheck = true;
-	}
 	return distance;
+}
+
+
+/*
+ * Checks if the distance between the document's bounding box and the reference point's bounding box is within the
+ * min and max distance specified in the query
+ */
+static bool
+GeonearRangeConsistent(PG_FUNCTION_ARGS)
+{
+	pgbson *query = PG_GETARG_PGBSON(1);
+
+	const GeonearDistanceState *state;
+	int argPosition = 1;
+	float8 gistBoxDistance = 0.0;
+
+	SetCachedFunctionState(
+		state,
+		GeonearDistanceState,
+		argPosition,
+		BuildGeoNearRangeDistanceState,
+		query);
+
+	if (state == NULL)
+	{
+		GeonearDistanceState distanceState;
+		memset(&distanceState, 0, sizeof(GeonearDistanceState));
+		BuildGeoNearRangeDistanceState(&distanceState, query);
+		gistBoxDistance = GeonearGISTDistanceWithState(fcinfo, &distanceState);
+	}
+	else
+	{
+		gistBoxDistance = GeonearGISTDistanceWithState(fcinfo, state);
+	}
+
+	if (state->maxDistance != NULL && gistBoxDistance > *(state->maxDistance) &&
+		fabs(gistBoxDistance - *(state->maxDistance)) > DBL_EPSILON)
+	{
+		return false;
+	}
+
+	if (state->minDistance != NULL && gistBoxDistance < *(state->minDistance) &&
+		fabs(gistBoxDistance - *(state->minDistance)) > DBL_EPSILON)
+	{
+		return false;
+	}
+
+	return true;
 }

@@ -824,6 +824,7 @@ ProjectDocumentWithState(pgbson *sourceDocument,
 		.hasExclusion = state->hasExclusion,
 		.projectDocumentFuncs = state->projectDocumentFuncs,
 		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = false,
 	};
 
 	if (projectDocState.projectDocumentFuncs.initializePendingProjectionFunc != NULL)
@@ -953,7 +954,8 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 			.parentDocument = sourceDoc,
 			.hasExclusion = contextCopy.hasExclusion,
 			.projectDocumentFuncs = { 0 },
-			.pendingProjectionState = NULL
+			.pendingProjectionState = NULL,
+			.skipIntermediateArrayFields = false,
 		};
 
 		bool projectNonMatchingFields = true;
@@ -1253,7 +1255,8 @@ BsonLookUpProject(pgbson *sourceDocument, int numMatched, Datum *matchedDocument
 	ProjectDocumentState projectDocState = {
 		.isPositionalAlreadyEvaluated = false,
 		.parentDocument = sourceDocument,
-		.pendingProjectionState = NULL
+		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = false,
 	};
 
 	bool isInNestedArray = false;
@@ -1664,7 +1667,8 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 																index);
 					}
 				}
-				else if (BSON_ITER_HOLDS_ARRAY(documentIterator))
+				else if (BSON_ITER_HOLDS_ARRAY(documentIterator) &&
+						 !projectDocState->skipIntermediateArrayFields)
 				{
 					pgbson_array_writer childWriter;
 					PgbsonWriterStartArray(writer, path.string, path.length,
@@ -2008,7 +2012,7 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 
 	if (state->mode == DistanceMode_Radians)
 	{
-		distance = float8_div(distance, RADIUS_OF_EARTH_M);
+		distance = float8_div(distance, RADIUS_OF_ELLIPSOIDAL_EARTH_M);
 	}
 
 	distance = float8_mul(distance, state->distanceMultiplier);
@@ -2055,7 +2059,6 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 		&nodeCreated
 		);
 
-	/* Write the new fields to the document */
 	pgbson_writer writer;
 	bson_iter_t documentIterator;
 	PgbsonWriterInit(&writer);
@@ -2064,7 +2067,8 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 	ProjectDocumentState projectDocState = {
 		.isPositionalAlreadyEvaluated = false,
 		.parentDocument = document,
-		.pendingProjectionState = NULL
+		.pendingProjectionState = NULL,
+		.skipIntermediateArrayFields = true,
 	};
 
 	bool isInNestedArray = false;

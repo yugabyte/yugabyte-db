@@ -17,6 +17,7 @@
 #include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 
+
 /*
  * Represents a Geonear Request
  */
@@ -86,6 +87,8 @@ typedef struct GeonearDistanceState
 	StringView includeLocs;
 	float8 distanceMultiplier;
 	Datum referencePoint;
+	float8 *maxDistance;
+	float8 *minDistance;
 
 	/* FmgrInfo of the Postgis runtime distance method, can be spherical or non-spherical based
 	 * on the request
@@ -98,10 +101,11 @@ typedef struct GeonearDistanceState
 
 GeonearRequest * ParseGeonearRequest(const pgbson *geoNearQuery);
 void BuildGeoNearDistanceState(GeonearDistanceState *state, const pgbson *geoNearQuery);
+void BuildGeoNearRangeDistanceState(GeonearDistanceState *state, const
+									pgbson *geoNearQuery);
 float8 GeonearDistanceFromDocument(const GeonearDistanceState *state, const
 								   pgbson *document);
 bool ValidateQueryOperatorsForGeoNear(Node *node, void *state);
-void ValidateGeonearPlan(PlannerInfo *root, RelOptInfo *rel);
 
 
 inline static bool

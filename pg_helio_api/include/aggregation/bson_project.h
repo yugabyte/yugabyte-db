@@ -105,6 +105,16 @@ typedef struct ProjectDocumentState
 
 	/* Pending projections for the document as a whole */
 	void *pendingProjectionState;
+
+	/* For projections that needs to avoid projecting for all elements of an intermediate array
+	 * e.g. $geoNear updates the document and for a conflicting intermediate array path it just overrides
+	 * the complete array and makes it a single nested object
+	 *
+	 * Document => {a : {b: [{c: 10}, {c: 20}]]}}
+	 * Project => { a.b.c: 100 }
+	 * Result => { a: {b: {c: 100} }
+	 */
+	bool skipIntermediateArrayFields;
 } ProjectDocumentState;
 
 const BsonProjectionQueryState * GetProjectionStateForBsonProject(
