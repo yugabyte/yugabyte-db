@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB `yb_local_tablets` view to see metadata about the [YSQL](../../../api/ysql/) and [YCQL]((../../../api/ycql/)) statements, and system [tablets](../../../architecture/key-concepts/#tablet) of a node.
+Use the YugabyteDB `yb_local_tablets` view to see metadata about the [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) statements, and system [tablets](../../../architecture/key-concepts/#tablet) of a node.
 
 This view is also present on `<yb-tserver_ip>:9000/tablets` in the form of a YSQL view, and can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view using the tablet ID. For example, see [Detect a hot shard](../../observability/active-session-history/#detect-a-hot-shard).
 
