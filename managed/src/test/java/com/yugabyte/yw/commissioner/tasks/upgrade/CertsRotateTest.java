@@ -232,7 +232,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           assertEquals(taskParams.getClientRootCA(), universeDetails.getClientRootCA());
         }
       }
-    } else {
+    } else if (rootAndClientRootCASame && currentClientToNode) {
       assertNull(universeDetails.getClientRootCA());
     }
     assertEquals(rootAndClientRootCASame, universeDetails.rootAndClientRootCASame);
@@ -488,8 +488,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         // so below condition is no more valid
         //         || (isClientRootCARequired && !rotateClientRootCA &&
         // currentRootAndClientRootCASame)
-        || (!rotateRootCA && !rotateClientRootCA)
-        || (rootAndClientRootCASame && !currentClientToNode && !rotateClientRootCA)) {
+        || (!rotateRootCA && !rotateClientRootCA)) {
       if (!(!rotateRootCA
           && !rotateClientRootCA
           && currentNodeToNode
@@ -594,9 +593,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         //        || (isClientRootCARequired && !rotateClientRootCA &&
         // currentRootAndClientRootCASame)
         //           && !rootAndClientRootCASame && rotateRootCA)
-        || (!rotateRootCA && !rotateClientRootCA)
-        // if bothCA are same, but client encryption not turned on, it would fail
-        || (rootAndClientRootCASame && !currentClientToNode && !rotateClientRootCA)) {
+        || (!rotateRootCA && !rotateClientRootCA)) {
       if (!(!rotateRootCA
           && !rotateClientRootCA
           && currentNodeToNode
