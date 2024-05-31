@@ -1,0 +1,480 @@
+--
+-- Yugabyte-owned test on ybgin index access method for things not covered
+-- elsewhere.
+--
+-- Always choose index scan.
+SET enable_seqscan = off;
+SET yb_test_ybgin_disable_cost_factor = 0.5;
+-- Set jsonbs to have jsonb_ops index, not jsonb_path_ops index.
+DROP INDEX jsonbs_j_idx;
+CREATE INDEX ON jsonbs USING ybgin (j);
+--
+-- DELETE/UPDATE
+--
+-- tsvector
+INSERT INTO vectors (v) VALUES ('a b c i k'), ('abc j k');
+EXPLAIN (costs off)
+UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
+                   QUERY PLAN
+-------------------------------------------------
+ Update on vectors
+   ->  Index Scan using vectors_v_idx on vectors
+         Index Cond: (v @@ '''k'''::tsquery)
+(3 rows)
+
+UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
+SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
+        v
+-----------------
+ 'a' 'b' 'i' 'k'
+ 'abc' 'k'
+(2 rows)
+
+DELETE FROM vectors WHERE v @@ 'k';
+-- jsonb
+INSERT INTO jsonbs (j) VALUES ('[4,7,"sh",3,"du"]'), ('{"du":[7,9], "sh":13}');
+EXPLAIN (costs off)
+UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
+                  QUERY PLAN
+-----------------------------------------------
+ Update on jsonbs
+   ->  Index Scan using jsonbs_j_idx on jsonbs
+         Index Cond: (j ? 'du'::text)
+(3 rows)
+
+UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
+SELECT j FROM jsonbs WHERE j ? 'du' ORDER BY i;
+        j
+-----------------
+ [4, 7, 3, "du"]
+ {"du": [7, 9]}
+(2 rows)
+
+DELETE FROM jsonbs WHERE j ? 'du';
+--
+-- Long strings.
+--
+DO $$
+DECLARE
+    c int;
+    s text := '0000000000'
+           || '1111111111'
+           || '2222222222'
+           || '3333333333'
+           || '4444444444'
+           || '5555555555'
+           || '6666666666'
+           || '7777777777'
+           || '8888888888'
+           || '9999999999'
+           || 'aaaaaaaaaa'
+           || 'bbbbbbbbbb'
+           || 'cccccccccc'
+           || 'dddddddddd'
+           || 'eeeeeeeeee'
+           || 'ffffffffff';
+BEGIN
+    -- tsvector_ops
+    INSERT INTO vectors (v) VALUES (to_tsvector('simple', s));
+    SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', s) INTO c;
+    RAISE NOTICE 'tsvector_ops count: %', c;
+    DELETE FROM vectors WHERE v @@ to_tsquery('simple', s);
+    -- jsonb_ops
+    INSERT INTO jsonbs (j) VALUES (('"' || s || '"')::jsonb);
+    SELECT count(*) FROM jsonbs WHERE j ? s INTO c;
+    RAISE NOTICE 'jsonb_ops count: %', c;
+    DELETE FROM jsonbs WHERE j ? s;
+END $$;
+NOTICE:  tsvector_ops count: 1
+NOTICE:  jsonb_ops count: 1
+--
+-- Prefix match without greater string.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\x7F\x7F'),
+    (E'\x7F\x7F\x7Fa'),
+    (E'\x7F\x7F\x7F\x7F'),
+    (E'\x7F\x7F');
+EXPLAIN (costs off)
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+                        QUERY PLAN
+----------------------------------------------------------
+ Sort
+   Sort Key: i
+   ->  Index Scan using vectors_v_idx on vectors
+         Index Cond: (v @@ '''\x7F\x7F\x7F'':*'::tsquery)
+(4 rows)
+
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+         v
+--------------------
+ '\x7F\x7F\x7F'
+ '\x7F\x7F\x7Fa'
+ '\x7F\x7F\x7F\x7F'
+(3 rows)
+
+EXPLAIN (costs off)
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+                    QUERY PLAN
+--------------------------------------------------
+ Delete on vectors
+   ->  Index Scan using vectors_v_idx on vectors
+         Index Cond: (v @@ '''\x7F'':*'::tsquery)
+(3 rows)
+
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+--
+-- Prefix match with other odd characters.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\u00bf'),
+    (E'\x7F\u00c0'),
+    (E'\x7F\u00cf'),
+    (E'\x7F\u00d0'),
+    (E'\x7F\u00df'),
+    (E'\x7F\u00e0'),
+    (E'\x7F\u00ef'),
+    (E'\x7F\u00f0'),
+    (E'\x7F\u00ff'),
+    (E'\x7F\u0100'),
+    (E'\x7F\u013f'),
+    (E'\x7F\u0140'),
+    (E'\x7F\u017f'),
+    (E'\x7F\u0180'),
+    (E'\x7F\u07ff'),
+    (E'\x7F\u0800'),
+    (E'\x7F\ufeff'),
+    (E'\x7F\uff00'),
+    (E'\x7F\uffff'),
+    (E'\x7F\U00010000'),
+    (E'\x7F\U0001ffff'),
+    (E'\x7F\U00100000'),
+    (E'\x7F\U0010ffff'),
+    (E'\x7F\U0010ffff\x7F');
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00bf:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00cf:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00df:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ef:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u013f:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u017f:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u07ff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\ufeff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\uffff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0001ffff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0010ffff:*';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F:*';
+ count
+-------
+    24
+(1 row)
+
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+--
+-- Three ways to query tsvectors containing both of two specific words.
+--
+-- AND inside tsquery
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a & bb';
+                   QUERY PLAN
+------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '''a'' & ''bb'''::tsquery)
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a & bb';
+ i |                  v
+---+--------------------------------------
+ 1 | 'a':1 'bb':2 'ccc':3
+ 2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
+(2 rows)
+
+-- AND between '@@' ops
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one scan key: got 2.
+HINT:  Consider rewriting the query with INTERSECT and UNION.
+-- INTERSECT between '@@' selects
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ SetOp Intersect
+   ->  Sort
+         Sort Key: "*SELECT* 1".i, "*SELECT* 1".v
+         ->  Append
+               ->  Subquery Scan on "*SELECT* 1"
+                     ->  Index Scan using vectors_v_idx on vectors
+                           Index Cond: (v @@ '''a'''::tsquery)
+               ->  Subquery Scan on "*SELECT* 2"
+                     ->  Index Scan using vectors_v_idx on vectors vectors_1
+                           Index Cond: (v @@ '''bb'''::tsquery)
+(10 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
+ i |                  v
+---+--------------------------------------
+ 1 | 'a':1 'bb':2 'ccc':3
+ 2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
+(2 rows)
+
+--
+-- Three ways to query tsvectors containing at least one of two specific words.
+--
+-- OR inside tsquery
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a | c';
+                  QUERY PLAN
+-----------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '''a'' | ''c'''::tsquery)
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a | c';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+-- OR between '@@' ops
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Seq Scan on vectors
+   Storage Filter: ((v @@ '''a'''::tsquery) OR (v @@ '''c'''::tsquery))
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
+ i |                  v
+---+--------------------------------------
+ 1 | 'a':1 'bb':2 'ccc':3
+ 4 | 'a':1,2,3,4,5,6
+ 2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
+(3 rows)
+
+-- UNION between '@@' selects
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Unique
+   ->  Sort
+         Sort Key: vectors.i, vectors.v
+         ->  Append
+               ->  Index Scan using vectors_v_idx on vectors
+                     Index Cond: (v @@ '''a'''::tsquery)
+               ->  Index Scan using vectors_v_idx on vectors vectors_1
+                     Index Cond: (v @@ '''c'''::tsquery)
+(8 rows)
+
+SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
+ i |                  v
+---+--------------------------------------
+ 1 | 'a':1 'bb':2 'ccc':3
+ 2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
+ 4 | 'a':1,2,3,4,5,6
+(3 rows)
+
+--
+-- Complicated query
+--
+-- Top-level disjunction where the last item is simple
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '( ''a'' & ''e'' | ''ccc'' & ''ccd'' ) & ''o'''::tsquery)
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
+ i |                  v
+---+--------------------------------------
+ 2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
+(1 row)
+
+-- Top-level disjunction where the last item is complex
+EXPLAIN (costs off)
+SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '''o'' & ( ''a'' & ''e'' | ''ccc'' & ''ccd'' )'::tsquery)
+(2 rows)
+
+SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+-- TODO(jason): add top-level conjunction tests
+--
+-- Index build without online schema change
+--
+CREATE INDEX NONCONCURRENTLY idx_nonconcurrent ON jsonbs USING ybgin (j jsonb_path_ops);
+DROP INDEX idx_nonconcurrent;
+--
+-- Various array types
+--
+CREATE TABLE manyarrays (
+    a text[],
+    b int2[],
+    c char[],
+    d oidvector[],
+    e pg_lsn[],
+    f timestamptz[]);
+INSERT INTO manyarrays VALUES (
+    ARRAY['abc', '123'],
+    ARRAY[123, -456],
+    ARRAY['g', 'h', 'i'],
+    ARRAY['123456 0', '4294967295', '1 2 4']::oidvector[],
+    ARRAY['0/12345', 'AC/FD', '0/0']::pg_lsn[],
+    ARRAY[make_timestamptz(1970, 1, 2, 3, 4, 5.6, 'UTC'),
+          make_timestamptz(1971, 2, 3, 4, 5, 6.7, 'UTC')]);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (a);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (b);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (c);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (d);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (e);
+CREATE INDEX NONCONCURRENTLY ON manyarrays USING ybgin (f);
+--
+-- Column ordering
+--
+-- ASC
+CREATE INDEX idx_hash ON jsonbs USING ybgin (j ASC);
+ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+-- DESC
+CREATE INDEX idx_hash ON jsonbs USING ybgin (j DESC);
+ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+-- HASH
+CREATE INDEX idx_hash ON jsonbs USING ybgin (j HASH);
+ERROR:  access method "ybgin" does not support ASC/DESC/HASH options
+-- NULLS FIRST
+CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS FIRST);
+ERROR:  access method "ybgin" does not support NULLS FIRST/LAST options
+-- NULLS LAST
+CREATE INDEX idx_hash ON jsonbs USING ybgin (j NULLS LAST);
+ERROR:  access method "ybgin" does not support NULLS FIRST/LAST options
+--
+-- Colocation
+--
+-- Setup
+CREATE TABLEGROUP g;
+-- Colocated table and index
+CREATE TABLE garrays (i serial PRIMARY KEY, a int[]) TABLEGROUP g;
+INSERT INTO garrays (a) VALUES ('{11, 22}');
+CREATE INDEX ON garrays USING ybgin (a);
+INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
+EXPLAIN (costs off)
+SELECT * FROM garrays WHERE a && '{11}';
+                QUERY PLAN
+-------------------------------------------
+ Index Scan using garrays_a_idx on garrays
+   Index Cond: (a && '{11}'::integer[])
+(2 rows)
+
+SELECT * FROM garrays WHERE a && '{11}';
+ i |    a
+---+---------
+ 1 | {11,22}
+ 3 | {33,11}
+(2 rows)
+
+-- Cleanup
+DROP TABLE garrays;
+DROP TABLEGROUP g;
+--
+-- ALTER TABLE ... COLUMN
+--
+-- Setup
+CREATE TABLE altercoltab (a int[], i int);
+CREATE INDEX NONCONCURRENTLY ON altercoltab USING ybgin (a);
+INSERT INTO altercoltab VALUES ('{1}', 2);
+-- Test
+ALTER TABLE altercoltab DROP COLUMN i;
+SELECT * FROM altercoltab WHERE a && '{1}';
+  a
+-----
+ {1}
+(1 row)
+
+ALTER TABLE altercoltab ADD COLUMN j int;
+SELECT * FROM altercoltab WHERE a && '{1}';
+  a  | j
+-----+---
+ {1} |
+(1 row)
+
+ALTER TABLE altercoltab RENAME COLUMN j TO k;
+SELECT * FROM altercoltab WHERE a && '{1}';
+  a  | k
+-----+---
+ {1} |
+(1 row)
+
+-- Cleanup
+DROP TABLE altercoltab;

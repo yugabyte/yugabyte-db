@@ -1,0 +1,14 @@
+# src/test/regress/yb_secondary_index_scan_serial_schedule
+#
+####################################################################################################
+# Secondary Index Scan with large table.
+# Test for table of 55K rows.
+####################################################################################################
+test: yb_create_table_55k_secondary_index
+test: yb_copy_55k_rows
+# Due to github issue #4488 on ASAN failure, we split the "yb_perf_secondary_index_scan" into two
+# different tests.
+# - Test "yb_secondary_index_scan" checks correctness and is moved to "yb_misc_serial_schedule".
+# - Test "yb_perf_secondary_index_scan" checks performance and is kept here.
+# Once the issue is fixed, the two tests can be merged into one to be run in the same session.
+test: yb_perf_secondary_index_scan

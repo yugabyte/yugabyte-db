@@ -1,0 +1,40 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.dl-normal {
+  margin-top: 0px;
+  margin-bottom: 0px;
+}
+
+@media (min-width: 768px) {
+  .dl-normal {
+    margin-top: 0px;
+    margin-bottom: 0px;
+  }
+
+  .dl-normal dt {
+    float: left;
+    overflow: hidden;
+    clear: left;
+    width: 120px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dl-normal dd {
+    margin-left: 130px;
+    line-height: 24px;
+  }
+
+  .dl-nested {
+    margin-bottom: 0px;
+  }
+
+  .dl-nested dl {
+  }
+  .dl-nested dd {
+    margin: 0px;
+    overflow: visible;
+    white-space: normal;
+  }
+}

@@ -1,0 +1,7 @@
+<li>
+    <a href="#{{.Get "name"}}" class="nav-link {{if (.Get "active")}}active{{end}}" id="{{.Get "name"}}-tab" data-toggle="tab" role="tab" aria-controls="{{.Get "name"}}" aria-selected="true">
+    {{if (.Get "img")}}<img src="{{.Get "img"}}" {{if (.Get "alt")}}alt="{{.Get "alt"}}"{{end}}>{{end}}
+    {{if (.Get "icon")}}<i class="icon-{{.Get "icon"}}" aria-hidden="true"></i>{{end}}
+    {{.Get "text"}}
+    </a>
+</li>

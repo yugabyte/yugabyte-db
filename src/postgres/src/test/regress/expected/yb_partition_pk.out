@@ -1,0 +1,204 @@
+-- Verify that for all 3 types of partitioning, the primary key
+-- is correctly inherited by the partitions.
+-- Hash partitioning where primary key contains both hash and range components.
+CREATE TABLE test(h1 int NOT NULL,
+                  h2 int NOT NULL,
+                  h3 int NOT NULL,
+                  v1 int,
+                  primary key(h1, h2, h3))
+PARTITION BY HASH(h1);
+-- Create a partition table.
+CREATE TABLE test_1 PARTITION of test FOR VALUES WITH (modulus 2, remainder 0);
+-- Create a table without a primary key and attach it as a partition.
+CREATE TABLE test_2(h1 int NOT NULL,
+                  h2 int NOT NULL,
+                  h3 int NOT NULL,
+                  v1 int);
+ALTER TABLE test ATTACH PARTITION test_2 FOR VALUES WITH (modulus 2, remainder 1);
+\d test_1;
+               Table "public.test_1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ h3     | integer |           | not null |
+ v1     | integer |           |          |
+Partition of: test FOR VALUES WITH (modulus 2, remainder 0)
+Indexes:
+    "test_1_pkey" PRIMARY KEY, lsm (h1 HASH, h2 ASC, h3 ASC)
+
+\d test_2;
+               Table "public.test_2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ h3     | integer |           | not null |
+ v1     | integer |           |          |
+Partition of: test FOR VALUES WITH (modulus 2, remainder 1)
+Indexes:
+    "test_2_pkey" PRIMARY KEY, lsm (h1 HASH, h2 ASC, h3 ASC)
+
+INSERT INTO test VALUES (1, 4, 3);
+-- Fail because primary key constraint is violated.
+INSERT INTO test VALUES (1, 4, 3);
+ERROR:  duplicate key value violates unique constraint "test_1_pkey"
+EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 AND h3 = 3;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: ((h1 = 1) AND (h2 = 4) AND (h3 = 3))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 ORDER BY h2;
+                 QUERY PLAN
+---------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: (h1 = 1)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 ORDER BY h3;
+                 QUERY PLAN
+---------------------------------------------
+ Index Scan using test_1_pkey on test_1 test
+   Index Cond: ((h1 = 1) AND (h2 = 4))
+(2 rows)
+
+-- LIST partitioning where primary key contain only hash components.
+CREATE TABLE person (
+    person_id         int not null,
+    country           text,
+    name  text,
+    age int,
+    PRIMARY KEY((person_id, country) HASH))
+PARTITION BY LIST (country);
+CREATE TABLE person_americas
+    PARTITION OF person
+    FOR VALUES IN ('United States', 'Brazil', 'Mexico', 'Columbia');
+CREATE TABLE person_apac (
+    person_id         int not null,
+    country           text not null,
+    name  text,
+    age int);
+ALTER TABLE person ATTACH PARTITION person_apac FOR VALUES IN ('India', 'Singapore');
+\d person_americas;
+            Table "public.person_americas"
+  Column   |  Type   | Collation | Nullable | Default
+-----------+---------+-----------+----------+---------
+ person_id | integer |           | not null |
+ country   | text    |           | not null |
+ name      | text    |           |          |
+ age       | integer |           |          |
+Partition of: person FOR VALUES IN ('United States', 'Brazil', 'Mexico', 'Columbia')
+Indexes:
+    "person_americas_pkey" PRIMARY KEY, lsm ((person_id, country) HASH)
+
+\d person_apac;
+              Table "public.person_apac"
+  Column   |  Type   | Collation | Nullable | Default
+-----------+---------+-----------+----------+---------
+ person_id | integer |           | not null |
+ country   | text    |           | not null |
+ name      | text    |           |          |
+ age       | integer |           |          |
+Partition of: person FOR VALUES IN ('India', 'Singapore')
+Indexes:
+    "person_apac_pkey" PRIMARY KEY, lsm ((person_id, country) HASH)
+
+INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
+-- Fail due to primary key constraint failure.
+INSERT INTO person_americas VALUES (1, 'United States', 'Jane Doe', 23);
+ERROR:  duplicate key value violates unique constraint "person_americas_pkey"
+EXPLAIN (COSTS OFF) SELECT * FROM person WHERE person_id=1 AND country='United States';
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using person_americas_pkey on person_americas person
+   Index Cond: ((person_id = 1) AND (country = 'United States'::text))
+(2 rows)
+
+-- Range partitioning where primary key contains only range components.
+CREATE TABLE parted (a int, b text, PRIMARY KEY (a ASC, b DESC)) PARTITION BY RANGE(a);
+CREATE TABLE part_a_1_5 PARTITION OF parted (a, b) FOR VALUES FROM (1) TO (5);
+CREATE TABLE part_a_5_10 PARTITION OF parted (a, b) FOR VALUES FROM (5) TO (10);
+\d part_a_1_5;
+             Table "public.part_a_1_5"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | text    |           | not null |
+Partition of: parted FOR VALUES FROM (1) TO (5)
+Indexes:
+    "part_a_1_5_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
+
+\d part_a_5_10;
+            Table "public.part_a_5_10"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | text    |           | not null |
+Partition of: parted FOR VALUES FROM (5) TO (10)
+Indexes:
+    "part_a_5_10_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
+
+INSERT INTO parted VALUES (1, '1');
+-- Fail
+INSERT INTO parted VALUES (1, '1');
+ERROR:  duplicate key value violates unique constraint "part_a_1_5_pkey"
+EXPLAIN (COSTS OFF) SELECT * FROM parted WHERE a = 1 ORDER BY b DESC;
+                      QUERY PLAN
+-------------------------------------------------------
+ Index Scan using part_a_1_5_pkey on part_a_1_5 parted
+   Index Cond: (a = 1)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM parted ORDER BY a;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Merge Append
+   Sort Key: parted.a
+   ->  Index Scan using part_a_1_5_pkey on part_a_1_5 parted_1
+   ->  Index Scan using part_a_5_10_pkey on part_a_5_10 parted_2
+(4 rows)
+
+-- Test creating a partition with a different primary key.
+CREATE TABLE part_a_15_20 PARTITION OF parted (a, b, PRIMARY KEY(a HASH)) FOR VALUES FROM (15) TO (20);
+ERROR:  multiple primary keys for table "part_a_15_20" are not allowed
+-- Test attaching a partition with a different primary key.
+CREATE TABLE part_a_20_25 (a int, b text NOT NULL, PRIMARY KEY (a ASC));
+ALTER TABLE parted ATTACH PARTITION part_a_20_25 FOR VALUES FROM (20) TO (25);
+ERROR:  multiple primary keys for table "part_a_20_25" are not allowed
+-- Test a complicated situation where the attribute numbers of partition tables
+-- and partitioned tables are different.
+CREATE TABLE col_order_change (
+        a text,
+        b bigint,
+        c numeric,
+        d int,
+        e varchar,
+	PRIMARY KEY ((a,b) HASH, c ASC, d DESC)
+) PARTITION BY RANGE (a, b);
+CREATE TABLE col_order_change_part (e varchar, c numeric, a text, b bigint, d int NOT NULL);
+ALTER TABLE col_order_change_part DROP COLUMN e, DROP COLUMN c, DROP COLUMN a;
+ALTER TABLE col_order_change_part ADD COLUMN c numeric NOT NULL, ADD COLUMN e varchar NOT NULL, ADD COLUMN a text NOT NULL;
+ALTER TABLE col_order_change_part DROP COLUMN b;
+ALTER TABLE col_order_change_part ADD COLUMN b bigint NOT NULL;
+ALTER TABLE col_order_change ATTACH PARTITION col_order_change_part FOR VALUES FROM ('a', 10) TO ('a', 20);
+\d col_order_change_part;
+            Table "public.col_order_change_part"
+ Column |       Type        | Collation | Nullable | Default
+--------+-------------------+-----------+----------+---------
+ d      | integer           |           | not null |
+ c      | numeric           |           | not null |
+ e      | character varying |           | not null |
+ a      | text              |           | not null |
+ b      | bigint            |           | not null |
+Partition of: col_order_change FOR VALUES FROM ('a', '10') TO ('a', '20')
+Indexes:
+    "col_order_change_part_pkey" PRIMARY KEY, lsm ((a, b) HASH, c ASC, d DESC)
+
+-- Cleanup
+DROP TABLE col_order_change;
+DROP TABLE parted;
+DROP TABLE person;
+DROP TABLE test;
+DROP TABLE part_a_20_25;

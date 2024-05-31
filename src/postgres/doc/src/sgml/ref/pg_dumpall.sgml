@@ -1,0 +1,825 @@
+<!--
+doc/src/sgml/ref/pg_dumpall.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-pg-dumpall">
+ <indexterm zone="app-pg-dumpall">
+  <primary>pg_dumpall</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>pg_dumpall</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>pg_dumpall</refname>
+  <refpurpose>extract a <productname>PostgreSQL</productname> database cluster into a script file</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>pg_dumpall</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="app-pg-dumpall-description">
+  <title>Description</title>
+
+  <para>
+   <application>pg_dumpall</application> is a utility for writing out
+   (<quote>dumping</quote>) all <productname>PostgreSQL</productname> databases
+   of a cluster into one script file.  The script file contains
+   <acronym>SQL</acronym> commands that can be used as input to <xref
+   linkend="app-psql"/> to restore the databases.  It does this by
+   calling <xref linkend="app-pgdump"/> for each database in the cluster.
+   <application>pg_dumpall</application> also dumps global objects
+   that are common to all databases, namely database roles, tablespaces,
+   and privilege grants for configuration parameters.
+   (<application>pg_dump</application> does not save these objects.)
+  </para>
+
+  <para>
+   Since <application>pg_dumpall</application> reads tables from all
+   databases you will most likely have to connect as a database
+   superuser in order to produce a complete dump.  Also you will need
+   superuser privileges to execute the saved script in order to be
+   allowed to add roles and create databases.
+  </para>
+
+  <para>
+   The SQL script will be written to the standard output.  Use the
+   <option>-f</option>/<option>--file</option> option or shell operators to
+   redirect it into a file.
+  </para>
+
+  <para>
+  <application>pg_dumpall</application> needs to connect several
+  times to the <productname>PostgreSQL</productname> server (once per
+  database).  If you use password authentication it will ask for
+  a password each time. It is convenient to have a
+  <filename>~/.pgpass</filename> file in such cases. See <xref
+  linkend="libpq-pgpass"/> for more information.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    The following command-line options control the content and
+    format of the output.
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-a</option></term>
+      <term><option>--data-only</option></term>
+      <listitem>
+       <para>
+        Dump only the data, not the schema (data definitions).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-c</option></term>
+      <term><option>--clean</option></term>
+      <listitem>
+       <para>
+        Include SQL commands to clean (drop) databases before
+        recreating them.  <command>DROP</command> commands for roles and
+        tablespaces are added as well.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-E <replaceable class="parameter">encoding</replaceable></option></term>
+      <term><option>--encoding=<replaceable class="parameter">encoding</replaceable></option></term>
+      <listitem>
+       <para>
+        Create the dump in the specified character set encoding. By default,
+        the dump is created in the database encoding.  (Another way to get the
+        same result is to set the <envar>PGCLIENTENCODING</envar> environment
+        variable to the desired dump encoding.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-f <replaceable class="parameter">filename</replaceable></option></term>
+      <term><option>--file=<replaceable class="parameter">filename</replaceable></option></term>
+      <listitem>
+       <para>
+        Send output to the specified file.  If this is omitted, the
+        standard output is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-g</option></term>
+      <term><option>--globals-only</option></term>
+      <listitem>
+       <para>
+        Dump only global objects (roles and tablespaces), no databases.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-O</option></term>
+      <term><option>--no-owner</option></term>
+      <listitem>
+       <para>
+        Do not output commands to set
+        ownership of objects to match the original database.
+        By default, <application>pg_dumpall</application> issues
+        <command>ALTER OWNER</command> or
+        <command>SET SESSION AUTHORIZATION</command>
+        statements to set ownership of created schema elements.
+        These statements
+        will fail when the script is run unless it is started by a superuser
+        (or the same user that owns all of the objects in the script).
+        To make a script that can be restored by any user, but will give
+        that user ownership of all the objects, specify <option>-O</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-r</option></term>
+      <term><option>--roles-only</option></term>
+      <listitem>
+       <para>
+        Dump only roles, no databases or tablespaces.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-s</option></term>
+      <term><option>--schema-only</option></term>
+      <listitem>
+       <para>
+        Dump only the object definitions (schema), not data.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-S <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--superuser=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        Specify the superuser user name to use when disabling triggers.
+        This is relevant only if <option>--disable-triggers</option> is used.
+        (Usually, it's better to leave this out, and instead start the
+        resulting script as superuser.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-t</option></term>
+      <term><option>--tablespaces-only</option></term>
+      <listitem>
+       <para>
+        Dump only tablespaces, no databases or roles.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-v</option></term>
+      <term><option>--verbose</option></term>
+      <listitem>
+       <para>
+        Specifies verbose mode.  This will cause
+        <application>pg_dumpall</application> to output start/stop
+        times to the dump file, and progress messages to standard error.
+        Repeating the option causes additional debug-level messages
+        to appear on standard error.
+        The option is also passed down to <application>pg_dump</application>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+       Print the <application>pg_dumpall</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-x</option></term>
+      <term><option>--no-privileges</option></term>
+      <term><option>--no-acl</option></term>
+      <listitem>
+       <para>
+        Prevent dumping of access privileges (grant/revoke commands).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--binary-upgrade</option></term>
+      <listitem>
+       <para>
+        This option is for use by in-place upgrade utilities.  Its use
+        for other purposes is not recommended or supported.  The
+        behavior of the option may change in future releases without
+        notice.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--column-inserts</option></term>
+      <term><option>--attribute-inserts</option></term>
+      <listitem>
+       <para>
+        Dump data as <command>INSERT</command> commands with explicit
+        column names (<literal>INSERT INTO
+        <replaceable>table</replaceable>
+        (<replaceable>column</replaceable>, ...) VALUES
+        ...</literal>).  This will make restoration very slow; it is mainly
+        useful for making dumps that can be loaded into
+        non-<productname>PostgreSQL</productname> databases.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--disable-dollar-quoting</option></term>
+      <listitem>
+       <para>
+        This option disables the use of dollar quoting for function bodies,
+        and forces them to be quoted using SQL standard string syntax.
+       </para>
+     </listitem>
+    </varlistentry>
+
+     <varlistentry>
+      <term><option>--disable-triggers</option></term>
+      <listitem>
+       <para>
+        This option is relevant only when creating a data-only dump.
+        It instructs <application>pg_dumpall</application> to include commands
+        to temporarily disable triggers on the target tables while
+        the data is restored.  Use this if you have referential
+        integrity checks or other triggers on the tables that you
+        do not want to invoke during data restore.
+       </para>
+
+       <para>
+        Presently, the commands emitted for <option>--disable-triggers</option>
+        must be done as superuser.  So, you should also specify
+        a superuser name with <option>-S</option>, or preferably be careful to
+        start the resulting script as a superuser.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--exclude-database=<replaceable class="parameter">pattern</replaceable></option></term>
+      <listitem>
+       <para>
+        Do not dump databases whose name matches
+        <replaceable class="parameter">pattern</replaceable>.
+        Multiple patterns can be excluded by writing multiple
+        <option>--exclude-database</option> switches.  The
+        <replaceable class="parameter">pattern</replaceable> parameter is
+        interpreted as a pattern according to the same rules used by
+        <application>psql</application>'s <literal>\d</literal>
+        commands (see <xref linkend="app-psql-patterns"/> below),
+        so multiple databases can also be excluded by writing wildcard
+        characters in the pattern.  When using wildcards, be careful to
+        quote the pattern if needed to prevent shell wildcard expansion.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--extra-float-digits=<replaceable class="parameter">ndigits</replaceable></option></term>
+      <listitem>
+       <para>
+        Use the specified value of extra_float_digits when dumping
+        floating-point data, instead of the maximum available precision.
+        Routine dumps made for backup purposes should not use this option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--if-exists</option></term>
+      <listitem>
+       <para>
+        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
+        clause) to drop databases and other objects.  This option is not valid
+        unless <option>--clean</option> is also specified.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--inserts</option></term>
+      <listitem>
+       <para>
+        Dump data as <command>INSERT</command> commands (rather
+        than <command>COPY</command>).  This will make restoration very slow;
+        it is mainly useful for making dumps that can be loaded into
+        non-<productname>PostgreSQL</productname> databases.  Note that
+        the restore might fail altogether if you have rearranged column order.
+        The <option>--column-inserts</option> option is safer, though even
+        slower.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--load-via-partition-root</option></term>
+      <listitem>
+       <para>
+        When dumping data for a table partition, make
+        the <command>COPY</command> or <command>INSERT</command> statements
+        target the root of the partitioning hierarchy that contains it, rather
+        than the partition itself.  This causes the appropriate partition to
+        be re-determined for each row when the data is loaded.  This may be
+        useful when restoring data on a server where rows do not always fall
+        into the same partitions as they did on the original server.  That
+        could happen, for example, if the partitioning column is of type text
+        and the two systems have different definitions of the collation used
+        to sort the partitioning column.
+       </para>
+
+       <!-- Currently, we don't need pg_dump's warning about parallelism here,
+        since parallel restore from a pg_dumpall script is impossible.
+       -->
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--lock-wait-timeout=<replaceable class="parameter">timeout</replaceable></option></term>
+      <listitem>
+       <para>
+        Do not wait forever to acquire shared table locks at the beginning of
+        the dump. Instead, fail if unable to lock a table within the specified
+        <replaceable class="parameter">timeout</replaceable>. The timeout may be
+        specified in any of the formats accepted by <command>SET
+        statement_timeout</command>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-comments</option></term>
+      <listitem>
+       <para>
+        Do not dump comments.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-publications</option></term>
+      <listitem>
+       <para>
+        Do not dump publications.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-role-passwords</option></term>
+      <listitem>
+       <para>
+        Do not dump passwords for roles.  When restored, roles will have a
+        null password, and password authentication will always fail until the
+        password is set.  Since password values aren't needed when this option
+        is specified, the role information is read from the catalog
+        view <structname>pg_roles</structname> instead
+        of <structname>pg_authid</structname>.  Therefore, this option also
+        helps if access to <structname>pg_authid</structname> is restricted by
+        some security policy.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-security-labels</option></term>
+      <listitem>
+       <para>
+        Do not dump security labels.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-subscriptions</option></term>
+      <listitem>
+       <para>
+        Do not dump subscriptions.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-sync</option></term>
+      <listitem>
+       <para>
+        By default, <command>pg_dumpall</command> will wait for all files
+        to be written safely to disk.  This option causes
+        <command>pg_dumpall</command> to return without waiting, which is
+        faster, but means that a subsequent operating system crash can leave
+        the dump corrupt.  Generally, this option is useful for testing
+        but should not be used when dumping data from production installation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-table-access-method</option></term>
+      <listitem>
+       <para>
+        Do not output commands to select table access methods.
+        With this option, all objects will be created with whichever
+        table access method is the default during restore.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-tablespaces</option></term>
+      <listitem>
+       <para>
+        Do not output commands to create tablespaces nor select tablespaces
+        for objects.
+        With this option, all objects will be created in whichever
+        tablespace is the default during restore.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-toast-compression</option></term>
+      <listitem>
+       <para>
+        Do not output commands to set <acronym>TOAST</acronym> compression
+        methods.
+        With this option, all columns will be restored with the default
+        compression setting.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-unlogged-table-data</option></term>
+      <listitem>
+       <para>
+        Do not dump the contents of unlogged tables.  This option has no
+        effect on whether or not the table definitions (schema) are dumped;
+        it only suppresses dumping the table data.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--on-conflict-do-nothing</option></term>
+      <listitem>
+       <para>
+        Add <literal>ON CONFLICT DO NOTHING</literal> to
+        <command>INSERT</command> commands.
+        This option is not valid unless <option>--inserts</option> or
+        <option>--column-inserts</option> is also specified.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--quote-all-identifiers</option></term>
+      <listitem>
+       <para>
+        Force quoting of all identifiers.  This option is recommended when
+        dumping a database from a server whose <productname>PostgreSQL</productname>
+        major version is different from <application>pg_dumpall</application>'s, or when
+        the output is intended to be loaded into a server of a different
+        major version.  By default, <application>pg_dumpall</application> quotes only
+        identifiers that are reserved words in its own major version.
+        This sometimes results in compatibility issues when dealing with
+        servers of other versions that may have slightly different sets
+        of reserved words.  Using <option>--quote-all-identifiers</option> prevents
+        such issues, at the price of a harder-to-read dump script.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--rows-per-insert=<replaceable class="parameter">nrows</replaceable></option></term>
+      <listitem>
+       <para>
+        Dump data as <command>INSERT</command> commands (rather than
+        <command>COPY</command>).  Controls the maximum number of rows per
+        <command>INSERT</command> command. The value specified must be a
+        number greater than zero.  Any error during restoring will cause only
+        rows that are part of the problematic <command>INSERT</command> to be
+        lost, rather than the entire table contents.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--use-set-session-authorization</option></term>
+      <listitem>
+       <para>
+        Output SQL-standard <command>SET SESSION AUTHORIZATION</command> commands
+        instead of <command>ALTER OWNER</command> commands to determine object
+        ownership.  This makes the dump more standards compatible, but
+        depending on the history of the objects in the dump, might not restore
+        properly.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-?</option></term>
+       <term><option>--help</option></term>
+       <listitem>
+       <para>
+       Show help about <application>pg_dumpall</application> command line
+       arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+
+  <para>
+   The following command-line options control the database connection parameters.
+
+   <variablelist>
+     <varlistentry>
+      <term><option>-d <replaceable class="parameter">connstr</replaceable></option></term>
+      <term><option>--dbname=<replaceable class="parameter">connstr</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies parameters used to connect to the server, as a <link
+        linkend="libpq-connstring">connection string</link>;  these
+        will override any conflicting command line options.
+       </para>
+       <para>
+        The option is called <literal>--dbname</literal> for consistency with other
+        client applications, but because <application>pg_dumpall</application>
+        needs to connect to many databases, the database name in the
+        connection string will be ignored.  Use the <literal>-l</literal>
+        option to specify the name of the database used for the initial
+        connection, which will dump global objects and discover what other
+        databases should be dumped.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-h <replaceable>host</replaceable></option></term>
+      <term><option>--host=<replaceable>host</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the database
+        server is running.  If the value begins with a slash, it is
+        used as the directory for the Unix domain socket.  The default
+        is taken from the <envar>PGHOST</envar> environment variable,
+        if set, else a Unix domain socket connection is attempted.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-l <replaceable>dbname</replaceable></option></term>
+      <term><option>--database=<replaceable>dbname</replaceable></option></term>
+      <listitem>
+       <para>
+         Specifies the name of the database to connect to for dumping global
+         objects and discovering what other databases should be dumped. If
+         not specified, the <literal>postgres</literal> database will be used,
+         and if that does not exist, <literal>template1</literal> will be used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable>port</replaceable></option></term>
+      <term><option>--port=<replaceable>port</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or local Unix domain socket file
+        extension on which the server is listening for connections.
+        Defaults to the <envar>PGPORT</envar> environment variable, if
+        set, or a compiled-in default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable>username</replaceable></option></term>
+      <term><option>--username=<replaceable>username</replaceable></option></term>
+      <listitem>
+       <para>
+        User name to connect as.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</option></term>
+      <term><option>--no-password</option></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option></term>
+      <term><option>--password</option></term>
+      <listitem>
+       <para>
+        Force <application>pg_dumpall</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>pg_dumpall</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>pg_dumpall</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</option> to avoid the extra
+        connection attempt.
+       </para>
+
+       <para>
+        Note that the password prompt will occur again for each database
+        to be dumped.  Usually, it's better to set up a
+        <filename>~/.pgpass</filename> file than to rely on manual password entry.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--role=<replaceable class="parameter">rolename</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies a role name to be used to create the dump.
+        This option causes <application>pg_dumpall</application> to issue a
+        <command>SET ROLE</command> <replaceable class="parameter">rolename</replaceable>
+        command after connecting to the database. It is useful when the
+        authenticated user (specified by <option>-U</option>) lacks privileges
+        needed by <application>pg_dumpall</application>, but can switch to a role with
+        the required rights.  Some installations have a policy against
+        logging in directly as a superuser, and use of this option allows
+        dumps to be made without violating the policy.
+       </para>
+      </listitem>
+     </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGOPTIONS</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   also uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Since <application>pg_dumpall</application> calls
+   <application>pg_dump</application> internally, some diagnostic
+   messages will refer to <application>pg_dump</application>.
+  </para>
+
+  <para>
+   The <option>--clean</option> option can be useful even when your
+   intention is to restore the dump script into a fresh cluster.  Use of
+   <option>--clean</option> authorizes the script to drop and re-create the
+   built-in <literal>postgres</literal> and <literal>template1</literal>
+   databases, ensuring that those databases will retain the same properties
+   (for instance, locale and encoding) that they had in the source cluster.
+   Without the option, those databases will retain their existing
+   database-level properties, as well as any pre-existing contents.
+  </para>
+
+  <para>
+   Once restored, it is wise to run <command>ANALYZE</command> on each
+   database so the optimizer has useful statistics. You
+   can also run <command>vacuumdb -a -z</command> to analyze all
+   databases.
+  </para>
+
+  <para>
+   The dump script should not be expected to run completely without errors.
+   In particular, because the script will issue <command>CREATE ROLE</command>
+   for every role existing in the source cluster, it is certain to get a
+   <quote>role already exists</quote> error for the bootstrap superuser,
+   unless the destination cluster was initialized with a different bootstrap
+   superuser name.  This error is harmless and should be ignored.  Use of
+   the <option>--clean</option> option is likely to produce additional
+   harmless error messages about non-existent objects, although you can
+   minimize those by adding <option>--if-exists</option>.
+  </para>
+
+  <para>
+   <application>pg_dumpall</application> requires all needed
+   tablespace directories to exist before the restore;  otherwise,
+   database creation will fail for databases in non-default
+   locations.
+  </para>
+ </refsect1>
+
+
+ <refsect1 id="app-pg-dumpall-ex">
+  <title>Examples</title>
+  <para>
+   To dump all databases:
+
+<screen>
+<prompt>$</prompt> <userinput>pg_dumpall &gt; db.out</userinput>
+</screen>
+  </para>
+
+  <para>
+   To restore database(s) from this file, you can use:
+<screen>
+<prompt>$</prompt> <userinput>psql -f db.out postgres</userinput>
+</screen>
+   It is not important to which database you connect here since the
+   script file created by <application>pg_dumpall</application> will
+   contain the appropriate commands to create and connect to the saved
+   databases.  An exception is that if you specified <option>--clean</option>,
+   you must connect to the <literal>postgres</literal> database initially;
+   the script will attempt to drop other databases immediately, and that
+   will fail for the database you are connected to.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <para>
+    Check <xref linkend="app-pgdump"/> for details on possible
+    error conditions.
+  </para>
+ </refsect1>
+
+</refentry>

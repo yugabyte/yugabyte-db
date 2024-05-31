@@ -1,0 +1,48 @@
+/* Copyright (c) YugaByte, Inc. */
+.yb-field-group {
+  .btn-group .btn {
+    width: auto;
+    margin-top: 0px;
+  }
+}
+
+.dark-background .confirm-eula {
+  > label {
+    margin-right: 6px;
+  }
+  
+  .yb-input-checkbox {
+    .yb-input-checkbox__inner {
+      background-color: transparent;
+    }
+
+    &:hover .yb-input-checkbox__inner {
+      border: 1px solid #ef5824;
+    }
+
+    input:checked + .yb-input-checkbox__inner {
+      border-color: #ef5824;
+    }
+  }
+}
+
+.form-register {
+  &__footer {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    margin-left: 132px;
+
+    .btn {
+      margin: 0 0 0 auto;
+    }
+
+    .confirm-eula {
+      flex: 0 1 60%;
+      display: inherit;
+
+    }
+  }
+}
+
+

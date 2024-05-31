@@ -1,0 +1,54 @@
+groups:
+  - name: yugaware
+    interval: 2m
+    rules:
+      - alert: >-
+          [Possibly] wrong "name"
+        expr: >-
+          max by (universe_uuid) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid="<universe_uuid>"}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid="<universe_uuid>"}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid="<universe_uuid>"}[10m]))) * 100 > 1
+        for: 0s
+        labels:
+          severity: |-
+            SEVERE
+          affected_node_names: |-
+            {{ range $index, $element := query "max by (universe_uuid, node_name) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_name }}{{ end }}
+          definition_uuid: |-
+            <definition_uuid>
+          foo: |-
+            bar
+          one: |-
+            two
+          customer_uuid: |-
+            <customer_uuid>
+          universe_uuid: |-
+            <universe_uuid>
+          configuration_uuid: |-
+            <configuration_uuid>
+          threshold: |-
+            1
+          source_uuid: |-
+            <universe_uuid>
+          source_type: |-
+            universe
+          configuration_type: |-
+            UNIVERSE
+          alert_type: |-
+            MEMORY_CONSUMPTION
+          affected_node_identifiers: |-
+            {{ range $index, $element := query "max by (universe_uuid, node_identifier) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_identifier }}{{ end }}
+          alert_expression: |-
+            max by (universe_uuid) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid="<universe_uuid>"}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid="<universe_uuid>"}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid="<universe_uuid>"}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid="<universe_uuid>"}[10m]))) * 100 > 1
+          affected_node_addresses: |-
+            {{ range $index, $element := query "max by (universe_uuid, node_address) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_address }}{{ end }}
+          definition_name: |-
+            [Possibly] wrong "name"
+          node_prefix: |-
+            yb-tc-Test Universe
+          universe_name: |-
+            Test Universe
+          source_name: |-
+            Test Universe
+        annotations:
+          summary: |-
+            Average memory usage for universe 'Test Universe' nodes is above 1%. Max value is {{ $value | printf "%.0f" }}%.
+            Affected nodes: {{ range $index, $element := query "max by (universe_uuid, node_name) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_name }}{{ end }}

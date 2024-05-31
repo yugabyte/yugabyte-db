@@ -1,0 +1,272 @@
+-- Test Setup.
+-- Create a range-partitioning hierarchy with multiple keys and default partitions.
+CREATE TABLE rp (a int, b int, c varchar, d text, PRIMARY KEY(a,b,c)) PARTITION BY RANGE(a);
+CREATE TABLE rp_p1 PARTITION OF rp FOR VALUES FROM (0) TO (100);
+CREATE TABLE rp_sub PARTITION OF rp FOR VALUES FROM (100) TO (200) PARTITION BY RANGE (b, c);
+CREATE TABLE rp_p2 PARTITION OF rp_sub FOR VALUES FROM (0, 'a') TO (100, 'j');
+CREATE TABLE rp_p3 PARTITION OF rp_sub DEFAULT;
+-- Create a list-partitioning hierarchy with multiple keys, NULL partitions and default partitions.
+CREATE TABLE lp (a int, b int, c varchar, d text) PARTITION BY LIST(a);
+CREATE INDEX ON lp(a);
+CREATE TABLE lp_p1 PARTITION OF lp FOR VALUES IN (0, 1, 2, 3, 4, 5);
+CREATE TABLE lp_sub PARTITION OF lp FOR VALUES IN (6, 7, 8, 9, 10) PARTITION BY LIST (b);
+CREATE TABLE lp_p2 PARTITION OF lp_sub FOR VALUES IN (null);
+CREATE TABLE lp_p3 PARTITION OF lp_sub FOR VALUES IN (1, 2);
+-- Create a non-partitioned table.
+CREATE TABLE np (a int, b int, c varchar, d text);
+-- Set the number of times custom plans are chosen over generic plans unconditionally.
+-- This means that the first time a prepared statement is executed, it will always be
+-- executed with a custom plan. Cost comparison between custom and generic plans will
+-- take effect at the second invocation.
+SET yb_test_planner_custom_plan_threshold=1;
+-- Note: The presence of actual values provided to the bound parameters in EXPLAIN
+-- output indicates a custom plan. The presence of symbols like '$1' in the EXPLAIN
+-- output indicates that a generic plan was chosen.
+-- SELECT query where one of the partition key values is a bound parameter and the other is
+-- not a bound parameter.
+PREPARE t1(int) AS SELECT * FROM rp WHERE a=$1 AND b=3 AND c='1';
+EXPLAIN EXECUTE t1(1);
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Append  (cost=0.00..4.12 rows=1 width=72)
+   ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..4.12 rows=1 width=72)
+         Index Cond: ((a = 1) AND (b = 3) AND ((c)::text = '1'::text))
+(3 rows)
+
+EXPLAIN EXECUTE t1(1);
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Append  (cost=0.00..4.12 rows=1 width=72)
+   ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..4.12 rows=1 width=72)
+         Index Cond: ((a = 1) AND (b = 3) AND ((c)::text = '1'::text))
+(3 rows)
+
+-- Turn off favoring custom plan over generic plan based on partition pruning.
+SET yb_planner_custom_plan_for_partition_pruning=false;
+EXPLAIN EXECUTE t1(1);
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Append  (cost=0.00..8.24 rows=2 width=72)
+   Subplans Removed: 1
+   ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..4.12 rows=1 width=72)
+         Index Cond: ((a = $1) AND (b = 3) AND ((c)::text = '1'::text))
+(4 rows)
+
+-- Turn it back on.
+SET yb_planner_custom_plan_for_partition_pruning=true;
+-- UPDATE list partitioned table using a JOIN with a non-partitioned table.
+PREPARE t2(int) AS UPDATE np SET d = 1 FROM lp WHERE lp.a = np.a AND lp.a = $1;
+EXPLAIN EXECUTE t2(1);
+                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------
+ Update on np  (cost=0.00..232.80 rows=1000000 width=140)
+   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+               Storage Filter: (a = 1)
+         ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
+               ->  Append  (cost=0.00..5.27 rows=10 width=40)
+                     ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=40)
+                           Index Cond: (a = 1)
+(8 rows)
+
+EXPLAIN EXECUTE t2(1);
+                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------
+ Update on np  (cost=0.00..232.80 rows=1000000 width=140)
+   ->  Nested Loop  (cost=0.00..232.80 rows=1000000 width=140)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+               Storage Filter: (a = 1)
+         ->  Materialize  (cost=0.00..5.32 rows=10 width=40)
+               ->  Append  (cost=0.00..5.27 rows=10 width=40)
+                     ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=40)
+                           Index Cond: (a = 1)
+(8 rows)
+
+-- DELETE range partitioned table using a JOIN with a non-partitioned table.
+PREPARE t3(int) AS DELETE FROM rp USING np WHERE rp.a = np.a AND rp.a = $1;
+EXPLAIN EXECUTE t3(1);
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Delete on rp  (cost=0.00..1368.00 rows=100000 width=64)
+   Delete on rp_p1
+   ->  Nested Loop  (cost=0.00..1368.00 rows=100000 width=64)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
+               Storage Filter: (a = 1)
+         ->  Materialize  (cost=0.00..15.75 rows=100 width=36)
+               ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=36)
+                     Index Cond: (a = 1)
+(8 rows)
+
+EXPLAIN EXECUTE t3(1);
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Delete on rp  (cost=0.00..1368.00 rows=100000 width=64)
+   Delete on rp_p1
+   ->  Nested Loop  (cost=0.00..1368.00 rows=100000 width=64)
+         ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=36)
+               Storage Filter: (a = 1)
+         ->  Materialize  (cost=0.00..15.75 rows=100 width=36)
+               ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=36)
+                     Index Cond: (a = 1)
+(8 rows)
+
+-- Subquery test where the outer query has a partition key as a bound parameter.
+PREPARE t4 AS SELECT * FROM rp WHERE rp.a = $1 AND rp.b IN (SELECT b FROM np WHERE a < 5) ;
+EXPLAIN EXECUTE t4(1);
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Hash Join  (cost=109.50..126.07 rows=500 width=72)
+   Hash Cond: (rp_p1.b = np.b)
+   ->  Append  (cost=0.00..15.75 rows=100 width=72)
+         ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=72)
+               Index Cond: (a = 1)
+   ->  Hash  (cost=107.00..107.00 rows=200 width=4)
+         ->  HashAggregate  (cost=105.00..107.00 rows=200 width=4)
+               Group Key: np.b
+               ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=4)
+                     Storage Filter: (a < 5)
+(10 rows)
+
+EXPLAIN EXECUTE t4(1);
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Hash Join  (cost=109.50..126.07 rows=500 width=72)
+   Hash Cond: (rp_p1.b = np.b)
+   ->  Append  (cost=0.00..15.75 rows=100 width=72)
+         ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..15.25 rows=100 width=72)
+               Index Cond: (a = 1)
+   ->  Hash  (cost=107.00..107.00 rows=200 width=4)
+         ->  HashAggregate  (cost=105.00..107.00 rows=200 width=4)
+               Group Key: np.b
+               ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=4)
+                     Storage Filter: (a < 5)
+(10 rows)
+
+-- Subquery test whether the inner query has a partition key as a bound parameter.
+PREPARE t5(int) AS SELECT * FROM np WHERE np.a = 1 AND np.b IN (SELECT b FROM lp WHERE a=$1 AND c='1');
+EXPLAIN EXECUTE t5(1);
+                                         QUERY PLAN
+--------------------------------------------------------------------------------------------
+ Hash Semi Join  (cost=5.45..116.14 rows=500 width=72)
+   Hash Cond: (np.b = lp_p1.b)
+   ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+         Storage Filter: (a = 1)
+   ->  Hash  (cost=5.33..5.33 rows=10 width=4)
+         ->  Append  (cost=0.00..5.33 rows=10 width=4)
+               ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
+                     Index Cond: (a = 1)
+                     Storage Filter: ((c)::text = '1'::text)
+(9 rows)
+
+EXPLAIN EXECUTE t5(1);
+                                         QUERY PLAN
+--------------------------------------------------------------------------------------------
+ Hash Semi Join  (cost=5.45..116.14 rows=500 width=72)
+   Hash Cond: (np.b = lp_p1.b)
+   ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=72)
+         Storage Filter: (a = 1)
+   ->  Hash  (cost=5.33..5.33 rows=10 width=4)
+         ->  Append  (cost=0.00..5.33 rows=10 width=4)
+               ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
+                     Index Cond: (a = 1)
+                     Storage Filter: ((c)::text = '1'::text)
+(9 rows)
+
+-- CTE on partitioned tables.
+PREPARE t6(int) AS
+WITH x AS (UPDATE lp SET d=1 WHERE a = $1 returning a, b, c, d)
+SELECT * FROM rp INNER JOIN x ON rp.a = x.a;
+EXPLAIN EXECUTE t6(1);
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Hash Join  (cost=5.55..333.30 rows=150 width=144)
+   Hash Cond: (rp_p1.a = x.a)
+   CTE x
+     ->  Update on lp  (cost=0.00..5.22 rows=10 width=200)
+           Update on lp_p1
+           ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=200)
+                 Index Cond: (a = 1)
+   ->  Append  (cost=0.00..315.00 rows=3000 width=72)
+         ->  Seq Scan on rp_p1  (cost=0.00..100.00 rows=1000 width=72)
+         ->  Seq Scan on rp_p2  (cost=0.00..100.00 rows=1000 width=72)
+         ->  Seq Scan on rp_p3  (cost=0.00..100.00 rows=1000 width=72)
+   ->  Hash  (cost=0.20..0.20 rows=10 width=72)
+         ->  CTE Scan on x  (cost=0.00..0.20 rows=10 width=72)
+(13 rows)
+
+EXPLAIN EXECUTE t6(1);
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Hash Join  (cost=5.55..333.30 rows=150 width=144)
+   Hash Cond: (rp_p1.a = x.a)
+   CTE x
+     ->  Update on lp  (cost=0.00..5.22 rows=10 width=200)
+           Update on lp_p1
+           ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.22 rows=10 width=200)
+                 Index Cond: (a = 1)
+   ->  Append  (cost=0.00..315.00 rows=3000 width=72)
+         ->  Seq Scan on rp_p1  (cost=0.00..100.00 rows=1000 width=72)
+         ->  Seq Scan on rp_p2  (cost=0.00..100.00 rows=1000 width=72)
+         ->  Seq Scan on rp_p3  (cost=0.00..100.00 rows=1000 width=72)
+   ->  Hash  (cost=0.20..0.20 rows=10 width=72)
+         ->  CTE Scan on x  (cost=0.00..0.20 rows=10 width=72)
+(13 rows)
+
+-- Generic plan must be chosen for SELECTs/UPDATEs/DELETEs if the number of partitions
+-- pruned by generic plan is equal to that of custom plan.
+PREPARE t7(char) AS SELECT * FROM rp WHERE a=1 AND b=1 AND c=$1;
+EXPLAIN EXECUTE t7('a');
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Append  (cost=0.00..16.50 rows=100 width=72)
+   ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
+         Index Cond: ((a = 1) AND (b = 1))
+         Storage Filter: ((c)::bpchar = 'a'::bpchar)
+(4 rows)
+
+EXPLAIN EXECUTE t7('a');
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Append  (cost=0.00..16.50 rows=100 width=72)
+   ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
+         Index Cond: ((a = 1) AND (b = 1))
+         Storage Filter: ((c)::bpchar = $1)
+(4 rows)
+
+PREPARE t8(char) AS UPDATE lp SET d=3 WHERE a=1 AND b=1 AND c=$1;
+EXPLAIN EXECUTE t8('a');
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Update on lp  (cost=0.00..5.33 rows=10 width=200)
+   Update on lp_p1
+   ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.33 rows=10 width=200)
+         Index Cond: (a = 1)
+         Storage Filter: ((b = 1) AND ((c)::bpchar = 'a'::bpchar))
+(5 rows)
+
+EXPLAIN EXECUTE t8('a');
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Update on lp  (cost=0.00..5.33 rows=10 width=200)
+   Update on lp_p1
+   ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.33 rows=10 width=200)
+         Index Cond: (a = 1)
+         Storage Filter: ((b = 1) AND ((c)::bpchar = $1))
+(5 rows)
+
+PREPARE t9(int) AS DELETE FROM np WHERE a < $1;
+EXPLAIN EXECUTE t9(1);
+                          QUERY PLAN
+--------------------------------------------------------------
+ Delete on np  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=32)
+         Storage Filter: (a < 1)
+(3 rows)
+
+EXPLAIN EXECUTE t9(1);
+                          QUERY PLAN
+--------------------------------------------------------------
+ Delete on np  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Seq Scan on np  (cost=0.00..102.50 rows=1000 width=32)
+         Storage Filter: (a < $1)
+(3 rows)

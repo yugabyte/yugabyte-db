@@ -1,0 +1,21 @@
+title: YBA Placement Region
+type: object
+properties:
+  uuid:
+    description: The region provider id.
+    type: string
+    format: uuid
+  code:
+    description: The actual provider given region code.
+    type: string
+  name:
+    description: The region name.
+    type: string
+  az_list:
+    description: The list of AZs inside this region into which we want to place data.
+    type: array
+    items:
+      $ref: ./PlacementAZ.yaml
+  lb_fqdn:
+    description: The Load Balancer FQDN.
+    type: string

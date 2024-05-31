@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>B5F971D8-88F0-4D81-B3B2-C732F594B2D4</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="1112" height="48"></rect>
+        <filter x="-0.0%" y="-1.0%" width="100.1%" height="102.1%" filterUnits="objectBoundingBox" id="filter-2">
+            <feOffset dx="0" dy="-1" in="SourceAlpha" result="shadowOffsetInner1"></feOffset>
+            <feComposite in="shadowOffsetInner1" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowInnerInner1"></feComposite>
+            <feColorMatrix values="0 0 0 0 0.91372549   0 0 0 0 0.933333333   0 0 0 0 0.949019608  0 0 0 1 0" type="matrix" in="shadowInnerInner1"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Admin" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Admin/Billing/Invoices-(PAYG)" transform="translate(-1293.000000, -140.000000)">
+            <g id="Layout/Admin">
+                <rect id="Rectangle" fill="#FFFFFF" x="0" y="0" width="1456" height="1112"></rect>
+                <rect id="Rectangle" fill="#F7FAFC" x="0" y="0" width="1456" height="1112"></rect>
+            </g>
+            <g id="Billing/ActiveInvoice" transform="translate(296.000000, 128.000000)">
+                <rect id="Rectangle" stroke="#E9EEF2" fill="#FFFFFF" x="0.5" y="0.5" width="1143" height="127" rx="8"></rect>
+                <g id="Group" transform="translate(16.000000, 0.000000)" fill="black" fill-opacity="1">
+                    <g id="BG">
+                        <use filter="url(#filter-2)" xlink:href="#path-1"></use>
+                    </g>
+                </g>
+                <g id="Button/Secondary/Icon-Responsive-(R)" transform="translate(989.000000, 8.000000)">
+                    <rect id="Rectangle" x="0" y="0" width="139" height="32" rx="8"></rect>
+                    <g id="Icon/Share" transform="translate(8.000000, 4.000000)">
+                        <polygon id="Path" points="0 0 24 0 24 24 0 24"></polygon>
+                        <path d="M12,2 C14.6521649,2 17.195704,3.0535684 19.0710678,4.92893219 C20.9464316,6.80429597 22,9.3478351 22,12 C22,17.5228475 17.5228475,22 12,22 C6.4771525,22 2,17.5228475 2,12 C2,6.4771525 6.4771525,2 12,2 Z M12,3 C7.02943725,3 3,7.02943725 3,12 C3,16.9705627 7.02943725,21 12,21 C16.9705627,21 21,16.9705627 21,12 C21,9.61305159 20.0517884,7.32386638 18.363961,5.63603897 C16.6761336,3.94821156 14.3869484,3 12,3 Z" id="Shape" fill="#2B59C3"></path>
+                        <g id="Icon/Caret-Right">
+                            <polygon id="Path" points="0 0 24 0 24 24 0 24"></polygon>
+                            <g id="Group" transform="translate(12.000000, 12.000000) rotate(-90.000000) translate(-12.000000, -12.000000) ">
+                                <polygon id="Path" points="0 0 24 0 24 24 0 24"></polygon>
+                                <path d="M7.14644661,10.1464466 C7.32001296,9.97288026 7.58943736,9.95359511 7.7843055,10.0885912 L7.85355339,10.1464466 L11.6465,13.9393932 C11.8200555,14.1128963 12.0894136,14.1321744 12.2842211,13.9972651 L12.3534466,13.9394466 L16.1464466,10.1464466 C16.3417088,9.95118446 16.6582912,9.95118446 16.8535534,10.1464466 C17.0271197,10.320013 17.0464049,10.5894374 16.9114088,10.7843055 L16.8535534,10.8535534 L13.0605,14.6466068 C12.5113596,15.1955814 11.6425164,15.2298923 11.0533692,14.7494955 L10.9394466,14.6465534 L7.14644661,10.8535534 C6.95118446,10.6582912 6.95118446,10.3417088 7.14644661,10.1464466 Z" id="Path" fill="#2B59C3"></path>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

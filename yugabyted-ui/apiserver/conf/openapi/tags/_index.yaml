@@ -1,0 +1,14 @@
+- name: backup-info
+  description: APIs for getting backup Details
+- name: cluster
+  description: APIs for cluster CRUD
+- name: cluster-info
+  description: APIs for getting information about an existing cluster
+- name: pitr-info
+  description: APIs for getting Point-in-Time Recovery (PITR) schedules
+- name: restore-info
+  description: APIs for getting restore Details
+- name: voyager-info
+  description: APIs for getting information about Voyager migrations
+- name: voyager-metrics
+  description: APIs for getting Voyager data migrations metrics

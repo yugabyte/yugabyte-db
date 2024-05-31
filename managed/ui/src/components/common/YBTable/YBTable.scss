@@ -1,0 +1,40 @@
+@use '../../../_style/colors.scss';
+
+.yb-table {
+  .yb-table-header {
+    border-bottom: 1px solid colors.$YB_GRAY;
+
+    th {
+      font-weight: 700;
+      padding: 0;
+      padding-left: 10px !important;
+      text-transform: unset !important;
+      font-style: normal;
+      font-weight: 700;
+      font-size: 12px;
+      line-height: 16px;
+    }
+  }
+
+  .yb-table-body td {
+    vertical-align: middle;
+    height: 45px;
+    padding: 0 !important;
+  }
+
+  .yb-table-row {
+    cursor: pointer;
+
+    &.selected-row {
+      background: #f6f6f6;
+    }
+
+    &:hover {
+      background: #f6f6f6;
+    }
+    td {
+      font-weight: 400 !important;
+      padding-left: 10px !important;
+    }
+  }
+}

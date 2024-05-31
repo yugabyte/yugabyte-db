@@ -1,0 +1,110 @@
+{{ $currentPage := . }}
+{{ $menuName := .Scratch.Get "leftNavName" }}
+{{ $pageUrl := .Page.RelPermalink }}
+
+{{ if not (isset .Site.Menus $menuName) }}
+  {{ $menuName = .Scratch.Get "docVersion" }}
+{{ end }}
+
+<div class="docs-menu desktop-hide">Docs Menu</div>
+<div class="left-sidebar-wrap">
+  <div class="left-sidebar-wrap-inner">
+    <nav>
+      {{- if and .Site.Params.versions (not .Params.unversioned) -}}
+        <div class="dd-change-showmobile desktop-hide dropdown-list">
+          <ul>
+            <li class="nav-item dropdown">
+              {{- partial "navbar-version-selector.html" . -}}
+            </li>
+          </ul>
+        </div>
+      {{- end -}}
+      <ul class="list pa0 nl2">
+        {{- range $key, $value := .Site.Menus -}}
+          {{- if eq $menuName $key -}}
+            {{- range .ByWeight -}}
+              {{- if .Params.showSection -}}
+                {{- if .Params.hideLink -}}
+                  {{- if .HasChildren -}}
+                    {{- $parentIdentifier := printf "%s" .Identifier -}}
+
+                    {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" false "parentIdentifier" $parentIdentifier) -}}
+                  {{- end -}}
+                {{- else -}}
+                  <li class="section{{- if .HasChildren }} submenu parent-menu {{- if or ($currentPage.HasMenuCurrent $menuName .) (eq .URL $pageUrl) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+                    <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if eq .URL $pageUrl }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
+
+                    {{- if and (.HasChildren) (not .Params.hideChildren) -}}
+                      {{- $parentIdentifier := printf "%s" .Identifier -}}
+                      <i></i>
+
+                      {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
+                    {{- end -}}
+                  </li>
+                {{- end -}}
+              {{- end -}}
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+      </ul>
+    </nav>
+    <nav class="fixed-nav">
+      <ul class="left-bottom-nav">
+        {{- range .Site.Menus.leftbottom -}}
+        <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+          <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+          {{- if .HasChildren -}}
+          <i></i>
+          <ul class="internal animated list">
+            {{- range .Children -}}
+            <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+              <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+            </li>
+            {{- end -}}
+          </ul>
+          {{- end -}}
+        </li>
+        {{- end -}}
+      </ul>
+    </nav>
+  </div>
+
+  <div class="side-nav-collapse-toggle-2"></div>
+</div>
+
+{{- define "left-nav-tree-section" -}}
+  {{ $currentMenu := .currentMenu }}
+	{{ $currentPage := .currentPage }}
+  {{ $menuName := .menuName }}
+  {{ $newList := .newList }}
+	{{ $parentIdentifier := .parentIdentifier }}
+
+  {{- if $newList -}}
+  <ul class="animated list" data-identifier="{{ $parentIdentifier }}">
+  {{- end -}}
+
+  {{- range $index, $item := $currentMenu.Children -}}
+    {{- if not .Params.hide -}}
+      {{- if le (len (where (first (add $index 1) $currentMenu.Children) "Name" .Name)) 1 -}}
+        <li class="{{- if .HasChildren }}submenu {{- if or ($currentPage.HasMenuCurrent $menuName .) ($currentPage.IsMenuCurrent $menuName .) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+          <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if $currentPage.IsMenuCurrent $menuName . }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+            {{- .Name -}}
+          </a>
+
+          {{- if .HasChildren -}}
+            {{ $parentIdentifier := printf "%s" .Identifier }}
+            <i></i>
+
+            {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
+          {{- end -}}
+        </li>
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if $newList -}}
+  </ul>
+  {{- end -}}
+{{- end }}
+
+<script>(()=>{"use strict";function a(e){var t=e+"=";const i=decodeURIComponent(document.cookie);var a=i.split(";"),d=a.length;let r="",n=0,o="";for(;n<d;){for(r=a[n];r.charAt(0)&&" "===r.charAt(0);)r=r.substring(1);if(0===r.indexOf(t)){o=r.substring(t.length,r.length);break}n+=1}return o}function e(e,t,i){let a=e+"="+encodeURIComponent(t);"number"!=typeof i&&(i=3),a+="; max-age="+30*i*86400,a+="; path=/","localhost"!==location.hostname&&(a+="; secure=true"),document.cookie=a}function t(e){const t=document.querySelector("aside.td-sidebar");let i=300;if("hide"===e){let e=t.style.width;(e<300||500<e)&&(e=300),t.setAttribute("data-pwidth",e),jQuery(".left-sidebar-wrap-inner").animate({opacity:"0"}),jQuery("aside.td-sidebar").animate({minWidth:"0px",width:"60px",maxWidth:"60px"})}else a("leftMenuWidth")&&(i=a("leftMenuWidth")),t.getAttribute("data-pwidth")&&(i=t.getAttribute("data-pwidth")),(i<300||500<i)&&(i=300),jQuery(".left-sidebar-wrap-inner").animate({opacity:"1"}),jQuery("aside.td-sidebar").animate({width:i,maxWidth:i})}var i=document.querySelector(".left-sidebar-wrap nav:not(.fixed-nav) > ul a.current"),d=a("leftMenuShowHide"),r=a("leftMenuWidth");const n=document.querySelector("aside.td-sidebar"),o=document.querySelector(".side-nav-collapse-toggle-2");n&&(d&&""!==d&&(n.classList.add("toggled-sidebar"),"hide"===d&&(n.classList.add("stick-bar"),t(d))),r&&""!==r&&(jQuery(".td-main").addClass("hide-right-menu"),"hide"===d?n.setAttribute("data-pwidth",r):(n.style.width=r+"px",n.style.maxWidth=r+"px"),setTimeout(()=>{jQuery(".td-sidebar nav:not(.fixed-nav) a").each((e,t)=>{42<=jQuery(t).outerHeight()&&jQuery(t).outerHeight()<60?jQuery(t).attr("data-lines",2):60<=jQuery(t).outerHeight()&&jQuery(t).outerHeight()<=72?jQuery(t).attr("data-lines",3):72<jQuery(t).outerHeight()?jQuery(t).attr("data-lines",4):jQuery(t).removeAttr("data-lines")})},1e3)),i&&function(e){const t=document.querySelector("aside.td-sidebar nav:not(.fixed-nav)");var i;t&&e&&(t.style.overflow="hidden",i=t.clientHeight,e=e.getBoundingClientRect().top,t.scrollTop=e-i,setTimeout(()=>{t.style.overflow="auto"},600))}(i),o.addEventListener("click",()=>{n.classList.toggle("stick-bar"),n.classList.add("toggled-sidebar"),n.classList.contains("stick-bar")?(e("leftMenuShowHide","hide",3),t("hide")):(e("leftMenuShowHide","show",3),t("show"))}))})();</script>

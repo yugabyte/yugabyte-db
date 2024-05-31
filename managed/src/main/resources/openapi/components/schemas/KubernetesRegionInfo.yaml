@@ -1,0 +1,53 @@
+title: Region in Kubernetes provider
+type: object
+properties:
+  cert_manager_cluster_issuer:
+    description: Name of the ClusterIssuer if cert-manager is configured to issue TLS certs
+    type: string
+  cert_manager_issuer:
+    description: Name of the Issuer if cert-manager is configured to issue TLS certs
+    type: string
+  kube_config:
+    description: The file path to kubeconfig for cluster auth. Will use in-cluster credentials if empty.
+    type: string
+    readOnly: true
+  kube_config_content:
+    description: Set to contents of kubeconfig file.
+    type: string
+  kube_config_name:
+    description: Name of the kubeconfig file
+    type: string
+  kube_domain:
+    description: 'Name of custome kube domain, for example svc.cluster.local'
+    type: string
+  kube_namespace:
+    description: Name of the namespace if kubeconfig has access to only specific namespace
+    type: string
+  kube_pod_address_template:
+    description: Template for forming the FQDN for a pod. Useful to set in a multi-cluster k8s.
+    type: string
+  kubernetes_image_pull_secret_name:
+    description: Name of the secret to be used for pulling YugabyteDB image
+    type: string
+  kubernetes_image_registry:
+    description: Name of the image registry for pulling YugabyteDB image
+    type: string
+  kubernetes_provider:
+    description: 'Provider code, eg. gke, eks, aks, custom'
+    type: string
+  kubernetes_pull_secret:
+    description: Contents of the image pull secret
+    type: string
+    readOnly: true
+  kubernetes_pull_secret_content:
+    description: Contents of the image pull secret
+    type: string
+  kubernetes_pull_secret_name:
+    description: Name of the secret for pulling YugabyteDB image
+    type: string
+  kubernetes_storage_class:
+    description: Name of the StorageClass used for Volumes in this region
+    type: string
+  overrides:
+    description: YugabyteDB Helm chart overrides for this region
+    type: string

@@ -1,0 +1,127 @@
+Buffering in YSQL
+-----------------
+
+Allowing the YSQL execution engine to make progress without waiting for the
+actual work to be done on the tablet servers (via rpcs) helps batch multiple
+operations in one rpc. This allows lesser consumption of resources and reduces
+overall latency when one operation doesn't have to wait for another to complete.
+Also, asynchronously flushing buffers while YSQL performs local work can help
+reduce latency further (for example, in case of COPY command). For these reasons,
+YSQL uses buffering as much as possible with various constraints to ensure
+correctness.
+
+Requirements
+------------
+
+While delaying actual work using buffering can give various performance gains,
+YSQL has the following constraints to ensure correctness:
+
+1) Read ops from a SQL statement should not be able to see writes done as part of the same
+statement. This is required to ensure that statements like
+"INSERT INTO table VALUES SELECT ... FROM table" don't end up in an endless cycle of reading
+what they wrote to write more data.
+
+2) A write op might also under the hood read some data in docdb.
+   a) It should not be able to see writes done as part of the same op.
+   b) However, it should be able to see writes done as part of previous ops in the same
+      transaction (could also be ops part of the same statment, unlike the requirement for read
+      ops).
+
+The query layer uses in_txn_limit_ht (see ReadHybridTimePB) to provide the tserver with necessary
+information to achieve (1) & (2). If in_txn_limit_ht is set, any operation will not be able to read
+provisional writes from the same transaction which have a write timestamp higher than the
+in_txn_limit_ht.
+
+YSQL achieves requirements (1) & (2) as follows:
+
+1) For each new SQL statement, the current hybrid time is picked as the in_txn_limit which is
+used for all reads that will be performed as part of that statement. This in_txn_limit is picked
+on the PgClientService of the tserver/ master process of the same node where the YSQL backend
+resides (i.e., the proxy used by the YSQL backend to reach other nodes in the cluster). Also, any
+write from a previous SQL statement that a read is supposed to see, should have completed before the
+in_txn_limit is picked; so that the write timestamp of that write is lower than the in_txn_limit of
+the read. (See PgSession::RunHelper::Apply() where this is ensured)
+
+TODO: the in_txn_limit for reads is picked on the first read operation/ first non-buffered write
+operation of the SQL statement. However, there could be some buffered write operations as part of
+the same SQL statmeent before the first read op and hence they become visible to the reads of the
+statement.
+
+This causes bug #10142 (as commented out in the yb_query_consistent_snapshot regress test) as
+follows: the buffered write ops due to the INSERT are done first. And the in_txn_limit_ht for reads
+for the SQL statement is picked later. This causes the SELECT to see the writes from the INSERT.
+
+Fixing this bug is not easy because RI_FKey_restrict_upd() requires that the read op sees the write
+done as part of the same SQL statement.
+
+2)
+
+a) Every batch of writes pick the current hybrid time as the in_txn_limit before any execution. So,
+a write op won't be able to see its own writes. (See PgClientSession::Perform() where this is
+ensured)
+
+b) A write op should be able to read data from previous writes to the same row. So if 2 ops change
+the same row one after the other, the one which came in later should see the modification by the
+earlier write op. Given this, the query layer does the following to ensure all later writes see
+modification of earlier writes:
+
+   i) Ensures that no batch of writes has 2 writes to the same row. (See
+   PgOperationBuffer::Impl::DoAdd() where this is ensured)
+
+   ii) Since every batch of writes picks the current hybrid time as the in_txn_limit, if 2 batches
+   of writes touch the same row, the later batch will pick an in_txn_limit only after the earlier
+   batch is done. This ensures that the write timestamp of any write in the earlier batch is lower
+   than the in_txn_limit picked by the later batch.
+
+Given the above, this is how writes and reads are buffered and flushed:
+
+1) Writes:
+
+Writes from multiple SQL statements can be buffered until future operations don't depend on the
+result of the writes. The statements that buffered writes can make progress assuming the writes were
+successful. This can be done because if an error in a buffered write is seen late during execution,
+it would anyway rollback the whole ongoing transaction and void any processing that occurred from
+SQL statements after the write.
+
+Writes are buffered in PgSession::buffer_. This buffer can possibly store writes of multiple
+SQL statements of the same transaction before flushing. Reads can't be buffered in
+PgSession::buffer_.
+
+A flush can happen either if the buffer is full or if later execution depends on the result of the
+writes or requires them to complete before making progress. The following scenarios should be
+handled:
+
+  1) There is a write op to the same row. Flush to satisfy requirement 2b).
+  2) A read op is being performed. Reads should be able to see the modifications done by
+     writes from previous statements.
+  3) The query engine explicitly flushes. This could happen because:
+
+      a) the TRY block in a TRY CATCH is ending and we better catch any exception from buffered ops
+      b) beginning or releasing a sub-transaction i.e., savepoint (see 373c476d)
+      c) in functions/ procedures, a statement with possible non-transactional side-effects
+         is going to be executed (see d46e18cc)
+      d) before each new statement in READ COMMITTED isolation
+      e) committing a transaction
+      f) entering/ exiting separate DDL transaction mode
+      g) when the outer most standard_ExecutorFinish is done (i.e., not a nested executor). This
+         usually happens when the topmost i.e., outer-level SQL statement is done executing. For
+         example, in case of a call to a PL/pgsql function, that is the outer SQL statement and all
+         SQL statements in the function result in nested execution.
+      h) COPY command (see 5e1a3dc5)
+
+Buffering has 2 session level configurables: ysql_session_max_batch_size and ysql_max_in_flight_ops.
+See guc.c to understand what they do.
+
+NOTE: in case the buffer is flushed just because ysql_session_max_batch_size was reached, YSQL
+will not wait for the response of the flushed operations. Instead it will track those as in-flight
+operations and perform error-handling for those later when required. This helps improve latency of
+situations like the COPY command where the YSQL execution engine doesn't have to block on in-flight
+writes and can instead read the local file for buffering further writes while the flushed writes
+are being completed on the TServer. See ad4a9914 for detailed summary.
+
+In other cases when the buffer is flushed due to a dependency, a response to the flushed operations
+will be waited upon before making progress.
+
+2) Reads:
+  These aren't buffered because usually the output of a read is required to make progress in the
+  query layer.

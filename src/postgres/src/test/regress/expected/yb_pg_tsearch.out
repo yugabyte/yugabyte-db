@@ -1,0 +1,729 @@
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+--
+-- Sanity checks for text search catalogs
+--
+-- NB: we assume the oidjoins test will have caught any dangling links,
+-- that is OID or REGPROC fields that are not zero and do not match some
+-- row in the linked-to table.  However, if we want to enforce that a link
+-- field can't be 0, we have to check it here.
+-- Find unexpected zero link entries
+SELECT oid, prsname
+FROM pg_ts_parser
+WHERE prsnamespace = 0 OR prsstart = 0 OR prstoken = 0 OR prsend = 0 OR
+      -- prsheadline is optional
+      prslextype = 0;
+ oid | prsname
+-----+---------
+(0 rows)
+
+SELECT oid, dictname
+FROM pg_ts_dict
+WHERE dictnamespace = 0 OR dictowner = 0 OR dicttemplate = 0;
+ oid | dictname
+-----+----------
+(0 rows)
+
+SELECT oid, tmplname
+FROM pg_ts_template
+WHERE tmplnamespace = 0 OR tmpllexize = 0;  -- tmplinit is optional
+ oid | tmplname
+-----+----------
+(0 rows)
+
+SELECT oid, cfgname
+FROM pg_ts_config
+WHERE cfgnamespace = 0 OR cfgowner = 0 OR cfgparser = 0;
+ oid | cfgname
+-----+---------
+(0 rows)
+
+SELECT mapcfg, maptokentype, mapseqno
+FROM pg_ts_config_map
+WHERE mapcfg = 0 OR mapdict = 0;
+ mapcfg | maptokentype | mapseqno
+--------+--------------+----------
+(0 rows)
+
+-- Look for pg_ts_config_map entries that aren't one of parser's token types
+SELECT * FROM
+  ( SELECT oid AS cfgid, (ts_token_type(cfgparser)).tokid AS tokid
+    FROM pg_ts_config ) AS tt
+RIGHT JOIN pg_ts_config_map AS m
+    ON (tt.cfgid=m.mapcfg AND tt.tokid=m.maptokentype)
+WHERE
+    tt.cfgid IS NULL OR tt.tokid IS NULL;
+ cfgid | tokid | mapcfg | maptokentype | mapseqno | mapdict
+-------+-------+--------+--------------+----------+---------
+(0 rows)
+
+-- Load some test data
+CREATE TABLE test_tsvector(
+	t text,
+	a tsvector
+);
+\set filename :abs_srcdir '/data/tsearch.data'
+COPY test_tsvector FROM :'filename';
+ANALYZE test_tsvector;
+-- test basic text search behavior without indexes, then with
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ count
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ count
+-------
+    98
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ count
+-------
+    23
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ count
+-------
+    39
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ count
+-------
+   494
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ count
+-------
+   508
+(1 row)
+
+create index wowidx on test_tsvector using gist (a);
+ERROR:  index method "gist" not supported yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
+CREATE INDEX wowidx ON test_tsvector USING gin (a);
+SET enable_seqscan=OFF;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+SET yb_test_ybgin_disable_cost_factor = 0.5;
+-- GIN only supports bitmapscan, so no need to test plain indexscan
+-- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
+explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+                      QUERY PLAN
+-------------------------------------------------------
+ Aggregate
+   ->  Index Scan using wowidx on test_tsvector
+         Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
+(3 rows)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
+RESET yb_test_ybgin_disable_cost_factor;
+RESET enable_seqscan;
+INSERT INTO test_tsvector VALUES ('???', 'DFG:1A,2B,6C,10 FGH');
+SELECT * FROM ts_stat('SELECT a FROM test_tsvector') ORDER BY ndoc DESC, nentry DESC, word LIMIT 10;
+ word | ndoc | nentry
+------+------+--------
+ qq   |  108 |    108
+ qt   |  102 |    102
+ qe   |  100 |    100
+ qh   |   98 |     98
+ qw   |   98 |     98
+ qa   |   97 |     97
+ ql   |   94 |     94
+ qs   |   94 |     94
+ qi   |   92 |     92
+ qr   |   92 |     92
+(10 rows)
+
+SELECT * FROM ts_stat('SELECT a FROM test_tsvector', 'AB') ORDER BY ndoc DESC, nentry DESC, word;
+ word | ndoc | nentry
+------+------+--------
+ DFG  |    1 |      2
+(1 row)
+
+--dictionaries and to_tsvector
+SELECT ts_lexize('english_stem', 'skies');
+ ts_lexize
+-----------
+ {sky}
+(1 row)
+
+SELECT ts_lexize('english_stem', 'identity');
+ ts_lexize
+-----------
+ {ident}
+(1 row)
+
+SELECT * FROM ts_token_type('default');
+ tokid |      alias      |               description
+-------+-----------------+------------------------------------------
+     1 | asciiword       | Word, all ASCII
+     2 | word            | Word, all letters
+     3 | numword         | Word, letters and digits
+     4 | email           | Email address
+     5 | url             | URL
+     6 | host            | Host
+     7 | sfloat          | Scientific notation
+     8 | version         | Version number
+     9 | hword_numpart   | Hyphenated word part, letters and digits
+    10 | hword_part      | Hyphenated word part, all letters
+    11 | hword_asciipart | Hyphenated word part, all ASCII
+    12 | blank           | Space symbols
+    13 | tag             | XML tag
+    14 | protocol        | Protocol head
+    15 | numhword        | Hyphenated word, letters and digits
+    16 | asciihword      | Hyphenated word, all ASCII
+    17 | hword           | Hyphenated word, all letters
+    18 | url_path        | URL path
+    19 | file            | File or path name
+    20 | float           | Decimal notation
+    21 | int             | Signed integer
+    22 | uint            | Unsigned integer
+    23 | entity          | XML entity
+(23 rows)
+
+SELECT * FROM ts_parse('default', '345 qwe@efd.r '' http://www.com/ http://aew.werc.ewr/?ad=qwe&dw 1aew.werc.ewr/?ad=qwe&dw 2aew.werc.ewr http://3aew.werc.ewr/?ad=qwe&dw http://4aew.werc.ewr http://5aew.werc.ewr:8100/?  ad=qwe&dw 6aew.werc.ewr:8100/?ad=qwe&dw 7aew.werc.ewr:8100/?ad=qwe&dw=%20%32 +4.0e-10 qwe qwe qwqwe 234.435 455 5.005 teodor@stack.net teodor@123-stack.net 123_teodor@stack.net 123-teodor@stack.net qwe-wer asdf <fr>qwer jf sdjk<we hjwer <werrwe> ewr1> ewri2 <a href="qwe<qwe>">
+/usr/local/fff /awdf/dwqe/4325 rewt/ewr wefjn /wqe-324/ewr gist.h gist.h.c gist.c. readline 4.2 4.2. 4.2, readline-4.2 readline-4.2. 234
+<i <b> wow  < jqw <> qwerty');
+ tokid |                token
+-------+--------------------------------------
+    22 | 345
+    12 |
+     1 | qwe
+    12 | @
+    19 | efd.r
+    12 |  '
+    14 | http://
+     6 | www.com
+    12 | /
+    14 | http://
+     5 | aew.werc.ewr/?ad=qwe&dw
+     6 | aew.werc.ewr
+    18 | /?ad=qwe&dw
+    12 |
+     5 | 1aew.werc.ewr/?ad=qwe&dw
+     6 | 1aew.werc.ewr
+    18 | /?ad=qwe&dw
+    12 |
+     6 | 2aew.werc.ewr
+    12 |
+    14 | http://
+     5 | 3aew.werc.ewr/?ad=qwe&dw
+     6 | 3aew.werc.ewr
+    18 | /?ad=qwe&dw
+    12 |
+    14 | http://
+     6 | 4aew.werc.ewr
+    12 |
+    14 | http://
+     5 | 5aew.werc.ewr:8100/?
+     6 | 5aew.werc.ewr:8100
+    18 | /?
+    12 |
+     1 | ad
+    12 | =
+     1 | qwe
+    12 | &
+     1 | dw
+    12 |
+     5 | 6aew.werc.ewr:8100/?ad=qwe&dw
+     6 | 6aew.werc.ewr:8100
+    18 | /?ad=qwe&dw
+    12 |
+     5 | 7aew.werc.ewr:8100/?ad=qwe&dw=%20%32
+     6 | 7aew.werc.ewr:8100
+    18 | /?ad=qwe&dw=%20%32
+    12 |
+     7 | +4.0e-10
+    12 |
+     1 | qwe
+    12 |
+     1 | qwe
+    12 |
+     1 | qwqwe
+    12 |
+    20 | 234.435
+    12 |
+    22 | 455
+    12 |
+    20 | 5.005
+    12 |
+     4 | teodor@stack.net
+    12 |
+     4 | teodor@123-stack.net
+    12 |
+     4 | 123_teodor@stack.net
+    12 |
+     4 | 123-teodor@stack.net
+    12 |
+    16 | qwe-wer
+    11 | qwe
+    12 | -
+    11 | wer
+    12 |
+     1 | asdf
+    12 |
+    13 | <fr>
+     1 | qwer
+    12 |
+     1 | jf
+    12 |
+     1 | sdjk
+    12 | <
+     1 | we
+    12 |
+     1 | hjwer
+    12 |
+    13 | <werrwe>
+    12 |
+     3 | ewr1
+    12 | >
+     3 | ewri2
+    12 |
+    13 | <a href="qwe<qwe>">
+    12 |                                     +
+       |
+    19 | /usr/local/fff
+    12 |
+    19 | /awdf/dwqe/4325
+    12 |
+    19 | rewt/ewr
+    12 |
+     1 | wefjn
+    12 |
+    19 | /wqe-324/ewr
+    12 |
+    19 | gist.h
+    12 |
+    19 | gist.h.c
+    12 |
+    19 | gist.c
+    12 | .
+     1 | readline
+    12 |
+    20 | 4.2
+    12 |
+    20 | 4.2
+    12 | .
+    20 | 4.2
+    12 | ,
+     1 | readline
+    20 | -4.2
+    12 |
+     1 | readline
+    20 | -4.2
+    12 | .
+    22 | 234
+    12 |                                     +
+       |
+    12 | <
+     1 | i
+    12 |
+    13 | <b>
+    12 |
+     1 | wow
+    12 |
+    12 | <
+     1 | jqw
+    12 |
+    12 | <>
+     1 | qwerty
+(139 rows)
+
+SELECT to_tsvector('english', '345 qwe@efd.r '' http://www.com/ http://aew.werc.ewr/?ad=qwe&dw 1aew.werc.ewr/?ad=qwe&dw 2aew.werc.ewr http://3aew.werc.ewr/?ad=qwe&dw http://4aew.werc.ewr http://5aew.werc.ewr:8100/?  ad=qwe&dw 6aew.werc.ewr:8100/?ad=qwe&dw 7aew.werc.ewr:8100/?ad=qwe&dw=%20%32 +4.0e-10 qwe qwe qwqwe 234.435 455 5.005 teodor@stack.net teodor@123-stack.net 123_teodor@stack.net 123-teodor@stack.net qwe-wer asdf <fr>qwer jf sdjk<we hjwer <werrwe> ewr1> ewri2 <a href="qwe<qwe>">
+/usr/local/fff /awdf/dwqe/4325 rewt/ewr wefjn /wqe-324/ewr gist.h gist.h.c gist.c. readline 4.2 4.2. 4.2, readline-4.2 readline-4.2. 234
+<i <b> wow  < jqw <> qwerty');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                              to_tsvector
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ '+4.0e-10':28 '-4.2':63,65 '/?':18 '/?ad=qwe&dw':7,10,14,24 '/?ad=qwe&dw=%20%32':27 '/awdf/dwqe/4325':51 '/usr/local/fff':50 '/wqe-324/ewr':54 '123-teodor@stack.net':38 '123_teodor@stack.net':37 '1aew.werc.ewr':9 '1aew.werc.ewr/?ad=qwe&dw':8 '234':66 '234.435':32 '2aew.werc.ewr':11 '345':1 '3aew.werc.ewr':13 '3aew.werc.ewr/?ad=qwe&dw':12 '4.2':59,60,61 '455':33 '4aew.werc.ewr':15 '5.005':34 '5aew.werc.ewr:8100':17 '5aew.werc.ewr:8100/?':16 '6aew.werc.ewr:8100':23 '6aew.werc.ewr:8100/?ad=qwe&dw':22 '7aew.werc.ewr:8100':26 '7aew.werc.ewr:8100/?ad=qwe&dw=%20%32':25 'ad':19 'aew.werc.ewr':6 'aew.werc.ewr/?ad=qwe&dw':5 'asdf':42 'dw':21 'efd.r':3 'ewr1':48 'ewri2':49 'gist.c':57 'gist.h':55 'gist.h.c':56 'hjwer':47 'jf':44 'jqw':69 'qwe':2,20,29,30,40 'qwe-wer':39 'qwer':43 'qwerti':70 'qwqwe':31 'readlin':58,62,64 'rewt/ewr':52 'sdjk':45 'teodor@123-stack.net':36 'teodor@stack.net':35 'wefjn':53 'wer':41 'wow':68 'www.com':4
+(1 row)
+
+-- to_tsquery
+SELECT to_tsquery('english', 'qwe & sKies ');
+  to_tsquery
+---------------
+ 'qwe' & 'sky'
+(1 row)
+
+SELECT to_tsquery('simple', 'qwe & sKies ');
+   to_tsquery
+-----------------
+ 'qwe' & 'skies'
+(1 row)
+
+SELECT ts_headline('simple', '1 2 3 1 3'::text, '1 <-> 3', 'MaxWords=2, MinWords=1');
+    ts_headline
+-------------------
+ <b>1</b> <b>3</b>
+(1 row)
+
+SELECT ts_headline('simple', '1 2 3 1 3'::text, '1 & 3', 'MaxWords=4, MinWords=1');
+         ts_headline
+------------------------------
+ <b>1</b> 2 <b>3</b> <b>1</b>
+(1 row)
+
+SELECT ts_headline('simple', '1 2 3 1 3'::text, '1 <-> 3', 'MaxWords=4, MinWords=1');
+    ts_headline
+-------------------
+ <b>1</b> <b>3</b>
+(1 row)
+
+--test GUC
+SET default_text_search_config=simple;
+SELECT to_tsvector('SKIES My booKs');
+        to_tsvector
+----------------------------
+ 'books':3 'my':2 'skies':1
+(1 row)
+
+SELECT plainto_tsquery('SKIES My booKs');
+     plainto_tsquery
+--------------------------
+ 'skies' & 'my' & 'books'
+(1 row)
+
+SELECT to_tsquery('SKIES & My | booKs');
+        to_tsquery
+--------------------------
+ 'skies' & 'my' | 'books'
+(1 row)
+
+SET default_text_search_config=english;
+SELECT to_tsvector('SKIES My booKs');
+   to_tsvector
+------------------
+ 'book':3 'sky':1
+(1 row)
+
+-- test finding items in GIN's pending list
+create temp table pendtest (ts tsvector);
+create index pendtest_idx on pendtest using gin(ts);
+insert into pendtest values (to_tsvector('Lore ipsam'));
+insert into pendtest values (to_tsvector('Lore ipsum'));
+select * from pendtest where 'ipsu:*'::tsquery @@ ts;
+         ts
+--------------------
+ 'ipsum':2 'lore':1
+(1 row)
+
+select * from pendtest where 'ipsa:*'::tsquery @@ ts;
+         ts
+--------------------
+ 'ipsam':2 'lore':1
+(1 row)
+
+select * from pendtest where 'ips:*'::tsquery @@ ts;
+         ts
+--------------------
+ 'ipsam':2 'lore':1
+ 'ipsum':2 'lore':1
+(2 rows)
+
+select * from pendtest where 'ipt:*'::tsquery @@ ts;
+ ts
+----
+(0 rows)
+
+select * from pendtest where 'ipi:*'::tsquery @@ ts;
+ ts
+----
+(0 rows)
+
+-- test websearch_to_tsquery function
+select websearch_to_tsquery('simple', 'I have a fat:*ABCD cat');
+            websearch_to_tsquery
+---------------------------------------------
+ 'i' & 'have' & 'a' & 'fat' & 'abcd' & 'cat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'orange:**AABBCCDD');
+ websearch_to_tsquery
+-----------------------
+ 'orange' & 'aabbccdd'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat:A!cat:B|rat:C<');
+          websearch_to_tsquery
+-----------------------------------------
+ 'fat' & 'a' & 'cat' & 'b' & 'rat' & 'c'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat:A : cat:B');
+   websearch_to_tsquery
+---------------------------
+ 'fat' & 'a' & 'cat' & 'b'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat*rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' & 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat-rat');
+   websearch_to_tsquery
+---------------------------
+ 'fat-rat' & 'fat' & 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat_rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' & 'rat'
+(1 row)
+
+-- weights are completely ignored
+select websearch_to_tsquery('simple', 'abc : def');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'def'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc:def');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'def'
+(1 row)
+
+select websearch_to_tsquery('simple', 'a:::b');
+ websearch_to_tsquery
+----------------------
+ 'a' & 'b'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc:d');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'd'
+(1 row)
+
+select websearch_to_tsquery('simple', ':');
+NOTICE:  text-search query contains only stop words or doesn't contain lexemes, ignored
+ websearch_to_tsquery
+----------------------
+
+(1 row)
+
+-- these operators are ignored
+select websearch_to_tsquery('simple', 'abc & def');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'def'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc | def');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'def'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc <-> def');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'def'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc (pg or class)');
+  websearch_to_tsquery
+------------------------
+ 'abc' & 'pg' | 'class'
+(1 row)
+
+-- test OR operator
+select websearch_to_tsquery('simple', 'cat or rat');
+ websearch_to_tsquery
+----------------------
+ 'cat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'cat OR rat');
+ websearch_to_tsquery
+----------------------
+ 'cat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'cat "OR" rat');
+ websearch_to_tsquery
+----------------------
+ 'cat' & 'or' & 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'cat OR');
+ websearch_to_tsquery
+----------------------
+ 'cat' & 'or'
+(1 row)
+
+select websearch_to_tsquery('simple', 'OR rat');
+ websearch_to_tsquery
+----------------------
+ 'or' & 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', '"fat cat OR rat"');
+        websearch_to_tsquery
+------------------------------------
+ 'fat' <-> 'cat' <-> 'or' <-> 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat (cat OR rat');
+ websearch_to_tsquery
+-----------------------
+ 'fat' & 'cat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'or OR or');
+ websearch_to_tsquery
+----------------------
+ 'or' | 'or'
+(1 row)
+
+-- OR is an operator here ...
+select websearch_to_tsquery('simple', '"fat cat"or"fat rat"');
+       websearch_to_tsquery
+-----------------------------------
+ 'fat' <-> 'cat' | 'fat' <-> 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or(rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or)rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or&rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or|rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or!rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or<rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or>rat');
+ websearch_to_tsquery
+----------------------
+ 'fat' | 'rat'
+(1 row)
+
+select websearch_to_tsquery('simple', 'fat or ');
+ websearch_to_tsquery
+----------------------
+ 'fat' & 'or'
+(1 row)
+
+-- ... but not here
+select websearch_to_tsquery('simple', 'abc orange');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'orange'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc OR1234');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'or1234'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc or-abc');
+      websearch_to_tsquery
+---------------------------------
+ 'abc' & 'or-abc' & 'or' & 'abc'
+(1 row)
+
+select websearch_to_tsquery('simple', 'abc OR_abc');
+ websearch_to_tsquery
+----------------------
+ 'abc' & 'or' & 'abc'
+(1 row)

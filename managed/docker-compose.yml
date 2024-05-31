@@ -1,0 +1,103 @@
+# Copyright (c) YugaByte, Inc.
+version: '2'
+
+services:
+  yugaware:
+    image: quay.io/yugabyte/yugaware:latest
+    volumes:
+      - $HOME/.yugabyte:/root/.yugabyte
+      - /etc/yugaware
+      - app-volume:/opt/yugabyte/
+      - thirdparty-deps:/opt/yugabyte/third-party
+      - nginx-conf:/etc/yugaware/nginx
+    expose:
+      - 9000
+    ports:
+      - 9000:9000
+    environment:
+      - JVM_OPTS=-XX:PermSize=1024m -XX:MaxPermSize=1024m
+    depends_on:
+      - postgres
+    links:
+      - postgres
+    networks:
+      default:
+        aliases:
+          - yugaware
+    container_name: yugaware
+
+  yugabyte-base:
+    image: quay.io/yugabyte/base-image:latest
+    container_name: yugabyte-base
+
+  thirdparty-deps:
+    volumes:
+      - thirdparty-deps:/opt/third-party
+    image: quay.io/yugabyte/thirdparty-deps:latest
+    networks:
+      default:
+        aliases:
+          - thirdparty-deps
+    container_name: thirdparty-deps
+
+  postgres:
+    image: postgres:latest
+    expose:
+      - 5432
+    ports:
+      - 5433:5432
+    environment:
+      - POSTGRES_USER=yugaware
+      - POSTGRES_PASSWORD=yugaware
+      - POSTGRES_DB=yugaware
+    volumes:
+      - db-volume:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres
+    container_name: postgres
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - nginx-conf:/etc/nginx/conf.d/
+      - app-volume:/opt/yugabyte
+    links:
+      - yugaware
+    ports:
+      - "8080:80"
+    expose:
+      - 80
+    networks:
+      default:
+        aliases:
+          - nginx
+    container_name: nginx
+
+  prometheus:
+    image: prom/prometheus:v1.5.2
+    volumes_from:
+      - yugaware
+    command:
+      - '-config.file=/etc/yugaware/prometheus/prometheus.yml'
+      - '-storage.local.path=/opt/yugabyte/prometheus'
+    expose:
+      - 9090
+    ports:
+      - 9090:9090
+    networks:
+      default:
+        aliases:
+          - prometheus
+    container_name: prometheus
+
+volumes:
+  thirdparty-deps:
+  nginx-conf:
+  app-volume:
+  db-volume:
+
+networks:
+  default:
+    driver: bridge

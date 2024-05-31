@@ -1,0 +1,120 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_priority s2_priority s1_serializable_txn s2_serializable_txn s1_update_fk1 s2_update_fk2 s1_commit s2_commit s1_select_tb s1_select_ref_tb
+step s1_priority: SET yb_transaction_priority_lower_bound = .9;
+step s2_priority: SET yb_transaction_priority_upper_bound= .1;
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_fk2: <... completed>
+error in steps s1_commit s2_update_fk2: ERROR:  insert or update on table "tb" violates foreign key constraint "tb_fk1_fkey"
+step s2_commit: COMMIT;
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              10             1
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1
+
+starting permutation: s1_priority s2_priority s1_repeatable_read_txn s2_repeatable_read_txn s1_update_fk1 s2_update_fk2 s1_commit s2_commit s1_select_tb s1_select_ref_tb
+step s1_priority: SET yb_transaction_priority_lower_bound = .9;
+step s2_priority: SET yb_transaction_priority_upper_bound= .1;
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_fk2: <... completed>
+error in steps s1_commit s2_update_fk2: ERROR:  insert or update on table "tb" violates foreign key constraint "tb_fk1_fkey"
+step s2_commit: COMMIT;
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              10             1
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1
+
+starting permutation: s1_priority s2_priority s2_enable_retries s1_read_committed_txn s2_read_committed_txn s1_update_fk1 s2_update_fk2 s1_commit s2_commit s1_select_tb s1_select_ref_tb
+step s1_priority: SET yb_transaction_priority_lower_bound = .9;
+step s2_priority: SET yb_transaction_priority_upper_bound= .1;
+step s2_enable_retries: SET yb_max_query_layer_retries = 60;
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_fk2: <... completed>
+error in steps s1_commit s2_update_fk2: ERROR:  insert or update on table "tb" violates foreign key constraint "tb_fk1_fkey"
+step s2_commit: COMMIT;
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              10             1
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1
+
+starting permutation: s1_serializable_txn s1_update_fk1 s2_update_fk2 s1_commit s1_select_tb s1_select_ref_tb
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1;
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              1              10
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1
+
+starting permutation: s1_read_committed_txn s1_update_fk1 s2_update_fk2 s1_commit s1_select_tb s1_select_ref_tb
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_fk2: <... completed>
+error in steps s1_commit s2_update_fk2: ERROR:  insert or update on table "tb" violates foreign key constraint "tb_fk1_fkey"
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              10             1
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1
+
+starting permutation: s1_repeatable_read_txn s1_update_fk1 s2_update_fk2 s1_commit s1_select_tb s1_select_ref_tb
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update_fk1: UPDATE tb SET fk1 = 10 WHERE k = 1;
+step s2_update_fk2: UPDATE tb SET fk2 = 10 WHERE k = 1;
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select_tb: SELECT * FROM tb;
+k              fk1            fk2
+
+1              1              10
+step s1_select_ref_tb: SELECT * FROM ref_tb;
+k1             k2
+
+1              1
+1              10
+10             1

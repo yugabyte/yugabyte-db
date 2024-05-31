@@ -1,0 +1,196 @@
+# Copyright (c) YugaByte, Inc.
+
+centralus:
+  name: "Central US"
+  latitude: 41.881832
+  longitude: -87.623177
+
+eastus:
+  name: "East US"
+  latitude: 37.09024
+  longitude: -95.712891
+
+eastus2:
+  name: "East US 2"
+  latitude: 36.778259
+  longitude: -76.090828
+
+northcentralus:
+  name: "North Central US"
+  latitude: 41.560153
+  longitude: -93.632687
+
+southcentralus:
+  name: "South Central US"
+  latitude: 29.416667
+  longitude: -98.5
+
+westus:
+  name: "West US"
+  latitude: 37.77493
+  longitude: -122.419418
+
+westus2:
+  name: "West US 2"
+  latitude: 47.603569
+  longitude: -122.330276
+
+westus3:
+  name: West US 3
+  latitude: 33.448376
+  longitude: -112.074036
+
+westcentralus:
+  name: West Central US
+  latitude: 40.890
+  longitude: -110.234
+
+canadacentral:
+  name: "Canada Central"
+  latitude: 45.501690
+  longitude: -73.567253
+
+canadaeast:
+  name: "Canada East"
+  latitude: 45.501690
+  longitude: -73.567253
+
+brazilsouth:
+  name: "Brazil South"
+  latitude: -23.550519
+  longitude: -46.633309
+
+northeurope:
+  name: "North Europe"
+  latitude: 53.363057
+  longitude: -2.158883
+
+westeurope:
+  name: "West Europe"
+  latitude: 50.110924
+  longitude: 8.682127
+
+uksouth:
+  name: "UK South"
+  latitude: 50.821947
+  longitude: -0.137432
+
+ukwest:
+  name: "UK West"
+  latitude: 51.507351
+  longitude: -0.127758
+
+eastasia:
+  name: "East Asia"
+  latitude: 22.396428
+  longitude: 114.109497
+
+southeastasia:
+  name: "Southeast Asia"
+  latitude: 1.352083
+  longitude: 103.819839
+
+japaneast:
+  name: "Japan East"
+  latitude: 35.689487
+  longitude: 139.691711
+
+japanwest:
+  name: "Japan West"
+  latitude: 34.693738
+  longitude: 135.502165
+
+australiaeast:
+  name: "Australia East"
+  latitude: -33.868820
+  longitude: 151.209296
+
+australiasoutheast:
+  name: "Australia Southeast"
+  latitude: -37.813628
+  longitude: 144.963058
+
+centralindia:
+  name: "Central India"
+  latitude: 22.719569
+  longitude: 75.857726
+
+southindia:
+  name: "South India"
+  latitude: 13.082680
+  longitude: 80.270721
+
+westindia:
+  name: "West India"
+  latitude: 19.076090
+  longitude: 72.877426
+
+koreacentral:
+  name: "Korea Central"
+  latitude: 37.555058
+  longitude: 126.992138
+
+koreasouth:
+  name: "Korea South"
+  latitude: 35.907757
+  longitude: 127.766
+
+australiacentral:
+  name: Australia Central
+  latitude: -35.3075
+  longitude: 149.1244
+
+francecentral:
+  name: France Central
+  latitude: 46.3772
+  longitude: 2.3730
+
+southafricanorth:
+  name: South Africa North
+  latitude: -25.731340
+  longitude: 28.218370
+
+germanywestcentral:
+  name: Germany West Central
+  latitude: 50.110924
+  longitude: 8.682127
+
+israelcentral:
+  name: Israel Central
+  latitude: 31.0461
+  longitude: 34.8516
+
+italynorth:
+  name: Italy north
+  latitude: 41.8719
+  longitude: 12.5674
+
+norwayeast:
+  name: Norway East
+  latitude: 59.913868
+  longitude: 10.752245
+
+polandcentral:
+  name: Poland Central
+  latitude: 59.913868
+  longitude: 10.752245
+
+qatarcentral:
+  name: Qatar Central
+  latitude: 25.3548
+  longitude: 51.1839
+
+swedencentral:
+  name: Sweden Central
+  latitude: 60.1282
+  longitude: 18.6435
+
+switzerlandnorth:
+  name: Switzerland North
+  latitude: 47.451542
+  longitude: 8.564572
+
+uaenorth:
+  name: UAE North
+  latitude: 25.266666
+  longitude: 55.316666

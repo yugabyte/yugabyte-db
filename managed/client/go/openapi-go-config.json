@@ -1,0 +1,10 @@
+    {
+        "hideGenerationTimestamp": "true",
+        "packageName": "v1",
+        "packageVersion": "2.0.0",
+        "structPrefix": "true",
+        "isGoSubmodule": "true",
+        "gitHost": "github.com",
+        "gitUserId": "yugabyte",
+        "gitRepoId": "platform-go-client"
+    }

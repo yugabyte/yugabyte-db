@@ -1,0 +1,28 @@
+src/test/locale/README
+
+Locales
+=======
+
+This directory contains a set of tests for locales.  I provided one C
+program test-ctype.c to test CTYPE support in libc and the installed
+locale data.  Then there are test-sort.pl and test-sort.py that test
+collating.
+
+To run a test for some locale run
+    make check-$locale
+for example
+    make check-koi8-r
+
+Currently, there are only tests for a few locales available.  The script
+'runall' calls test-ctype to test libc and locale data, test-sort.pl
+(uncomment test-sort.py, if you have a Python interpreter installed), and
+does tests on PostgreSQL with the provided SQL script files.
+
+To add locale tests one needs to create a directory $locale and create
+a Makefile (and other files) similar to koi8-r/*.  Actually, the simplest
+(I think) method is just to copy the koi8-r directory and edit/replace
+the files.
+
+Oleg.
+----
+    Oleg Broytmann     http://members.xoom.com/phd2/     phd2@earthling.net

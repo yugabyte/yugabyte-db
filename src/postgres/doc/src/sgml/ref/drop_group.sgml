@@ -1,0 +1,53 @@
+<!--
+doc/src/sgml/ref/drop_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropgroup">
+ <indexterm zone="sql-dropgroup">
+  <primary>DROP GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP GROUP</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP GROUP</refname>
+  <refpurpose>remove a database role</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP GROUP [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP GROUP</command> is now an alias for
+   <link linkend="sql-droprole"><command>DROP ROLE</command></link>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>DROP GROUP</command> statement in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-droprole"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

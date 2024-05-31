@@ -1,0 +1,585 @@
+# Russian message translation file for pg_controldata
+# Copyright (C) 2002-2016 PostgreSQL Global Development Group
+# This file is distributed under the same license as the PostgreSQL package.
+# Serguei A. Mokhov <mokhov@cs.concordia.ca>, 2002-2004.
+# Oleg Bartunov <oleg@sai.msu.su>, 2004.
+# Andrey Sudnik <sudnikand@gmail.com>, 2011.
+# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022.
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_controldata (PostgreSQL current)\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2022-08-27 14:52+0300\n"
+"PO-Revision-Date: 2022-09-05 13:34+0300\n"
+"Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
+"Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
+"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: ../../common/controldata_utils.c:73
+#, c-format
+msgid "could not open file \"%s\" for reading: %m"
+msgstr "не удалось открыть файл \"%s\" для чтения: %m"
+
+#: ../../common/controldata_utils.c:86
+#, c-format
+msgid "could not read file \"%s\": %m"
+msgstr "не удалось прочитать файл \"%s\": %m"
+
+#: ../../common/controldata_utils.c:95
+#, c-format
+msgid "could not read file \"%s\": read %d of %zu"
+msgstr "не удалось прочитать файл \"%s\" (прочитано байт: %d из %zu)"
+
+#: ../../common/controldata_utils.c:108 ../../common/controldata_utils.c:244
+#, c-format
+msgid "could not close file \"%s\": %m"
+msgstr "не удалось закрыть файл \"%s\": %m"
+
+#: ../../common/controldata_utils.c:124
+msgid "byte ordering mismatch"
+msgstr "несоответствие порядка байт"
+
+#: ../../common/controldata_utils.c:126
+#, c-format
+msgid ""
+"possible byte ordering mismatch\n"
+"The byte ordering used to store the pg_control file might not match the one\n"
+"used by this program.  In that case the results below would be incorrect, "
+"and\n"
+"the PostgreSQL installation would be incompatible with this data directory."
+msgstr ""
+"возможно несоответствие порядка байт\n"
+"Порядок байт в файле pg_control может не соответствовать используемому\n"
+"этой программой. В этом случае результаты будут неверными и\n"
+"установленный PostgreSQL будет несовместим с этим каталогом данных."
+
+#: ../../common/controldata_utils.c:194
+#, c-format
+msgid "could not open file \"%s\": %m"
+msgstr "не удалось открыть файл \"%s\": %m"
+
+#: ../../common/controldata_utils.c:213
+#, c-format
+msgid "could not write file \"%s\": %m"
+msgstr "не удалось записать файл \"%s\": %m"
+
+#: ../../common/controldata_utils.c:232
+#, c-format
+msgid "could not fsync file \"%s\": %m"
+msgstr "не удалось синхронизировать с ФС файл \"%s\": %m"
+
+#: pg_controldata.c:35
+#, c-format
+msgid ""
+"%s displays control information of a PostgreSQL database cluster.\n"
+"\n"
+msgstr ""
+"%s показывает информацию о работе кластера баз PostgreSQL.\n"
+"\n"
+
+#: pg_controldata.c:36
+#, c-format
+msgid "Usage:\n"
+msgstr "Использование:\n"
+
+#: pg_controldata.c:37
+#, c-format
+msgid "  %s [OPTION] [DATADIR]\n"
+msgstr "  %s [ПАРАМЕТР] [КАТ_ДАННЫХ]\n"
+
+#: pg_controldata.c:38
+#, c-format
+msgid ""
+"\n"
+"Options:\n"
+msgstr ""
+"\n"
+"Параметры:\n"
+
+#: pg_controldata.c:39
+#, c-format
+msgid " [-D, --pgdata=]DATADIR  data directory\n"
+msgstr " [-D, --pgdata=]КАТ_ДАННЫХ каталог данных\n"
+
+#: pg_controldata.c:40
+#, c-format
+msgid "  -V, --version          output version information, then exit\n"
+msgstr "  -V, --version          показать версию и выйти\n"
+
+#: pg_controldata.c:41
+#, c-format
+msgid "  -?, --help             show this help, then exit\n"
+msgstr "  -?, --help             показать эту справку и выйти\n"
+
+#: pg_controldata.c:42
+#, c-format
+msgid ""
+"\n"
+"If no data directory (DATADIR) is specified, the environment variable "
+"PGDATA\n"
+"is used.\n"
+"\n"
+msgstr ""
+"\n"
+"Если каталог данных (КАТ_ДАННЫХ) не задан, используется значение\n"
+"переменной окружения PGDATA.\n"
+"\n"
+
+#: pg_controldata.c:44
+#, c-format
+msgid "Report bugs to <%s>.\n"
+msgstr "Об ошибках сообщайте по адресу <%s>.\n"
+
+#: pg_controldata.c:45
+#, c-format
+msgid "%s home page: <%s>\n"
+msgstr "Домашняя страница %s: <%s>\n"
+
+#: pg_controldata.c:55
+msgid "starting up"
+msgstr "запускается"
+
+#: pg_controldata.c:57
+msgid "shut down"
+msgstr "выключен"
+
+#: pg_controldata.c:59
+msgid "shut down in recovery"
+msgstr "выключен при восстановлении"
+
+#: pg_controldata.c:61
+msgid "shutting down"
+msgstr "выключение"
+
+#: pg_controldata.c:63
+msgid "in crash recovery"
+msgstr "восстановление после сбоя"
+
+#: pg_controldata.c:65
+msgid "in archive recovery"
+msgstr "восстановление из архива"
+
+#: pg_controldata.c:67
+msgid "in production"
+msgstr "в работе"
+
+#: pg_controldata.c:69
+msgid "unrecognized status code"
+msgstr "нераспознанный код состояния"
+
+#: pg_controldata.c:84
+msgid "unrecognized wal_level"
+msgstr "нераспознанный уровень WAL"
+
+#: pg_controldata.c:138 pg_controldata.c:156 pg_controldata.c:163
+#, c-format
+msgid "Try \"%s --help\" for more information."
+msgstr "Для дополнительной информации попробуйте \"%s --help\"."
+
+#: pg_controldata.c:154
+#, c-format
+msgid "too many command-line arguments (first is \"%s\")"
+msgstr "слишком много аргументов командной строки (первый: \"%s\")"
+
+#: pg_controldata.c:162
+#, c-format
+msgid "no data directory specified"
+msgstr "каталог данных не указан"
+
+#: pg_controldata.c:170
+#, c-format
+msgid ""
+"WARNING: Calculated CRC checksum does not match value stored in file.\n"
+"Either the file is corrupt, or it has a different layout than this program\n"
+"is expecting.  The results below are untrustworthy.\n"
+"\n"
+msgstr ""
+"ПРЕДУПРЕЖДЕНИЕ: Вычисленная контрольная сумма не совпадает со значением в "
+"файле.\n"
+"Либо файл повреждён, либо его формат отличается от ожидаемого.\n"
+"Следующая информация может быть недостоверной.\n"
+"\n"
+
+#: pg_controldata.c:179
+#, c-format
+msgid "WARNING: invalid WAL segment size\n"
+msgstr "ПРЕДУПРЕЖДЕНИЕ: неверный размер сегмента WAL\n"
+
+#: pg_controldata.c:180
+#, c-format
+msgid ""
+"The WAL segment size stored in the file, %d byte, is not a power of two\n"
+"between 1 MB and 1 GB.  The file is corrupt and the results below are\n"
+"untrustworthy.\n"
+"\n"
+msgid_plural ""
+"The WAL segment size stored in the file, %d bytes, is not a power of two\n"
+"between 1 MB and 1 GB.  The file is corrupt and the results below are\n"
+"untrustworthy.\n"
+"\n"
+msgstr[0] ""
+"Сохранённый в этом файле размер сегмента WAL (байт: %d) не является "
+"степенью\n"
+"двух между 1 МБ и 1 ГБ.  Файл испорчен, выводимая ниже информация\n"
+"подлежит сомнению.\n"
+"\n"
+msgstr[1] ""
+"Сохранённый в этом файле размер сегмента WAL (байт: %d) не является "
+"степенью\n"
+"двух между 1 МБ и 1 ГБ.  Файл испорчен, выводимая ниже информация\n"
+"подлежит сомнению.\n"
+"\n"
+msgstr[2] ""
+"Сохранённый в этом файле размер сегмента WAL (байт: %d) не является "
+"степенью\n"
+"двух между 1 МБ и 1 ГБ.  Файл испорчен, выводимая ниже информация\n"
+"подлежит сомнению.\n"
+"\n"
+
+#: pg_controldata.c:222
+msgid "???"
+msgstr "???"
+
+#: pg_controldata.c:228
+#, c-format
+msgid "pg_control version number:            %u\n"
+msgstr "Номер версии pg_control:              %u\n"
+
+#: pg_controldata.c:230
+#, c-format
+msgid "Catalog version number:               %u\n"
+msgstr "Номер версии каталога:                %u\n"
+
+#: pg_controldata.c:232
+#, c-format
+msgid "Database system identifier:           %llu\n"
+msgstr "Идентификатор системы баз данных:     %llu\n"
+
+#: pg_controldata.c:234
+#, c-format
+msgid "Database cluster state:               %s\n"
+msgstr "Состояние кластера БД:                %s\n"
+
+#: pg_controldata.c:236
+#, c-format
+msgid "pg_control last modified:             %s\n"
+msgstr "Последнее обновление pg_control:      %s\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:238
+#, c-format
+msgid "Latest checkpoint location:           %X/%X\n"
+msgstr "Положение последней конт. точки:      %X/%X\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:240
+#, c-format
+msgid "Latest checkpoint's REDO location:    %X/%X\n"
+msgstr "Положение REDO последней конт. точки: %X/%X\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:242
+#, c-format
+msgid "Latest checkpoint's REDO WAL file:    %s\n"
+msgstr "Файл WAL c REDO последней к. т.:      %s\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:244
+#, c-format
+msgid "Latest checkpoint's TimeLineID:       %u\n"
+msgstr "Линия времени последней конт. точки:  %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:246
+#, c-format
+msgid "Latest checkpoint's PrevTimeLineID:   %u\n"
+msgstr "Пред. линия времени последней к. т.:  %u\n"
+
+# skip-rule: no-space-after-period
+#: pg_controldata.c:248
+#, c-format
+msgid "Latest checkpoint's full_page_writes: %s\n"
+msgstr "Режим full_page_writes последней к.т: %s\n"
+
+#: pg_controldata.c:249 pg_controldata.c:290 pg_controldata.c:302
+msgid "off"
+msgstr "выкл."
+
+#: pg_controldata.c:249 pg_controldata.c:290 pg_controldata.c:302
+msgid "on"
+msgstr "вкл."
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:250
+#, c-format
+msgid "Latest checkpoint's NextXID:          %u:%u\n"
+msgstr "NextXID последней конт. точки:        %u:%u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:253
+#, c-format
+msgid "Latest checkpoint's NextOID:          %u\n"
+msgstr "NextOID последней конт. точки:        %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:255
+#, c-format
+msgid "Latest checkpoint's NextMultiXactId:  %u\n"
+msgstr "NextMultiXactId послед. конт. точки:  %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:257
+#, c-format
+msgid "Latest checkpoint's NextMultiOffset:  %u\n"
+msgstr "NextMultiOffset послед. конт. точки:  %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:259
+#, c-format
+msgid "Latest checkpoint's oldestXID:        %u\n"
+msgstr "oldestXID последней конт. точки:      %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:261
+#, c-format
+msgid "Latest checkpoint's oldestXID's DB:   %u\n"
+msgstr "БД с oldestXID последней конт. точки: %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:263
+#, c-format
+msgid "Latest checkpoint's oldestActiveXID:  %u\n"
+msgstr "oldestActiveXID последней к. т.:      %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:265
+#, c-format
+msgid "Latest checkpoint's oldestMultiXid:   %u\n"
+msgstr "oldestMultiXid последней конт. точки: %u\n"
+
+# skip-rule: double-space, capital-letter-first
+#: pg_controldata.c:267
+#, c-format
+msgid "Latest checkpoint's oldestMulti's DB: %u\n"
+msgstr "БД с oldestMulti последней к. т.:     %u\n"
+
+# skip-rule: double-space, capital-letter-first
+#: pg_controldata.c:269
+#, c-format
+msgid "Latest checkpoint's oldestCommitTsXid:%u\n"
+msgstr "oldestCommitTsXid последней к. т.:    %u\n"
+
+# skip-rule: capital-letter-first, double-space
+#: pg_controldata.c:271
+#, c-format
+msgid "Latest checkpoint's newestCommitTsXid:%u\n"
+msgstr "newestCommitTsXid последней к. т.:    %u\n"
+
+#: pg_controldata.c:273
+#, c-format
+msgid "Time of latest checkpoint:            %s\n"
+msgstr "Время последней контрольной точки:    %s\n"
+
+# skip-rule: capital-letter-first
+# well-spelled: нежурналир
+#: pg_controldata.c:275
+#, c-format
+msgid "Fake LSN counter for unlogged rels:   %X/%X\n"
+msgstr "Фиктивный LSN для нежурналир. таблиц: %X/%X\n"
+
+#: pg_controldata.c:277
+#, c-format
+msgid "Minimum recovery ending location:     %X/%X\n"
+msgstr "Мин. положение конца восстановления:  %X/%X\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:279
+#, c-format
+msgid "Min recovery ending loc's timeline:   %u\n"
+msgstr "Линия времени мин. положения к. в.:   %u\n"
+
+#: pg_controldata.c:281
+#, c-format
+msgid "Backup start location:                %X/%X\n"
+msgstr "Положение начала копии:               %X/%X\n"
+
+#: pg_controldata.c:283
+#, c-format
+msgid "Backup end location:                  %X/%X\n"
+msgstr "Положение конца копии:                %X/%X\n"
+
+#: pg_controldata.c:285
+#, c-format
+msgid "End-of-backup record required:        %s\n"
+msgstr "Требуется запись конец-копии:         %s\n"
+
+#: pg_controldata.c:286
+msgid "no"
+msgstr "нет"
+
+#: pg_controldata.c:286
+msgid "yes"
+msgstr "да"
+
+#: pg_controldata.c:287
+#, c-format
+msgid "wal_level setting:                    %s\n"
+msgstr "Значение wal_level:                   %s\n"
+
+#: pg_controldata.c:289
+#, c-format
+msgid "wal_log_hints setting:                %s\n"
+msgstr "Значение wal_log_hints:               %s\n"
+
+#: pg_controldata.c:291
+#, c-format
+msgid "max_connections setting:              %d\n"
+msgstr "Значение max_connections:             %d\n"
+
+#: pg_controldata.c:293
+#, c-format
+msgid "max_worker_processes setting:         %d\n"
+msgstr "Значение max_worker_processes:        %d\n"
+
+#: pg_controldata.c:295
+#, c-format
+msgid "max_wal_senders setting:              %d\n"
+msgstr "Значение max_wal_senders:             %d\n"
+
+#: pg_controldata.c:297
+#, c-format
+msgid "max_prepared_xacts setting:           %d\n"
+msgstr "Значение max_prepared_xacts:          %d\n"
+
+#: pg_controldata.c:299
+#, c-format
+msgid "max_locks_per_xact setting:           %d\n"
+msgstr "Значение max_locks_per_xact:          %d\n"
+
+#: pg_controldata.c:301
+#, c-format
+msgid "track_commit_timestamp setting:       %s\n"
+msgstr "Значение track_commit_timestamp:      %s\n"
+
+#: pg_controldata.c:303
+#, c-format
+msgid "Maximum data alignment:               %u\n"
+msgstr "Макс. предел выравнивания данных:     %u\n"
+
+#: pg_controldata.c:306
+#, c-format
+msgid "Database block size:                  %u\n"
+msgstr "Размер блока БД:                      %u\n"
+
+# skip-rule: double-space
+#: pg_controldata.c:308
+#, c-format
+msgid "Blocks per segment of large relation: %u\n"
+msgstr "Блоков в макс. сегменте отношений:    %u\n"
+
+#: pg_controldata.c:310
+#, c-format
+msgid "WAL block size:                       %u\n"
+msgstr "Размер блока WAL:                     %u\n"
+
+#: pg_controldata.c:312
+#, c-format
+msgid "Bytes per WAL segment:                %u\n"
+msgstr "Байт в сегменте WAL:                  %u\n"
+
+#: pg_controldata.c:314
+#, c-format
+msgid "Maximum length of identifiers:        %u\n"
+msgstr "Максимальная длина идентификаторов:   %u\n"
+
+#: pg_controldata.c:316
+#, c-format
+msgid "Maximum columns in an index:          %u\n"
+msgstr "Макс. число столбцов в индексе:       %u\n"
+
+#: pg_controldata.c:318
+#, c-format
+msgid "Maximum size of a TOAST chunk:        %u\n"
+msgstr "Максимальный размер порции TOAST:     %u\n"
+
+#: pg_controldata.c:320
+#, c-format
+msgid "Size of a large-object chunk:         %u\n"
+msgstr "Размер порции большого объекта:       %u\n"
+
+#: pg_controldata.c:323
+#, c-format
+msgid "Date/time type storage:               %s\n"
+msgstr "Формат хранения даты/времени:         %s\n"
+
+#: pg_controldata.c:324
+msgid "64-bit integers"
+msgstr "64-битные целые"
+
+#: pg_controldata.c:325
+#, c-format
+msgid "Float8 argument passing:              %s\n"
+msgstr "Передача аргумента float8:            %s\n"
+
+#: pg_controldata.c:326
+msgid "by reference"
+msgstr "по ссылке"
+
+#: pg_controldata.c:326
+msgid "by value"
+msgstr "по значению"
+
+#: pg_controldata.c:327
+#, c-format
+msgid "Data page checksum version:           %u\n"
+msgstr "Версия контрольных сумм страниц:      %u\n"
+
+# skip-rule: capital-letter-first
+#: pg_controldata.c:329
+#, c-format
+msgid "Mock authentication nonce:            %s\n"
+msgstr "Случ. число для псевдоаутентификации: %s\n"
+
+#~ msgid "Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"
+#~ msgstr "Об ошибках сообщайте по адресу <pgsql-bugs@lists.postgresql.org>.\n"
+
+#~ msgid "Float4 argument passing:              %s\n"
+#~ msgstr "Передача аргумента Float4:            %s\n"
+
+# skip-rule: capital-letter-first
+#~ msgid "Prior checkpoint location:            %X/%X\n"
+#~ msgstr "Положение предыдущей конт. точки:     %X/%X\n"
+
+#~ msgid "calculated CRC checksum does not match value stored in file"
+#~ msgstr ""
+#~ "вычисленная контрольная сумма (CRC) не соответствует значению, "
+#~ "сохранённому в файле"
+
+#~ msgid "floating-point numbers"
+#~ msgstr "числа с плавающей точкой"
+
+#~ msgid ""
+#~ "Usage:\n"
+#~ "  %s [OPTION] [DATADIR]\n"
+#~ "\n"
+#~ "Options:\n"
+#~ "  --help         show this help, then exit\n"
+#~ "  --version      output version information, then exit\n"
+#~ msgstr ""
+#~ "Использование:\n"
+#~ "  %s [ПАРАМЕТР] [КАТАЛОГ_ДАННЫХ]\n"
+#~ "\n"
+#~ "Параметры:\n"
+#~ "  --help         показать эту справку и выйти\n"
+#~ "  --version      показать версию и выйти\n"
+
+#~ msgid "enabled"
+#~ msgstr "включен"
+
+#~ msgid "disabled"
+#~ msgstr "отключен"

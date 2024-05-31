@@ -1,0 +1,251 @@
+<!-- doc/src/sgml/external-projects.sgml -->
+
+ <appendix id="external-projects">
+  <title>External Projects</title>
+
+  <para>
+   <productname>PostgreSQL</productname> is a complex software project,
+   and managing the project is difficult. We have found that many
+   enhancements to <productname>PostgreSQL</productname> can be more
+   efficiently developed separately from the core project.
+  </para>
+
+ <sect1 id="external-interfaces">
+  <title>Client Interfaces</title>
+
+  <indexterm>
+   <primary>interfaces</primary>
+   <secondary>externally maintained</secondary>
+  </indexterm>
+
+  <para>
+   There are only two client interfaces included in the base
+   <productname>PostgreSQL</productname> distribution:
+   <itemizedlist>
+    <listitem>
+     <para>
+      <link linkend="libpq">libpq</link> is included because it is the
+      primary C language interface, and because many other client interfaces
+      are built on top of it.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <link linkend="ecpg">ECPG</link> is included because it depends on the
+      server-side SQL grammar, and is therefore sensitive to changes in
+      <productname>PostgreSQL</productname> itself.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   All other language interfaces are external projects and are distributed
+   separately. <xref linkend="language-interface-table"/> includes a list of
+   some of these projects. Note that some of these packages might not be
+   released under the same license as <productname>PostgreSQL</productname>. For more
+   information on each language interface, including licensing terms, refer to
+   its website and documentation.
+  </para>
+
+  <table id="language-interface-table">
+   <title>Externally Maintained Client Interfaces</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Language</entry>
+      <entry>Comments</entry>
+      <entry>Website</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry>DBD::Pg</entry>
+      <entry>Perl</entry>
+      <entry>Perl DBI driver</entry>
+      <entry><ulink url="https://metacpan.org/release/DBD-Pg"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>JDBC</entry>
+      <entry>Java</entry>
+      <entry>Type 4 JDBC driver</entry>
+      <entry><ulink url="https://jdbc.postgresql.org/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>libpqxx</entry>
+      <entry>C++</entry>
+      <entry>C++ interface</entry>
+      <entry><ulink url="https://pqxx.org/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>node-postgres</entry>
+      <entry>JavaScript</entry>
+      <entry>Node.js driver</entry>
+      <entry><ulink url="https://node-postgres.com/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>Npgsql</entry>
+      <entry>.NET</entry>
+      <entry>.NET data provider</entry>
+      <entry><ulink url="https://www.npgsql.org/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>pgtcl</entry>
+      <entry>Tcl</entry>
+      <entry></entry>
+      <entry><ulink url="https://github.com/flightaware/Pgtcl"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>pgtclng</entry>
+      <entry>Tcl</entry>
+      <entry></entry>
+      <entry><ulink url="https://sourceforge.net/projects/pgtclng/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>pq</entry>
+      <entry>Go</entry>
+      <entry>Pure Go driver for Go's database/sql</entry>
+      <entry><ulink url="https://github.com/lib/pq"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>psqlODBC</entry>
+      <entry>ODBC</entry>
+      <entry>ODBC driver</entry>
+      <entry><ulink url="https://odbc.postgresql.org/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>psycopg</entry>
+      <entry>Python</entry>
+      <entry>DB API 2.0-compliant</entry>
+      <entry><ulink url="https://www.psycopg.org/"></ulink></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="external-admin-tools">
+ <title>Administration Tools</title>
+
+  <indexterm>
+   <primary>administration tools</primary>
+   <secondary>externally maintained</secondary>
+  </indexterm>
+
+  <para>
+   There are several administration tools available for
+   <productname>PostgreSQL</productname>. The most popular is
+   <application><ulink url="https://www.pgadmin.org/">pgAdmin</ulink></application>,
+   and there are several commercially available ones as well.
+  </para>
+ </sect1>
+
+ <sect1 id="external-pl">
+  <title>Procedural Languages</title>
+
+  <indexterm>
+   <primary>procedural language</primary>
+   <secondary>externally maintained</secondary>
+  </indexterm>
+
+  <para>
+   <productname>PostgreSQL</productname> includes several procedural
+   languages with the base distribution: <link
+   linkend="plpgsql">PL/pgSQL</link>, <link linkend="pltcl">PL/Tcl</link>,
+   <link linkend="plperl">PL/Perl</link>, and <link
+   linkend="plpython">PL/Python</link>.
+  </para>
+
+  <para>
+   In addition, there are a number of procedural languages that are developed
+   and maintained outside the core <productname>PostgreSQL</productname>
+   distribution. <xref linkend="pl-language-table"/> lists some of these
+   packages. Note that some of these projects might not be released under the same
+   license as <productname>PostgreSQL</productname>. For more information on each
+   procedural language, including licensing information, refer to its website
+   and documentation.
+  </para>
+
+  <table id="pl-language-table">
+   <title>Externally Maintained Procedural Languages</title>
+
+   <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Language</entry>
+      <entry>Website</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry>PL/Java</entry>
+      <entry>Java</entry>
+      <entry><ulink url="https://tada.github.io/pljava/"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>PL/Lua</entry>
+      <entry>Lua</entry>
+      <entry><ulink url="https://github.com/pllua/pllua-ng"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>PL/R</entry>
+      <entry>R</entry>
+      <entry><ulink url="https://github.com/postgres-plr/plr"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>PL/sh</entry>
+      <entry>Unix shell</entry>
+      <entry><ulink url="https://github.com/petere/plsh"></ulink></entry>
+     </row>
+
+     <row>
+      <entry>PL/v8</entry>
+      <entry>JavaScript</entry>
+      <entry><ulink url="https://github.com/plv8/plv8"></ulink></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="external-extensions">
+ <title>Extensions</title>
+
+  <indexterm>
+   <primary>extension</primary>
+   <secondary>externally maintained</secondary>
+  </indexterm>
+
+  <para>
+   <productname>PostgreSQL</productname> is designed to be easily extensible. For
+   this reason, extensions loaded into the database can function
+   just like features that are built in. The
+   <filename>contrib/</filename> directory shipped with the source code
+   contains several extensions, which are described in
+   <xref linkend="contrib"/>.  Other extensions are developed
+   independently, like <application><ulink
+   url="https://postgis.net/">PostGIS</ulink></application>.  Even
+   <productname>PostgreSQL</productname> replication solutions can be developed
+   externally. For example, <application> <ulink
+   url="https://www.slony.info">Slony-I</ulink></application> is a popular
+   primary/standby replication solution that is developed independently
+   from the core project.
+  </para>
+ </sect1>
+</appendix>

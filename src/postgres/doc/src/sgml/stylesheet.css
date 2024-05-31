@@ -1,0 +1,165 @@
+/* doc/src/sgml/stylesheet.css */
+
+/* color scheme similar to www.postgresql.org */
+
+body {
+	color: #000000;
+	background: #FFFFFF;
+	font-family: verdana, sans-serif;
+}
+
+a:link		{ color:#0066A2; }
+a:visited	{ color:#004E66; }
+a:active	{ color:#0066A2; }
+a:hover		{ color:#000000; }
+
+h1 {
+	font-size: 1.4em;
+	font-weight: bold;
+	margin-top: 0em;
+	margin-bottom: 0em;
+	color: #EC5800;
+}
+
+h2 {
+	font-size: 1.2em;
+	margin: 1.2em 0em 1.2em 0em;
+	font-weight: bold;
+	color: #666;
+}
+
+.titlepage h2.title,
+.refnamediv h2 {
+	color: #EC5800;
+}
+
+h3 {
+	font-size: 1.1em;
+	margin: 1.2em 0em 1.2em 0em;
+	font-weight: bold;
+	color: #666;
+}
+
+h4 {
+	font-size: 0.95em;
+	margin: 1.2em 0em 1.2em 0em;
+	font-weight: normal;
+	color: #666;
+}
+
+h5 {
+	font-size: 0.9em;
+	margin: 1.2em 0em 1.2em 0em;
+	font-weight: normal;
+}
+
+h6 {
+	font-size: 0.85em;
+	margin: 1.2em 0em 1.2em 0em;
+	font-weight: normal;
+}
+
+/* center some titles */
+
+.book .title, .book .corpauthor, .book .copyright {
+	text-align: center;
+}
+
+/* decoration for formal examples */
+
+div.example {
+	padding-left: 15px;
+	border-style: solid;
+	border-width: 0px;
+	border-left-width: 2px;
+	border-color: black;
+	margin: 0.5ex;
+}
+
+/* formatting for entries in tables of functions: indent all but first line */
+
+th.func_table_entry p,
+td.func_table_entry p {
+	margin-top: 0.1em;
+	margin-bottom: 0.1em;
+	padding-left: 4em;
+	text-align: left;
+}
+
+p.func_signature {
+	text-indent: -3.5em;
+}
+
+td.func_table_entry pre.programlisting {
+	margin-top: 0.1em;
+	margin-bottom: 0.1em;
+	padding-left: 4em;
+}
+
+/* formatting for entries in tables of catalog/view columns */
+
+th.catalog_table_entry p,
+td.catalog_table_entry p {
+	margin-top: 0.1em;
+	margin-bottom: 0.1em;
+	padding-left: 4em;
+	text-align: left;
+}
+
+th.catalog_table_entry p.column_definition {
+	text-indent: -3.5em;
+	word-spacing: 0.25em;
+}
+
+td.catalog_table_entry p.column_definition {
+	text-indent: -3.5em;
+}
+
+p.column_definition code.type {
+	padding-left: 0.25em;
+	padding-right: 0.25em;
+}
+
+td.catalog_table_entry pre.programlisting {
+	margin-top: 0.1em;
+	margin-bottom: 0.1em;
+	padding-left: 4em;
+}
+
+/* Put these here instead of inside the HTML (see unsetting of
+   admon.style in XSL) so that the web site stylesheet can set its own
+   style. */
+
+.tip,
+.note,
+.important,
+.caution,
+.warning {
+	margin-left: 0.5in;
+	margin-right: 0.5in;
+}
+
+/* miscellaneous */
+
+pre.literallayout, .screen, .synopsis, .programlisting {
+	margin-left: 4ex;
+}
+
+ul.itemizedlist {
+	margin-left: 2.5rem;
+}
+
+.comment	{ color: red; }
+
+var		{ font-family: monospace; font-style: italic; }
+/* Konqueror's standard style for ACRONYM is italic. */
+acronym		{ font-style: inherit; }
+
+.option		{ white-space: nowrap; }
+
+/* make images not too wide on larger screens */
+@media (min-width: 800px) {
+  .mediaobject {
+    width: 75%;
+  }
+}

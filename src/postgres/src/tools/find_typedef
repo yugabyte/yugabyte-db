@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# src/tools/find_typedef
+
+# This script attempts to find all typedef's in the postgres binaries
+# by using 'objdump' or local equivalent to print typedef debugging symbols.
+# We need this because pgindent needs a list of typedef names.
+#
+# For this program to work, you must have compiled all code with
+# debugging symbols.
+#
+# We intentionally examine all files in the targeted directories so as to
+# find both .o files and executables.  Therefore, ignore error messages about
+# unsuitable files being fed to objdump.
+#
+# This is known to work on Linux and on some BSDen, including macOS.
+#
+# Caution: on the platforms we use, this only prints typedefs that are used
+# to declare at least one variable or struct field.  If you have say
+# "typedef struct foo { ... } foo;", and then the structure is only ever
+# referenced as "struct foo", "foo" will not be reported as a typedef,
+# causing pgindent to indent the typedef definition oddly.  This is not a
+# huge problem, since by definition there's just the one misindented line.
+#
+# We get typedefs by reading "STABS":
+#    http://www.informatik.uni-frankfurt.de/doc/texi/stabs_toc.html
+
+
+if [ "$#" -eq 0 -o ! -d "$1" ]
+then	echo "Usage:  $0 postgres_binary_directory [...]" 1>&2
+	exit 1
+fi
+
+for DIR
+do	# if objdump -W is recognized, only one line of error should appear
+	if [ `objdump -W 2>&1 | wc -l` -eq 1 ]
+	then	# Linux
+		objdump -W "$DIR"/* |
+		egrep -A3 '\(DW_TAG_typedef\)' |
+		awk ' $2 == "DW_AT_name" {print $NF}'
+	elif [ `readelf -w 2>&1 | wc -l` -gt 1 ]
+	then	# FreeBSD, similar output to Linux
+		readelf -w "$DIR"/* |
+		egrep -A3 '\(DW_TAG_typedef\)' |
+		awk ' $1 == "DW_AT_name" {print $NF}'
+	fi
+done |
+grep -v ' ' | # some typedefs have spaces, remove them
+sort |
+uniq |
+# these are used both for typedefs and variable names
+# so do not include them
+egrep -v '^(date|interval|timestamp|ANY)$'

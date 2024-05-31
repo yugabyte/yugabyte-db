@@ -1,0 +1,125 @@
+--
+-- CIRCLE
+--
+-- Back off displayed precision a little bit to reduce platform-to-platform
+-- variation in results.
+SET extra_float_digits = -1;
+CREATE TABLE CIRCLE_TBL (f1 circle);
+INSERT INTO CIRCLE_TBL VALUES ('<(5,1),3>');
+INSERT INTO CIRCLE_TBL VALUES ('((1,2),100)');
+INSERT INTO CIRCLE_TBL VALUES (' 1 , 3 , 5 ');
+INSERT INTO CIRCLE_TBL VALUES (' ( ( 1 , 2 ) , 3 ) ');
+INSERT INTO CIRCLE_TBL VALUES (' ( 100 , 200 ) , 10 ');
+INSERT INTO CIRCLE_TBL VALUES (' < ( 100 , 1 ) , 115 > ');
+INSERT INTO CIRCLE_TBL VALUES ('<(3,5),0>');	-- Zero radius
+INSERT INTO CIRCLE_TBL VALUES ('<(3,5),NaN>');	-- NaN radius
+-- bad values
+INSERT INTO CIRCLE_TBL VALUES ('<(-100,0),-100>');
+ERROR:  invalid input syntax for type circle: "<(-100,0),-100>"
+LINE 1: INSERT INTO CIRCLE_TBL VALUES ('<(-100,0),-100>');
+                                       ^
+INSERT INTO CIRCLE_TBL VALUES ('<(100,200),10');
+ERROR:  invalid input syntax for type circle: "<(100,200),10"
+LINE 1: INSERT INTO CIRCLE_TBL VALUES ('<(100,200),10');
+                                       ^
+INSERT INTO CIRCLE_TBL VALUES ('<(100,200),10> x');
+ERROR:  invalid input syntax for type circle: "<(100,200),10> x"
+LINE 1: INSERT INTO CIRCLE_TBL VALUES ('<(100,200),10> x');
+                                       ^
+INSERT INTO CIRCLE_TBL VALUES ('1abc,3,5');
+ERROR:  invalid input syntax for type circle: "1abc,3,5"
+LINE 1: INSERT INTO CIRCLE_TBL VALUES ('1abc,3,5');
+                                       ^
+INSERT INTO CIRCLE_TBL VALUES ('(3,(1,2),3)');
+ERROR:  invalid input syntax for type circle: "(3,(1,2),3)"
+LINE 1: INSERT INTO CIRCLE_TBL VALUES ('(3,(1,2),3)');
+                                       ^
+SELECT * FROM CIRCLE_TBL;
+       f1       
+----------------
+ <(5,1),3>
+ <(1,2),100>
+ <(1,3),5>
+ <(1,2),3>
+ <(100,200),10>
+ <(100,1),115>
+ <(3,5),0>
+ <(3,5),NaN>
+(8 rows)
+
+SELECT center(f1) AS center
+  FROM CIRCLE_TBL;
+  center   
+-----------
+ (5,1)
+ (1,2)
+ (1,3)
+ (1,2)
+ (100,200)
+ (100,1)
+ (3,5)
+ (3,5)
+(8 rows)
+
+SELECT radius(f1) AS radius
+  FROM CIRCLE_TBL;
+ radius 
+--------
+      3
+    100
+      5
+      3
+     10
+    115
+      0
+    NaN
+(8 rows)
+
+SELECT diameter(f1) AS diameter
+  FROM CIRCLE_TBL;
+ diameter 
+----------
+        6
+      200
+       10
+        6
+       20
+      230
+        0
+      NaN
+(8 rows)
+
+SELECT f1 FROM CIRCLE_TBL WHERE radius(f1) < 5;
+    f1     
+-----------
+ <(5,1),3>
+ <(1,2),3>
+ <(3,5),0>
+(3 rows)
+
+SELECT f1 FROM CIRCLE_TBL WHERE diameter(f1) >= 10;
+       f1       
+----------------
+ <(1,2),100>
+ <(1,3),5>
+ <(100,200),10>
+ <(100,1),115>
+ <(3,5),NaN>
+(5 rows)
+
+SELECT c1.f1 AS one, c2.f1 AS two, (c1.f1 <-> c2.f1) AS distance
+  FROM CIRCLE_TBL c1, CIRCLE_TBL c2
+  WHERE (c1.f1 < c2.f1) AND ((c1.f1 <-> c2.f1) > 0)
+  ORDER BY distance, area(c1.f1), area(c2.f1);
+      one       |      two       |     distance     
+----------------+----------------+------------------
+ <(3,5),0>      | <(1,2),3>      | 0.60555127546399
+ <(3,5),0>      | <(5,1),3>      |  1.4721359549996
+ <(100,200),10> | <(100,1),115>  |               74
+ <(100,200),10> | <(1,2),100>    |  111.37072977248
+ <(1,3),5>      | <(100,200),10> |   205.4767561445
+ <(5,1),3>      | <(100,200),10> |  207.51303816328
+ <(3,5),0>      | <(100,200),10> |  207.79348015953
+ <(1,2),3>      | <(100,200),10> |  208.37072977248
+(8 rows)
+

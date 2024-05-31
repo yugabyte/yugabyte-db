@@ -1,0 +1,200 @@
+<!--
+doc/src/sgml/ref/show.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-show">
+ <indexterm zone="sql-show">
+  <primary>SHOW</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SHOW</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SHOW</refname>
+  <refpurpose>show the value of a run-time parameter</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SHOW <replaceable class="parameter">name</replaceable>
+SHOW ALL
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>SHOW</command> will display the current setting of
+   run-time parameters. These variables can be set using the
+   <command>SET</command> statement, by editing the
+   <filename>postgresql.conf</filename> configuration file, through
+   the <envar>PGOPTIONS</envar> environmental variable (when using
+   <application>libpq</application> or a <application>libpq</application>-based
+   application), or through command-line flags when starting the
+   <command>postgres</command> server.  See <xref
+   linkend="runtime-config"/> for details.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a run-time parameter.  Available parameters are
+      documented in <xref linkend="runtime-config"/> and on the <xref
+      linkend="sql-set"/> reference page.  In
+      addition, there are a few parameters that can be shown but not
+      set:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>SERVER_VERSION</literal></term>
+        <listitem>
+         <para>
+          Shows the server's version number.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>SERVER_ENCODING</literal></term>
+        <listitem>
+         <para>
+          Shows the server-side character set encoding.  At present,
+          this parameter can be shown but not set, because the
+          encoding is determined at database creation time.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>LC_COLLATE</literal></term>
+        <listitem>
+         <para>
+          Shows the database's locale setting for collation (text
+          ordering).  At present, this parameter can be shown but not
+          set, because the setting is determined at database creation
+          time.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>LC_CTYPE</literal></term>
+        <listitem>
+         <para>
+          Shows the database's locale setting for character
+          classification.  At present, this parameter can be shown but
+          not set, because the setting is determined at database creation
+          time.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>IS_SUPERUSER</literal></term>
+        <listitem>
+         <para>
+          True if the current role has superuser privileges.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALL</literal></term>
+    <listitem>
+     <para>
+      Show the values of all configuration parameters, with descriptions.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The function <function>current_setting</function> produces
+   equivalent output; see <xref linkend="functions-admin-set"/>.
+   Also, the
+   <link linkend="view-pg-settings"><structname>pg_settings</structname></link>
+   system view produces the same information.
+
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Show the current setting of the parameter <varname>DateStyle</varname>:
+
+<programlisting>
+SHOW DateStyle;
+ DateStyle
+-----------
+ ISO, MDY
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Show the current setting of the parameter <varname>geqo</varname>:
+<programlisting>
+SHOW geqo;
+ geqo
+------
+ on
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Show all settings:
+<programlisting>
+SHOW ALL;
+            name         | setting |                description
+-------------------------+---------+-------------------------------------------------
+ allow_system_table_mods | off     | Allows modifications of the structure of ...
+    .
+    .
+    .
+ xmloption               | content | Sets whether XML data in implicit parsing ...
+ zero_damaged_pages      | off     | Continues processing past damaged page headers.
+(196 rows)
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The <command>SHOW</command> command is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-set"/></member>
+   <member><xref linkend="sql-reset"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,87 @@
+@use '../../../_style/colors';
+
+.ha-replication-view {
+  &__header-buttons {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+
+    > .btn {
+      margin-right: 8px;
+    }
+
+    .yb-info-tip {
+      margin-right: 12px;
+      font-size: 1.2em; // copy rule from forms.scss
+    }
+  }
+
+  &__row {
+    padding: 8px 0;
+  }
+
+  &__label {
+    color: colors.$YB_SUBTITLE_COLOR;
+  }
+
+  &__value {
+    font-weight: 400;
+
+    .btn-copy,
+    .btn-paste {
+      margin-left: 20px;
+    }
+  }
+
+  &__topology-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    min-height: 26px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  &__topology-col {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    &--type {
+      min-width: 80px;
+    }
+
+    &--current {
+      min-width: 90px;
+    }
+
+    &--address {
+      width: 100%;
+    }
+  }
+  &__no-cert--add-button {
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: colors.$YB_ORANGE;
+    &:hover {
+      color: colors.$YB_ORANGE_HOVER;
+      text-decoration: underline;
+    }
+    cursor: pointer;
+  }
+  
+
+  &__cert-container {
+    display: flex;
+    &--identifier {
+      min-width: 750px;
+    }
+    &--ellipse {
+      min-width: 35px;
+    }
+  }
+}

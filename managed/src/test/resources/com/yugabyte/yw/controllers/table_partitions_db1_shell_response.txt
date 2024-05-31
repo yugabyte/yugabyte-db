@@ -1,0 +1,5 @@
+
+                                                                                                                                                                                                              jsonb_agg
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+[{"tableName": "db1.table1.partition1", "schemaName": "public", "parentTable": "db1.table1", "parentSchema": "public", "tablespace": "us_west_1_tablespace", "parentTablespace": null}, {"tableName": "db1.table1.partition2", "schemaName": "public", "parentTable": "db1.table1", "parentSchema": "public", "tablespace": "us_west_3_tablespace", "parentTablespace": null}]
+(1 row)

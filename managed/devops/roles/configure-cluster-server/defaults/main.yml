@@ -1,0 +1,51 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# Structure of $yb_home_dir
+# .
+# |-- bin
+# |   `-- yb-server-ctl.sh
+# |-- cores -> /mnt/d0/cores
+# |-- master
+# |   |-- bin -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/bin
+# |   |-- conf
+# |   |   `-- server.conf
+# |   |-- java -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/java
+# |   |-- lib -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/lib
+# |   |-- logs -> /mnt/d0/yb-data/master/logs
+# |   |-- pylib -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/pylib
+# |   `-- www -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/www
+# |-- tserver
+# |   |-- bin -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/bin
+# |   |-- conf
+# |   |   `-- server.conf
+# |   |-- java -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/java
+# |   |-- lib -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/lib
+# |   |-- logs -> /mnt/d0/yb-data/tserver/logs
+# |   |-- pylib -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/pylib
+# |   `-- www -> $yb_home_dir/yb-software/yugabyte.<commit_hash>.0.0.x.y/www
+# `-- yb-software
+#     |-- releases
+#     |   `-- 0.0.x.y
+#     `-- yugabyte.<commit_hash>.0.0.x.y
+#         |-- bin
+#         |-- java
+#         |-- lib
+#         |-- pylib
+#         `-- www
+
+yb_home_dir: "/home/{{ user_name }}"
+yb_bin_dir: "{{ yb_home_dir }}/bin"
+yb_cores_dir: "{{ yb_home_dir }}/cores"
+yb_conf_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/conf"
+yb_logs_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/logs"
+yb_conf_file: "{{ yb_conf_dir }}/server.conf"
+yb_metrics_dir: "{{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
+systemd_option: false
+systemd_unit_dir: "/lib/systemd/system"
+yb_num_clean_cores_to_keep: "{{ yb_num_cores_to_keep | default(5) }}"

@@ -1,0 +1,13 @@
+@use '../../../_style/colors.scss';
+
+.reveal-badge {
+  font-weight: normal;
+  font-size: 11.5px;
+  line-height: 14px;
+  color: colors.$YB_TEXT_COLOR;
+  padding: 3px;
+  background: colors.$YB_BG_WHITE_3;
+  border: 1px solid colors.$YB_BG_WHITE_4;
+  border-radius: 4px;
+  cursor: pointer;
+}

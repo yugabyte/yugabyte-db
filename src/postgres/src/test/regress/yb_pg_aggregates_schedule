@@ -1,0 +1,12 @@
+# src/test/regress/yb_pg_aggregates_schedule
+#
+####################################################################################################
+# This includes tests for Aggregates Functions
+####################################################################################################
+# Dependencies for `yb_pg_aggregates`
+test: yb_pg_test_setup
+test: yb_dep_create_index
+
+test: yb_pg_create_aggregate
+test: yb_pg_aggregates
+test: yb_aggregates

@@ -1,0 +1,25 @@
+---
+# Warning: Yugabyte.Spelling
+#
+# Checks for possible spelling mistakes in content, not code. Results from links using angle brackets (<https://example.com>) should be corrected.
+#
+# If a word is flagged as a spelling mistake incorrectly, such as a product name,
+# you can submit a PR to update `spelling-exceptions.txt` with the missing word.
+#
+# If a person's name is flagged as a spelling mistake, you can submit a PR to
+# update `spelling-names.txt` with the missing name.
+#
+# Commands, like `git clone` must use backticks, and must not be added to the
+# exceptions.
+#
+# For a list of all options, see https://errata-ai.gitbook.io/vale/getting-started/styles
+extends: spelling
+message: 'Spelling: "%s"?'
+level: warning
+custom: false
+code: false
+filters:
+  - '(?:\w*\.?)yugabyte\.com'
+ignore:
+  - Yugabyte/spelling-exceptions.txt
+  - Yugabyte/spelling-names.txt

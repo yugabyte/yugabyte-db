@@ -1,0 +1,84 @@
+<!--
+doc/src/sgml/ref/pg_controldata.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-pgcontroldata">
+ <indexterm zone="app-pgcontroldata">
+  <primary>pg_controldata</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>pg_controldata</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>pg_controldata</refname>
+  <refpurpose>display control information of a <productname>PostgreSQL</productname> database cluster</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>pg_controldata</command>
+   <arg choice="opt"><replaceable class="parameter">option</replaceable></arg>
+   <group choice="opt">
+    <group choice="opt">
+     <arg choice="plain"><option>-D</option></arg>
+     <arg choice="plain"><option>--pgdata</option></arg>
+    </group>
+    <replaceable class="parameter">datadir</replaceable>
+   </group>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="r1-app-pgcontroldata-1">
+  <title>Description</title>
+  <para>
+   <command>pg_controldata</command> prints information initialized during
+   <command>initdb</command>, such as the catalog version.
+   It also shows information about write-ahead logging and checkpoint
+   processing.  This information is cluster-wide, and not specific to any one
+   database.
+  </para>
+
+  <para>
+   This utility can only be run by the user who initialized the cluster because
+   it requires read access to the data directory.
+   You can specify the data directory on the command line, or use
+   the environment variable <envar>PGDATA</envar>.  This utility supports the options
+   <option>-V</option> and <option>--version</option>, which print the
+   <application>pg_controldata</application> version and exit.  It also
+   supports options <option>-?</option> and <option>--help</option>, which output the
+   supported arguments.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATA</envar></term>
+
+    <listitem>
+     <para>
+      Default data directory location
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>

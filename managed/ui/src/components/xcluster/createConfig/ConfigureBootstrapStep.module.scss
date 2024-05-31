@@ -1,0 +1,42 @@
+.formInstruction {
+  margin-bottom: 25px;
+
+  font-weight: bold;
+  font-size: 14px;
+}
+.formFieldContainer {
+  margin-top: 25px;
+
+  & > * {
+    margin-top: 15px;
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+}
+
+.backupConfigLabelName {
+  margin-right: 5px;
+}
+
+// TODO: Review the following styles taken from BackupCreateModal.scss
+.backupConfigOptionLabel {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 16px;
+  color: #151730;
+}
+
+.backupConfigOptionMeta {
+  margin-top: 4px;
+  margin-bottom: 6px;
+
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 14px;
+  color: #67666c;
+  > span {
+    margin-right: 10px;
+  }
+}

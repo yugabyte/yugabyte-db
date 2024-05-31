@@ -1,0 +1,23 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# List of all allowed cloud_type values.
+allowed_cloud_types:
+  - aws
+  - gcp
+  - onprem
+  - azu
+
+cloud_region: us-west-2
+
+ssh_port: 22
+
+java_download_from_oracle: true
+
+# Dumb placeholder file for defaults to vars_files usage, when we do not have vaults to use.
+placeholder_vars_file: "vars/placeholder.yml"

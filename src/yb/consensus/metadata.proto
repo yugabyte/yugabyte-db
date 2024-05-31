@@ -1,0 +1,176 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.consensus;
+
+option java_package = "org.yb.consensus";
+
+import "yb/common/common_net.proto";
+
+// ===========================================================================
+//  Consensus Metadata
+// ===========================================================================
+
+enum PeerMemberType {
+  UNKNOWN_MEMBER_TYPE = 999;
+
+  // Any server added into a running consensus with the intention of becoming a VOTER, should be
+  // added as a PRE_VOTER. Such a server stays as a PRE_VOTER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to VOTER. While in this mode, a server will
+  // not vote nor try to become a leader.
+  PRE_VOTER = 0;
+  VOTER = 1;
+
+  // Any server added into a running consensus with the intention of becoming an async replica
+  // (OBSERVER), Such a server stays as a PRE_OBSERVER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to OBSERVER. While in this mode, a server
+  // will not vote nor try to become a leader.
+  PRE_OBSERVER = 2;
+
+  // Async replication mode. An OBSERVER doesn't participate in any decisions regarding the
+  // consensus configuration. It only accepts update requests and allows read requests.
+  OBSERVER = 3;
+};
+
+// A peer in a configuration.
+message RaftPeerPB {
+  // Permanent uuid is optional: RaftPeerPB/RaftConfigPB instances may
+  // be created before the permanent uuid is known (e.g., when
+  // manually specifying a configuration for Master/CatalogManager);
+  // permament uuid can be retrieved at a later time through RPC.
+  optional bytes permanent_uuid = 1;
+  optional PeerMemberType member_type = 2;
+  repeated HostPortPB last_known_private_addr = 3;
+  repeated HostPortPB last_known_broadcast_addr = 4;
+  optional CloudInfoPB cloud_info = 5;
+}
+
+enum ConsensusConfigType {
+  CONSENSUS_CONFIG_UNKNOWN = 999;
+
+  // Committed consensus config. This includes the consensus configuration that
+  // has been serialized through consensus and committed, thus having a valid
+  // opid_index field set.
+  CONSENSUS_CONFIG_COMMITTED = 1;
+
+  // Active consensus config. This could be a pending consensus config that
+  // has not yet been committed. If the config is not committed, its opid_index
+  // field will not be set.
+  CONSENSUS_CONFIG_ACTIVE = 2;
+}
+
+// A set of peers, serving a single tablet.
+message RaftConfigPB {
+  // The index of the operation which serialized this RaftConfigPB through
+  // consensus. It is set when the operation is consensus-committed (replicated
+  // to a majority of voters) and before the consensus metadata is updated.
+  // It is left undefined if the operation isn't committed.
+  optional int64 opid_index = 1;
+
+  // Flag to allow unsafe config change operations.
+  optional bool unsafe_config_change = 4 [ default = false ];
+
+  // The set of peers in the configuration.
+  repeated RaftPeerPB peers = 2;
+}
+
+// Represents a snapshot of a configuration at a given moment in time.
+message ConsensusStatePB {
+  // A configuration is always guaranteed to have a known term.
+  required int64 current_term = 1;
+
+  // There may not always be a leader of a configuration at any given time.
+  //
+  // The node that the local peer considers to be leader changes based on rules defined in the Raft
+  // specification. Roughly, this corresponds either to being elected leader (in the case that the
+  // local peer is the leader), or when an update is accepted from another node, which basically
+  // just amounts to a term check on the UpdateConsensus() RPC request.
+  //
+  // Whenever the local peer sees a new term, the leader flag is cleared until a new leader is
+  // acknowledged based on the above critera. Simply casting a vote for a peer is not sufficient to
+  // assume that that peer has won the election, so we do not update this field based on our vote.
+  //
+  // The leader listed here, if any, should always be a member of 'configuration', and the term that
+  // the node is leader of _must_ equal the term listed above in the 'current_term' field. The
+  // Master will use the combination of current term and leader uuid to determine when to update its
+  // cache of the current leader for client lookup purposes.
+  //
+  // There is a corner case in Raft where a node may be elected leader of a pending (uncommitted)
+  // configuration. In such a case, if the leader of the pending configuration is not a member of
+  // the committed configuration, and it is the committed configuration that is being reported, then
+  // the leader_uuid field should be cleared by the process filling in the ConsensusStatePB object.
+  optional string leader_uuid = 2;
+
+  // The peers. In some contexts, this will be the committed configuration, which will always have
+  // configuration.opid_index set. In other contexts, this may a "pending" configuration, which is
+  // active but in the process of being committed.  In any case, initial peership is set on tablet
+  // start, so this field should always be present.
+  required RaftConfigPB config = 3;
+}
+
+// This PB is used to serialize all of the persistent state needed for
+// Consensus that is not in the WAL, such as leader election and
+// communication on startup.
+message ConsensusMetadataPB {
+  // Last-committed peership.
+  required RaftConfigPB committed_config = 1;
+
+  // Latest term this server has seen.
+  // When a configuration is first created, initialized to 0.
+  //
+  // Whenever a new election is started, the candidate increments this by one
+  // and requests votes from peers.
+  //
+  // If any RPC or RPC response is received from another node containing a term higher
+  // than this one, the server should step down to FOLLOWER and set its current_term to
+  // match the caller's term.
+  //
+  // If a follower receives an UpdateConsensus RPC with a term lower than this
+  // term, then that implies that the RPC is coming from a former LEADER who has
+  // not realized yet that its term is over. In that case, we will reject the
+  // UpdateConsensus() call with ConsensusErrorPB::INVALID_TERM.
+  //
+  // If a follower receives a RequestConsensusVote() RPC with an earlier term,
+  // the vote is denied.
+  required int64 current_term = 2;
+
+  // Permanent UUID of the candidate voted for in 'current_term', or not present
+  // if no vote was made in the current term.
+  optional string voted_for = 3;
+
+  optional bytes split_parent_tablet_id = 4;
+
+  optional uint32 clone_source_seq_no = 5;
+  optional string clone_source_tablet_id = 6;
+}

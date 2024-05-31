@@ -1,0 +1,73 @@
+//
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+//
+syntax = "proto2";
+
+package rocksdb;
+
+import "yb/common/opid.proto";
+import "google/protobuf/any.proto";
+
+message DeletedFilePB {
+  optional uint32 level = 1;
+  optional uint64 file_number = 2;
+}
+
+message UserBoundaryValuePB {
+  // When we merge boundary values from different sources tag is used to find corresponding values.
+  // After that we compare those values and preserve smallest/largest of them.
+  optional uint32 tag = 1;
+  optional bytes data = 2;
+}
+
+message BoundaryValuesPB {
+  optional bytes key = 1;
+  optional uint64 seqno = 2;
+  optional google.protobuf.Any user_frontier = 4;
+  repeated UserBoundaryValuePB user_values = 3;
+}
+
+message NewFilePB {
+  optional uint32 level = 1;
+  optional uint64 number = 2;
+  optional uint64 total_file_size = 3;
+  optional uint64 base_file_size = 4;
+  optional BoundaryValuesPB smallest = 5;
+  optional BoundaryValuesPB largest = 6;
+  optional uint32 path_id = 7;
+  optional bool marked_for_compaction = 8;
+  optional yb.OpIdPB obsolete_last_op_id = 9;
+  optional bool imported = 10;
+}
+
+message VersionEditPB {
+  optional string comparator = 1;
+  optional uint64 log_number = 2;
+  optional uint64 prev_log_number = 3;
+  optional uint64 next_file_number = 4;
+  optional uint32 max_column_family = 5;
+  optional uint64 last_sequence = 6;
+  repeated DeletedFilePB deleted_files = 7;
+  repeated NewFilePB new_files = 8;
+  // Each version edit record should have column_family_id set
+  // If it's not set, it is default (0)
+  optional uint32 column_family = 9;
+  // a version edit can be either column_family add or
+  // column_family drop. If it's column family add,
+  // it includes column family name.
+  optional string column_family_name = 10;
+  optional bool is_column_family_drop = 11;
+  optional yb.OpIdPB obsolete_last_op_id = 12;
+  optional google.protobuf.Any flushed_frontier = 13;
+}

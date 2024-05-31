@@ -1,0 +1,30 @@
+# Copyright (c) YugaByte, Inc.
+
+global:
+  # By default, scrape targets every 15 seconds.
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  # scrape_timeout is set to the global default (10s).
+
+  # The labels to add to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'swamper'
+
+rule_files:
+  - '/etc/yugaware/prometheus/rules/yugaware.ad.*.yml'
+  - "alert.rules"
+
+# A list of scrape configurations.
+scrape_configs:
+
+  - job_name: 'prometheus'
+    scrape_interval: 10s
+    scrape_timeout:  10s
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: "node"
+    file_sd_configs:
+      - files:
+        - '/etc/yugaware/prometheus/tgroups/*.json'

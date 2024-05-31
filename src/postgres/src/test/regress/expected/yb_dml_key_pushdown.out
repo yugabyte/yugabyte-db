@@ -1,0 +1,531 @@
+--
+-- KEY Pushdown Processing.
+-- This file tests keys whose column ordering is different from their ordering in table.
+-- Pushdown expression is in a different test.
+--
+-- Test key-ordering with small tables.
+CREATE TABLE tab(c1 INT, c2 INT, c3 INT, c4 INT, c5 INT, c6 INT, c7 INT,
+			 			 		 PRIMARY KEY (c2, c6, c5, c4));
+INSERT INTO tab VALUES (1, 2, 3, 4, 5, 6, 7),
+  (1, 2, 3, 41, 51, 61, 7), (1, 2, 3, 41, 51, 62, 7), (1, 2, 3, 41, 51, 63, 7),
+  (1, 2, 3, 41, 52, 61, 7), (1, 2, 3, 41, 52, 62, 7), (1, 2, 3, 41, 52, 63, 7),
+  (1, 2, 3, 41, 53, 61, 7), (1, 2, 3, 41, 53, 62, 7), (1, 2, 3, 41, 53, 63, 7),
+  (1, 2, 3, 42, 51, 61, 7), (1, 2, 3, 42, 51, 62, 7), (1, 2, 3, 42, 51, 63, 7),
+  (1, 2, 3, 42, 52, 61, 7), (1, 2, 3, 42, 52, 62, 7), (1, 2, 3, 42, 52, 63, 7),
+  (1, 2, 3, 42, 53, 61, 7), (1, 2, 3, 42, 53, 62, 7), (1, 2, 3, 42, 53, 63, 7),
+  (1, 2, 3, 43, 51, 61, 7), (1, 2, 3, 43, 51, 62, 7), (1, 2, 3, 43, 51, 63, 7),
+  (1, 2, 3, 43, 52, 61, 7), (1, 2, 3, 43, 52, 62, 7), (1, 2, 3, 43, 52, 63, 7),
+  (1, 2, 3, 43, 53, 61, 7), (1, 2, 3, 43, 53, 62, 7), (1, 2, 3, 43, 53, 63, 7);
+SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c5 = 5 AND c4 = 4;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 AND c6 = 6;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2 AND c5 = 5;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2 AND c4 = 4;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c5 = 5;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2 AND c6 = 6 AND c4 = 4;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+SELECT * FROM tab WHERE c2 = 2 AND c5 = 5 AND c4 = 4;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(1 row)
+
+-- Test correctness of value ordering.
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5, c6 DESC;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4, c5 DESC, c6 DESC;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5, c6 DESC;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5 DESC, c6;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(28 rows)
+
+SELECT * FROM tab WHERE c2 = 2 ORDER BY c4 DESC, c5 DESC, c6 DESC;
+ c1 | c2 | c3 | c4 | c5 | c6 | c7
+----+----+----+----+----+----+----
+  1 |  2 |  3 | 43 | 53 | 63 |  7
+  1 |  2 |  3 | 43 | 53 | 62 |  7
+  1 |  2 |  3 | 43 | 53 | 61 |  7
+  1 |  2 |  3 | 43 | 52 | 63 |  7
+  1 |  2 |  3 | 43 | 52 | 62 |  7
+  1 |  2 |  3 | 43 | 52 | 61 |  7
+  1 |  2 |  3 | 43 | 51 | 63 |  7
+  1 |  2 |  3 | 43 | 51 | 62 |  7
+  1 |  2 |  3 | 43 | 51 | 61 |  7
+  1 |  2 |  3 | 42 | 53 | 63 |  7
+  1 |  2 |  3 | 42 | 53 | 62 |  7
+  1 |  2 |  3 | 42 | 53 | 61 |  7
+  1 |  2 |  3 | 42 | 52 | 63 |  7
+  1 |  2 |  3 | 42 | 52 | 62 |  7
+  1 |  2 |  3 | 42 | 52 | 61 |  7
+  1 |  2 |  3 | 42 | 51 | 63 |  7
+  1 |  2 |  3 | 42 | 51 | 62 |  7
+  1 |  2 |  3 | 42 | 51 | 61 |  7
+  1 |  2 |  3 | 41 | 53 | 63 |  7
+  1 |  2 |  3 | 41 | 53 | 62 |  7
+  1 |  2 |  3 | 41 | 53 | 61 |  7
+  1 |  2 |  3 | 41 | 52 | 63 |  7
+  1 |  2 |  3 | 41 | 52 | 62 |  7
+  1 |  2 |  3 | 41 | 52 | 61 |  7
+  1 |  2 |  3 | 41 | 51 | 63 |  7
+  1 |  2 |  3 | 41 | 51 | 62 |  7
+  1 |  2 |  3 | 41 | 51 | 61 |  7
+  1 |  2 |  3 |  4 |  5 |  6 |  7
+(28 rows)
+
+-- Test Primary Key whose column-ordering is different from the table.
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 name = 'Battle Lake Municipal Airport' AND
+			 type = 'small_airport' AND
+			 ident = '00MN';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 ident = '00MN' AND
+			 name = 'Battle Lake Municipal Airport' AND
+			 type = 'small_airport' AND
+			 iso_region = 'US-MN';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 type = 'heliport'
+			 ORDER BY ident;
+ ident |   type   |                    name                     | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+----------+---------------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
+ 05MN  | heliport | Northern Pines Medical Center Heliport      |         1446 | NA        | US          | US-MN      | Aurora       | 05MN     |           | 05MN       | -92.2302778, 47.5175001
+ 0MN7  | heliport | Ely Bloomenson Community Hospital Heliport  |         1450 | NA        | US          | US-MN      | Ely          | 0MN7     |           | 0MN7       | -91.87300109863281, 47.89910125732422
+ 0MN9  | heliport | Triple H Heliport                           |          980 | NA        | US          | US-MN      | Big Lake     | 0MN9     |           | 0MN9       | -93.71759796142578, 45.31330108642578
+ 0MY0  | heliport | Kenyon Heliport                             |         1500 | NA        | US          | US-MN      | Kenyon       | 0MY0     |           | 0MY0       | -92.94329833984375, 44.333900451660156
+ 14MN  | heliport | Riverwood Healthcare Center Heliport        |         1224 | NA        | US          | US-MN      | Aitkin       | 14MN     |           | 14MN       | -93.69920349121094, 46.52920150756836
+ 1MN3  | heliport | Northern Itasca Health Care Center Heliport |         1320 | NA        | US          | US-MN      | Bigfork      | 1MN3     |           | 1MN3       | -93.64630126953125, 47.74720001220703
+ 1MN6  | heliport | Cook Hospital Heliport                      |         1315 | NA        | US          | US-MN      | Cook         | 1MN6     |           | 1MN6       | -92.6791000366211, 47.85300064086914
+ 1MN7  | heliport | Cuyuna Regional Medical Center Heliport     |         1255 | NA        | US          | US-MN      | Crosby       | 1MN7     |           | 1MN7       | -93.943603515625, 46.482200622558594
+ 1MN9  | heliport | Sanford Jackson Medical Center Heliport     |         1450 | NA        | US          | US-MN      | Jackson      | 1MN9     |           | 1MN9       | -95.003987, 43.624831
+ 2MN3  | heliport | Chippewa County Hospital Heliport           |         1024 | NA        | US          | US-MN      | Montevideo   | 2MN3     |           | 2MN3       | -95.71179962158203, 44.952598571777344
+ 2MY3  | heliport | Cambridge Medical Center Heliport           |          980 | NA        | US          | US-MN      | Cambridge    | 2MY3     |           | 2MY3       | -93.231361, 45.56545
+ 30MN  | heliport | Albert Lea Medical Center Heliport          |         1253 | NA        | US          | US-MN      | Albert Lea   | 30MN     |           | 30MN       | -93.371586, 43.652697
+ 3MN2  | heliport | Mercy Hospital & Healthcare Center Heliport |         1060 | NA        | US          | US-MN      | Moose Lake   | 3MN2     |           | 3MN2       | -92.77549743652344, 46.44070053100586
+ 3MN6  | heliport | Immanuel - St Joseph's Hospital Heliport    |         1076 | NA        | US          | US-MN      | Mankato      | 3MN6     |           | 3MN6       | -93.9950027466, 44.1688995361
+ 4MN3  | heliport | Lexington Heliport                          |         1080 | NA        | US          | US-MN      | Ham Lake     | 4MN3     |           | 4MN3       | -93.15039825439453, 45.311100006103516
+ 4MN6  | heliport | Sanford Westbrook Clinic Heliport           |         1432 | NA        | US          | US-MN      | Westbrook    | 4MN6     |           | 4MN6       | -95.440041, 44.046133
+ 51MN  | heliport | Barry Heliport                              |         1330 | NA        | US          | US-MN      | Dent         | 51MN     |           | 51MN       | -95.848272, 46.450953
+ 5MN3  | heliport | Mesabi Regional Medical Center Heliport     |         1359 | NA        | US          | US-MN      | Hibbing      | 5MN3     |           | 5MN3       | -92.92880249023438, 47.4099006652832
+ 64MN  | heliport | Svard Heliport                              |          902 | NA        | US          | US-MN      | Plymouth     | 64MN     |           | 64MN       | -93.43270111083984, 45.04280090332031
+ 6MN3  | heliport | Hopkins Police Heliport                     |          918 | NA        | US          | US-MN      | Hopkins      | 6MN3     |           | 6MN3       | -93.41690063476562, 44.91659927368164
+ 7MN1  | heliport | Regions Hospital Heliport                   |          780 | NA        | US          | US-MN      | St Paul      | 7MN1     |           | 7MN1       | -93.0947036743164, 44.95690155029297
+ 7MN7  | heliport | Bridges Medical Center Hospital Heliport    |          878 | NA        | US          | US-MN      | Ada          | 7MN7     |           | 7MN7       | -96.5302963256836, 47.298301696777344
+ 7MN9  | heliport | Mandarin Yen So Heliport                    |          810 | NA        | US          | US-MN      | Bloomington  | 7MN9     |           | 7MN9       | -93.30989837646484, 44.85689926147461
+ 8MN7  | heliport | St Elizabeth Hospital Heliport              |          708 | NA        | US          | US-MN      | Wabasha      | 8MN7     |           | 8MN7       | -92.04859924316406, 44.38819885253906
+ 91MN  | heliport | Sanford Canby Medical Center Heliport       |         1244 | NA        | US          | US-MN      | Canby        | 91MN     |           | 91MN       | -96.2789993286, 44.70740127559999
+ 97MN  | heliport | Fairview Red Wing Medical Center Heliport   |          862 | NA        | US          | US-MN      | Red Wing     | 97MN     |           | 97MN       | -92.5728988647461, 44.55929946899414
+ 99MN  | heliport | St Mary's Hospital Heliport                 |         1166 | NA        | US          | US-MN      | Rochester    | 99MN     |           | 99MN       | -92.48310089111328, 44.019798278808594
+(27 rows)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 name = 'Battle Lake Municipal Airport';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 ident = '00MN';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 name = 'Battle Lake Municipal Airport' AND
+			 type = 'small_airport';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 name = 'Battle Lake Municipal Airport' AND
+			 ident = '00MN';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MN' AND
+			 type = 'small_airport' AND
+			 ident = '00MN';
+ ident |     type      |             name              | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+-------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 00MN  | small_airport | Battle Lake Municipal Airport |         1365 | NA        | US          | US-MN      | Battle Lake  | 00MN     |           | 00MN       | -95.70030212402344, 46.29999923706055
+(1 row)
+
+-- Test Secondary Key whose column ordering is different from the table.
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MS' AND type = 'heliport' AND
+			 coordinates = '-88.55889892578125, 30.53030014038086' AND
+			 ident = '10MS' AND
+			 name = 'Daniel Emergency Response Team Heliport';
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MS' AND type = 'heliport'
+			 ORDER BY ident;
+ ident |   type   |                        name                        | elevation_ft | continent | iso_country | iso_region |  municipality  | gps_code | iata_code | local_code |              coordinates
+-------+----------+----------------------------------------------------+--------------+-----------+-------------+------------+----------------+----------+-----------+------------+----------------------------------------
+ 03MS  | heliport | Vicksburg Medical Center Heliport                  |          110 | NA        | US          | US-MS      | Vicksburg      | 03MS     |           | 03MS       | -90.8832015991211, 32.31880187988281
+ 05MS  | heliport | Va Medical Center Jackson Heliport                 |          359 | NA        | US          | US-MS      | Jackson        | 05MS     |           | 05MS       | -90.16809844970703, 32.31890106201172
+ 0MS3  | heliport | Baptist Memorial Hospital-North Ms Heliport        |          430 | NA        | US          | US-MS      | Oxford         | 0MS3     |           | 0MS3       | -89.51899719238281, 34.347801208496094
+ 0MS4  | heliport | Sheriff's Courthouse Heliport                      |           50 | NA        | US          | US-MS      | Gulfport       | 0MS4     |           | 0MS4       | -89.08619689941406, 30.375999450683594
+ 0MS6  | heliport | Levert Heliport                                    |           25 | NA        | US          | US-MS      | Pass Christian | 0MS6     |           | 0MS6       | -89.2344970703125, 30.301300048828125
+ 10MS  | heliport | Daniel Emergency Response Team Heliport            |           20 | NA        | US          | US-MS      | Moss Point     | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
+ 16MS  | heliport | Iuka Hospital Heliport                             |          610 | NA        | US          | US-MS      | Iuka           | 16MS     |           | 16MS       | -88.20999908447266, 34.80670166015625
+ 17MS  | heliport | River Region Medical Center Heliport               |          331 | NA        | US          | US-MS      | Vicksburg      | 17MS     |           | 17MS       | -90.82360076904297, 32.373600006103516
+ 1MS1  | heliport | Neshoba General Hospital Heliport                  |          388 | NA        | US          | US-MS      | Philadelphia   | 1MS1     |           | 1MS1       | -89.105745, 32.757279
+ 1MS3  | heliport | Baptist Medical Center Attala Heliport             |          455 | NA        | US          | US-MS      | Kosciusko      | 1MS3     |           | 1MS3       | -89.598501, 33.066799
+ 1MS4  | heliport | Methodist Medical Center Heliport                  |          366 | NA        | US          | US-MS      | Jackson        | 1MS4     |           | 1MS4       | -90.2562026977539, 32.287899017333984
+ 1MS5  | heliport | General Dan C Mills Emergency Heliport             |           44 | NA        | US          | US-MS      | Byhalia        | 1MS5     |           | 1MS5       | -89.7029037475586, 34.888999938964844
+ 1MS7  | heliport | Smith County General Hospital Heliport             |          535 | NA        | US          | US-MS      | Raleigh        | 1MS7     |           | 1MS7       | -89.51950073242188, 31.99959945678711
+ 25MS  | heliport | Baptist Memorial Hospital-Golden Triangle Heliport |          179 | NA        | US          | US-MS      | Columbus       | 25MS     |           | 25MS       | -88.4281005859375, 33.52450180053711
+ 2MS0  | heliport | Tgp Station 851 Heliport                           |          420 | NA        | US          | US-MS      | New Albany     | 2MS0     |           | 2MS0       | -89.01329803466797, 34.538299560546875
+ 2MS1  | heliport | Tgp Station 843 Heliport                           |          105 | NA        | US          | US-MS      | Isola          | 2MS1     |           | 2MS1       | -90.57749938964844, 33.235599517822266
+ 2MS4  | heliport | Tgp Station 546 Heliport                           |          219 | NA        | US          | US-MS      | Columbus       | 2MS4     |           | 2MS4       | -88.36170196533203, 33.44919967651367
+ 2MS5  | heliport | Tgp Station 847 Heliport                           |          245 | NA        | US          | US-MS      | Coffeeville    | 2MS5     |           | 2MS5       | -89.7842025756836, 33.906898498535156
+ 2MS6  | heliport | Tgp Station 63 Heliport                            |          175 | NA        | US          | US-MS      | Batesville     | 2MS6     |           | 2MS6       | -90.07219696044922, 34.29610061645508
+ 35M   | heliport | Vortex Heliport                                    |           24 | NA        | US          | US-MS      | Long Beach     | 35M      |           | 35M        | -89.16529846191406, 30.388599395751953
+ 3MS0  | heliport | Grand Gulf Heliport                                |          160 | NA        | US          | US-MS      | Port Gibson    | 3MS0     |           | 3MS0       | -91.0521011352539, 32.013999938964844
+ 3MS4  | heliport | Pascagoula Naval Station Heliport                  |           13 | NA        | US          | US-MS      | Pascagoula     | 3MS4     |           | 3MS4       | -88.57360076904297, 30.33839988708496
+ 42MS  | heliport | Oktibbeha County Hospital Heliport                 |          265 | NA        | US          | US-MS      | Starkville     | 42MS     |           | 42MS       | -88.8209694, 33.4752306
+ 4MS1  | heliport | Robinsonville Heliport                             |          202 | NA        | US          | US-MS      | Robinsonville  | 4MS1     |           | 4MS1       | -90.302917, 34.816667
+ 4MS6  | heliport | University Hospital Heliport                       |          344 | NA        | US          | US-MS      | Jackson        | 4MS6     |           | 4MS6       | -90.17500305175781, 32.330299377441406
+ 4MS8  | heliport | Casino Center Heliport                             |          201 | NA        | US          | US-MS      | Tunica         | 4MS8     |           | 4MS8       | -90.32839965820312, 34.8400993347168
+ 50MS  | heliport | Merit Health Wesley Heliport                       |          222 | NA        | US          | US-MS      | Hattiesburg    | 50MS     |           | 50MS       | -89.365555, 31.32741
+ 5MS7  | heliport | Baptist Memorial Hospital Union County Heliport    |          415 | NA        | US          | US-MS      | New Albany     | 5MS7     |           | 5MS7       | -89.026389, 34.4975
+ 5MS9  | heliport | Penton Heliport                                    |          167 | NA        | US          | US-MS      | Picayune       | 5MS9     |           | 5MS9       | -89.541717, 30.59905
+ 6MS4  | heliport | South Central Regional Medical Center Heliport     |          245 | NA        | US          | US-MS      | Laurel         | 6MS4     |           | 6MS4       | -89.141401, 31.684899
+ 8MS8  | heliport | Betty Ann Cooper Memorial Helipad                  |          136 | NA        | US          | US-MS      | Steiner        | 8MS8     |           | 8MS8       | -90.6227778, 33.623263
+(31 rows)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MS' AND type = 'heliport' AND
+			 coordinates = '-88.55889892578125, 30.53030014038086';
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MS' AND type = 'heliport' AND
+			 coordinates = '-88.55889892578125, 30.53030014038086' AND
+			 ident = '10MS';
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
+(1 row)
+
+SELECT * FROM airports WHERE
+			 iso_region = 'US-MS' AND type = 'heliport' AND
+			 coordinates = '-88.55889892578125, 30.53030014038086' AND
+			 name = 'Daniel Emergency Response Team Heliport';
+ ident |   type   |                  name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+----------+-----------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+---------------------------------------
+ 10MS  | heliport | Daniel Emergency Response Team Heliport |           20 | NA        | US          | US-MS      | Moss Point   | 10MS     |           | 10MS       | -88.55889892578125, 30.53030014038086
+(1 row)

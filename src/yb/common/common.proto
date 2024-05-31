@@ -1,0 +1,671 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+// Protobufs which are common throughout YB.
+//
+// This file may contain protobufs which are persisted on disk
+// as well as sent on the wire. If a particular protobuf is only
+// used as part of the client-server wire protocol, it should go
+// in common/wire_protocol.proto instead. If it is only used within
+// the server(s), it should go in server/metadata.proto,
+// etc, as appropriate.
+syntax = "proto2";
+
+package yb;
+
+option java_package = "org.yb";
+
+import "yb/common/common_types.proto";
+import "yb/common/common_net.proto";
+import "yb/common/transaction.proto";
+import "yb/common/value.proto";
+
+// The type used in column schemas, which may have type parameters (i.e. for collections)
+// If types have parameters, they are stored in the params field. Otherwise params is empty.
+// e.g. (using lower case of QLTypes and upper case for DataType):
+//   string                     --> {main = STRING, params = []}
+//   set<int>                   --> {main = SET, params = [int]}
+//   map<int, string>           --> {main = MAP, params = [int, string]}
+// later (not implemented yet):
+//   tuple<int, string, double> --> {main = TUPLE, params = [int, string, double]}
+// User-Defined types are identified by keyspace_name and type_name and their fields are stored in
+// field_names (for the names) and params (for the types)
+// e.g. given a declared type "ks.employee (firstname : string, lastname : string, ssn : bigint)":
+// ks.employee                  --> { main = USER_DEFINED_TYPE,
+//                                    params = [string, string, bigint],
+//                                    keyspace_name = "ks",
+//                                    type_name = "employee",
+//                                    field_names = ["firstname", "lastname", "ssn"]}
+
+message QLTypePB {
+  optional PersistentDataType main = 1;
+  repeated QLTypePB params = 2;
+
+  // Fields for user-defined types
+  message UDTypeInfo {
+    optional string keyspace_name = 1;
+    optional string name = 2;
+    optional string id = 3;
+    repeated string field_names = 4;
+  }
+  optional UDTypeInfo udtype_info = 3;
+}
+
+// TODO: Differentiate between the schema attributes
+// that are only relevant to the server (e.g.,
+// encoding and compression) and those that also
+// matter to the client.
+message ColumnSchemaPB {
+  optional uint32 id = 1;
+  required string name = 2;
+  required QLTypePB type = 3;
+  optional bool is_key = 4 [default = false];
+  optional bool is_hash_key = 5 [default = false];
+  optional bool is_nullable = 6 [default = false];
+  optional bool is_static = 7 [default = false];
+  optional bool is_counter = 8 [default = false];
+  optional int32 order = 12 [default = 0];
+  optional uint32 sorting_type = 9 [default = 0];
+  // Added pg_type_oid for decoding the column value for CDC in 2.13.
+  // If the cluster has been upgraded, the value will be default and not the expected value.
+  optional uint32 pg_type_oid = 14 [default = 0];
+  // Reserved for deprecated read_default_value and write_default_value fields.
+  reserved 10, 11;
+  // The JSON attribute was mistakenly placed here, but it is not used.
+  // To be safe, it's left here for now.
+  // JSON attribute (for c->'a'->>'b' case).
+  repeated QLJsonOperationPB OBSOLETE_json_operations = 13;
+  // If set, it means that this column is in process of being dropped by an ongoing DDL transaction.
+  // If that DDL transaction commits, this column will be dropped, otherwise this field will be
+  // unset again.
+  optional bool marked_for_deletion = 15;
+  optional QLValuePB missing_value = 16;
+}
+
+message ColocatedTableIdentifierPB {
+  // Note: an absent value means NULL.
+  oneof value {
+    // Colocated YSQL user tables use 4-byte ID.
+    uint32 colocation_id = 1;
+    // Colocated YSQL system tables use 16-byte UUID.
+    bytes cotable_id = 2;
+  }
+}
+
+message TablePropertiesPB {
+  optional uint64 default_time_to_live = 1;
+  optional bool contain_counters = 2;
+  optional bool is_transactional = 3 [default = false];
+
+  // Reserved for deprecated copartition_table_id for abandoned copartitioning feature.
+  reserved 4;
+
+  // For index table only: consistency with respect to the indexed table.
+  optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];
+
+  // For CREATE INDEX, we use mangled name for its column, but it hasn't been that way.
+  // Due to coding history for INDEX support, we'll have the following scenarios.
+  // - UserTable: User-defined names are used for its columns.
+  // - IndexTable: Mangled names are used. We treat all INDEX column definition as expression of
+  //   column. For example INDEX on TAB(a) would be defined as IndexTable( ref_of(a) ).
+  // - Older IndexTable: User-defined name is used, and their definition in existing database
+  //   remains the same during upgrade.
+  //
+  // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
+
+  optional bool use_mangled_column_name =  6 [ default = false ];
+
+  // Save this number of tablets in table schema stored in master SysCatalog. It might not be
+  // the true number of tablets in the table at runtime due to tablet splitting. It is just
+  // the number of tablets stored in the schema (for example, when user creates the table).
+  // Note: If CreateTableRequestPB::num_tablets is not specified, but this field is specified in
+  // the field CreateTableRequestPB::schema, CatalogManager::CreateTable() will create a table
+  // with number of tablets in this field.
+  optional int32 num_tablets = 7 [ default = 0 ];
+
+  optional bool is_ysql_catalog_table = 8 [ default = false ];
+  optional bool retain_delete_markers = 9 [ default = false ];
+  optional uint64 backfilling_timestamp = 10;
+
+  // Used to distinguish which algorithm should be used for partition key and bounds generation,
+  // value == 0 stands for the default buggy algorithm for range partitioning case, see #12189.
+  optional uint32 partitioning_version = 11;
+
+  optional PgReplicaIdentity ysql_replica_identity = 12;
+}
+
+message SchemaPB {
+  repeated ColumnSchemaPB columns = 1;
+  optional TablePropertiesPB table_properties = 2;
+  optional ColocatedTableIdentifierPB colocated_table_id = 3;
+  // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
+  optional string pgschema_name = 4;
+}
+
+// This message contains the metadata of a secondary index of a table.
+// It maps the index::columns to the expressions of table::columns.
+//
+// Notes on where to find metadata of an INDEX.
+// - Each INDEX is represented by IndexInfo and IndexTable.
+//     IndexInfoPB contains the definitions of the INDEX.
+//     IndexTable contains duplicate user-data for quick access.
+// - The IndexInfoPB is stored in the Catalog::Table being indexed.
+// - The TablePropertiesPB is kept in Catalog::IndexTable.
+//   Internally, Catalog::IndexTable is just the same as any Catalog::Table.
+message IndexInfoPB {
+  optional bytes table_id = 1; // Index table id.
+  optional bytes indexed_table_id = 8; // Indexed table id.
+  optional uint32 version = 2 [ default = 0]; // Index table's schema version.
+  optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
+  optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
+  // We should only have this in the elements of "repeated IndexInfoPB indexes" of the
+  // SysTablesEntryPB of the main table.
+  optional IndexPermissions index_permissions = 12 [ default = INDEX_PERM_READ_WRITE_AND_DELETE ];
+
+  // Index column mapping.
+  // "colexpr" is used to compute the value of this column in an INDEX.
+  // - When a table is indexed by expressions, we create internal/hidden columns to store the index
+  //   value, and "value_expr" specifies the indexing expression.
+  // - As of 07/2019, only QLJsonColumnOperationsPB is allowed for "colexpr".
+  // - In the current index design & implementation, expression can only reference ONE column.
+  //
+  // Example:
+  //   Example for scalar index
+  //     TABLE (a, b, c)
+  //     INDEX (c) -> INDEX is a table whose column 'c' is referencing TABLE(c)
+  //     colexpr = ref to "c" column_id.
+  //   Example for JSON index
+  //     TABLE (a, b, j)
+  //     INDEX (j->>'b') -> INDEX is a table whose column 'j->>b' is referencing to TABLE(j)
+  //     colexpr = j->'b'
+  message IndexColumnPB {
+    optional uint32 column_id = 1;         // Column id in the index table.
+    optional string column_name = 3;       // Generated column name in the index table.
+    optional uint32 indexed_column_id = 2; // Corresponding column id in indexed table.
+    optional QLExpressionPB colexpr = 4;   // Column value in INDEX.
+  }
+  repeated IndexColumnPB columns = 4;      // Indexed and covering columns.
+  optional uint32 hash_column_count = 5;   // Number of hash columns in the index.
+  optional uint32 range_column_count = 6;  // Number of range columns in the index.
+
+  repeated uint32 indexed_hash_column_ids = 9;   // Hash column ids in the indexed table.
+  repeated uint32 indexed_range_column_ids = 10; // Range column ids in the indexed table.
+
+  // The mangled-name flag is kept on both IndexInfo and IndexTable as the same mangled-name is
+  // used in both IndexInfo and IndexTable columns.
+  optional bool use_mangled_column_name = 11 [ default = false ];  // Newer index has mangled name.
+
+  // When backfill fails with error, the first message that it failed with.
+  optional string backfill_error_message = 31;
+  optional bool is_backfill_deferred = 32 [ default = false ]; // Should backfill be deferred.
+
+  message WherePredicateSpecPB {
+    repeated uint32 column_ids = 1; // Columns referenced in the where_expr
+    optional QLExpressionPB where_expr = 2;
+  }
+
+  // Where clause for partial index.
+  optional WherePredicateSpecPB where_predicate_spec = 33;
+
+  // When the backfill job on this index is cleared, this field is set to the number of indexed
+  // table rows processed by the backfill job. The (default) value is zero, otherwise.
+  // For partial indexes, this includes non-matching rows of the indexed table.
+  optional uint64 num_rows_processed_by_backfill_job = 34;
+}
+
+// The possible order modes for clients.
+// Clients specify these in new scan requests.
+// Ordered scans are fault-tolerant, and can be retried elsewhere in the case
+// of tablet server failure. However, ordered scans impose additional overhead
+// since the tablet server needs to sort the result rows.
+enum OrderMode {
+  UNKNOWN_ORDER_MODE = 0;
+  // This is the default order mode.
+  UNORDERED = 1;
+  ORDERED = 2;
+}
+
+// The serialized format of a YB table partition schema.
+message PartitionSchemaPB {
+
+  // A column identifier for partition schemas. In general, the name will be
+  // used when a client creates the table since column IDs are assigned by the
+  // master. All other uses of partition schemas will use the numeric column ID.
+  message ColumnIdentifierPB {
+    oneof identifier {
+      int32 id = 1;
+      string name = 2;
+    }
+  }
+
+  message RangeSplitPB {
+    // Each range column will be assigned a lower bound.
+    optional bytes column_bounds = 1;
+
+    // TODO (neil)
+    //   To identify where to scan, each split/partition should have an ID.  See bug 6051.
+    //   NOTE: Original Postgres names each of its range partitions, and that's one way to
+    //         identify them although their syntax is not friendly.
+    // Add the following field when we extend SPLIT syntax.
+    // optional int32 id = ??;
+  }
+
+  message RangeSchemaPB {
+    // Column identifiers of columns included in the range. All columns must be
+    // a component of the primary key.
+    repeated ColumnIdentifierPB columns = 1;
+
+    // Split points for range tables.
+    repeated RangeSplitPB splits = 3;
+
+    // Field "split_rows" is only available in beta version for SPLIT AT feature. This feature had
+    // not been used, so the release version for SPLIT AT does not need to be compatible with
+    // the beta version in the past releases.
+    repeated bytes DEPRECATED_split_rows = 2;
+  }
+
+  message HashBucketSchemaPB {
+    // Column identifiers of columns included in the hash. Every column must be
+    // a component of the primary key.
+    repeated ColumnIdentifierPB columns = 1;
+
+    // Number of buckets into which columns will be hashed. Must be at least 2.
+    required int32 num_buckets = 2;
+
+    // Seed value for hash calculation. Administrators may set a seed value
+    // on a per-table basis in order to randomize the mapping of rows to
+    // buckets. Setting a seed provides some amount of protection against denial
+    // of service attacks when the hash bucket columns contain user provided
+    // input.
+    optional uint32 seed = 3;
+
+    enum HashAlgorithm {
+      UNKNOWN = 0;
+      MURMUR_HASH_2 = 1;
+    }
+
+    // The hash algorithm to use for calculating the hash bucket.
+    optional HashAlgorithm hash_algorithm = 4;
+  }
+
+  repeated HashBucketSchemaPB hash_bucket_schemas = 1;
+  optional RangeSchemaPB range_schema = 2;
+
+  enum HashSchema {
+    MULTI_COLUMN_HASH_SCHEMA = 1;
+    REDIS_HASH_SCHEMA = 2;
+    PGSQL_HASH_SCHEMA = 3;
+  }
+
+  optional HashSchema hash_schema = 3;
+}
+
+// The serialized format of a YB table partition.
+message PartitionPB {
+  // The hash buckets of the partition. The number of hash buckets must match
+  // the number of hash bucket components in the partition's schema.
+  repeated int32 hash_buckets = 1 [packed = true];
+  // The encoded start partition key (inclusive).
+  optional bytes partition_key_start = 2;
+  // The encoded end partition key (exclusive).
+  optional bytes partition_key_end = 3;
+}
+
+// This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h and applies only
+// to explicit row-level locking policies.
+//
+// NOTE: WAIT_ERROR implies no-wait semantics in Postgres i.e., if a conflicting lock is held,
+// fail self's transaction. However, in YSQL, the WAIT_ERROR enum maps to the Fail-on-Conflict
+// conflict management policy (where we may fail other transactions depending on priority, as
+// described in conflict_resolution.h). It doesn't map to no-wait semantics because they aren't yet
+// supported by docdb.
+//
+// But, note that NOWAIT clause is supported for READ COMMITTED isolation level when no other
+// isolation's transactions are active. YSQL acheives that without relying on no-wait semantics from
+// the tserver. This is done by leveraging the fact that the Fail-on-Conflict policy for read
+// committed transactions are effectively no-wait semantics because all read committed transactions
+// have the same kHighest priority.
+//
+// TODO(concurrency-control):
+//   When NOWAIT support is to be extended for REPEATABLE READ and SERIALIZABLE isolation level, we
+//   would require using WAIT_ERROR to rightly mean the no-wait policy and another enum to represent
+//   the Fail-on-Conflict policy.
+//
+// YSQL specifies WaitPolicy explicitly only for reads via PgsqlReadRequestPB that take explicit
+// row-level locks.
+enum WaitPolicy
+{
+  // Maps to Wait-on-Conflict conflict management policy as defined in conflict_resolution.h
+  WAIT_BLOCK = 0;
+
+  // Maps to Skip-on-Conflict conflict management policy as defined in conflict_resolution.h
+  // This is needed for the SKIP LOCKED clause
+  WAIT_SKIP = 1;
+
+  // Maps to Fail-on-Conflict conflict management policy as defined in conflict_resolution.h
+  WAIT_ERROR= 2;
+}
+
+message TransactionMetadataPB {
+  optional bytes transaction_id = 1; // 16 byte uuid
+  optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
+  optional string status_tablet = 3;
+  optional fixed64 priority = 4;
+
+  // Stores the time at which this transaction was taken by pg_client_session from the transaction
+  // pool. Serves as a lower bound on the ht at which the first RPC which may write intents for this
+  // transaction would have been issued to a tserver.
+  optional fixed64 start_hybrid_time = 5;
+
+  // Stores the time at which the transaction was initiated from postgres' perspective.
+  optional int64 pg_txn_start_us = 9;
+
+  // Stores time when metadata was written to provisional records RocksDB on a
+  // participating tablet. So it could be used for cleanup.
+  optional fixed64 metadata_write_time = 6;
+
+  // Stores whether the transaction is local or global; treated as global if not present
+  // for backwards compatability.
+  optional TransactionLocality locality = 7;
+
+  // Reserved for deprecated xcluster field external_transaction.
+  reserved 8;
+}
+
+// See ReadHybridTime for explation of this message.
+message ReadHybridTimePB {
+  optional fixed64 read_ht = 1;
+
+  optional fixed64 DEPRECATED_max_of_read_time_and_local_limit_ht = 2;
+
+  optional fixed64 global_limit_ht = 3;
+
+  // When a transaction reads data, all committed writes of other transactions with a timestamp
+  // <= read_ht are visible.
+  //
+  // However, a transaction's reads should be able to see all provisional writes from the same
+  // transaction irrespective of read_ht, except some based on additional constraints for YSQL (as
+  // described in src/yb/yql/pggate/README). The query layer uses in_txn_limit_ht to meet these
+  // constraints. If in_txn_limit_ht is set, any operation will not be able to read provisional
+  // writes from the same transaction which have a write timestamp higher than the in_txn_limit_ht.
+  //
+  // src/yb/yql/pggate/README also explains how this works along with YSQL's buffering logic.
+  optional fixed64 in_txn_limit_ht = 4;
+
+  optional fixed64 local_limit_ht = 5;
+}
+
+// For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl
+message ChildTransactionDataPB {
+  optional TransactionMetadataPB metadata = 1;
+  optional ReadHybridTimePB read_time = 2;
+  map<string, fixed64> local_limits = 3;
+}
+
+enum InvolvedTabletMetadataState {
+  MISSING = 0;
+  EXIST = 1;
+  MAY_EXIST = 2;
+}
+
+message TransactionInvolvedTabletPB {
+  optional bytes tablet_id = 1;
+  optional InvolvedTabletMetadataState metadata_state = 2;
+
+  // Number of batches written to this tablet during transaction.
+  optional uint64 num_batches = 3;
+}
+
+// For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl
+message ChildTransactionResultPB {
+  repeated TransactionInvolvedTabletPB tablets = 1;
+  optional fixed64 restart_read_ht = 2;
+  map<string, fixed64> read_restarts = 3;
+  optional ReadHybridTimePB used_read_time = 4;
+}
+
+message DeletedColumnPB {
+  // Required. Column Id.
+  optional int32 column_id = 1;
+
+  // Required. Hybrid Time when column was deleted on this tablet.
+  optional fixed64 deleted_hybrid_time = 2;
+}
+
+//--------------------------------------------------------------------------------------------------
+// CQL support.
+// This is an internal protocol for communicating QL operations from a YB client to a tserver.
+//
+// Reference:
+// Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
+// Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
+//--------------------------------------------------------------------------------------------------
+
+// Reference to a subcolumn, e.g. m['x'] or l[2]['x']
+message QLSubscriptedColPB {
+  optional int32 column_id = 1;
+  repeated QLExpressionPB subscript_args = 2;
+}
+
+// Represents operations applied to a json column.
+message QLJsonColumnOperationsPB {
+  optional int32 column_id = 1;
+  repeated QLJsonOperationPB json_operations = 2;
+}
+
+message QLJsonOperationPB {
+  required JsonOperatorPB json_operator = 1;
+  required QLExpressionPB operand = 2;
+}
+
+// Tuple expression in LHS of IN operation (in future for =, >, < too).
+message QLTupleExpressionPB {
+  repeated QLExpressionPB elems = 1;
+}
+
+// An expression in a WHERE condition
+message QLExpressionPB {
+  oneof expr {
+    QLValuePB value = 1;
+    int32 column_id = 2;
+    QLSubscriptedColPB subscripted_col = 3;
+    int32 bind_id = 4;                      // Bind variable index.
+    QLConditionPB condition = 5;            // This should be replaced with builtin operator.
+    QLBCallPB bfcall = 6;                   // Regular builtin calls.
+    QLBCallPB tscall = 7;                   // Tablet server builtin calls.
+    QLBCallPB bocall = 8;                   // Builtin operator calls.
+    QLJsonColumnOperationsPB json_column = 9; // Json column operators.
+    QLTupleExpressionPB tuple = 10;           // Tuple expression in LHS.
+  }
+}
+
+// A logical condition that evaluates to true/false. Used in the WHERE clause.
+message QLConditionPB {
+  optional QLOperator op = 1;
+  repeated QLExpressionPB operands = 2;
+}
+
+// Builtin call expression. There are 3 different calls.
+// - Builtin operators such as '>', '<', '=', ...
+//   These operators can be executed anywhere.
+// - Builtin functions such as Now().
+//   These functions can be executed anywhere.
+// - Server builtin functions.
+//   Only tablet servers can execute these functions.
+//
+// TODO(neil) Regular builtin operators. This message can be executed anywhere.
+// - This is more efficient than builtin call as it avoids most overheads of calling builtin lib.
+// - Merge the current condition operator execution with this.
+// - To optimize certain operation (such as +), replace it builtin function with builtin op.
+message QLBCallPB {
+  optional int32 opcode = 1;
+  repeated QLExpressionPB operands = 2;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+// EXPLAIN PLAN
+//
+// Explain Plan Protobufs for 4 main DDL statements.
+// Output examples at https://github.com/YugaByte/yugabyte-db/issues/861#issuecomment-469350077
+// TODO: Change from just explain plan strings to proper Query Plan with enums.
+// - Cqlsh output is right-justified so 'output_width' is used to right-pad the output so that it
+//   appears left-justified like PostgreSQL explain plan.
+// - 'key_conditions' is the set of columns of the where clause that are part of the primary key.
+// - 'filter' is the set of the rest of the where clause columns are that not in the primary key.
+//--------------------------------------------------------------------------------------------------
+
+message ExplainPlanPB {
+  oneof plan {
+    SelectPlanPB select_plan = 1;
+    InsertPlanPB insert_plan = 2;
+    UpdatePlanPB update_plan = 3;
+    DeletePlanPB delete_plan = 4;
+  }
+}
+
+message SelectPlanPB {
+  optional string select_type = 1;
+  // Overarching information like "Aggregate" or "Limit"
+  optional string aggregate = 2;
+  optional string key_conditions = 3;
+  optional string filter = 4;
+  optional int32 output_width = 5;
+}
+
+message InsertPlanPB {
+  optional string insert_type = 1;
+  optional int32 output_width = 2;
+}
+
+message UpdatePlanPB {
+  optional string update_type = 1;
+  // For update, scan_type is currently only primary key lookup.
+  optional string scan_type = 2;
+  optional string key_conditions = 3;
+  optional int32 output_width = 4;
+}
+
+message DeletePlanPB {
+  optional string delete_type = 1;
+  // For delete, scan_type is currently either primary key lookup or range scan.
+  optional string scan_type = 2;
+  optional string key_conditions = 3;
+  optional string filter = 4;
+  optional int32 output_width = 5;
+}
+
+message TServerDBCatalogVersionInfo {
+  optional uint32 db_oid = 1;
+  optional int32 shm_index = 2;
+}
+
+message DatumMessagePB {
+  optional string column_name = 1;
+  optional int64 column_type = 2;
+  oneof datum {
+    int32 datum_int32 = 3;
+    int64 datum_int64 = 4;
+    float datum_float = 5;
+    double datum_double = 6;
+    bool datum_bool = 7;
+    string datum_string = 8;
+    bytes datum_bytes = 9;
+    bool datum_missing = 10;
+  }
+  oneof cdc_column_type {
+    QLTypePB cql_type = 11;
+    int64 pg_type = 12;
+  }
+  oneof cdc_datum {
+    PgDatumPB pg_value = 13;
+    QLValuePB cql_value = 14;
+    // We send the datum as QLValuePB if the client is Walsender.
+    // The Walsender does the conversion from QLValuePB to the PG datum.
+    QLValuePB pg_ql_value = 15;
+  }
+}
+
+message PgDatumPB {
+  oneof datum {
+    int32 datum_int32 = 1;
+    int64 datum_int64 = 2;
+    float datum_float = 3;
+    double datum_double = 4;
+    bool datum_bool = 5;
+    string datum_string = 6;
+    bytes datum_bytes = 7;
+    bool datum_missing = 8;
+  }
+}
+
+message AshMetadataPB {
+  // The root level request id. i.e. the request id
+  // corresponding to the call from the application to YSQL-Pg/YCQL
+  // if set, should be 16 bytes in length.
+  optional bytes root_request_id = 1;
+  // The client which sent the request to YSQL-Pg/YCQL.
+  optional HostPortPB client_host_port = 2;
+  // The uuid of the local tserver which received the request from the client.
+  // i.e. the local tserver running the YSQL-Pg backend/YCQL proxy. if set,
+  // should be 16 bytes in length.
+  optional bytes yql_endpoint_tserver_uuid = 3;
+  // The request id for the "current" rpc. This may be different than
+  // the root level request id. e.g. consider a write-rpc sent by the local
+  // TServer to the destination TServer.
+  optional int64 rpc_request_id = 4;
+  // Query id as seen on pg_stat_statements to identify identical normalized queries.
+  optional uint64 query_id = 5;
+  // PgClient session id. This will be 0 for YCQL.
+  optional uint64 session_id = 6;
+}
+
+// Some optional/additional fields that is collected in addition to the wait
+// statement Depending on the wait-state we may choose to persist at most one of
+// these into the yb_active_universe_history.wait_event_aux field.
+message AshAuxDataPB {
+  optional string tablet_id = 1;
+  optional string table_id = 2;
+  optional string method = 3;
+}
+
+// Represents the wait-state tracked for a given incoming rpc/request.
+message WaitStateInfoPB {
+  // The metadata is rarely modified.
+  optional AshMetadataPB metadata = 1;
+  // Represents the state of the curreent rpc/request when it was polled.
+  optional uint32 wait_status_code = 2;
+  // Some additional information that may be persisted as
+  // yb_active_universe_history.wait_event_aux
+  optional AshAuxDataPB aux_info = 3;
+  // A string representation of wait_status_code for easy human consumption.
+  optional string wait_status_code_as_string = 4;
+}

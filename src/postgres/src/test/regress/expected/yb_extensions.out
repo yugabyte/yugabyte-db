@@ -1,0 +1,127 @@
+-- Testing pgcrypto.
+create extension pgcrypto;
+select digest('xyz', 'sha1');
+                   digest
+--------------------------------------------
+ \x66b27417d37e024c46526c2f6d358a754fc552f3
+(1 row)
+
+-- Using fixed salt to make test repeatable.
+select crypt('new password', '$1$7kF93Vc4');
+               crypt
+------------------------------------
+ $1$7kF93Vc4$p7Y6w2vEsvRiDdvLjaQI4/
+(1 row)
+
+-- Using count to make test repeatable.
+select count(gen_random_uuid());
+ count
+-------
+     1
+(1 row)
+
+-- Testing fuzzystrmatch.
+create extension fuzzystrmatch;
+select levenshtein('YugaByte', 'yugabyte');
+ levenshtein
+-------------
+           2
+(1 row)
+
+select metaphone('yugabyte', 8);
+ metaphone
+-----------
+ YKBT
+(1 row)
+
+-- Clean up.
+drop extension pgcrypto;
+-- Expect failure since function should be removed.
+select digest('xyz', 'sha1');
+ERROR:  function digest(unknown, unknown) does not exist
+LINE 1: select digest('xyz', 'sha1');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+drop extension fuzzystrmatch;
+-- Expect failure since function should be removed.
+select levenshtein('YugaByte', 'yugabyte');
+ERROR:  function levenshtein(unknown, unknown) does not exist
+LINE 1: select levenshtein('YugaByte', 'yugabyte');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- Testing pg_stat_statements;
+select pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+
+(1 row)
+
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+    from pg_stat_statements join pg_database on dbid = oid order by query;
+ pg_get_userbyid | datname  |               query               | calls | rows | shared_blks_hit | shared_blks_read | shared_blks_dirtied | shared_blks_written | local_blks_hit | local_blks_read | local_blks_dirtied | local_blks_written | temp_blks_read | temp_blks_written | blk_read_time
+-----------------+----------+-----------------------------------+-------+------+-----------------+------------------+---------------------+---------------------+----------------+-----------------+--------------------+--------------------+----------------+-------------------+---------------
+ yugabyte        | yugabyte | select pg_stat_statements_reset() |     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+(1 row)
+
+create table test(a int, b float);
+insert into test(a,b) values (5,10);
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+    from pg_stat_statements join pg_database on dbid = oid order by query;
+ pg_get_userbyid | datname  |                                                                                                                        query                                                                                                                         | calls | rows | shared_blks_hit | shared_blks_read | shared_blks_dirtied | shared_blks_written | local_blks_hit | local_blks_read | local_blks_dirtied | local_blks_written | temp_blks_read | temp_blks_written | blk_read_time
+-----------------+----------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+------+-----------------+------------------+---------------------+---------------------+----------------+-----------------+--------------------+--------------------+----------------+-------------------+---------------
+ yugabyte        | yugabyte | create table test(a int, b float)                                                                                                                                                                                                                    |     1 |    0 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+ yugabyte        | yugabyte | insert into test(a,b) values ($1,$2)                                                                                                                                                                                                                 |     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+ yugabyte        | yugabyte | select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time+|     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+                 |          |     from pg_stat_statements join pg_database on dbid = oid order by query                                                                                                                                                                            |       |      |                 |                  |                     |                     |                |                 |                    |                    |                |                   |
+ yugabyte        | yugabyte | select pg_stat_statements_reset()                                                                                                                                                                                                                    |     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+(4 rows)
+
+insert into test(a,b) values (15,20);
+select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time
+    from pg_stat_statements join pg_database on dbid = oid order by query;
+ pg_get_userbyid | datname  |                                                                                                                        query                                                                                                                         | calls | rows | shared_blks_hit | shared_blks_read | shared_blks_dirtied | shared_blks_written | local_blks_hit | local_blks_read | local_blks_dirtied | local_blks_written | temp_blks_read | temp_blks_written | blk_read_time
+-----------------+----------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+------+-----------------+------------------+---------------------+---------------------+----------------+-----------------+--------------------+--------------------+----------------+-------------------+---------------
+ yugabyte        | yugabyte | create table test(a int, b float)                                                                                                                                                                                                                    |     1 |    0 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+ yugabyte        | yugabyte | insert into test(a,b) values ($1,$2)                                                                                                                                                                                                                 |     2 |    2 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+ yugabyte        | yugabyte | select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time+|     2 |    5 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+                 |          |     from pg_stat_statements join pg_database on dbid = oid order by query                                                                                                                                                                            |       |      |                 |                  |                     |                     |                |                 |                    |                    |                |                   |
+ yugabyte        | yugabyte | select pg_stat_statements_reset()                                                                                                                                                                                                                    |     1 |    1 |               0 |                0 |                   0 |                   0 |              0 |               0 |                  0 |                  0 |              0 |                 0 |             0
+(4 rows)
+
+-- SeqScan forces YbSeqScan node with NodeTag near the end of the list in nodes.h
+explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test;
+                QUERY PLAN
+------------------------------------------
+ Seq Scan on test (actual rows=2 loops=1)
+(1 row)
+
+-- GHI 14498: different queryid may indicate NodeTag added to the middle of the list
+-- Please make sure it is appended
+select queryid, query from pg_stat_statements where query like 'explain %';
+       queryid       |                                             query
+---------------------+------------------------------------------------------------------------------------------------
+ -231100365597916323 | explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test
+(1 row)
+
+drop table test;
+-- Testing uuid-ossp
+create extension "uuid-ossp";
+select uuid_generate_v5('00000000-0000-0000-0000-000000000000', 'yugabyte');
+           uuid_generate_v5
+--------------------------------------
+ dc72413f-8ae5-51c0-8aa2-c7d117077c5e
+(1 row)
+
+-- generated values are random, so to ensure deterministic output ignore the actual values.
+select uuid_generate_v1() != uuid_generate_v4();
+ ?column?
+----------
+ t
+(1 row)
+
+-- Testing CVE-2023-39417
+CREATE SCHEMA "has space";
+CREATE SCHEMA has$dollar;
+CREATE EXTENSION yb_test_extension SCHEMA has$dollar;
+ERROR:  invalid character in extension "yb_test_extension" schema: must not contain any of ""$'\"
+CREATE EXTENSION yb_test_extension SCHEMA "has space";

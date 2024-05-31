@@ -1,0 +1,57 @@
+- name: Download ybc package | Set temporary package path
+  set_fact:
+    tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
+    remote_ybc_tmp_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ ybc_dir }}.tar.gz"
+  tags: always
+
+- name: Download ybc package | Create temporary release ybc directory
+  file:
+    path: "{{ tmp_ybc_package_location }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags:
+    - ybc-install
+
+- name: Download ybc package | Move unpacked tarball to "{{ tmp_ybc_package_location }}"
+  copy:
+    src: "{{ remote_ybc_tmp_package }}"
+    dest: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
+    remote_src: True
+  tags:
+    - ybc-install
+
+- name: Download ybc package | Create release ybc directory
+  file:
+    path: "{{ software_ybc_package_folder }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags:
+    - ybc-install
+
+- name: Download ybc package | Clean up temporary ybc remote downloads
+  file:
+    path: "{{ remote_ybc_tmp_package }}"
+    state: absent
+  tags:
+    - ybc-install
+
+- name: Download ybc package | Unpack package "{{ tmp_ybc_package_location }}"
+  unarchive:
+    src: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
+    dest: "{{ yb_software_dir }}"
+    remote_src: yes
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags:
+    - ybc-install
+
+- name: Download ybc package | Remove "{{ tmp_ybc_package_location }}"
+  file:
+    path: "{{ tmp_ybc_package_location }}"
+    state: absent
+  tags:
+    - ybc-install

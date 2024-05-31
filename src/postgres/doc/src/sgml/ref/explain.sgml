@@ -1,0 +1,485 @@
+<!--
+doc/src/sgml/ref/explain.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-explain">
+ <indexterm zone="sql-explain">
+  <primary>EXPLAIN</primary>
+ </indexterm>
+
+ <indexterm zone="sql-explain">
+  <primary>prepared statements</primary>
+  <secondary>showing the query plan</secondary>
+ </indexterm>
+
+ <indexterm zone="sql-explain">
+  <primary>cursor</primary>
+  <secondary>showing the query plan</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>EXPLAIN</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>EXPLAIN</refname>
+  <refpurpose>show the execution plan of a statement</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+EXPLAIN [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] <replaceable class="parameter">statement</replaceable>
+EXPLAIN [ ANALYZE ] [ VERBOSE ] <replaceable class="parameter">statement</replaceable>
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    ANALYZE [ <replaceable class="parameter">boolean</replaceable> ]
+    VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
+    COSTS [ <replaceable class="parameter">boolean</replaceable> ]
+    SETTINGS [ <replaceable class="parameter">boolean</replaceable> ]
+    BUFFERS [ <replaceable class="parameter">boolean</replaceable> ]
+    WAL [ <replaceable class="parameter">boolean</replaceable> ]
+    TIMING [ <replaceable class="parameter">boolean</replaceable> ]
+    SUMMARY [ <replaceable class="parameter">boolean</replaceable> ]
+    FORMAT { TEXT | XML | JSON | YAML }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   This command displays the execution plan that the
+   <productname>PostgreSQL</productname> planner generates for the
+   supplied statement.  The execution plan shows how the table(s)
+   referenced by the statement will be scanned &mdash; by plain sequential scan,
+   index scan, etc. &mdash; and if multiple tables are referenced, what join
+   algorithms will be used to bring together the required rows from
+   each input table.
+  </para>
+
+  <para>
+   The most critical part of the display is the estimated statement execution
+   cost, which is the planner's guess at how long it will take to run the
+   statement (measured in cost units that are arbitrary, but conventionally
+   mean disk page fetches).  Actually two numbers
+   are shown: the start-up cost before the first row can be returned, and
+   the total cost to return all the rows.  For most queries the total cost
+   is what matters, but in contexts such as a subquery in <literal>EXISTS</literal>, the planner
+   will choose the smallest start-up cost instead of the smallest total cost
+   (since the executor will stop after getting one row, anyway).
+   Also, if you limit the number of rows to return with a <literal>LIMIT</literal> clause,
+   the planner makes an appropriate interpolation between the endpoint
+   costs to estimate which plan is really the cheapest.
+  </para>
+
+  <para>
+   The <literal>ANALYZE</literal> option causes the statement to be actually
+   executed, not only planned.  Then actual run time statistics are added to
+   the display, including the total elapsed time expended within each plan
+   node (in milliseconds) and the total number of rows it actually returned.
+   This is useful for seeing whether the planner's estimates
+   are close to reality.
+  </para>
+
+  <important>
+   <para>
+    Keep in mind that the statement is actually executed when
+    the <literal>ANALYZE</literal> option is used.  Although
+    <command>EXPLAIN</command> will discard any output that a
+    <command>SELECT</command> would return, other side effects of the
+    statement will happen as usual.  If you wish to use
+    <command>EXPLAIN ANALYZE</command> on an
+    <command>INSERT</command>, <command>UPDATE</command>,
+    <command>DELETE</command>, <command>CREATE TABLE AS</command>,
+    or <command>EXECUTE</command> statement
+    without letting the command affect your data, use this approach:
+<programlisting>
+BEGIN;
+EXPLAIN ANALYZE ...;
+ROLLBACK;
+</programlisting>
+   </para>
+  </important>
+
+  <para>
+   Only the <literal>ANALYZE</literal> and <literal>VERBOSE</literal> options
+   can be specified, and only in that order, without surrounding the option
+   list in parentheses.  Prior to <productname>PostgreSQL</productname> 9.0,
+   the unparenthesized syntax was the only one supported.  It is expected that
+   all new options will be supported only in the parenthesized syntax.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ANALYZE</literal></term>
+    <listitem>
+     <para>
+      Carry out the command and show actual run times and other statistics.
+      This parameter defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VERBOSE</literal></term>
+    <listitem>
+     <para>
+      Display additional information regarding the plan.  Specifically, include
+      the output column list for each node in the plan tree, schema-qualify
+      table and function names, always label variables in expressions with
+      their range table alias, and always print the name of each trigger for
+      which statistics are displayed.  The query identifier will also be
+      displayed if one has been computed, see <xref
+      linkend="guc-compute-query-id"/> for more details.  This parameter
+      defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>COSTS</literal></term>
+    <listitem>
+     <para>
+      Include information on the estimated startup and total cost of each
+      plan node, as well as the estimated number of rows and the estimated
+      width of each row.
+      This parameter defaults to <literal>TRUE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SETTINGS</literal></term>
+    <listitem>
+     <para>
+      Include information on configuration parameters.  Specifically, include
+      options affecting query planning with value different from the built-in
+      default value.  This parameter defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>BUFFERS</literal></term>
+    <listitem>
+     <para>
+      Include information on buffer usage. Specifically, include the number of
+      shared blocks hit, read, dirtied, and written, the number of local blocks
+      hit, read, dirtied, and written, the number of temp blocks read and
+      written, and the time spent reading and writing data file blocks and
+      temporary file blocks (in milliseconds) if
+      <xref linkend="guc-track-io-timing"/> is enabled.  A
+      <emphasis>hit</emphasis> means that a read was avoided because the block
+      was found already in cache when needed.
+      Shared blocks contain data from regular tables and indexes;
+      local blocks contain data from temporary tables and indexes;
+      while temporary blocks contain short-term working data used in sorts,
+      hashes, Materialize plan nodes, and similar cases.
+      The number of blocks <emphasis>dirtied</emphasis> indicates the number of
+      previously unmodified blocks that were changed by this query; while the
+      number of blocks <emphasis>written</emphasis> indicates the number of
+      previously-dirtied blocks evicted from cache by this backend during
+      query processing.
+      The number of blocks shown for an
+      upper-level node includes those used by all its child nodes.  In text
+      format, only non-zero values are printed.  It defaults to
+      <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WAL</literal></term>
+    <listitem>
+     <para>
+      Include information on WAL record generation. Specifically, include the
+      number of records, number of full page images (fpi) and the amount of WAL
+      generated in bytes. In text format, only non-zero values are printed.
+      This parameter may only be used when <literal>ANALYZE</literal> is also
+      enabled.  It defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TIMING</literal></term>
+    <listitem>
+     <para>
+      Include actual startup time and time spent in each node in the output.
+      The overhead of repeatedly reading the system clock can slow down the
+      query significantly on some systems, so it may be useful to set this
+      parameter to <literal>FALSE</literal> when only actual row counts, and
+      not exact times, are needed.  Run time of the entire statement is
+      always measured, even when node-level timing is turned off with this
+      option.
+      This parameter may only be used when <literal>ANALYZE</literal> is also
+      enabled.  It defaults to <literal>TRUE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SUMMARY</literal></term>
+    <listitem>
+     <para>
+      Include summary information (e.g., totaled timing information) after the
+      query plan.  Summary information is included by default when
+      <literal>ANALYZE</literal> is used but otherwise is not included by
+      default, but can be enabled using this option.  Planning time in
+      <command>EXPLAIN EXECUTE</command> includes the time required to fetch
+      the plan from the cache and the time required for re-planning, if
+      necessary.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FORMAT</literal></term>
+    <listitem>
+     <para>
+      Specify the output format, which can be TEXT, XML, JSON, or YAML.
+      Non-text output contains the same information as the text output
+      format, but is easier for programs to parse.  This parameter defaults to
+      <literal>TEXT</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">statement</replaceable></term>
+    <listitem>
+     <para>
+      Any <command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>,
+      <command>DELETE</command>, <command>VALUES</command>, <command>EXECUTE</command>,
+      <command>DECLARE</command>, <command>CREATE TABLE AS</command>, or
+      <command>CREATE MATERIALIZED VIEW AS</command> statement, whose execution
+      plan you wish to see.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+   <para>
+    The command's result is a textual description of the plan selected
+    for the <replaceable class="parameter">statement</replaceable>,
+    optionally annotated with execution statistics.
+    <xref linkend="using-explain"/> describes the information provided.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   In order to allow the <productname>PostgreSQL</productname> query
+   planner to make reasonably informed decisions when optimizing
+   queries, the <link
+   linkend="catalog-pg-statistic"><structname>pg_statistic</structname></link>
+   data should be up-to-date for all tables used in the query.  Normally
+   the <link linkend="autovacuum">autovacuum daemon</link> will take care
+   of that automatically.  But if a table has recently had substantial
+   changes in its contents, you might need to do a manual
+   <link linkend="sql-analyze"><command>ANALYZE</command></link> rather than wait for autovacuum to catch up
+   with the changes.
+  </para>
+
+  <para>
+   In order to measure the run-time cost of each node in the execution
+   plan, the current implementation of <command>EXPLAIN
+   ANALYZE</command> adds profiling overhead to query execution.
+   As a result, running <command>EXPLAIN ANALYZE</command>
+   on a query can sometimes take significantly longer than executing
+   the query normally. The amount of overhead depends on the nature of
+   the query, as well as the platform being used.  The worst case occurs
+   for plan nodes that in themselves require very little time per
+   execution, and on machines that have relatively slow operating
+   system calls for obtaining the time of day.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To show the plan for a simple query on a table with a single
+   <type>integer</type> column and 10000 rows:
+
+<programlisting>
+EXPLAIN SELECT * FROM foo;
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Seq Scan on foo  (cost=0.00..155.00 rows=10000 width=4)
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+  Here is the same query, with JSON output formatting:
+<programlisting>
+EXPLAIN (FORMAT JSON) SELECT * FROM foo;
+           QUERY PLAN
+--------------------------------
+ [                             +
+   {                           +
+     "Plan": {                 +
+       "Node Type": "Seq Scan",+
+       "Relation Name": "foo", +
+       "Alias": "foo",         +
+       "Startup Cost": 0.00,   +
+       "Total Cost": 155.00,   +
+       "Plan Rows": 10000,     +
+       "Plan Width": 4         +
+     }                         +
+   }                           +
+ ]
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   If there is an index and we use a query with an indexable
+   <literal>WHERE</literal> condition, <command>EXPLAIN</command>
+   might show a different plan:
+
+<programlisting>
+EXPLAIN SELECT * FROM foo WHERE i = 4;
+
+                         QUERY PLAN
+--------------------------------------------------------------
+ Index Scan using fi on foo  (cost=0.00..5.98 rows=1 width=4)
+   Index Cond: (i = 4)
+(2 rows)
+</programlisting>
+  </para>
+
+  <para>
+  Here is the same query, but in YAML format:
+<programlisting>
+EXPLAIN (FORMAT YAML) SELECT * FROM foo WHERE i='4';
+          QUERY PLAN
+-------------------------------
+ - Plan:                      +
+     Node Type: "Index Scan"  +
+     Scan Direction: "Forward"+
+     Index Name: "fi"         +
+     Relation Name: "foo"     +
+     Alias: "foo"             +
+     Startup Cost: 0.00       +
+     Total Cost: 5.98         +
+     Plan Rows: 1             +
+     Plan Width: 4            +
+     Index Cond: "(i = 4)"
+(1 row)
+</programlisting>
+
+    XML format is left as an exercise for the reader.
+  </para>
+  <para>
+   Here is the same plan with cost estimates suppressed:
+
+<programlisting>
+EXPLAIN (COSTS FALSE) SELECT * FROM foo WHERE i = 4;
+
+        QUERY PLAN
+----------------------------
+ Index Scan using fi on foo
+   Index Cond: (i = 4)
+(2 rows)
+</programlisting>
+  </para>
+
+  <para>
+   Here is an example of a query plan for a query using an aggregate
+   function:
+
+<programlisting>
+EXPLAIN SELECT sum(i) FROM foo WHERE i &lt; 10;
+
+                             QUERY PLAN
+-------------------------------------------------------------------&zwsp;--
+ Aggregate  (cost=23.93..23.93 rows=1 width=4)
+   -&gt;  Index Scan using fi on foo  (cost=0.00..23.92 rows=6 width=4)
+         Index Cond: (i &lt; 10)
+(3 rows)
+</programlisting>
+  </para>
+
+  <para>
+   Here is an example of using <command>EXPLAIN EXECUTE</command> to
+   display the execution plan for a prepared query:
+
+<programlisting>
+PREPARE query(int, int) AS SELECT sum(bar) FROM test
+    WHERE id &gt; $1 AND id &lt; $2
+    GROUP BY foo;
+
+EXPLAIN ANALYZE EXECUTE query(100, 200);
+
+                                                       QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------------------------
+ HashAggregate  (cost=9.54..9.54 rows=1 width=8) (actual time=0.156..0.161 rows=11 loops=1)
+   Group Key: foo
+   -&gt;  Index Scan using test_pkey on test  (cost=0.29..9.29 rows=50 width=8) (actual time=0.039..0.091 rows=99 loops=1)
+         Index Cond: ((id &gt; $1) AND (id &lt; $2))
+ Planning time: 0.197 ms
+ Execution time: 0.225 ms
+(6 rows)
+</programlisting>
+  </para>
+
+  <para>
+   Of course, the specific numbers shown here depend on the actual
+   contents of the tables involved.  Also note that the numbers, and
+   even the selected query strategy, might vary between
+   <productname>PostgreSQL</productname> releases due to planner
+   improvements. In addition, the <command>ANALYZE</command> command
+   uses random sampling to estimate data statistics; therefore, it is
+   possible for cost estimates to change after a fresh run of
+   <command>ANALYZE</command>, even if the actual distribution of data
+   in the table has not changed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>EXPLAIN</command> statement defined in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-analyze"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

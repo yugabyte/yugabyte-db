@@ -1,0 +1,24 @@
+<div class="dropdown dropdown-list" id="contribute-list">
+  <ul class="navbar-nav mt-2 mt-lg-0">
+    <li class="nav-item dropdown mr-4 d-none d-lg-block">
+      <a class="nav-link dropdown-toggle" id="contributeDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        Contribute
+      </a>
+
+      <div class="dropdown-menu" aria-labelledby="contributeDropdownMenuLink">
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=%5BDocs%5D+{{ $.Page.Title }}&labels=area/documentation&template=docs.yml" title="Report a doc issue" target="_blank" rel="noopener">
+          Report a doc issue
+        </a>
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=%5BDocs%5D+New+docs+proposal&labels=area/documentation&template=docs.yml" title="Suggest new content" target="_blank" rel="noopener">
+          Suggest new content
+        </a>
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/{{ .File.Path }}" title="Edit this page" target="_blank" rel="noopener">
+          Edit this page
+        </a>
+        <a class="dropdown-item" href="/preview/contribute/docs/" title="Contributor guide" target="_blank" rel="noopener">
+          Contributor guide
+        </a>
+      </div>
+    </li>
+  </ul>
+</div>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Yugabyte collect metrics
+Requires=yb-collect_metrics.service
+
+[Timer]
+{% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Unit=yb-collect_metrics.service
+# Run every 1 minute
+OnCalendar=*:0/1:0
+
+[Install]
+WantedBy=timers.target

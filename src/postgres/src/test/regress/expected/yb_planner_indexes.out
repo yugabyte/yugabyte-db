@@ -1,0 +1,467 @@
+--------------------------------------
+-- Hash-partitioned tables/indexes.
+--------------------------------------
+CREATE TABLE t1(h int, r int, v1 int, v2 int, v3 int, primary key(h HASH, r ASC));
+CREATE INDEX t1_v1_v2_idx on t1(v1 HASH, v2 ASC);
+CREATE UNIQUE INDEX t1_v3_uniq_idx on t1(v3 HASH);
+INSERT INTO t1 VALUES (1,1,1,1,1), (1,2,1,2,5), (5,2,8,9,0), (3,4,2,2,2), (8,2,4,5,9);
+--------------------------------------
+-- Test unique vs non-unique indexes.
+-- Expect to use t1_v3_uniq_idx because will guarantee a single-row scan (due to uniqueness).
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 = 1 and v3 = 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t1_v3_uniq_idx on t1  (cost=0.00..4.13 rows=1 width=20)
+   Index Cond: (v3 = 1)
+   Storage Filter: ((v1 = 1) AND (v2 = 1))
+(3 rows)
+
+-- Expect to use t1_v1_v2_idx because the inequality condition on v3 (HASH) is not useful.
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 = 1 and v3 > 1;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
+   Index Cond: ((v1 = 1) AND (v2 = 1))
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 and v2 > 1 and v3 > 1;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
+   Index Cond: ((v1 = 1) AND (v2 > 1))
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+--------------------------------------
+-- Test covered vs uncovered indexes.
+-- Should prioritize the pkey index because it covers all columns (index only scan).
+EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=0.00..15.75 rows=100 width=20)
+   Index Cond: (h = 1)
+   Storage Filter: (v1 = 1)
+(3 rows)
+
+SELECT * FROM t1 WHERE h = 1 and v1 = 1;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 1 |  1 |  1 |  1
+ 1 | 2 |  1 |  2 |  5
+(2 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=0.00..5.20 rows=10 width=20)
+   Index Cond: (yb_hash_code(h) = 4624)
+   Storage Filter: (v1 = 1)
+(3 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 1 |  1 |  1 |  1
+ 1 | 2 |  1 |  2 |  5
+(2 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+   Index Cond: ((h = 1) AND (r = 2))
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
+(3 rows)
+
+SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 2 |  1 |  2 |  5
+(1 row)
+
+EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v1 = 1 and v2 = 2;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=0.00..5.28 rows=10 width=20)
+   Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
+   Storage Filter: ((v2 = 2) AND (v1 = 1))
+(3 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v1 = 1 and v2 = 2;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 2 |  1 |  2 |  5
+(1 row)
+
+-- Should prioritize the t1_v1_v2_idx because it is fully specified.
+EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..5.30 rows=10 width=20)
+   Index Cond: ((v1 = 1) AND (v2 = 2))
+   Storage Filter: (h = 1)
+(3 rows)
+
+SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 2 |  1 |  2 |  5
+(1 row)
+
+EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and v2 = 2;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=0.00..5.25 rows=10 width=20)
+   Index Cond: (yb_hash_code(h) = 4624)
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
+(3 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and v2 = 2;
+ h | r | v1 | v2 | v3
+---+---+----+----+----
+ 1 | 2 |  1 |  2 |  5
+(1 row)
+
+--------------------------------------
+-- Test partial indexes.
+-- Should use t1_v1_v2_idx because conditions partly match.
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 1;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 2;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 2)
+(3 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 3)
+(3 rows)
+
+CREATE INDEX t1_v1_v2_uniq_partial_idx ON t1(v1, v2) WHERE v3 > 2;
+-- Should still use t1_v1_v2_idx because partial index condition does not match.
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 1;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_idx on t1  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+-- Should both use t1_v1_v2_uniq_partial_idx.
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 2;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_uniq_partial_idx on t1  (cost=0.00..14.00 rows=100 width=20)
+   Index Cond: (v1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Scan using t1_v1_v2_uniq_partial_idx on t1  (cost=0.00..14.20 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 3)
+(3 rows)
+
+--------------------------------------
+-- Multiple hash columns.
+CREATE TABLE t4(h1 int, h2 int, v1 int, primary key((h1, h2) hash));
+INSERT INTO t4 (SELECT s, s, s FROM generate_series(1,1000) s);
+-- Should use index scan when equality conditions use all hash columns
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 1) AND (h2 = 2))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 4624) AND (h2 = 2))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = yb_hash_code(2);
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 4624) AND (h2 = 49348))
+(2 rows)
+
+-- Should not use index scan when the filter does not have equality on all hash columns
+EXPLAIN SELECT * from t4 where h1 = 1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..102.50 rows=1000 width=12)
+   Storage Filter: (h1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 > 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Storage Filter: ((h2 > 10) AND (h1 = 1))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 > 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Storage Filter: ((h1 > 1) AND (h2 > 10))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 = 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Storage Filter: ((h1 > 1) AND (h2 = 10))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = 1 or h2 = 2;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Storage Filter: ((h1 = 1) OR (h2 = 2))
+(2 rows)
+
+--------------------------------------
+-- Range-partitioned tables/indexes.
+--------------------------------------
+CREATE TABLE t2(h int, r int, v1 int, v2 int, v3 int, primary key(h ASC, r ASC));
+CREATE INDEX t2_v1_v2_idx on t2(v1 ASC, v2 ASC);
+CREATE UNIQUE INDEX t2_v3_uniq_idx on t2(v3 ASC);
+-- Expect to use t2_v3_uniq_idx because will guarantee a single-row scan (due to uniqueness).
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 and v2 = 1 and v3 = 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.13 rows=1 width=20)
+   Index Cond: (v3 = 1)
+   Storage Filter: ((v1 = 1) AND (v2 = 1))
+(3 rows)
+
+-- Expect to use t2_v1_v2_idx because condition partly matches.
+EXPLAIN SELECT * FROM t2 WHERE v1 >= 1 and v2 > 1;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..5.25 rows=10 width=20)
+   Index Cond: ((v1 >= 1) AND (v2 > 1))
+(2 rows)
+
+--------------------------------------
+-- Test covered vs uncovered indexes.
+-- Should prioritize the pkey index because it covers all columns (index only scan).
+EXPLAIN SELECT * FROM t2 WHERE h = 1 and v1 = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using t2_pkey on t2  (cost=0.00..15.75 rows=100 width=20)
+   Index Cond: (h = 1)
+   Storage Filter: (v1 = 1)
+(3 rows)
+
+EXPLAIN SELECT * FROM t2 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t2_pkey on t2  (cost=0.00..4.12 rows=1 width=20)
+   Index Cond: ((h = 1) AND (r = 2))
+   Storage Filter: ((v1 = 1) AND (v2 = 2))
+(3 rows)
+
+-- Should prioritize the t1_v1_v2_idx because it is fully specified.
+EXPLAIN SELECT * FROM t2 WHERE h = 1 and v1 = 1 and v2 = 2;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..5.30 rows=10 width=20)
+   Index Cond: ((v1 = 1) AND (v2 = 2))
+   Storage Filter: (h = 1)
+(3 rows)
+
+--------------------------------------
+-- Test partial indexes.
+DROP INDEX t2_v3_uniq_idx;
+-- Should use t1_v1_v2_idx because conditions partly match.
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 1;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 2;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 2)
+(3 rows)
+
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 3;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 3)
+(3 rows)
+
+CREATE INDEX t2_v1_v2_uniq_partial_idx ON t2(v1, v2) WHERE v3 > 2;
+-- Should still use t1_v1_v2_idx because partial index condition does not match.
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 1;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_idx on t2  (cost=0.00..16.75 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 1)
+(3 rows)
+
+-- Should both use t1_v1_v2_uniq_partial_idx.
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 2;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_uniq_partial_idx on t2  (cost=0.00..14.00 rows=100 width=20)
+   Index Cond: (v1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * FROM t2 WHERE v1 = 1 AND v3 > 3;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Scan using t2_v1_v2_uniq_partial_idx on t2  (cost=0.00..14.20 rows=100 width=20)
+   Index Cond: (v1 = 1)
+   Storage Filter: (v3 > 3)
+(3 rows)
+
+--------------------------------------
+-- Backwards vs forward scans.
+--------------------------------------
+CREATE TABLE t3(k int primary key, v1 int, v2 int);
+CREATE INDEX asc_idx on t3(v1 HASH, v2 ASC);
+CREATE INDEX desc_idx on t3(v1 HASH, v2 DESC);
+-- Should use asc index.
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 ORDER BY v2 ASC;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using asc_idx on t3  (cost=0.00..16.25 rows=100 width=12)
+   Index Cond: (v1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 > 3 ORDER BY v2 ASC;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using asc_idx on t3  (cost=0.00..5.25 rows=10 width=12)
+   Index Cond: ((v1 = 1) AND (v2 > 3))
+(2 rows)
+
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 <= 3 ORDER BY v2 ASC;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using asc_idx on t3  (cost=0.00..5.25 rows=10 width=12)
+   Index Cond: ((v1 = 1) AND (v2 <= 3))
+(2 rows)
+
+-- Should use desc index.
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 ORDER BY v2 DESC;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using desc_idx on t3  (cost=0.00..16.25 rows=100 width=12)
+   Index Cond: (v1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 > 3 ORDER BY v2 DESC;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Index Scan using desc_idx on t3  (cost=0.00..5.25 rows=10 width=12)
+   Index Cond: ((v1 = 1) AND (v2 > 3))
+(2 rows)
+
+EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 <= 3 ORDER BY v2 DESC;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Index Scan using desc_idx on t3  (cost=0.00..5.25 rows=10 width=12)
+   Index Cond: ((v1 = 1) AND (v2 <= 3))
+(2 rows)
+
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+-- Issue #21133
+CREATE TABLE bb (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT bb_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE c (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT c_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE cc (
+    pk serial NOT NULL,
+    col_int_nokey integer,
+    col_int_key integer,
+    CONSTRAINT cc_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX bb_int_key ON bb (col_int_key ASC);
+CREATE INDEX c_int_key ON c (col_int_key ASC);
+CREATE INDEX cc_int_key ON cc (col_int_key ASC);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT
+FROM
+    CC AS table1
+    JOIN CC AS table2 ON (
+        table2.col_int_key = table1.pk
+    )
+WHERE
+    table2.col_int_key < (
+        SELECT
+            col_int_nokey
+        FROM
+            CC
+        WHERE
+            col_int_nokey IN (
+                SELECT
+                    CHILD_SUBQUERY1_t1.pk
+                FROM
+                    BB AS CHILD_SUBQUERY1_t1
+                    JOIN C AS CHILD_SUBQUERY1_t2 ON (
+                        CHILD_SUBQUERY1_t2.pk = CHILD_SUBQUERY1_t1.col_int_key
+                    )
+                WHERE
+                    CHILD_SUBQUERY1_t2.col_int_key <= table1.pk
+            )
+    );
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Nested Loop (actual rows=0 loops=1)
+   ->  Seq Scan on cc table1 (actual rows=0 loops=1)
+   ->  Index Only Scan using cc_int_key on cc table2 (never executed)
+         Index Cond: ((col_int_key < (SubPlan 1)) AND (col_int_key = table1.pk))
+         Heap Fetches: 0
+         SubPlan 1
+           ->  Hash Semi Join (never executed)
+                 Hash Cond: (cc.col_int_nokey = child_subquery1_t1.pk)
+                 ->  Seq Scan on cc (never executed)
+                 ->  Hash (never executed)
+                       ->  YB Batched Nested Loop Join (never executed)
+                             Join Filter: (child_subquery1_t1.col_int_key = child_subquery1_t2.pk)
+                             ->  Index Scan using c_int_key on c child_subquery1_t2 (never executed)
+                                   Index Cond: (col_int_key <= table1.pk)
+                             ->  Index Scan using bb_int_key on bb child_subquery1_t1 (never executed)
+                                   Index Cond: (col_int_key = ANY (ARRAY[child_subquery1_t2.pk, $2, $3, ..., $1024]))
+(16 rows)
+
+DROP TABLE bb;
+DROP TABLE c;
+DROP TABLE cc;

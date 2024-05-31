@@ -1,0 +1,1537 @@
+--
+-- Create index on existing table with data
+--
+CREATE TABLE index_test (col1 int, col2 int);
+INSERT INTO index_test (col1, col2) VALUES (1, 100);
+INSERT INTO index_test (col1, col2) VALUES (2, 200);
+CREATE INDEX index_test_idx1 ON index_test(col1);
+CREATE INDEX index_test_idx2 ON index_test(col1, col2);
+DROP INDEX index_test_idx1;
+DROP INDEX index_test_idx2;
+DROP TABLE index_test;
+CREATE TABLE test_index (v1 INT, v2 INT, v3 INT);
+CREATE INDEX ON test_index (v1);
+CREATE INDEX ON test_index (v2, v3);
+INSERT INTO test_index VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+-- Verify order by on indexed column
+SELECT * FROM test_index ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  2 | 12 | 22
+  3 | 13 | 23
+  4 | 14 | 24
+  5 | 15 | 25
+(5 rows)
+
+-- Verify delete with hash value in index
+DELETE FROM test_index WHERE v2 = 12 OR v2 = 13;
+SELECT * FROM test_index ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  4 | 14 | 24
+  5 | 15 | 25
+(3 rows)
+
+-- Verify different WHERE conditions are supported.
+SELECT * FROM test_index WHERE v1 IS NULL;
+ v1 | v2 | v3
+----+----+----
+(0 rows)
+
+SELECT * FROM test_index WHERE v1 IS NOT NULL ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  4 | 14 | 24
+  5 | 15 | 25
+(3 rows)
+
+SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+(1 row)
+
+-- Verify indexes on system catalog tables are updated properly
+CREATE TABLE test_sys_catalog_update (k int primary key, v int);
+EXPLAIN (COSTS OFF) SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Only Scan using pg_class_relname_nsp_index on pg_class
+   Index Cond: (relname = 'test_sys_catalog_update'::name)
+(2 rows)
+
+SELECT relname  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+         relname
+-------------------------
+ test_sys_catalog_update
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+                         QUERY PLAN
+------------------------------------------------------------
+ Index Only Scan using pg_type_typname_nsp_index on pg_type
+   Index Cond: (typname = 'test_sys_catalog_update'::name)
+(2 rows)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+         typname
+-------------------------
+ test_sys_catalog_update
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pg_attribute_relid_attnam_index on pg_attribute
+   Index Cond: (attname = 'v'::name)
+(2 rows)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+ attname | atttypid
+---------+----------
+ v       |       23
+(1 row)
+
+ALTER TABLE test_sys_catalog_update RENAME TO test_sys_catalog_update_new;
+ALTER TABLE test_sys_catalog_update_new RENAME COLUMN v TO w;
+SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
+ relname
+---------
+(0 rows)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+ typname
+---------
+(0 rows)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+ attname | atttypid
+---------+----------
+(0 rows)
+
+SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update_new';
+           relname
+-----------------------------
+ test_sys_catalog_update_new
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update_new';
+           typname
+-----------------------------
+ test_sys_catalog_update_new
+(1 row)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'w';
+ attname | atttypid
+---------+----------
+ w       |       23
+(1 row)
+
+-- Test primary key as index
+CREATE TABLE t1 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
+CREATE INDEX ON t1 (v1);
+CREATE UNIQUE INDEX ON t1 (v1, v2);
+CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY ((h) hash, r));
+\d t1
+                 Table "public.t1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h      | integer |           | not null |
+ r      | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "t1_pkey" PRIMARY KEY, lsm (h HASH, r ASC)
+    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
+    "t1_v1_idx" lsm (v1 HASH)
+
+\d t2
+                 Table "public.t2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h      | integer |           | not null |
+ r      | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "t2_pkey" PRIMARY KEY, lsm (h HASH, r ASC)
+
+INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12);
+INSERT INTO t2 VALUES (1, 1, 21, 21);
+-- The following 2 inserts should produce error due to duplicate primary key / unique index value
+INSERT INTO t1 VALUES (1, 1, 99, 99);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+INSERT INTO t1 VALUES (1, 3, 11, 11);
+ERROR:  duplicate key value violates unique constraint "t1_v1_v2_idx"
+INSERT INTO t1 VALUES (1, 3, 11, 13), (2, 1, 12, 13), (2, 2, 12, 14);
+EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
+      QUERY PLAN
+----------------------
+ Sort
+   Sort Key: h, r
+   ->  Seq Scan on t1
+(3 rows)
+
+SELECT * FROM t1 ORDER BY h, r;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+ 1 | 2 | 11 | 12
+ 1 | 3 | 11 | 13
+ 2 | 1 | 12 | 13
+ 2 | 2 | 12 | 14
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 ORDER BY r;
+           QUERY PLAN
+--------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (h = 1)
+(2 rows)
+
+SELECT * FROM t1 WHERE h = 1 ORDER BY r;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+ 1 | 2 | 11 | 12
+ 1 | 3 | 11 | 13
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+                  QUERY PLAN
+----------------------------------------------
+ Sort
+   Sort Key: r
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (yb_hash_code(h) = 4624)
+(4 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+ 1 | 2 | 11 | 12
+ 1 | 3 | 11 | 13
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
+           QUERY PLAN
+---------------------------------
+ Sort
+   Sort Key: h, r
+   ->  Seq Scan on t1
+         Storage Filter: (h > 1)
+(4 rows)
+
+SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
+ h | r | v1 | v2
+---+---+----+----
+ 2 | 1 | 12 | 13
+ 2 | 2 | 12 | 14
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 AND r = 1;
+             QUERY PLAN
+-------------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: ((h = 1) AND (r = 1))
+(2 rows)
+
+SELECT * FROM t1 WHERE h = 1 AND r = 1;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+                      QUERY PLAN
+------------------------------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: ((yb_hash_code(h) = 4624) AND (r = 1))
+(2 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
+               QUERY PLAN
+----------------------------------------
+ Sort
+   Sort Key: h, r
+   ->  Index Scan using t1_v1_idx on t1
+         Index Cond: (v1 = 11)
+(4 rows)
+
+SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 1 | 11 | 11
+ 1 | 2 | 11 | 12
+ 1 | 3 | 11 | 13
+(3 rows)
+
+-- Disabled this test because we do not have proper stats. We return the same cost estimate
+-- for indexes t1_v1_idx and t1_v1_v2_idx and Postgres will be either of them at random.
+-- EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
+-- SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
+EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.h = t2.h) AND (t1.r = t2.r))
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(5 rows)
+
+SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
+ h | r | v1 | v1
+---+---+----+----
+ 1 | 1 | 11 | 21
+(1 row)
+
+--
+-- NULL value in index
+--
+CREATE TABLE null_index(k int, v int);
+CREATE INDEX null_index_v ON null_index(v);
+INSERT INTO null_index(k) VALUES(1);
+INSERT INTO null_index VALUES(2, NULL);
+INSERT INTO null_index VALUES(3, 3);
+SELECT * FROM null_index ORDER BY k;
+ k | v
+---+---
+ 1 |
+ 2 |
+ 3 | 3
+(3 rows)
+
+SELECT * FROM null_index WHERE v IS NULL ORDER BY k;
+ k | v
+---+---
+ 1 |
+ 2 |
+(2 rows)
+
+SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
+ k | v
+---+---
+ 3 | 3
+(1 row)
+
+--
+-- NULL value in unique index
+--
+CREATE TABLE null_unique_index(k int, v int);
+CREATE UNIQUE INDEX ON null_unique_index(k);
+INSERT INTO null_unique_index(v) values(1);
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (4, 4);
+INSERT INTO null_unique_index values(4, 5); -- fail
+ERROR:  duplicate key value violates unique constraint "null_unique_index_k_idx"
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k = 4;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Index Scan using null_unique_index_k_idx on null_unique_index
+   Index Cond: (k = 4)
+(2 rows)
+
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Sort
+   Sort Key: k
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NULL)
+(4 rows)
+
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
+               QUERY PLAN
+-----------------------------------------
+ Sort
+   Sort Key: k
+   ->  Seq Scan on null_unique_index
+         Storage Filter: (k IS NOT NULL)
+(4 rows)
+
+SELECT * FROM null_unique_index WHERE k = 4;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+ k | v
+---+---
+   | 1
+   | 2
+(2 rows)
+
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+ k | v
+---+---
+ 3 | 3
+ 4 | 4
+(2 rows)
+
+DELETE FROM null_unique_index WHERE k = 3;
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+ k | v
+---+---
+   | 1
+   | 2
+(2 rows)
+
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Delete on null_unique_index
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NULL)
+(3 rows)
+
+DELETE FROM null_unique_index WHERE k IS NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
+EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+               QUERY PLAN
+-----------------------------------------
+ Update on null_unique_index
+   ->  Seq Scan on null_unique_index
+         Storage Filter: (k IS NOT NULL)
+(3 rows)
+
+UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+ k | v
+---+---
+   | 2
+   | 3
+   | 4
+   | 5
+(4 rows)
+
+-- Test index update with UPDATE and DELETE
+CREATE TABLE test_unique (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON test_unique (v1);
+CREATE INDEX ON test_unique (v2);
+-- Insert a row
+INSERT INTO test_unique VALUES (1, 1, 1);
+SELECT * FROM test_unique;
+ k | v1 | v2
+---+----+----
+ 1 |  1 |  1
+(1 row)
+
+-- UPDATE a row and verify the content of associated indexes via index-only scan
+UPDATE test_unique SET v1 = 2 WHERE k = 1;
+SELECT v1 FROM test_unique WHERE v1 IN (1, 2);
+ v1
+----
+  2
+(1 row)
+
+SELECT v2 FROM test_unique WHERE v2 IN (1, 2);
+ v2
+----
+  1
+(1 row)
+
+-- DELETE a row and verify the content of associated indexes via index-only scan
+DELETE FROM test_unique WHERE k = 1;
+SELECT v1 FROM test_unique WHERE v1 IN (1, 2);
+ v1
+----
+(0 rows)
+
+SELECT v2 FROM test_unique WHERE v2 IN (1, 2);
+ v2
+----
+(0 rows)
+
+-- Insert 2 rows of the affected v1 values. Make sure both can be inserted
+-- with no duplicate key violation.
+INSERT INTO test_unique VALUES (1, 1, 1);
+INSERT INTO test_unique VALUES (2, 2, 2);
+SELECT * FROM test_unique;
+ k | v1 | v2
+---+----+----
+ 1 |  1 |  1
+ 2 |  2 |  2
+(2 rows)
+
+-- Test cascade-truncate indexes
+CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
+CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
+INSERT INTO test_truncate VALUES (1, 2);
+INSERT INTO test_truncate VALUES (2, 2);
+ERROR:  duplicate key value violates unique constraint "test_truncate_index"
+EXPLAIN (COSTS OFF) SELECT b FROM test_truncate WHERE b = 2;
+                         QUERY PLAN
+------------------------------------------------------------
+ Index Only Scan using test_truncate_index on test_truncate
+   Index Cond: (b = 2)
+(2 rows)
+
+SELECT b FROM test_truncate WHERE b = 2;
+ b
+---
+ 2
+(1 row)
+
+TRUNCATE test_truncate;
+SELECT b FROM test_truncate WHERE b = 2;
+ b
+---
+(0 rows)
+
+INSERT INTO test_truncate VALUES (2, 2);
+INSERT INTO test_truncate VALUES (1, 2);
+ERROR:  duplicate key value violates unique constraint "test_truncate_index"
+DROP TABLE test_truncate;
+-- Test index methods
+CREATE TABLE test_method (k int PRIMARY KEY, v int);
+CREATE INDEX ON test_method USING btree (v);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX ON test_method USING hash (v);
+NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+CREATE INDEX ON test_method USING foo (v);
+ERROR:  access method "foo" does not exist
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm (k HASH)
+    "test_method_v_idx" lsm (v HASH)
+    "test_method_v_idx1" lsm (v HASH)
+
+DROP TABLE test_method;
+-- Test include columns
+CREATE TABLE test_include (c1 int, c2 int, c3 int);
+INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
+-- Expect duplicate key error
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+ERROR:  ERROR:  duplicate key value violates unique constraint "test_include_c1_c2_idx"
+\d test_include
+            Table "public.test_include"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+ c3     | integer |           |          |
+Indexes:
+    "test_include_c1_c2_idx" UNIQUE, lsm (c1 HASH) INCLUDE (c2) INVALID
+
+DROP INDEX test_include_c1_c2_idx;
+DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 = 1;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Only Scan using test_include_c1_c2_idx on test_include
+   Index Cond: (c1 = 1)
+(2 rows)
+
+SELECT c1, c2 FROM test_include WHERE c1 = 1;
+ c1 | c2
+----+----
+  1 |  1
+(1 row)
+
+\d test_include
+            Table "public.test_include"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+ c3     | integer |           |          |
+Indexes:
+    "test_include_c1_c2_idx" UNIQUE, lsm (c1 HASH) INCLUDE (c2)
+
+-- Verify the included column is updated in both the base table and the index. Use WHERE condition
+-- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
+-- the other case to force the use of sequential scan on the base table.
+UPDATE test_include SET c2 = 22 WHERE c1 = 2;
+EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+            QUERY PLAN
+----------------------------------
+ Sort
+   Sort Key: c2
+   ->  Seq Scan on test_include
+         Storage Filter: (c1 > 0)
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
+           QUERY PLAN
+--------------------------------
+ Sort
+   Sort Key: c2
+   ->  Seq Scan on test_include
+(3 rows)
+
+SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+ c1 | c2
+----+----
+  1 |  1
+  3 |  3
+  2 | 22
+(3 rows)
+
+SELECT * FROM test_include ORDER BY c2;
+ c1 | c2 | c3
+----+----+----
+  1 |  1 |  1
+  3 |  3 |  3
+  2 | 22 |  2
+(3 rows)
+
+UPDATE test_include SET c2 = NULL WHERE c1 = 1;
+-- TODO(mihnea) Disabled temporarily due to issue #1611
+-- UPDATE test_include SET c2 = 33 WHERE c2 = 3;
+DELETE FROM test_include WHERE c1 = 2;
+SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+ c1 | c2
+----+----
+  3 |  3
+  1 |
+(2 rows)
+
+SELECT * FROM test_include ORDER BY c2;
+ c1 | c2 | c3
+----+----+----
+  3 |  3 |  3
+  1 |    |  1
+(2 rows)
+
+-- Test SPLIT INTO
+CREATE TABLE test_split (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, h2) HASH, r1, r2));
+CREATE INDEX ON test_split (h2 HASH, r2, r1) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split ((r1,r2) HASH) SPLIT INTO 20 TABLETS;
+CREATE INDEX ON test_split (h2) SPLIT INTO 20 TABLETS;
+\d test_split
+             Table "public.test_split"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "test_split_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
+    "test_split_h2_idx" lsm (h2 HASH)
+    "test_split_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
+    "test_split_r1_r2_idx" lsm ((r1, r2) HASH)
+
+-- These should fail
+CREATE INDEX ON test_split (r1 ASC) SPLIT INTO 20 TABLETS;
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE INDEX ON test_split (h2 ASC, r1) SPLIT INTO 20 TABLETS;
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE INDEX ON test_split (h1 HASH) SPLIT INTO 10000 TABLETS;
+ERROR:  num_tablets exceeds system limit
+-- Test hash methods
+CREATE TABLE test_method (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, h2) HASH, r1, r2));
+CREATE INDEX ON test_method (h2 HASH, r2, r1);
+CREATE INDEX ON test_method (r1, r2);
+CREATE UNIQUE INDEX ON test_method (v1, v2);
+CREATE INDEX ON test_method ((h1, h2) HASH, r2, r1);
+CREATE INDEX ON test_method ((h2, h1), r2 DESC, r1);
+CREATE UNIQUE INDEX ON test_method ((h1, (h2 % 8)) HASH, r2, r1);
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
+    "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
+    "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
+    "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
+    "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
+    "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
+
+-- These should issue NOTICE and verify pg_get_indexdef() output doesn't have
+-- NULLS FIRST/NULLS LAST
+CREATE INDEX ON test_method (h1 HASH NULLS FIRST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_h1_idx'::regclass);
+                              pg_get_indexdef
+---------------------------------------------------------------------------
+ CREATE INDEX test_method_h1_idx ON public.test_method USING lsm (h1 HASH)
+(1 row)
+
+CREATE INDEX ON test_method (h1 HASH NULLS LAST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_h1_idx1'::regclass);
+                              pg_get_indexdef
+----------------------------------------------------------------------------
+ CREATE INDEX test_method_h1_idx1 ON public.test_method USING lsm (h1 HASH)
+(1 row)
+
+CREATE INDEX ON test_method (h1 NULLS LAST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_h1_idx2'::regclass);
+                              pg_get_indexdef
+----------------------------------------------------------------------------
+ CREATE INDEX test_method_h1_idx2 ON public.test_method USING lsm (h1 HASH)
+(1 row)
+
+CREATE INDEX ON test_method (h1 NULLS LAST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_h1_idx3'::regclass);
+                              pg_get_indexdef
+----------------------------------------------------------------------------
+ CREATE INDEX test_method_h1_idx3 ON public.test_method USING lsm (h1 HASH)
+(1 row)
+
+CREATE INDEX ON test_method ((h1 % 8) HASH NULLS FIRST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_expr_idx'::regclass);
+                                   pg_get_indexdef
+-------------------------------------------------------------------------------------
+ CREATE INDEX test_method_expr_idx ON public.test_method USING lsm (((h1 % 8)) HASH)
+(1 row)
+
+CREATE INDEX ON test_method ((h1 % 8) HASH NULLS LAST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_expr_idx1'::regclass);
+                                   pg_get_indexdef
+--------------------------------------------------------------------------------------
+ CREATE INDEX test_method_expr_idx1 ON public.test_method USING lsm (((h1 % 8)) HASH)
+(1 row)
+
+CREATE INDEX ON test_method ((h1 % 8) NULLS FIRST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_expr_idx2'::regclass);
+                                   pg_get_indexdef
+--------------------------------------------------------------------------------------
+ CREATE INDEX test_method_expr_idx2 ON public.test_method USING lsm (((h1 % 8)) HASH)
+(1 row)
+
+CREATE INDEX ON test_method ((h1 % 8) NULLS LAST);
+NOTICE:  nulls sort ordering option is ignored, NULLS FIRST/NULLS LAST not allowed for a HASH column
+SELECT pg_get_indexdef('test_method_expr_idx3'::regclass);
+                                   pg_get_indexdef
+--------------------------------------------------------------------------------------
+ CREATE INDEX test_method_expr_idx3 ON public.test_method USING lsm (((h1 % 8)) HASH)
+(1 row)
+
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
+    "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
+    "test_method_expr_idx" lsm ((h1 % 8) HASH)
+    "test_method_expr_idx1" lsm ((h1 % 8) HASH)
+    "test_method_expr_idx2" lsm ((h1 % 8) HASH)
+    "test_method_expr_idx3" lsm ((h1 % 8) HASH)
+    "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
+    "test_method_h1_idx" lsm (h1 HASH)
+    "test_method_h1_idx1" lsm (h1 HASH)
+    "test_method_h1_idx2" lsm (h1 HASH)
+    "test_method_h1_idx3" lsm (h1 HASH)
+    "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
+    "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
+    "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
+
+DROP INDEX test_method_expr_idx;
+DROP INDEX test_method_expr_idx1;
+DROP INDEX test_method_expr_idx2;
+DROP INDEX test_method_expr_idx3;
+DROP INDEX test_method_h1_idx;
+DROP INDEX test_method_h1_idx1;
+DROP INDEX test_method_h1_idx2;
+DROP INDEX test_method_h1_idx3;
+-- Test should not issue NOTICE
+CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
+CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
+CREATE DATABASE colocation_test colocation = true;
+\c colocation_test
+CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY (r1, r2));
+CREATE INDEX ON test_method (r1 NULLS FIRST);
+CREATE INDEX ON test_method (r1 NULLS LAST);
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC), colocation: true
+    "test_method_r1_idx" lsm (r1 ASC NULLS FIRST), colocation: true
+    "test_method_r1_idx1" lsm (r1 ASC), colocation: true
+Colocation: true
+
+\c yugabyte
+DROP DATABASE colocation_test;
+CREATE TABLEGROUP tbl_group;
+CREATE TABLE tbl_group_tbl (r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY (r1, r2)) TABLEGROUP tbl_group;
+CREATE INDEX idx_tbl_group_tbl ON tbl_group_tbl (r1 NULLS FIRST);
+CREATE INDEX idx2_tbl_group_tbl ON tbl_group_tbl (r1 NULLS LAST);
+\d tbl_group_tbl
+           Table "public.tbl_group_tbl"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl_group_tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
+    "idx2_tbl_group_tbl" lsm (r1 ASC), tablegroup "tbl_group"
+    "idx_tbl_group_tbl" lsm (r1 ASC NULLS FIRST), tablegroup "tbl_group"
+Tablegroup: "tbl_group"
+
+DROP TABLE tbl_group_tbl;
+DROP TABLEGROUP tbl_group;
+-- These should fail
+CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
+ERROR:  multiple hash columns must be defined as a single hash column group
+LINE 1: CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
+                                              ^
+CREATE INDEX ON test_method (r1, h1 HASH);
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON test_method (r1, h1 HASH);
+                                         ^
+CREATE INDEX ON test_method (() HASH);
+ERROR:  syntax error at or near ")"
+LINE 1: CREATE INDEX ON test_method (() HASH);
+                                      ^
+CREATE INDEX ON test_method (());
+ERROR:  syntax error at or near ")"
+LINE 1: CREATE INDEX ON test_method (());
+                                      ^
+CREATE INDEX ON test_method (r1 DESC, (h2, h1));
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON test_method (r1 DESC, (h2, h1));
+                                              ^
+CREATE INDEX ON test_method ((h1, h2) HASH NULLS FIRST);
+ERROR:  syntax error at or near "NULLS"
+LINE 1: CREATE INDEX ON test_method ((h1, h2) HASH NULLS FIRST);
+                                                   ^
+CREATE INDEX ON test_method ((h1, h2) HASH NULLS LAST);
+ERROR:  syntax error at or near "NULLS"
+LINE 1: CREATE INDEX ON test_method ((h1, h2) HASH NULLS LAST);
+                                                   ^
+CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS FIRST);
+ERROR:  syntax error at or near "NULLS"
+LINE 1: CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS FIRST);
+                                                       ^
+CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS LAST);
+ERROR:  syntax error at or near "NULLS"
+LINE 1: CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS LAST);
+                                                       ^
+INSERT INTO test_method VALUES
+  (1, 1, 1, 1, 1, 11),
+  (1, 1, 1, 2, 2, 12),
+  (1, 1, 2, 1, 3, 13),
+  (1, 1, 2, 2, 4, 14),
+  (1, 2, 1, 1, 5, 15),
+  (1, 2, 1, 2, 6, 16),
+  (1, 2, 2, 1, 7, 17),
+  (1, 2, 2, 2, 8, 18),
+  (2, 0, 1, 1, 9, 19),
+  (2, 1, 1, 2, 10, 20);
+-- Test scans using different indexes. Verify order by.
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: h1, h2
+   ->  Seq Scan on test_method
+(3 rows)
+
+SELECT * FROM test_method ORDER BY h1, h2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  1 |  2 |  2 |  4 | 14
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  2 |  2 |  2 |  8 | 18
+  1 |  2 |  1 |  2 |  6 | 16
+  1 |  2 |  2 |  1 |  7 | 17
+  1 |  2 |  1 |  1 |  5 | 15
+  2 |  0 |  1 |  1 |  9 | 19
+  2 |  1 |  1 |  2 | 10 | 20
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using test_method_pkey on test_method
+   Index Cond: ((h1 = 1) AND (h2 = 1))
+(2 rows)
+
+SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  1 |  2 |  2 |  4 | 14
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: r1, r2
+   ->  Seq Scan on test_method
+(3 rows)
+
+SELECT * FROM test_method ORDER BY r1, r2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  2 |  1 |  1 |  5 | 15
+  1 |  1 |  1 |  1 |  1 | 11
+  2 |  0 |  1 |  1 |  9 | 19
+  1 |  2 |  1 |  2 |  6 | 16
+  1 |  1 |  1 |  2 |  2 | 12
+  2 |  1 |  1 |  2 | 10 | 20
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  2 |  2 |  1 |  7 | 17
+  1 |  2 |  2 |  2 |  8 | 18
+  1 |  1 |  2 |  2 |  4 | 14
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+            QUERY PLAN
+----------------------------------
+ Sort
+   Sort Key: v1, v2
+   ->  Seq Scan on test_method
+         Storage Filter: (v1 > 5)
+(4 rows)
+
+SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  2 |  1 |  2 |  6 | 16
+  1 |  2 |  2 |  1 |  7 | 17
+  1 |  2 |  2 |  2 |  8 | 18
+  2 |  0 |  1 |  1 |  9 | 19
+  2 |  1 |  1 |  2 | 10 | 20
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Sort
+   Sort Key: r1, r2
+   ->  Index Scan using test_method_h2_r2_r1_idx on test_method
+         Index Cond: (h2 = 2)
+(4 rows)
+
+SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  2 |  1 |  1 |  5 | 15
+  1 |  2 |  1 |  2 |  6 | 16
+  1 |  2 |  2 |  1 |  7 | 17
+  1 |  2 |  2 |  2 |  8 | 18
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Scan using test_method_h2_h1_r2_r1_idx on test_method
+   Index Cond: ((h2 = 1) AND (h1 = 1))
+(2 rows)
+
+SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  1 |  2 |  2 |  4 | 14
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  2 |  1 |  3 | 13
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Scan using test_method_h1_h2_r2_r1_idx on test_method
+   Index Cond: ((h1 = 1) AND (h2 = 1))
+(2 rows)
+
+SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  1 |  2 |  2 |  4 | 14
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Index Scan using test_method_h1_expr_r2_r1_idx on test_method
+   Index Cond: ((h1 = 1) AND ((h2 % 8) = 2))
+(2 rows)
+
+SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  2 |  1 |  1 |  5 | 15
+  1 |  2 |  2 |  1 |  7 | 17
+  1 |  2 |  1 |  2 |  6 | 16
+  1 |  2 |  2 |  2 |  8 | 18
+(4 rows)
+
+-- Test update using a hash index
+EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Update on test_method
+   ->  Index Scan using test_method_h2_r2_r1_idx on test_method
+         Index Cond: (h2 = 2)
+(3 rows)
+
+UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+SELECT * FROM test_method ORDER BY h1, h2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  1 |  2 |  2 |  4 | 14
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  2 |  2 |  2 |  8 | 28
+  1 |  2 |  1 |  2 |  6 | 26
+  1 |  2 |  2 |  1 |  7 | 27
+  1 |  2 |  1 |  1 |  5 | 25
+  2 |  0 |  1 |  1 |  9 | 19
+  2 |  1 |  1 |  2 | 10 | 20
+(10 rows)
+
+SELECT * FROM test_method ORDER BY r1, r2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  2 |  1 |  1 |  5 | 25
+  1 |  1 |  1 |  1 |  1 | 11
+  2 |  0 |  1 |  1 |  9 | 19
+  1 |  2 |  1 |  2 |  6 | 26
+  1 |  1 |  1 |  2 |  2 | 12
+  2 |  1 |  1 |  2 | 10 | 20
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  2 |  2 |  1 |  7 | 27
+  1 |  2 |  2 |  2 |  8 | 28
+  1 |  1 |  2 |  2 |  4 | 14
+(10 rows)
+
+-- Test delete using a unique index
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Delete on test_method
+   ->  Index Scan using test_method_v1_v2_idx on test_method
+         Index Cond: ((v1 = 5) AND (v2 = 25))
+(3 rows)
+
+DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+-- Test delete using the primary key
+EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+                       QUERY PLAN
+--------------------------------------------------------
+ Delete on test_method
+   ->  Index Scan using test_method_pkey on test_method
+         Index Cond: ((h1 = 2) AND (h2 = 0))
+(3 rows)
+
+DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+SELECT * FROM test_method ORDER BY h1, h2;
+ h1 | h2 | r1 | r2 | v1 | v2
+----+----+----+----+----+----
+  1 |  1 |  2 |  2 |  4 | 14
+  1 |  1 |  1 |  1 |  1 | 11
+  1 |  1 |  1 |  2 |  2 | 12
+  1 |  1 |  2 |  1 |  3 | 13
+  1 |  2 |  2 |  2 |  8 | 28
+  1 |  2 |  1 |  2 |  6 | 26
+  1 |  2 |  2 |  1 |  7 | 27
+  2 |  1 |  1 |  2 | 10 | 20
+(8 rows)
+
+-- Test update using a unique index on hashed expr
+UPDATE test_method SET h2 = 258 WHERE h2 % 8 = 1 AND h1 = 2;
+SELECT * FROM test_method ORDER BY h1, h2;
+ h1 | h2  | r1 | r2 | v1 | v2
+----+-----+----+----+----+----
+  1 |   1 |  2 |  2 |  4 | 14
+  1 |   1 |  1 |  1 |  1 | 11
+  1 |   1 |  1 |  2 |  2 | 12
+  1 |   1 |  2 |  1 |  3 | 13
+  1 |   2 |  2 |  2 |  8 | 28
+  1 |   2 |  1 |  2 |  6 | 26
+  1 |   2 |  2 |  1 |  7 | 27
+  2 | 258 |  1 |  2 | 10 | 20
+(8 rows)
+
+-- This should fail
+UPDATE test_method SET h2 = 257 WHERE h2 % 8 = 2 AND h1 = 1;
+ERROR:  duplicate key value violates unique constraint "test_method_h1_expr_r2_r1_idx"
+-- Test insert using a unique index on hashed expr
+-- This should fail
+INSERT INTO test_method VALUES (1, 10, 2, 2, 8, 100);
+ERROR:  duplicate key value violates unique constraint "test_method_h1_expr_r2_r1_idx"
+-- Test hash with extra parenthesis on a single column
+CREATE INDEX ON test_method ((h2) HASH);
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ h1     | integer |           | not null |
+ h2     | integer |           | not null |
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1 ASC, r2 ASC)
+    "test_method_h1_expr_r2_r1_idx" UNIQUE, lsm ((h1, (h2 % 8)) HASH, r2 ASC, r1 ASC)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
+    "test_method_h1_h2_r2_r1_idx" lsm ((h1, h2) HASH, r2 ASC, r1 ASC)
+    "test_method_h2_h1_r2_r1_idx" lsm ((h2, h1) HASH, r2 DESC, r1 ASC)
+    "test_method_h2_idx" lsm (h2 HASH)
+    "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2 ASC, r1 ASC)
+    "test_method_r1_r2_idx" lsm (r1 HASH, r2 ASC)
+    "test_method_r1_r2_idx1" lsm (r1 ASC NULLS FIRST, r2 ASC)
+    "test_method_r1_r2_idx2" lsm (r1 DESC, r2 DESC NULLS LAST)
+
+EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using test_method_h2_idx on test_method
+   Index Cond: (h2 = 258)
+(2 rows)
+
+SELECT * FROM test_method WHERE h2 = 258;
+ h1 | h2  | r1 | r2 | v1 | v2
+----+-----+----+----+----+----
+  2 | 258 |  1 |  2 | 10 | 20
+(1 row)
+
+DROP TABLE test_method;
+-- Test more HASH key cases in PRIMARY KEY
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int);
+-- These should fail
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1 % 8, h2) HASH, r1, r2);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY ((h1 % 8, h2) HASH, r1...
+                                  ^
+ALTER TABLE test_hash ADD PRIMARY KEY ((h1, h2) HASH, (r1 + r2) DESC);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY ((h1, h2) HASH, (r1 + ...
+                                  ^
+-- Extra parenthesis turns the column group into a RowExpr - should fail
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)) HASH);
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)) HASH);
+                                  ^
+ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY (((h1, h2)));
+                                  ^
+-- This should succeed
+CREATE UNIQUE INDEX test_hash_h1_h2mod8_r2_r1_idx ON test_hash ((h1, (h2 % 8)) HASH, r2, r1);
+-- This should fail
+ALTER TABLE test_hash ADD PRIMARY KEY USING INDEX test_hash_h1_h2mod8_r2_r1_idx;
+ERROR:  index "test_hash_h1_h2mod8_r2_r1_idx" contains expressions
+LINE 1: ALTER TABLE test_hash ADD PRIMARY KEY USING INDEX test_hash_...
+                                  ^
+DETAIL:  Cannot create a primary key or unique constraint using such an index.
+-- These CREATE TABLE statements should fail
+DROP TABLE test_hash;
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY (r1, (h1, h2) HASH));
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 3:   PRIMARY KEY (r1, (h1, h2) HASH));
+                           ^
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1 + 666) HASH));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 3:   PRIMARY KEY ((h1 + 666) HASH));
+          ^
+CREATE TABLE test_hash (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, (h2 + 666)) HASH, r1, r2));
+ERROR:  cannot create a primary key or unique constraint on expressions
+LINE 3:   PRIMARY KEY ((h1, (h2 + 666)) HASH, r1, r2));
+          ^
+-- Test ordering on split indexes
+CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
+CREATE INDEX ON tbl(v ASC) SPLIT AT VALUES((10), (20), (30));
+INSERT INTO tbl(v) VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40), (6), (16), (26);
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+            QUERY PLAN
+-----------------------------------
+ Index Scan using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v ASC;
+ k  | v
+----+----
+  1 |  5
+  2 |  6
+ 14 |  6
+ 10 | 10
+  4 | 15
+ 15 | 16
+  3 | 16
+ 11 | 20
+  5 | 25
+ 16 | 26
+  6 | 26
+ 12 | 30
+  8 | 35
+  7 | 36
+ 13 | 40
+  9 | 46
+(16 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+                 QUERY PLAN
+--------------------------------------------
+ Index Scan Backward using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v DESC;
+ k  | v
+----+----
+  9 | 46
+ 13 | 40
+  7 | 36
+  8 | 35
+ 12 | 30
+  6 | 26
+ 16 | 26
+  5 | 25
+ 11 | 20
+  3 | 16
+ 15 | 16
+  4 | 15
+ 10 | 10
+ 14 |  6
+  2 |  6
+  1 |  5
+(16 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan Backward using tbl_v_idx on tbl
+   Index Cond: ((v > 10) AND (v <= 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
+ v
+----
+ 40
+ 36
+ 35
+ 30
+ 26
+ 26
+ 25
+ 20
+ 16
+ 16
+ 15
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+               QUERY PLAN
+----------------------------------------
+ Index Only Scan using tbl_v_idx on tbl
+   Index Cond: ((v > 10) AND (v <= 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+ v
+----
+ 15
+ 16
+ 16
+ 20
+ 25
+ 26
+ 26
+ 30
+ 35
+ 36
+ 40
+(11 rows)
+
+DROP TABLE tbl;
+CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
+CREATE UNIQUE INDEX ON tbl(v DESC) SPLIT AT VALUES((30), (20), (10));
+INSERT INTO tbl(v) VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40);
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+                 QUERY PLAN
+--------------------------------------------
+ Index Scan Backward using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v ASC;
+ k  | v
+----+----
+  1 |  5
+  2 |  6
+ 10 | 10
+  4 | 15
+  3 | 16
+ 11 | 20
+  5 | 25
+  6 | 26
+ 12 | 30
+  8 | 35
+  7 | 36
+ 13 | 40
+  9 | 46
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+            QUERY PLAN
+-----------------------------------
+ Index Scan using tbl_v_idx on tbl
+(1 row)
+
+SELECT * FROM tbl ORDER BY v DESC;
+ k  | v
+----+----
+  9 | 46
+ 13 | 40
+  7 | 36
+  8 | 35
+ 12 | 30
+  6 | 26
+  5 | 25
+ 11 | 20
+  3 | 16
+  4 | 15
+ 10 | 10
+  2 |  6
+  1 |  5
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan Backward using tbl_v_idx on tbl
+   Index Cond: ((v >= 10) AND (v < 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
+ v
+----
+ 10
+ 15
+ 16
+ 20
+ 25
+ 26
+ 30
+ 35
+ 36
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+               QUERY PLAN
+----------------------------------------
+ Index Only Scan using tbl_v_idx on tbl
+   Index Cond: ((v >= 10) AND (v < 40))
+(2 rows)
+
+SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+ v
+----
+ 36
+ 35
+ 30
+ 26
+ 25
+ 20
+ 16
+ 15
+ 10
+(9 rows)
+
+-- Test creating indexes with (table_oid = x)
+CREATE TABLE test_index_with_oids (v1 INT, v2 INT, v3 INT);
+INSERT INTO test_index_with_oids VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+-- Test with variable = false
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+ERROR:  create index with table_oid is not allowed
+HINT:  Try enabling the session variable yb_enable_create_with_table_oid.
+-- Turn on variable and test
+set yb_enable_create_with_table_oid=1;
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 0);
+ERROR:  user indexes must have an OID >= 16384
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = -1);
+ERROR:  invalid value for OID option "table_oid": -1
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 123);
+ERROR:  user indexes must have an OID >= 16384
+CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 'test');
+ERROR:  user indexes must have an OID >= 16384
+CREATE INDEX index_with_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+select relname, oid from pg_class where relname = 'index_with_table_oid';
+       relname        |   oid
+----------------------+---------
+ index_with_table_oid | 1111111
+(1 row)
+
+SELECT * FROM test_index_with_oids ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  2 | 12 | 22
+  3 | 13 | 23
+  4 | 14 | 24
+  5 | 15 | 25
+(5 rows)
+
+CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+ERROR:  table OID 1111111 is in use
+set yb_enable_create_with_table_oid=0;
+-- Test creating index nonconcurrently (i.e. without online schema migration)
+CREATE TABLE test_index_nonconcurrently (i INT, t TEXT);
+INSERT INTO test_index_nonconcurrently VALUES (generate_series(1, 10), 'a');
+CREATE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+EXPLAIN (COSTS OFF) SELECT i FROM test_index_nonconcurrently WHERE i = 1;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Index Only Scan using test_index_nonconcurrently_i_idx on test_index_nonconcurrently
+   Index Cond: (i = 1)
+(2 rows)
+
+SELECT * FROM test_index_nonconcurrently WHERE i = 1;
+ i | t
+---+---
+ 1 | a
+(1 row)
+
+DROP INDEX test_index_nonconcurrently_i_idx;
+CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+EXPLAIN (COSTS OFF) SELECT i FROM test_index_nonconcurrently WHERE i = 1;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Index Only Scan using test_index_nonconcurrently_i_idx on test_index_nonconcurrently
+   Index Cond: (i = 1)
+(2 rows)
+
+INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
+ERROR:  duplicate key value violates unique constraint "test_index_nonconcurrently_i_idx"
+DROP INDEX test_index_nonconcurrently_i_idx;
+INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
+CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
+ERROR:  duplicate key value violates unique constraint "test_index_nonconcurrently_i_idx"
+DROP TABLE test_index_nonconcurrently;
+-- Verify that creating indexes on a YB table does not update table stats.
+CREATE TABLE test_stats (i INT);
+INSERT INTO test_stats VALUES (1), (2), (3);
+ANALYZE test_stats;
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX CONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+CREATE INDEX NONCONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+ reltuples 
+-----------
+         3
+(1 row)
+
+DROP TABLE test_stats;
+-- Split options on a partitioned table or its indexes should not be copied
+-- for a newly attached partition.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
+    SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
+SELECT yb_get_range_split_clause('test_part_1'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+CREATE INDEX test_part_idx ON test_part(a) SPLIT INTO 5 TABLETS;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_1_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+CREATE TABLE test_part_2 PARTITION OF test_part DEFAULT;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_2_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           3 |                    1
+(1 row)
+
+-- Test creating temp index using lsm.
+CREATE TEMP TABLE test_temp_lsm (i int);
+CREATE INDEX ON test_temp_lsm USING lsm (i);
+ERROR:  access method "lsm" only supported for indexes using Yugabyte storage
+-- temp tables
+CREATE TEMPORARY TABLE temp_table(a int, b int);
+CREATE INDEX CONCURRENTLY temp_index ON temp_table(a);
+-- Cleanup.
+DISCARD TEMP;

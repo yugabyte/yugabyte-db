@@ -1,0 +1,15 @@
+[Unit]
+Description=Yugabyte clean cores
+Requires=yb-clean_cores.service
+
+[Timer]
+{% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Unit=yb-clean_cores.service
+# Run every 5 minutes
+OnCalendar=*:0/5
+
+[Install]
+WantedBy=timers.target

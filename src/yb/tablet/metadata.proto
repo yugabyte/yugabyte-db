@@ -1,0 +1,260 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tablet;
+
+option java_package = "org.yb.tablet";
+
+import "yb/common/common.proto";
+import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
+import "yb/dockv/dockv.proto";
+import "yb/tablet/tablet_types.proto";
+
+// ============================================================================
+//  Tablet Metadata
+// ============================================================================
+
+// Table information.
+message TableInfoPB {
+  // Table id, name, and type.
+  optional bytes table_id = 1;
+  optional string namespace_name = 10;
+  optional string namespace_id = 13;
+  optional string table_name = 2;
+  optional TableType table_type = 3 [ default = DEFAULT_TABLE_TYPE ];
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional string pg_table_id = 14;
+
+  // Table schema and version.
+  optional SchemaPB schema = 4;
+  optional uint32 schema_version = 5;
+
+  // Table's partitioning schema.
+  optional PartitionSchemaPB partition_schema = 6;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 7;
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 8;
+
+  // Deleted column IDs with timestamps so that memory can be cleaned up.
+  repeated DeletedColumnPB deleted_cols = 9;
+
+  repeated dockv.SchemaPackingPB old_schema_packings = 11;
+
+  // CDC WAL retention time in secs of the table.
+  optional uint32 wal_retention_secs = 12;
+
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  optional bool skip_table_tombstone_check = 15;
+}
+
+// KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
+// whether distributed transactions are enabled for the table. KV-store for sys catalog could
+// contain multiple tables.
+message KvStoreInfoPB {
+  // KV-store id. For more convenient logs browsing and investigation, by default set to
+  // raft_group_id for the KV-store which was created first in the Raft group.
+  required bytes kv_store_id = 1;
+
+  // The RocksDB directory for this KV-store.
+  optional string rocksdb_dir = 2;
+
+  // List of RocksDB SST files.
+  repeated FilePB rocksdb_files = 3;
+
+  // List of Snapshot files.
+  repeated SnapshotFilePB snapshot_files = 4;
+
+  // List of tables sharing this KV-store. Primary table always goes first.
+  repeated TableInfoPB tables = 5;
+
+  // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
+  // See docdb::KeyBounds.
+  optional bytes lower_bound_key = 6;
+  optional bytes upper_bound_key = 7;
+
+  // Whether KV-store regular DB parent files have been compacted since creation.
+  // We don't split post-split tablets which have uncompacted parent data as of 2020-06-23, since
+  // detecting effective middle key and tablet size for such tablets is not yet implemented.
+  optional bool parent_data_compacted = 8;
+
+  repeated bytes snapshot_schedules = 9;
+
+  // Uint64 representation of a HybridTime indicating the last time the tablet was fully
+  // compacted. Defaults to 0 (i.e. HybridTime::kMin).
+  optional uint64 last_full_compaction_time = 10;
+
+  // Indicates the upper bound for a set of files, which should be included into post-split
+  // compaction. In this case post-split compaction picks a subset of files whose file number is
+  // limited by post_split_compaction_file_number_upper_bound exclusively and whose total size is
+  // less or equal than FLAGS_post_split_compaction_input_size_threshold_bytes. The parameter is
+  // not taken into account if FLAGS_post_split_compaction_input_size_threshold_bytes is set to 0.
+  // The value of post_split_compaction_file_number_upper_bound is set to 0 when post-split
+  // compaction is done for all the files in the selected subset.
+  optional uint64 post_split_compaction_file_number_upper_bound = 11;
+}
+
+// The super-block keeps track of the Raft group.
+message RaftGroupReplicaSuperBlockPB {
+  // Table ID of the primary table in this Raft group. For now we can only have more than one
+  // tables in master Raft group and sys catalog table is the primary table in this case.
+  required bytes primary_table_id = 1;
+
+  required bytes raft_group_id = 2;
+
+  // deprecated MemRowSet id.
+  reserved 3;
+
+  // Reserved for deprecated start_key, end_key, orphaned_blocks.
+  reserved 4, 5, 11;
+
+  // The partition of the table.
+  optional PartitionPB partition = 13;
+
+  // The latest schema
+  // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
+  // into use throughout the code. Using the simpler one for now.
+  optional string OBSOLETE_table_name = 7;
+  optional TableType OBSOLETE_table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
+  optional SchemaPB OBSOLETE_schema = 8;
+  optional uint32 OBSOLETE_schema_version = 9;
+
+  // The partition schema of the table.
+  optional PartitionSchemaPB OBSOLETE_partition_schema = 14;
+
+  // The current state of the Raft group's data.
+  optional TabletDataState tablet_data_state = 10 [ default = TABLET_DATA_UNKNOWN ];
+
+  // The write-ahead log directory for this Raft group.
+  optional string wal_dir = 18;
+
+  // For tablets that have been tombstoned, stores the last OpId stored in the
+  // WAL before tombstoning.
+  // Only relevant for TOMBSTONED tablets.
+  optional OpIdPB tombstone_last_logged_opid = 12;
+
+  // KV-store for this Raft group.
+  optional KvStoreInfoPB kv_store = 24;
+
+  // ----------------------------------------------------------------------------------------------
+  // Deprecated fields, only for backward compatibility during load, shouldn't be used during save:
+
+  // The RocksDB directory for this tablet.
+  optional string OBSOLETE_rocksdb_dir = 16;
+
+  // List of RocksDB SST files.
+  repeated FilePB OBSOLETE_rocksdb_files = 17;
+
+  // List of Snapshot files.
+  repeated SnapshotFilePB OBSOLETE_snapshot_files = 20;
+
+  // Deleted column IDs with timestamps so that memory can be cleaned up.
+  repeated DeletedColumnPB OBSOLETE_deleted_cols = 19;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB OBSOLETE_indexes = 21;
+
+  // For index table: information about this index.
+  optional IndexInfoPB OBSOLETE_index_info = 22;
+
+  // Tables co-located in this tablet.
+  repeated TableInfoPB OBSOLETE_tables = 23;
+
+  // True if the raft group is for a colocated tablet.
+  optional bool colocated = 25 [ default = false ];
+
+  // Minimum replicated op id index for cdc streams. This value is used to retain log files
+  // that contain any entries with indices larger than this one. By default max int64 to avoid
+  // retaining any log files unnecessarily.
+  optional int64 cdc_min_replicated_index = 26 [ default = 9223372036854775807 ];
+
+  // Is this tablet currently a consumer tablet for xcluster replication.
+  optional bool is_under_xcluster_replication = 27;
+
+  // Reject client queries (read and write) to this tablet like it does not present.
+  optional bool hidden = 28;
+
+  // Picked at master while enabling writes after restoration.
+  optional fixed64 restoration_hybrid_time = 32;
+
+  // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
+  // been split themselves).
+  optional OpIdPB split_op_id = 29;
+  repeated bytes split_child_tablet_ids = 30;
+
+  repeated bytes active_restorations = 31;
+
+  // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
+  // with op id larger than this one.
+  optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
+
+  optional fixed64 cdc_sdk_safe_time = 34;
+
+  // List of stateful services hosted by this tablet.
+  repeated StatefulServiceKind hosted_stateful_services = 35;
+
+  // Is this tablet currently a being replicated with cdc.
+  optional bool is_under_cdc_sdk_replication = 36;
+
+  // OpId of the last change metadata operation performed on this tablet that has been flushed to
+  // disk. This value is used to determine if a particular raft op should be replayed
+  // during local tablet bootstrap of the tablet.
+  optional OpIdPB last_flushed_change_metadata_op_id = 37;
+
+  // The highest seq_no clone op that this tablet has applied. The clone was not necessarily
+  // successful. The master is responsible for not sending multiple clone requests with different
+  // sequence_numbers until the previous one is complete or aborted on all tablets.
+  optional uint32 last_attempted_clone_seq_no = 38;
+}
+
+message FilePB {
+  // Required. File name (no path).
+  optional string name = 1;
+
+  // Required.
+  optional uint64 size_bytes = 2;
+
+  // Used to avoid copying same files over network, so we could hardlink them.
+  optional uint64 inode = 3;
+}
+
+message SnapshotFilePB {
+  optional FilePB file = 1;
+
+  optional bytes snapshot_id = 2;
+}

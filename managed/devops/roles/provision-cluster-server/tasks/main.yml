@@ -1,0 +1,386 @@
+# Copyright 2022 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Ensure we have the proper vars
+  assert:
+    that:
+      - cloud_type is defined
+      - mount_points is defined
+      - systemd_option is defined
+      - pg_max_mem_mb is defined
+      - use_chrony is defined
+      - configure_ybc is defined
+      - lun_indexes is defined
+
+- block:
+  - name: Install and configure chrony with given server list
+    include_role:
+      name: ansible-chrony
+    vars:
+      chrony_server: # Necessary to remove default
+      chrony_server_list: "{{ ntp_servers }}"
+    when: ntp_servers is defined
+  - name: Install and configure chrony to cloud defaults
+    block:
+    - name: Set up default GCP NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "metadata.google.internal iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'gcp' }}"
+    - name: Set up default AWS NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "169.254.169.123 iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'aws' }}"
+    - name: Set up default Azure NTP configuratoin
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: # Necessary to remove default
+        chrony_azure_refclock: true
+      when: "{{ cloud_type == 'azu' }}"
+    when: ntp_servers is not defined
+  - name: Force date/time synchronization with chrony
+    become: yes
+    become_method: sudo
+    shell: chronyc makestep
+  when: use_chrony
+  tags: yb-prebuilt-ami
+
+# Set sysctl values
+- block:
+  - name: Provision | Set swappiness off
+    sysctl:
+      name: vm.swappiness
+      value: 0
+      state: present
+    tags: yb-prebuilt-ami
+
+  - name: Provision | Create core dump kernel pattern
+    sysctl:
+      name: kernel.core_pattern
+      value: "{{ yb_home_dir }}/cores/core_%p_%t_%E"
+      state: present
+    tags: yb-prebuilt-ami
+
+  - name: "Provision | Set max map count to {{ vm_max_map_count }}"
+    sysctl:
+      name: vm.max_map_count
+      value: "{{ vm_max_map_count }}"
+      state: present
+    tags: yb-prebuilt-ami
+
+- name: Provision | Ensure mount paths exist.
+  shell: |
+    mkdir -p {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure proper ownership for mount paths.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure proper permissions for mount paths.
+  shell: |
+    chmod -R 755 {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure metrics dir exists
+  shell: |
+    mkdir -p {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
+- name: Provision | Ensure proper ownership for metrics dir.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
+- name: Provision | Ensure proper permissions for metrics dir.
+  shell: |
+    chmod -R 755 {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
+- name: setup-postgres-cgroups
+  include_role:
+    name: setup-cgroup
+  when: not systemd_option
+
+# Give yugabyte user sudo access to start/stop/restart master and tserver
+- name: Add yugabyte sudo user without password for metric collection operations
+  lineinfile:
+    dest: /etc/sudoers.d/yugabyte-metrics
+    line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /usr/bin/journalctl -k --since 10min\ ago'
+    create: yes
+    state: present
+    mode: 0440
+    validate: 'visudo -cf %s'
+  tags: yb-prebuilt-ami
+
+- block:
+  - set_fact:
+      systemd_dir: "/etc/systemd/system"
+  - block:
+    - name: Register yb user id
+      shell:
+        cmd: "id -u {{ user_name }}"
+      register: output
+
+    - name: Add yb user bash profile
+      lineinfile:
+        dest: "{{ yb_home_dir }}/.bash_profile"
+        line: ". {{ yb_home_dir }}/.bashrc"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        create: yes
+        state: present
+
+    - name: Export XDG_RUNTIME_DIR for yb user
+      lineinfile:
+        dest: "{{ yb_home_dir }}/.bashrc"
+        line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        create: yes
+        state: present
+
+    - name: Add user systemd directory
+      file:
+        path: "{{ yb_home_dir }}/.config/systemd/user/"
+        state: directory
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        mode: 0744
+
+    - set_fact:
+        systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
+
+    - name: Enable linger for {{ user_name }} user
+      become: yes
+      become_method: sudo
+      shell:
+        cmd: "loginctl enable-linger {{ user_name }}"
+    # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
+    when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
+  - block:
+    # Give yugabyte user sudo access to start/stop/restart master and tserver
+    - name: Add yugabyte sudo user without password
+      lineinfile:
+        dest: /etc/sudoers.d/yugabyte
+        line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master,
+              /bin/systemctl stop yb-master,
+              /bin/systemctl restart yb-master,
+              /bin/systemctl enable yb-master,
+              /bin/systemctl disable yb-master,
+              /bin/systemctl start yb-tserver,
+              /bin/systemctl stop yb-tserver,
+              /bin/systemctl restart yb-tserver,
+              /bin/systemctl enable yb-tserver,
+              /bin/systemctl disable yb-tserver,
+              /bin/systemctl start yb-controller,
+              /bin/systemctl stop yb-controller,
+              /bin/systemctl restart yb-controller,
+              /bin/systemctl enable yb-controller,
+              /bin/systemctl disable yb-controller,
+              /bin/systemctl start yb-bind_check.service,
+              /bin/systemctl stop yb-bind_check.service,
+              /bin/systemctl restart yb-bind_check.service,
+              /bin/systemctl enable yb-bind_check.service,
+              /bin/systemctl disable yb-bind_check.service,
+              /bin/systemctl start yb-zip_purge_yb_logs.timer,
+              /bin/systemctl stop yb-zip_purge_yb_logs.timer,
+              /bin/systemctl restart yb-zip_purge_yb_logs.timer,
+              /bin/systemctl enable yb-zip_purge_yb_logs.timer,
+              /bin/systemctl disable yb-zip_purge_yb_logs.timer,
+              /bin/systemctl start yb-clean_cores.timer,
+              /bin/systemctl stop yb-clean_cores.timer,
+              /bin/systemctl restart yb-clean_cores.timer,
+              /bin/systemctl enable yb-clean_cores.timer,
+              /bin/systemctl disable yb-clean_cores.timer,
+              /bin/systemctl start yb-collect_metrics.timer,
+              /bin/systemctl stop yb-collect_metrics.timer,
+              /bin/systemctl restart yb-collect_metrics.timer,
+              /bin/systemctl enable yb-collect_metrics.timer,
+              /bin/systemctl disable yb-collect_metrics.timer,
+              /bin/systemctl start yb-zip_purge_yb_logs,
+              /bin/systemctl stop yb-zip_purge_yb_logs,
+              /bin/systemctl restart yb-zip_purge_yb_logs,
+              /bin/systemctl enable yb-zip_purge_yb_logs,
+              /bin/systemctl disable yb-zip_purge_yb_logs,
+              /bin/systemctl start yb-clean_cores,
+              /bin/systemctl stop yb-clean_cores,
+              /bin/systemctl restart yb-clean_cores,
+              /bin/systemctl enable yb-clean_cores,
+              /bin/systemctl disable yb-clean_cores,
+              /bin/systemctl start yb-collect_metrics,
+              /bin/systemctl stop yb-collect_metrics,
+              /bin/systemctl restart yb-collect_metrics,
+              /bin/systemctl enable yb-collect_metrics,
+              /bin/systemctl disable yb-collect_metrics,
+              /bin/systemctl daemon-reload'
+        create: yes
+        state: present
+        mode: 0440
+        validate: 'visudo -cf %s'
+
+    - name: Set includedir in sudoers
+      lineinfile:
+        dest: /etc/sudoers
+        line: "#includedir /etc/sudoers.d"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+
+  - name: setup-postgres-cgroups
+    include_role:
+      name: setup-cgroup
+
+  - name: Setup OpenTelemetry Collector
+    include_role:
+      name: manage_otel_collector
+    when: install_otel_collector is defined and install_otel_collector|bool
+
+  # Adding systemd service files for yb-master and yb-tserver
+  - name: Add yb-master.service
+    template:
+      src: yb-master.service
+      dest: "{{ systemd_dir }}/yb-master.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-tserver.service
+    template:
+      src: yb-tserver.service
+      dest: "{{ systemd_dir }}/yb-tserver.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service files for yb-controller
+  - name: Add yb-controller.service
+    template:
+      src: "yb-controller.service"
+      dest: "{{ systemd_dir }}/yb-controller.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding yb-bind_check service files for the availability of the port
+  - name: Add yb-bind_check.service
+    template:
+      src: "yb-bind_check.service"
+      dest: "{{ systemd_dir }}/yb-bind_check.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for zip_purge_yb_logs
+  - name: Add yb-zip_purge_yb_logs.service
+    template:
+      src: yb-zip_purge_yb_logs.service
+      dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-zip_purge_yb_logs.timer
+    template:
+      src: yb-zip_purge_yb_logs.timer
+      dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for clean_cores
+  - name: Add yb-clean_cores.service
+    template:
+      src: yb-clean_cores.service
+      dest: "{{ systemd_dir }}/yb-clean_cores.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-clean_cores.timer
+    template:
+      src: yb-clean_cores.timer
+      dest: "{{ systemd_dir }}/yb-clean_cores.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for collect_metrics
+  - name: Add yb-collect_metrics.service
+    template:
+      src: yb-collect_metrics.service
+      dest: "{{ systemd_dir }}/yb-collect_metrics.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Add yb-collect_metrics.timer
+    template:
+      src: yb-collect_metrics.timer
+      dest: "{{ systemd_dir }}/yb-collect_metrics.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Create or Update .bashrc file to display systemd mode upon ssh login
+    blockinfile:
+      dest: "{{ yb_home_dir }}/.bash_profile"
+      block: |
+        ORANGE='\033[0;33m'
+        NC='\033[0m' # No Color
+
+        if [[ $- == *i* ]]
+            then export PS1="[\u@\h ~]\$ "
+            if [ "$EUID" -eq 0 ]
+                then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
+                else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
+            fi
+        fi
+      create: yes
+      state: present
+      mode: 0644
+
+  tags: systemd_upgrade
+  when: systemd_option
+
+- block:
+  - name: Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+    stat:
+      path: /etc/apt/apt.conf.d/20auto-upgrades
+    register: autoupgrade_file
+
+  - name: Reenable unattended upgrades
+    raw: 'sed -i /Unattended-Upgrade/s/"0"/"1"/ /etc/apt/apt.conf.d/20auto-upgrades'
+    when: autoupgrade_file.stat.exists
+
+  - name: Check if /etc/apt/apt.conf.d/50unattended-upgrades exists
+    stat:
+      path: /etc/apt/apt.conf.d/50unattended-upgrades
+    register: unattendedupgrade_file
+
+  - name: Disable automatic reboot
+    lineinfile:
+      path: /etc/apt/apt.conf.d/50unattended-upgrades
+      line: Unattended-Upgrade::Automatic-Reboot "false";
+    when: unattendedupgrade_file.stat.exists
+  when: ansible_distribution == "Ubuntu"
+  tags: yb-prebuilt-ami

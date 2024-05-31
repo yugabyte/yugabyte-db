@@ -1,0 +1,639 @@
+do $$
+declare
+  c int;
+  strval varchar;
+  intval int;
+  nrows int default 30;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select ''ahoj'' || i, i from generate_series(1, :nrows) g(i)');
+  call dbms_sql.bind_variable(c, 'nrows', nrows);
+  call dbms_sql.define_column(c, 1, strval);
+  call dbms_sql.define_column(c, 2, intval);
+  perform dbms_sql.execute(c);
+  while dbms_sql.fetch_rows(c) > 0
+  loop
+    call dbms_sql.column_value(c, 1, strval);
+    call dbms_sql.column_value(c, 2, intval);
+    raise notice 'c1: %, c2: %', strval, intval;
+  end loop;
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+NOTICE:  c1: ahoj1, c2: 1
+NOTICE:  c1: ahoj2, c2: 2
+NOTICE:  c1: ahoj3, c2: 3
+NOTICE:  c1: ahoj4, c2: 4
+NOTICE:  c1: ahoj5, c2: 5
+NOTICE:  c1: ahoj6, c2: 6
+NOTICE:  c1: ahoj7, c2: 7
+NOTICE:  c1: ahoj8, c2: 8
+NOTICE:  c1: ahoj9, c2: 9
+NOTICE:  c1: ahoj10, c2: 10
+NOTICE:  c1: ahoj11, c2: 11
+NOTICE:  c1: ahoj12, c2: 12
+NOTICE:  c1: ahoj13, c2: 13
+NOTICE:  c1: ahoj14, c2: 14
+NOTICE:  c1: ahoj15, c2: 15
+NOTICE:  c1: ahoj16, c2: 16
+NOTICE:  c1: ahoj17, c2: 17
+NOTICE:  c1: ahoj18, c2: 18
+NOTICE:  c1: ahoj19, c2: 19
+NOTICE:  c1: ahoj20, c2: 20
+NOTICE:  c1: ahoj21, c2: 21
+NOTICE:  c1: ahoj22, c2: 22
+NOTICE:  c1: ahoj23, c2: 23
+NOTICE:  c1: ahoj24, c2: 24
+NOTICE:  c1: ahoj25, c2: 25
+NOTICE:  c1: ahoj26, c2: 26
+NOTICE:  c1: ahoj27, c2: 27
+NOTICE:  c1: ahoj28, c2: 28
+NOTICE:  c1: ahoj29, c2: 29
+NOTICE:  c1: ahoj30, c2: 30
+do $$
+declare
+  c int;
+  strval varchar;
+  intval int;
+  nrows int default 30;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select ''ahoj'' || i, i from generate_series(1, :nrows) g(i)');
+  call dbms_sql.bind_variable(c, 'nrows', nrows);
+  call dbms_sql.define_column(c, 1, strval);
+  call dbms_sql.define_column(c, 2, intval);
+  perform dbms_sql.execute(c);
+  while dbms_sql.fetch_rows(c) > 0
+  loop
+    strval := dbms_sql.column_value_f(c, 1, strval);
+    intval := dbms_sql.column_value_f(c, 2, intval);
+    raise notice 'c1: %, c2: %', strval, intval;
+  end loop;
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+NOTICE:  c1: ahoj1, c2: 1
+NOTICE:  c1: ahoj2, c2: 2
+NOTICE:  c1: ahoj3, c2: 3
+NOTICE:  c1: ahoj4, c2: 4
+NOTICE:  c1: ahoj5, c2: 5
+NOTICE:  c1: ahoj6, c2: 6
+NOTICE:  c1: ahoj7, c2: 7
+NOTICE:  c1: ahoj8, c2: 8
+NOTICE:  c1: ahoj9, c2: 9
+NOTICE:  c1: ahoj10, c2: 10
+NOTICE:  c1: ahoj11, c2: 11
+NOTICE:  c1: ahoj12, c2: 12
+NOTICE:  c1: ahoj13, c2: 13
+NOTICE:  c1: ahoj14, c2: 14
+NOTICE:  c1: ahoj15, c2: 15
+NOTICE:  c1: ahoj16, c2: 16
+NOTICE:  c1: ahoj17, c2: 17
+NOTICE:  c1: ahoj18, c2: 18
+NOTICE:  c1: ahoj19, c2: 19
+NOTICE:  c1: ahoj20, c2: 20
+NOTICE:  c1: ahoj21, c2: 21
+NOTICE:  c1: ahoj22, c2: 22
+NOTICE:  c1: ahoj23, c2: 23
+NOTICE:  c1: ahoj24, c2: 24
+NOTICE:  c1: ahoj25, c2: 25
+NOTICE:  c1: ahoj26, c2: 26
+NOTICE:  c1: ahoj27, c2: 27
+NOTICE:  c1: ahoj28, c2: 28
+NOTICE:  c1: ahoj29, c2: 29
+NOTICE:  c1: ahoj30, c2: 30
+drop table if exists foo;
+create table foo(a int, b varchar, c numeric);
+do $$
+declare c int;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, :b, :c)');
+  for i in 1..100
+  loop
+    call dbms_sql.bind_variable(c, 'a', i);
+    call dbms_sql.bind_variable(c, 'b', 'Ahoj ' || i);
+    call dbms_sql.bind_variable(c, 'c', i + 0.033);
+    perform dbms_sql.execute(c);
+  end loop;
+end;
+$$;
+select * from foo;
+  a  |    b     |    c    
+-----+----------+---------
+   1 | Ahoj 1   |   1.033
+   2 | Ahoj 2   |   2.033
+   3 | Ahoj 3   |   3.033
+   4 | Ahoj 4   |   4.033
+   5 | Ahoj 5   |   5.033
+   6 | Ahoj 6   |   6.033
+   7 | Ahoj 7   |   7.033
+   8 | Ahoj 8   |   8.033
+   9 | Ahoj 9   |   9.033
+  10 | Ahoj 10  |  10.033
+  11 | Ahoj 11  |  11.033
+  12 | Ahoj 12  |  12.033
+  13 | Ahoj 13  |  13.033
+  14 | Ahoj 14  |  14.033
+  15 | Ahoj 15  |  15.033
+  16 | Ahoj 16  |  16.033
+  17 | Ahoj 17  |  17.033
+  18 | Ahoj 18  |  18.033
+  19 | Ahoj 19  |  19.033
+  20 | Ahoj 20  |  20.033
+  21 | Ahoj 21  |  21.033
+  22 | Ahoj 22  |  22.033
+  23 | Ahoj 23  |  23.033
+  24 | Ahoj 24  |  24.033
+  25 | Ahoj 25  |  25.033
+  26 | Ahoj 26  |  26.033
+  27 | Ahoj 27  |  27.033
+  28 | Ahoj 28  |  28.033
+  29 | Ahoj 29  |  29.033
+  30 | Ahoj 30  |  30.033
+  31 | Ahoj 31  |  31.033
+  32 | Ahoj 32  |  32.033
+  33 | Ahoj 33  |  33.033
+  34 | Ahoj 34  |  34.033
+  35 | Ahoj 35  |  35.033
+  36 | Ahoj 36  |  36.033
+  37 | Ahoj 37  |  37.033
+  38 | Ahoj 38  |  38.033
+  39 | Ahoj 39  |  39.033
+  40 | Ahoj 40  |  40.033
+  41 | Ahoj 41  |  41.033
+  42 | Ahoj 42  |  42.033
+  43 | Ahoj 43  |  43.033
+  44 | Ahoj 44  |  44.033
+  45 | Ahoj 45  |  45.033
+  46 | Ahoj 46  |  46.033
+  47 | Ahoj 47  |  47.033
+  48 | Ahoj 48  |  48.033
+  49 | Ahoj 49  |  49.033
+  50 | Ahoj 50  |  50.033
+  51 | Ahoj 51  |  51.033
+  52 | Ahoj 52  |  52.033
+  53 | Ahoj 53  |  53.033
+  54 | Ahoj 54  |  54.033
+  55 | Ahoj 55  |  55.033
+  56 | Ahoj 56  |  56.033
+  57 | Ahoj 57  |  57.033
+  58 | Ahoj 58  |  58.033
+  59 | Ahoj 59  |  59.033
+  60 | Ahoj 60  |  60.033
+  61 | Ahoj 61  |  61.033
+  62 | Ahoj 62  |  62.033
+  63 | Ahoj 63  |  63.033
+  64 | Ahoj 64  |  64.033
+  65 | Ahoj 65  |  65.033
+  66 | Ahoj 66  |  66.033
+  67 | Ahoj 67  |  67.033
+  68 | Ahoj 68  |  68.033
+  69 | Ahoj 69  |  69.033
+  70 | Ahoj 70  |  70.033
+  71 | Ahoj 71  |  71.033
+  72 | Ahoj 72  |  72.033
+  73 | Ahoj 73  |  73.033
+  74 | Ahoj 74  |  74.033
+  75 | Ahoj 75  |  75.033
+  76 | Ahoj 76  |  76.033
+  77 | Ahoj 77  |  77.033
+  78 | Ahoj 78  |  78.033
+  79 | Ahoj 79  |  79.033
+  80 | Ahoj 80  |  80.033
+  81 | Ahoj 81  |  81.033
+  82 | Ahoj 82  |  82.033
+  83 | Ahoj 83  |  83.033
+  84 | Ahoj 84  |  84.033
+  85 | Ahoj 85  |  85.033
+  86 | Ahoj 86  |  86.033
+  87 | Ahoj 87  |  87.033
+  88 | Ahoj 88  |  88.033
+  89 | Ahoj 89  |  89.033
+  90 | Ahoj 90  |  90.033
+  91 | Ahoj 91  |  91.033
+  92 | Ahoj 92  |  92.033
+  93 | Ahoj 93  |  93.033
+  94 | Ahoj 94  |  94.033
+  95 | Ahoj 95  |  95.033
+  96 | Ahoj 96  |  96.033
+  97 | Ahoj 97  |  97.033
+  98 | Ahoj 98  |  98.033
+  99 | Ahoj 99  |  99.033
+ 100 | Ahoj 100 | 100.033
+(100 rows)
+
+truncate foo;
+do $$
+declare c int;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, :b, :c)');
+  for i in 1..100
+  loop
+    perform dbms_sql.bind_variable_f(c, 'a', i);
+    perform dbms_sql.bind_variable_f(c, 'b', 'Ahoj ' || i);
+    perform dbms_sql.bind_variable_f(c, 'c', i + 0.033);
+    perform dbms_sql.execute(c);
+  end loop;
+end;
+$$;
+select * from foo;
+  a  |    b     |    c    
+-----+----------+---------
+   1 | Ahoj 1   |   1.033
+   2 | Ahoj 2   |   2.033
+   3 | Ahoj 3   |   3.033
+   4 | Ahoj 4   |   4.033
+   5 | Ahoj 5   |   5.033
+   6 | Ahoj 6   |   6.033
+   7 | Ahoj 7   |   7.033
+   8 | Ahoj 8   |   8.033
+   9 | Ahoj 9   |   9.033
+  10 | Ahoj 10  |  10.033
+  11 | Ahoj 11  |  11.033
+  12 | Ahoj 12  |  12.033
+  13 | Ahoj 13  |  13.033
+  14 | Ahoj 14  |  14.033
+  15 | Ahoj 15  |  15.033
+  16 | Ahoj 16  |  16.033
+  17 | Ahoj 17  |  17.033
+  18 | Ahoj 18  |  18.033
+  19 | Ahoj 19  |  19.033
+  20 | Ahoj 20  |  20.033
+  21 | Ahoj 21  |  21.033
+  22 | Ahoj 22  |  22.033
+  23 | Ahoj 23  |  23.033
+  24 | Ahoj 24  |  24.033
+  25 | Ahoj 25  |  25.033
+  26 | Ahoj 26  |  26.033
+  27 | Ahoj 27  |  27.033
+  28 | Ahoj 28  |  28.033
+  29 | Ahoj 29  |  29.033
+  30 | Ahoj 30  |  30.033
+  31 | Ahoj 31  |  31.033
+  32 | Ahoj 32  |  32.033
+  33 | Ahoj 33  |  33.033
+  34 | Ahoj 34  |  34.033
+  35 | Ahoj 35  |  35.033
+  36 | Ahoj 36  |  36.033
+  37 | Ahoj 37  |  37.033
+  38 | Ahoj 38  |  38.033
+  39 | Ahoj 39  |  39.033
+  40 | Ahoj 40  |  40.033
+  41 | Ahoj 41  |  41.033
+  42 | Ahoj 42  |  42.033
+  43 | Ahoj 43  |  43.033
+  44 | Ahoj 44  |  44.033
+  45 | Ahoj 45  |  45.033
+  46 | Ahoj 46  |  46.033
+  47 | Ahoj 47  |  47.033
+  48 | Ahoj 48  |  48.033
+  49 | Ahoj 49  |  49.033
+  50 | Ahoj 50  |  50.033
+  51 | Ahoj 51  |  51.033
+  52 | Ahoj 52  |  52.033
+  53 | Ahoj 53  |  53.033
+  54 | Ahoj 54  |  54.033
+  55 | Ahoj 55  |  55.033
+  56 | Ahoj 56  |  56.033
+  57 | Ahoj 57  |  57.033
+  58 | Ahoj 58  |  58.033
+  59 | Ahoj 59  |  59.033
+  60 | Ahoj 60  |  60.033
+  61 | Ahoj 61  |  61.033
+  62 | Ahoj 62  |  62.033
+  63 | Ahoj 63  |  63.033
+  64 | Ahoj 64  |  64.033
+  65 | Ahoj 65  |  65.033
+  66 | Ahoj 66  |  66.033
+  67 | Ahoj 67  |  67.033
+  68 | Ahoj 68  |  68.033
+  69 | Ahoj 69  |  69.033
+  70 | Ahoj 70  |  70.033
+  71 | Ahoj 71  |  71.033
+  72 | Ahoj 72  |  72.033
+  73 | Ahoj 73  |  73.033
+  74 | Ahoj 74  |  74.033
+  75 | Ahoj 75  |  75.033
+  76 | Ahoj 76  |  76.033
+  77 | Ahoj 77  |  77.033
+  78 | Ahoj 78  |  78.033
+  79 | Ahoj 79  |  79.033
+  80 | Ahoj 80  |  80.033
+  81 | Ahoj 81  |  81.033
+  82 | Ahoj 82  |  82.033
+  83 | Ahoj 83  |  83.033
+  84 | Ahoj 84  |  84.033
+  85 | Ahoj 85  |  85.033
+  86 | Ahoj 86  |  86.033
+  87 | Ahoj 87  |  87.033
+  88 | Ahoj 88  |  88.033
+  89 | Ahoj 89  |  89.033
+  90 | Ahoj 90  |  90.033
+  91 | Ahoj 91  |  91.033
+  92 | Ahoj 92  |  92.033
+  93 | Ahoj 93  |  93.033
+  94 | Ahoj 94  |  94.033
+  95 | Ahoj 95  |  95.033
+  96 | Ahoj 96  |  96.033
+  97 | Ahoj 97  |  97.033
+  98 | Ahoj 98  |  98.033
+  99 | Ahoj 99  |  99.033
+ 100 | Ahoj 100 | 100.033
+(100 rows)
+
+truncate foo;
+do $$
+declare
+  c int;
+  a int[];
+  b varchar[];
+  ca numeric[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, :b, :c)');
+  a := ARRAY[1, 2, 3, 4, 5];
+  b := ARRAY['Ahoj', 'Nazdar', 'Bazar'];
+  ca := ARRAY[3.14, 2.22, 3.8, 4];
+
+  call dbms_sql.bind_array(c, 'a', a);
+  call dbms_sql.bind_array(c, 'b', b);
+  call dbms_sql.bind_array(c, 'c', ca);
+  raise notice 'inserted rows %d', dbms_sql.execute(c);
+end;
+$$;
+NOTICE:  inserted rows 3d
+select * from foo;
+ a |   b    |  c   
+---+--------+------
+ 1 | Ahoj   | 3.14
+ 2 | Nazdar | 2.22
+ 3 | Bazar  |  3.8
+(3 rows)
+
+truncate foo;
+-- should not to crash, when bound array is null
+do $$
+declare
+  c int;
+  ca numeric[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, 10, 20)');
+
+  call dbms_sql.bind_array(c, 'a', ca);
+  raise notice 'inserted rows %d', dbms_sql.execute(c);
+end;
+$$;
+NOTICE:  inserted rows 0d
+-- should not to crash, when we try to touch result without execute
+do $$
+declare
+  c int;
+  a int[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select i from generate_series(1, 2) g(i)');
+  call dbms_sql.define_array(c, 1, a, 10, 1);
+  call dbms_sql.column_value(c, 1, a);
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+ERROR:  cursor is not executed
+CONTEXT:  SQL statement "CALL dbms_sql.column_value(c, 1, a)"
+PL/pgSQL function inline_code_block line 9 at CALL
+-- should not to crash, when the variable is overwritten
+DO $$
+declare
+  c integer;
+  n integer;
+  c2 numeric;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'INSERT INTO foo(a) VALUES (:bnd2)');
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+  n := dbms_sql.execute(c);
+end
+$$;
+-- should not to crash, when we try to read column without data
+do $$
+declare
+  c int;
+  strval varchar;
+  intval int;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select ''foo'', 1');
+  call dbms_sql.define_column(c, 1, strval);
+  call dbms_sql.define_column(c, 2, intval);
+  perform dbms_sql.execute(c);
+  while dbms_sql.fetch_rows(c) > -1
+  loop
+    call dbms_sql.column_value(c, 1, strval);
+  end loop;
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+ERROR:  no data found
+CONTEXT:  SQL statement "CALL dbms_sql.column_value(c, 1, strval)"
+PL/pgSQL function inline_code_block line 14 at CALL
+select * from foo;
+ a | b | c 
+---+---+---
+   |   |  
+(1 row)
+
+truncate foo;
+do $$
+declare
+  c int;
+  a int[];
+  b varchar[];
+  ca numeric[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, :b, :c)');
+  a := ARRAY[1, 2, 3, 4, 5];
+  b := ARRAY['Ahoj', 'Nazdar', 'Bazar'];
+  ca := ARRAY[3.14, 2.22, 3.8, 4];
+
+  call dbms_sql.bind_array(c, 'a', a, 2, 3);
+  call dbms_sql.bind_array(c, 'b', b, 3, 4);
+  call dbms_sql.bind_array(c, 'c', ca);
+  raise notice 'inserted rows %d', dbms_sql.execute(c);
+end;
+$$;
+NOTICE:  inserted rows 1d
+select * from foo;
+ a |   b   |  c  
+---+-------+-----
+ 3 | Bazar | 3.8
+(1 row)
+
+truncate foo;
+do $$
+declare
+  c int;
+  a int[];
+  b varchar[];
+  ca numeric[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select i, ''Ahoj'' || i, i + 0.003 from generate_series(1, 35) g(i)');
+  call dbms_sql.define_array(c, 1, a, 10, 1);
+  call dbms_sql.define_array(c, 2, b, 10, 1);
+  call dbms_sql.define_array(c, 3, ca, 10, 1);
+
+  perform dbms_sql.execute(c);
+  while dbms_sql.fetch_rows(c) > 0
+  loop
+    call dbms_sql.column_value(c, 1, a);
+    call dbms_sql.column_value(c, 2, b);
+    call dbms_sql.column_value(c, 3, ca);
+    raise notice 'a = %', a;
+    raise notice 'b = %', b;
+    raise notice 'c = %', ca;
+  end loop;
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+NOTICE:  a = {1,2,3,4,5,6,7,8,9,10}
+NOTICE:  b = {Ahoj1,Ahoj2,Ahoj3,Ahoj4,Ahoj5,Ahoj6,Ahoj7,Ahoj8,Ahoj9,Ahoj10}
+NOTICE:  c = {1.003,2.003,3.003,4.003,5.003,6.003,7.003,8.003,9.003,10.003}
+NOTICE:  a = {11,12,13,14,15,16,17,18,19,20}
+NOTICE:  b = {Ahoj11,Ahoj12,Ahoj13,Ahoj14,Ahoj15,Ahoj16,Ahoj17,Ahoj18,Ahoj19,Ahoj20}
+NOTICE:  c = {11.003,12.003,13.003,14.003,15.003,16.003,17.003,18.003,19.003,20.003}
+NOTICE:  a = {21,22,23,24,25,26,27,28,29,30}
+NOTICE:  b = {Ahoj21,Ahoj22,Ahoj23,Ahoj24,Ahoj25,Ahoj26,Ahoj27,Ahoj28,Ahoj29,Ahoj30}
+NOTICE:  c = {21.003,22.003,23.003,24.003,25.003,26.003,27.003,28.003,29.003,30.003}
+NOTICE:  a = {31,32,33,34,35}
+NOTICE:  b = {Ahoj31,Ahoj32,Ahoj33,Ahoj34,Ahoj35}
+NOTICE:  c = {31.003,32.003,33.003,34.003,35.003}
+drop table foo;
+create table tab1(c1 integer,  c2 numeric);
+create or replace procedure single_Row_insert(c1 integer, c2 numeric)
+as $$
+declare
+  c integer;
+  n integer;
+begin
+  c := dbms_sql.open_cursor();
+
+  call dbms_sql.parse(c, 'INSERT INTO tab1 VALUES (:bnd1, :bnd2)');
+
+  call dbms_sql.bind_variable(c, 'bnd1', c1);
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+
+  n := dbms_sql.execute(c);
+
+  call dbms_sql.debug_cursor(c);
+  call dbms_sql.close_cursor(c);
+end
+$$language plpgsql;
+do $$
+declare a numeric(7,2);
+begin
+  call single_Row_insert(2,a);
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "2"
+NOTICE:  variable "bnd2" is NULL
+select * from tab1;
+ c1 | c2 
+----+----
+  2 |   
+(1 row)
+
+do $$
+declare a numeric(7,2) default 1.23;
+begin
+  call single_Row_insert(2,a);
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "2"
+NOTICE:  variable "bnd2" is assigned to "1.23"
+select * from tab1;
+ c1 |  c2  
+----+------
+  2 |     
+  2 | 1.23
+(2 rows)
+
+select * from tab1 where c2 is null;
+ c1 | c2 
+----+----
+  2 |   
+(1 row)
+
+do $$
+declare a numeric(7,2);
+begin
+  call single_Row_insert(0,a);   -- single_Row_insert(0, null)
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "0"
+NOTICE:  variable "bnd2" is NULL
+select * from tab1;
+ c1 |  c2  
+----+------
+  2 |     
+  2 | 1.23
+  0 |     
+(3 rows)
+
+do $$
+declare a numeric(7,2) default 1.23;
+begin
+  call single_Row_insert(0,a);  -- single_Row_insert(0, 1.23)
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "0"
+NOTICE:  variable "bnd2" is assigned to "1.23"
+select * from tab1;
+ c1 |  c2  
+----+------
+  2 |     
+  2 | 1.23
+  0 |     
+  0 | 1.23
+(4 rows)
+
+drop procedure single_Row_insert;
+drop table tab1;
+create table test(id text);
+insert into test(id) values ('1'), (null);
+-- should not to crash
+do $$
+declare
+  cursor int;
+  id text;
+  row_counter int := 0;
+begin
+  cursor := dbms_sql.open_cursor();
+  call dbms_sql.parse(cursor, 'select id from test');
+  call dbms_sql.define_column(cursor, 1, 'id');
+  perform dbms_sql.execute(cursor);
+  while dbms_sql.fetch_rows(cursor) > 0 loop
+    row_counter = row_counter + 1;
+    raise notice 'process row #%', row_counter;
+    call dbms_sql.column_value(cursor, 1, id);
+    raise notice 'row id: `%`', id;
+  end loop;
+  call dbms_sql.close_cursor(cursor);
+end;
+$$;
+NOTICE:  process row #1
+NOTICE:  row id: `1`
+NOTICE:  process row #2
+NOTICE:  row id: `<NULL>`
+drop table test;

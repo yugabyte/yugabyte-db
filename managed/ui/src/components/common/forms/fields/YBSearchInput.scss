@@ -1,0 +1,40 @@
+@use '../../../../_style/colors.scss';
+
+.search-input {
+    display: flex;
+    align-items: center;
+    background: colors.$YB_BG_WHITE_3;
+    justify-content: flex-start;
+    padding: 0px 0px 0px 10px;
+    border-radius: 8px;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+    height: 42px;
+    i {
+      color: #808080;
+    }
+    &:focus-within {
+      border-color: rgba(239, 88, 36, 0.5);
+      box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.2), 0 0 8px rgba(239, 88, 36, 0.2);
+    }
+  
+    .form-group {
+      flex-grow: 1;
+  
+      .form-control {
+        border: none;
+        height: 100%;
+        box-shadow: none;
+        &:focus {
+          border: none;
+          box-shadow: none;
+        }
+      }
+    }
+  
+    .yb-field-group {
+      padding-bottom: 0 !important;
+      input {
+        font-size: 13px;
+      }
+    }
+  }

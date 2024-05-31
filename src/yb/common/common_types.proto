@@ -1,0 +1,194 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb;
+
+option java_package = "org.yb";
+
+// Used for Cassandra Roles and Permissions
+enum ResourceType {
+  ALL_KEYSPACES = 1;
+  KEYSPACE = 2;
+  TABLE = 3;
+  ALL_ROLES = 4;
+  ROLE = 5;
+}
+
+// Suffixed with PERMISSION, because Google does not allow same enum name CREATE
+enum PermissionType {
+  ALTER_PERMISSION = 0;
+  CREATE_PERMISSION = 1;
+  DROP_PERMISSION = 2;
+  SELECT_PERMISSION = 3;
+  MODIFY_PERMISSION = 4;
+  AUTHORIZE_PERMISSION = 5;
+  DESCRIBE_PERMISSION = 6;
+  ALL_PERMISSION = 999999999;
+}
+
+// Indexes when created or deleted go through a series of steps to add
+// a) delete, b) write and c) read permissions one by one. Backfill is done
+// before the READ_WRITE_AND_DELETE state. If the backfill succeeds, the read
+// permission is granted. If not, the given permissions are removed one by one,
+// and the index will be deleted when it is unused.
+// If the backfill is successfully complete, the index will be in
+// READ_WRITE_AND_DELETE state, and remain so until the user deletes it. If an
+// Index is dropped, it will move from READ_WRITE_AND_DELETE state throu the
+// WRITE_AND_DELETE_WHILE_REMOVING and DELETE_ONLY_WHILE_REMOVING states to
+// INDEX_UNUSED.
+enum IndexPermissions {
+  INDEX_PERM_DELETE_ONLY = 0;
+  INDEX_PERM_WRITE_AND_DELETE = 2;
+  INDEX_PERM_DO_BACKFILL = 4;
+  // This is the "success" state, where the index is completely usable.
+  INDEX_PERM_READ_WRITE_AND_DELETE = 6;
+  // Used while removing an index -- either due to backfill failure, or
+  // due to a client requested "drop index".
+  INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING = 8;
+  INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10;
+  INDEX_PERM_INDEX_UNUSED = 12;
+  // Used as a sentinel value.
+  INDEX_PERM_NOT_USED = 14;
+}
+
+// Client type.
+enum YQLDatabase {
+  YQL_DATABASE_UNKNOWN = 1;
+  YQL_DATABASE_CQL = 2;
+  YQL_DATABASE_PGSQL = 3; // Pgsql database
+  YQL_DATABASE_REDIS = 4;
+}
+
+// This must exactly match YBTableType in client.h.
+// We have static_assert's in tablet-test.cc to verify this.
+enum TableType {
+  option allow_alias = true;
+
+  YQL_TABLE_TYPE = 2;
+  REDIS_TABLE_TYPE = 3;
+  PGSQL_TABLE_TYPE = 4;
+  TRANSACTION_STATUS_TABLE_TYPE = 5;
+
+  DEFAULT_TABLE_TYPE = 2;
+}
+
+enum JsonOperatorPB {
+  JSON_OBJECT = 0; // The -> operator applied to a column.
+  JSON_TEXT = 1; // The ->> operator applied to a column.
+}
+
+enum YBConsistencyLevel {
+  // This consistency level provides Linearizability guarantees and is the default for our system.
+  STRONG = 1;
+
+  // Consistent-prefix consistency means that we always see consistent snapshot of the database in
+  // a well-defined order. If operations A, B and C take place, we will either see A, AB, or ABC.
+  // Note that reads might still go back in time since we might see ABC on one replica and AB on
+  // another.
+  CONSISTENT_PREFIX = 2;
+
+  // For cross-shard transactions only: user-enforced consistency level means it is the user's
+  // responsibility to enforce consistency across shards or tables/indexes.
+  USER_ENFORCED = 3;
+}
+
+// Client type.
+enum QLClient {
+  YQL_CLIENT_CQL = 1;
+  YQL_CLIENT_PGSQL = 2;
+  YQL_CLIENT_REDIS = 3;
+}
+
+// The possible roles for peers.
+enum PeerRole {
+  // Indicates this node is a follower in the configuration, i.e. that it participates
+  // in majorities and accepts Consensus::Update() calls.
+  FOLLOWER = 0;
+
+  // Indicates this node is the current leader of the configuration, i.e. that it
+  // participates in majorities and accepts Consensus::Append() calls.
+  LEADER = 1;
+
+  // New peers joining a quorum will be in this role for both PRE_VOTER and PRE_OBSERVER
+  // while the tablet data is being remote bootstrapped. The peer does not participate
+  // in starting elections or majorities.
+  LEARNER = 2;
+
+  // Indicates that this node is not a participant of the configuration, i.e. does
+  // not accept Consensus::Update() or Consensus::Update() and cannot
+  // participate in elections or majorities. This is usually the role of a node
+  // that leaves the configuration.
+  NON_PARTICIPANT = 3;
+
+  // This peer is a read (async) replica and gets informed of the quorum write
+  // activity and provides time-line consistent reads.
+  READ_REPLICA = 4;
+
+  UNKNOWN_ROLE = 7;
+};
+
+enum ReplicationErrorPb {
+  REPLICATION_UNKNOWN_ERROR = 0;
+
+  // One or more WAL segments are missing an expected op id.
+  REPLICATION_MISSING_OP_ID = 1;
+
+  // There is a schema mismatch between the producer and consumer tables.
+  REPLICATION_SCHEMA_MISMATCH = 2;
+
+  // There is a colocated table missing on the consumer side.
+  REPLICATION_MISSING_TABLE = 3;
+
+  // Replication state has not yet been initialized.
+  REPLICATION_ERROR_UNINITIALIZED = 4;
+
+  // Replication is healthy.
+  REPLICATION_OK = 5;
+
+  // The AutoFlags config has changed and the new version is not compatible, or
+  // has not yet been validated.
+  REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH = 6;
+}
+
+// Stateful services.
+enum StatefulServiceKind {
+  // Test service.
+  TEST_ECHO = 0;
+  PG_AUTO_ANALYZE = 1;
+}
+
+// CDC SDK Consistent Snapshot Options
+enum CDCSDKSnapshotOption {
+  NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
+  USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
+}
+
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentity {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}

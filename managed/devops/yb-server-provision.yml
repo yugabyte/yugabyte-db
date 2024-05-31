@@ -1,0 +1,39 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Validate server type
+  hosts: "{{ yb_prebuilt_ami_host | default('localhost') }}"
+  gather_facts: no
+  tasks:
+    - assert:
+        that:
+          - server_type is defined
+          - server_type in ["cluster-server"]
+      tags: yb-prebuilt-ami
+
+
+# This is required to set locale to avoid bash warning message on GCP Ubuntu
+- name: Install Locale on GCP Ubuntu
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  gather_facts: yes
+  pre_tasks:
+    - name: Install Locale and generate en_US.UTF-8
+      raw: 'sudo apt-get update &&
+            sudo apt-get install -y locales &&
+            sudo locale-gen "en_US.UTF-8"'
+      when: ansible_distribution == "Ubuntu" and cloud_type == "gcp"
+  tags: yb-prebuilt-ami
+
+- name: Provision server
+  become: yes
+  become_method: sudo
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  roles:
+    - "provision-{{ server_type }}"
+  vars_files:
+    - "{{ vars_file | default(placeholder_vars_file) }}"

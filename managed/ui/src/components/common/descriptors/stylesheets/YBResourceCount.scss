@@ -1,0 +1,51 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+
+.yb-resource-count {
+  min-width: 70px;
+  margin-top: 10px;
+  white-space: nowrap;
+  position: relative;
+  padding: 0;
+
+  .yb-resource-count-size {
+    font-size: 32px;
+    line-height: 30px;
+    font-weight: 500;
+    color: colors.$YB_VIOLET_TEXT_NEW;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+  }
+
+  .yb-resource-count-label {
+    float: left;
+    margin-top: 10px;
+    font-weight: 600;
+    font-size: 13px;
+    color: colors.$YB_DARKER_GRAY;
+  }
+
+  .yb-resource-count-unit {
+    font-size: 14px;
+    line-height: 14px;
+    font-weight: 400;
+    color: colors.$YB_VIOLET_TEXT_NEW;
+  }
+
+  .yb-resource-count-kind {
+    font-size: 14px;
+    font-weight: 300;
+  }
+
+  &.yb-resource-count-inline {
+    .yb-resource-count-size > div {
+      display: inline;
+    }
+    .yb-resource-count-kind {
+      display: inline;
+      font-size: 18px;
+    }
+  }
+}

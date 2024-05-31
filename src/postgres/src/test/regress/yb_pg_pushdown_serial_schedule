@@ -1,0 +1,7 @@
+# src/test/regress/yb_pg_pushdown_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests on expression pushdown.
+####################################################################################################
+test: yb_dml_single_row
+test: yb_select_no_pushdown

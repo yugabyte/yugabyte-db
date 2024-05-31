@@ -1,0 +1,4009 @@
+<!-- doc/src/sgml/textsearch.sgml -->
+
+<chapter id="textsearch">
+ <title>Full Text Search</title>
+
+  <indexterm zone="textsearch">
+   <primary>full text search</primary>
+  </indexterm>
+
+  <indexterm zone="textsearch">
+   <primary>text search</primary>
+  </indexterm>
+
+ <sect1 id="textsearch-intro">
+  <title>Introduction</title>
+
+  <para>
+   Full Text Searching (or just <firstterm>text search</firstterm>) provides
+   the capability to identify natural-language <firstterm>documents</firstterm> that
+   satisfy a <firstterm>query</firstterm>, and optionally to sort them by
+   relevance to the query.  The most common type of search
+   is to find all documents containing given <firstterm>query terms</firstterm>
+   and return them in order of their <firstterm>similarity</firstterm> to the
+   query.  Notions of <varname>query</varname> and
+   <varname>similarity</varname> are very flexible and depend on the specific
+   application. The simplest search considers <varname>query</varname> as a
+   set of words and <varname>similarity</varname> as the frequency of query
+   words in the document.
+  </para>
+
+  <para>
+   Textual search operators have existed in databases for years.
+   <productname>PostgreSQL</productname> has
+   <literal>~</literal>, <literal>~*</literal>, <literal>LIKE</literal>, and
+   <literal>ILIKE</literal> operators for textual data types, but they lack
+   many essential properties required by modern information systems:
+  </para>
+
+  <itemizedlist  spacing="compact" mark="bullet">
+   <listitem>
+    <para>
+     There is no linguistic support, even for English.  Regular expressions
+     are not sufficient because they cannot easily handle derived words, e.g.,
+     <literal>satisfies</literal> and <literal>satisfy</literal>. You might
+     miss documents that contain <literal>satisfies</literal>, although you
+     probably would like to find them when searching for
+     <literal>satisfy</literal>. It is possible to use <literal>OR</literal>
+     to search for multiple derived forms, but this is tedious and error-prone
+     (some words can have several thousand derivatives).
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     They provide no ordering (ranking) of search results, which makes them
+     ineffective when thousands of matching documents are found.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     They tend to be slow because there is no index support, so they must
+     process all documents for every search.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   Full text indexing allows documents to be <emphasis>preprocessed</emphasis>
+   and an index saved for later rapid searching. Preprocessing includes:
+  </para>
+
+  <itemizedlist  mark="none">
+   <listitem>
+    <para>
+     <emphasis>Parsing documents into <firstterm>tokens</firstterm></emphasis>. It is
+     useful to identify various classes of tokens, e.g., numbers, words,
+     complex words, email addresses, so that they can be processed
+     differently.  In principle token classes depend on the specific
+     application, but for most purposes it is adequate to use a predefined
+     set of classes.
+     <productname>PostgreSQL</productname> uses a <firstterm>parser</firstterm> to
+     perform this step.  A standard parser is provided, and custom parsers
+     can be created for specific needs.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <emphasis>Converting tokens into <firstterm>lexemes</firstterm></emphasis>.
+     A lexeme is a string, just like a token, but it has been
+     <firstterm>normalized</firstterm> so that different forms of the same word
+     are made alike.  For example, normalization almost always includes
+     folding upper-case letters to lower-case, and often involves removal
+     of suffixes (such as <literal>s</literal> or <literal>es</literal> in English).
+     This allows searches to find variant forms of the
+     same word, without tediously entering all the possible variants.
+     Also, this step typically eliminates <firstterm>stop words</firstterm>, which
+     are words that are so common that they are useless for searching.
+     (In short, then, tokens are raw fragments of the document text, while
+     lexemes are words that are believed useful for indexing and searching.)
+     <productname>PostgreSQL</productname> uses <firstterm>dictionaries</firstterm> to
+     perform this step.  Various standard dictionaries are provided, and
+     custom ones can be created for specific needs.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <emphasis>Storing preprocessed documents optimized for
+     searching</emphasis>.  For example, each document can be represented
+     as a sorted array of normalized lexemes. Along with the lexemes it is
+     often desirable to store positional information to use for
+     <firstterm>proximity ranking</firstterm>, so that a document that
+     contains a more <quote>dense</quote> region of query words is
+     assigned a higher rank than one with scattered query words.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   Dictionaries allow fine-grained control over how tokens are normalized.
+   With appropriate dictionaries, you can:
+  </para>
+
+  <itemizedlist  spacing="compact" mark="bullet">
+   <listitem>
+    <para>
+     Define stop words that should not be indexed.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Map synonyms to a single word using <application>Ispell</application>.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Map phrases to a single word using a thesaurus.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Map different variations of a word to a canonical form using
+     an <application>Ispell</application> dictionary.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Map different variations of a word to a canonical form using
+     <application>Snowball</application> stemmer rules.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   A data type <type>tsvector</type> is provided for storing preprocessed
+   documents, along with a type <type>tsquery</type> for representing processed
+   queries (<xref linkend="datatype-textsearch"/>).  There are many
+   functions and operators available for these data types
+   (<xref linkend="functions-textsearch"/>), the most important of which is
+   the match operator <literal>@@</literal>, which we introduce in
+   <xref linkend="textsearch-matching"/>.  Full text searches can be accelerated
+   using indexes (<xref linkend="textsearch-indexes"/>).
+  </para>
+
+
+  <sect2 id="textsearch-document">
+   <title>What Is a Document?</title>
+
+   <indexterm zone="textsearch-document">
+    <primary>document</primary>
+    <secondary>text search</secondary>
+   </indexterm>
+
+   <para>
+    A <firstterm>document</firstterm> is the unit of searching in a full text search
+    system; for example, a magazine article or email message.  The text search
+    engine must be able to parse documents and store associations of lexemes
+    (key words) with their parent document. Later, these associations are
+    used to search for documents that contain query words.
+   </para>
+
+   <para>
+    For searches within <productname>PostgreSQL</productname>,
+    a document is normally a textual field within a row of a database table,
+    or possibly a combination (concatenation) of such fields, perhaps stored
+    in several tables or obtained dynamically. In other words, a document can
+    be constructed from different parts for indexing and it might not be
+    stored anywhere as a whole. For example:
+
+<programlisting>
+SELECT title || ' ' ||  author || ' ' ||  abstract || ' ' || body AS document
+FROM messages
+WHERE mid = 12;
+
+SELECT m.title || ' ' || m.author || ' ' || m.abstract || ' ' || d.body AS document
+FROM messages m, docs d
+WHERE m.mid = d.did AND m.mid = 12;
+</programlisting>
+   </para>
+
+   <note>
+    <para>
+     Actually, in these example queries, <function>coalesce</function>
+     should be used to prevent a single <literal>NULL</literal> attribute from
+     causing a <literal>NULL</literal> result for the whole document.
+    </para>
+   </note>
+
+   <para>
+    Another possibility is to store the documents as simple text files in the
+    file system. In this case, the database can be used to store the full text
+    index and to execute searches, and some unique identifier can be used to
+    retrieve the document from the file system.  However, retrieving files
+    from outside the database requires superuser permissions or special
+    function support, so this is usually less convenient than keeping all
+    the data inside <productname>PostgreSQL</productname>.  Also, keeping
+    everything inside the database allows easy access
+    to document metadata to assist in indexing and display.
+   </para>
+
+   <para>
+    For text search purposes, each document must be reduced to the
+    preprocessed <type>tsvector</type> format.  Searching and ranking
+    are performed entirely on the <type>tsvector</type> representation
+    of a document &mdash; the original text need only be retrieved
+    when the document has been selected for display to a user.
+    We therefore often speak of the <type>tsvector</type> as being the
+    document, but of course it is only a compact representation of
+    the full document.
+   </para>
+  </sect2>
+
+  <sect2 id="textsearch-matching">
+   <title>Basic Text Matching</title>
+
+   <para>
+    Full text searching in <productname>PostgreSQL</productname> is based on
+    the match operator <literal>@@</literal>, which returns
+    <literal>true</literal> if a <type>tsvector</type>
+    (document) matches a <type>tsquery</type> (query).
+    It doesn't matter which data type is written first:
+
+<programlisting>
+SELECT 'a fat cat sat on a mat and ate a fat rat'::tsvector @@ 'cat &amp; rat'::tsquery;
+ ?column?
+----------
+ t
+
+SELECT 'fat &amp; cow'::tsquery @@ 'a fat cat sat on a mat and ate a fat rat'::tsvector;
+ ?column?
+----------
+ f
+</programlisting>
+   </para>
+
+   <para>
+    As the above example suggests, a <type>tsquery</type> is not just raw
+    text, any more than a <type>tsvector</type> is.  A <type>tsquery</type>
+    contains search terms, which must be already-normalized lexemes, and
+    may combine multiple terms using AND, OR, NOT, and FOLLOWED BY operators.
+    (For syntax details see <xref linkend="datatype-tsquery"/>.)  There are
+    functions <function>to_tsquery</function>, <function>plainto_tsquery</function>,
+    and <function>phraseto_tsquery</function>
+    that are helpful in converting user-written text into a proper
+    <type>tsquery</type>, primarily by normalizing words appearing in
+    the text.  Similarly, <function>to_tsvector</function> is used to parse and
+    normalize a document string.  So in practice a text search match would
+    look more like this:
+
+<programlisting>
+SELECT to_tsvector('fat cats ate fat rats') @@ to_tsquery('fat &amp; rat');
+ ?column?
+----------
+ t
+</programlisting>
+
+    Observe that this match would not succeed if written as
+
+<programlisting>
+SELECT 'fat cats ate fat rats'::tsvector @@ to_tsquery('fat &amp; rat');
+ ?column?
+----------
+ f
+</programlisting>
+
+    since here no normalization of the word <literal>rats</literal> will occur.
+    The elements of a <type>tsvector</type> are lexemes, which are assumed
+    already normalized, so <literal>rats</literal> does not match <literal>rat</literal>.
+   </para>
+
+   <para>
+    The <literal>@@</literal> operator also
+    supports <type>text</type> input, allowing explicit conversion of a text
+    string to <type>tsvector</type> or <type>tsquery</type> to be skipped
+    in simple cases.  The variants available are:
+
+<programlisting>
+tsvector @@ tsquery
+tsquery  @@ tsvector
+text @@ tsquery
+text @@ text
+</programlisting>
+   </para>
+
+   <para>
+    The first two of these we saw already.
+    The form <type>text</type> <literal>@@</literal> <type>tsquery</type>
+    is equivalent to <literal>to_tsvector(x) @@ y</literal>.
+    The form <type>text</type> <literal>@@</literal> <type>text</type>
+    is equivalent to <literal>to_tsvector(x) @@ plainto_tsquery(y)</literal>.
+   </para>
+
+   <para>
+    Within a <type>tsquery</type>, the <literal>&amp;</literal> (AND) operator
+    specifies that both its arguments must appear in the document to have a
+    match.  Similarly, the <literal>|</literal> (OR) operator specifies that
+    at least one of its arguments must appear, while the <literal>!</literal> (NOT)
+    operator specifies that its argument must <emphasis>not</emphasis> appear in
+    order to have a match.
+    For example, the query <literal>fat &amp; ! rat</literal> matches documents that
+    contain <literal>fat</literal> but not <literal>rat</literal>.
+   </para>
+
+   <para>
+    Searching for phrases is possible with the help of
+    the <literal>&lt;-&gt;</literal> (FOLLOWED BY) <type>tsquery</type> operator, which
+    matches only if its arguments have matches that are adjacent and in the
+    given order.  For example:
+
+<programlisting>
+SELECT to_tsvector('fatal error') @@ to_tsquery('fatal &lt;-&gt; error');
+ ?column?
+----------
+ t
+
+SELECT to_tsvector('error is not fatal') @@ to_tsquery('fatal &lt;-&gt; error');
+ ?column?
+----------
+ f
+</programlisting>
+
+    There is a more general version of the FOLLOWED BY operator having the
+    form <literal>&lt;<replaceable>N</replaceable>&gt;</literal>,
+    where <replaceable>N</replaceable> is an integer standing for the difference between
+    the positions of the matching lexemes.  <literal>&lt;1&gt;</literal> is
+    the same as <literal>&lt;-&gt;</literal>, while <literal>&lt;2&gt;</literal>
+    allows exactly one other lexeme to appear between the matches, and so
+    on.  The <literal>phraseto_tsquery</literal> function makes use of this
+    operator to construct a <literal>tsquery</literal> that can match a multi-word
+    phrase when some of the words are stop words.  For example:
+
+<programlisting>
+SELECT phraseto_tsquery('cats ate rats');
+       phraseto_tsquery
+-------------------------------
+ 'cat' &lt;-&gt; 'ate' &lt;-&gt; 'rat'
+
+SELECT phraseto_tsquery('the cats ate the rats');
+       phraseto_tsquery
+-------------------------------
+ 'cat' &lt;-&gt; 'ate' &lt;2&gt; 'rat'
+</programlisting>
+   </para>
+
+   <para>
+    A special case that's sometimes useful is that <literal>&lt;0&gt;</literal>
+    can be used to require that two patterns match the same word.
+   </para>
+
+   <para>
+    Parentheses can be used to control nesting of the <type>tsquery</type>
+    operators.  Without parentheses, <literal>|</literal> binds least tightly,
+    then <literal>&amp;</literal>, then <literal>&lt;-&gt;</literal>,
+    and <literal>!</literal> most tightly.
+   </para>
+
+   <para>
+    It's worth noticing that the AND/OR/NOT operators mean something subtly
+    different when they are within the arguments of a FOLLOWED BY operator
+    than when they are not, because within FOLLOWED BY the exact position of
+    the match is significant.  For example, normally <literal>!x</literal> matches
+    only documents that do not contain <literal>x</literal> anywhere.
+    But <literal>!x &lt;-&gt; y</literal> matches <literal>y</literal> if it is not
+    immediately after an <literal>x</literal>; an occurrence of <literal>x</literal>
+    elsewhere in the document does not prevent a match.  Another example is
+    that <literal>x &amp; y</literal> normally only requires that <literal>x</literal>
+    and <literal>y</literal> both appear somewhere in the document, but
+    <literal>(x &amp; y) &lt;-&gt; z</literal> requires <literal>x</literal>
+    and <literal>y</literal> to match at the same place, immediately before
+    a <literal>z</literal>.  Thus this query behaves differently from
+    <literal>x &lt;-&gt; z &amp; y &lt;-&gt; z</literal>, which will match a
+    document containing two separate sequences <literal>x z</literal> and
+    <literal>y z</literal>.  (This specific query is useless as written,
+    since <literal>x</literal> and <literal>y</literal> could not match at the same place;
+    but with more complex situations such as prefix-match patterns, a query
+    of this form could be useful.)
+   </para>
+  </sect2>
+
+  <sect2 id="textsearch-intro-configurations">
+   <title>Configurations</title>
+
+   <para>
+    The above are all simple text search examples.  As mentioned before, full
+    text search functionality includes the ability to do many more things:
+    skip indexing certain words (stop words), process synonyms, and use
+    sophisticated parsing, e.g., parse based on more than just white space.
+    This functionality is controlled by <firstterm>text search
+    configurations</firstterm>.  <productname>PostgreSQL</productname> comes with predefined
+    configurations for many languages, and you can easily create your own
+    configurations.  (<application>psql</application>'s <command>\dF</command> command
+    shows all available configurations.)
+   </para>
+
+   <para>
+    During installation an appropriate configuration is selected and
+    <xref linkend="guc-default-text-search-config"/> is set accordingly
+    in <filename>postgresql.conf</filename>.  If you are using the same text search
+    configuration for the entire cluster you can use the value in
+    <filename>postgresql.conf</filename>.  To use different configurations
+    throughout the cluster but the same configuration within any one database,
+    use <command>ALTER DATABASE ... SET</command>.  Otherwise, you can set
+    <varname>default_text_search_config</varname> in each session.
+   </para>
+
+   <para>
+    Each text search function that depends on a configuration has an optional
+    <type>regconfig</type> argument, so that the configuration to use can be
+    specified explicitly.  <varname>default_text_search_config</varname>
+    is used only when this argument is omitted.
+   </para>
+
+   <para>
+    To make it easier to build custom text search configurations, a
+    configuration is built up from simpler database objects.
+    <productname>PostgreSQL</productname>'s text search facility provides
+    four types of configuration-related database objects:
+   </para>
+
+  <itemizedlist  spacing="compact" mark="bullet">
+   <listitem>
+    <para>
+     <firstterm>Text search parsers</firstterm> break documents into tokens
+     and classify each token (for example, as words or numbers).
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <firstterm>Text search dictionaries</firstterm> convert tokens to normalized
+     form and reject stop words.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <firstterm>Text search templates</firstterm> provide the functions underlying
+     dictionaries.  (A dictionary simply specifies a template and a set
+     of parameters for the template.)
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     <firstterm>Text search configurations</firstterm> select a parser and a set
+     of dictionaries to use to normalize the tokens produced by the parser.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+   <para>
+    Text search parsers and templates are built from low-level C functions;
+    therefore it requires C programming ability to develop new ones, and
+    superuser privileges to install one into a database.  (There are examples
+    of add-on parsers and templates in the <filename>contrib/</filename> area of the
+    <productname>PostgreSQL</productname> distribution.)  Since dictionaries and
+    configurations just parameterize and connect together some underlying
+    parsers and templates, no special privilege is needed to create a new
+    dictionary or configuration.  Examples of creating custom dictionaries and
+    configurations appear later in this chapter.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-tables">
+  <title>Tables and Indexes</title>
+
+  <para>
+   The examples in the previous section illustrated full text matching using
+   simple constant strings.  This section shows how to search table data,
+   optionally using indexes.
+  </para>
+
+  <sect2 id="textsearch-tables-search">
+   <title>Searching a Table</title>
+
+   <para>
+    It is possible to do a full text search without an index.  A simple query
+    to print the <structname>title</structname> of each row that contains the word
+    <literal>friend</literal> in its <structfield>body</structfield> field is:
+
+<programlisting>
+SELECT title
+FROM pgweb
+WHERE to_tsvector('english', body) @@ to_tsquery('english', 'friend');
+</programlisting>
+
+    This will also find related words such as <literal>friends</literal>
+    and <literal>friendly</literal>, since all these are reduced to the same
+    normalized lexeme.
+   </para>
+
+   <para>
+    The query above specifies that the <literal>english</literal> configuration
+    is to be used to parse and normalize the strings.  Alternatively we
+    could omit the configuration parameters:
+
+<programlisting>
+SELECT title
+FROM pgweb
+WHERE to_tsvector(body) @@ to_tsquery('friend');
+</programlisting>
+
+    This query will use the configuration set by <xref
+    linkend="guc-default-text-search-config"/>.
+   </para>
+
+   <para>
+    A more complex example is to
+    select the ten most recent documents that contain <literal>create</literal> and
+    <literal>table</literal> in the <structname>title</structname> or <structname>body</structname>:
+
+<programlisting>
+SELECT title
+FROM pgweb
+WHERE to_tsvector(title || ' ' || body) @@ to_tsquery('create &amp; table')
+ORDER BY last_mod_date DESC
+LIMIT 10;
+</programlisting>
+
+    For clarity we omitted the <function>coalesce</function> function calls
+    which would be needed to find rows that contain <literal>NULL</literal>
+    in one of the two fields.
+   </para>
+
+   <para>
+    Although these queries will work without an index, most applications
+    will find this approach too slow, except perhaps for occasional ad-hoc
+    searches.  Practical use of text searching usually requires creating
+    an index.
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-tables-index">
+   <title>Creating Indexes</title>
+
+   <para>
+    We can create a <acronym>GIN</acronym> index (<xref
+    linkend="textsearch-indexes"/>) to speed up text searches:
+
+<programlisting>
+CREATE INDEX pgweb_idx ON pgweb USING GIN (to_tsvector('english', body));
+</programlisting>
+
+    Notice that the 2-argument version of <function>to_tsvector</function> is
+    used.  Only text search functions that specify a configuration name can
+    be used in expression indexes (<xref linkend="indexes-expressional"/>).
+    This is because the index contents must be unaffected by <xref
+    linkend="guc-default-text-search-config"/>.  If they were affected, the
+    index contents might be inconsistent because different entries could
+    contain <type>tsvector</type>s that were created with different text search
+    configurations, and there would be no way to guess which was which.  It
+    would be impossible to dump and restore such an index correctly.
+   </para>
+
+   <para>
+    Because the two-argument version of <function>to_tsvector</function> was
+    used in the index above, only a query reference that uses the 2-argument
+    version of <function>to_tsvector</function> with the same configuration
+    name will use that index.  That is, <literal>WHERE
+    to_tsvector('english', body) @@ 'a &amp; b'</literal> can use the index,
+    but <literal>WHERE to_tsvector(body) @@ 'a &amp; b'</literal> cannot.
+    This ensures that an index will be used only with the same configuration
+    used to create the index entries.
+   </para>
+
+  <para>
+    It is possible to set up more complex expression indexes wherein the
+    configuration name is specified by another column, e.g.:
+
+<programlisting>
+CREATE INDEX pgweb_idx ON pgweb USING GIN (to_tsvector(config_name, body));
+</programlisting>
+
+    where <literal>config_name</literal> is a column in the <literal>pgweb</literal>
+    table.  This allows mixed configurations in the same index while
+    recording which configuration was used for each index entry.  This
+    would be useful, for example, if the document collection contained
+    documents in different languages.  Again,
+    queries that are meant to use the index must be phrased to match, e.g.,
+    <literal>WHERE to_tsvector(config_name, body) @@ 'a &amp; b'</literal>.
+   </para>
+
+   <para>
+    Indexes can even concatenate columns:
+
+<programlisting>
+CREATE INDEX pgweb_idx ON pgweb USING GIN (to_tsvector('english', title || ' ' || body));
+</programlisting>
+   </para>
+
+   <para>
+    Another approach is to create a separate <type>tsvector</type> column
+    to hold the output of <function>to_tsvector</function>.  To keep this
+    column automatically up to date with its source data, use a stored
+    generated column.  This example is a
+    concatenation of <literal>title</literal> and <literal>body</literal>,
+    using <function>coalesce</function> to ensure that one field will still be
+    indexed when the other is <literal>NULL</literal>:
+
+<programlisting>
+ALTER TABLE pgweb
+    ADD COLUMN textsearchable_index_col tsvector
+               GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))) STORED;
+</programlisting>
+
+    Then we create a <acronym>GIN</acronym> index to speed up the search:
+
+<programlisting>
+CREATE INDEX textsearch_idx ON pgweb USING GIN (textsearchable_index_col);
+</programlisting>
+
+    Now we are ready to perform a fast full text search:
+
+<programlisting>
+SELECT title
+FROM pgweb
+WHERE textsearchable_index_col @@ to_tsquery('create &amp; table')
+ORDER BY last_mod_date DESC
+LIMIT 10;
+</programlisting>
+   </para>
+
+   <para>
+    One advantage of the separate-column approach over an expression index
+    is that it is not necessary to explicitly specify the text search
+    configuration in queries in order to make use of the index.  As shown
+    in the example above, the query can depend on
+    <varname>default_text_search_config</varname>.  Another advantage is that
+    searches will be faster, since it will not be necessary to redo the
+    <function>to_tsvector</function> calls to verify index matches.  (This is more
+    important when using a GiST index than a GIN index; see <xref
+    linkend="textsearch-indexes"/>.)  The expression-index approach is
+    simpler to set up, however, and it requires less disk space since the
+    <type>tsvector</type> representation is not stored explicitly.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-controls">
+  <title>Controlling Text Search</title>
+
+  <para>
+   To implement full text searching there must be a function to create a
+   <type>tsvector</type> from a document and a <type>tsquery</type> from a
+   user query. Also, we need to return results in a useful order, so we need
+   a function that compares documents with respect to their relevance to
+   the query. It's also important to be able to display the results nicely.
+   <productname>PostgreSQL</productname> provides support for all of these
+   functions.
+  </para>
+
+  <sect2 id="textsearch-parsing-documents">
+   <title>Parsing Documents</title>
+
+   <para>
+    <productname>PostgreSQL</productname> provides the
+    function <function>to_tsvector</function> for converting a document to
+    the <type>tsvector</type> data type.
+   </para>
+
+   <indexterm>
+    <primary>to_tsvector</primary>
+   </indexterm>
+
+<synopsis>
+to_tsvector(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">document</replaceable> <type>text</type>) returns <type>tsvector</type>
+</synopsis>
+
+   <para>
+    <function>to_tsvector</function> parses a textual document into tokens,
+    reduces the tokens to lexemes, and returns a <type>tsvector</type> which
+    lists the lexemes together with their positions in the document.
+    The document is processed according to the specified or default
+    text search configuration.
+    Here is a simple example:
+
+<screen>
+SELECT to_tsvector('english', 'a fat  cat sat on a mat - it ate a fat rats');
+                  to_tsvector
+-----------------------------------------------------
+ 'ate':9 'cat':3 'fat':2,11 'mat':7 'rat':12 'sat':4
+</screen>
+   </para>
+
+   <para>
+    In the example above we see that the resulting <type>tsvector</type> does not
+    contain the words <literal>a</literal>, <literal>on</literal>, or
+    <literal>it</literal>, the word <literal>rats</literal> became
+    <literal>rat</literal>, and the punctuation sign <literal>-</literal> was
+    ignored.
+   </para>
+
+   <para>
+    The <function>to_tsvector</function> function internally calls a parser
+    which breaks the document text into tokens and assigns a type to
+    each token.  For each token, a list of
+    dictionaries (<xref linkend="textsearch-dictionaries"/>) is consulted,
+    where the list can vary depending on the token type.  The first dictionary
+    that <firstterm>recognizes</firstterm> the token emits one or more normalized
+    <firstterm>lexemes</firstterm> to represent the token.  For example,
+    <literal>rats</literal> became <literal>rat</literal> because one of the
+    dictionaries recognized that the word <literal>rats</literal> is a plural
+    form of <literal>rat</literal>.  Some words are recognized as
+    <firstterm>stop words</firstterm> (<xref linkend="textsearch-stopwords"/>), which
+    causes them to be ignored since they occur too frequently to be useful in
+    searching.  In our example these are
+    <literal>a</literal>, <literal>on</literal>, and <literal>it</literal>.
+    If no dictionary in the list recognizes the token then it is also ignored.
+    In this example that happened to the punctuation sign <literal>-</literal>
+    because there are in fact no dictionaries assigned for its token type
+    (<literal>Space symbols</literal>), meaning space tokens will never be
+    indexed. The choices of parser, dictionaries and which types of tokens to
+    index are determined by the selected text search configuration (<xref
+    linkend="textsearch-configuration"/>).  It is possible to have
+    many different configurations in the same database, and predefined
+    configurations are available for various languages. In our example
+    we used the default configuration <literal>english</literal> for the
+    English language.
+   </para>
+
+   <para>
+    The function <function>setweight</function> can be used to label the
+    entries of a <type>tsvector</type> with a given <firstterm>weight</firstterm>,
+    where a weight is one of the letters <literal>A</literal>, <literal>B</literal>,
+    <literal>C</literal>, or <literal>D</literal>.
+    This is typically used to mark entries coming from
+    different parts of a document, such as title versus body.  Later, this
+    information can be used for ranking of search results.
+   </para>
+
+   <para>
+    Because <function>to_tsvector</function>(<literal>NULL</literal>) will
+    return <literal>NULL</literal>, it is recommended to use
+    <function>coalesce</function> whenever a field might be null.
+    Here is the recommended method for creating
+    a <type>tsvector</type> from a structured document:
+
+<programlisting>
+UPDATE tt SET ti =
+    setweight(to_tsvector(coalesce(title,'')), 'A')    ||
+    setweight(to_tsvector(coalesce(keyword,'')), 'B')  ||
+    setweight(to_tsvector(coalesce(abstract,'')), 'C') ||
+    setweight(to_tsvector(coalesce(body,'')), 'D');
+</programlisting>
+
+    Here we have used <function>setweight</function> to label the source
+    of each lexeme in the finished <type>tsvector</type>, and then merged
+    the labeled <type>tsvector</type> values using the <type>tsvector</type>
+    concatenation operator <literal>||</literal>.  (<xref
+    linkend="textsearch-manipulate-tsvector"/> gives details about these
+    operations.)
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-parsing-queries">
+   <title>Parsing Queries</title>
+
+   <para>
+    <productname>PostgreSQL</productname> provides the
+    functions <function>to_tsquery</function>,
+    <function>plainto_tsquery</function>,
+    <function>phraseto_tsquery</function> and
+    <function>websearch_to_tsquery</function>
+    for converting a query to the <type>tsquery</type> data type.
+    <function>to_tsquery</function> offers access to more features
+    than either <function>plainto_tsquery</function> or
+    <function>phraseto_tsquery</function>, but it is less forgiving about its
+    input. <function>websearch_to_tsquery</function> is a simplified version
+    of <function>to_tsquery</function> with an alternative syntax, similar
+    to the one used by web search engines.
+   </para>
+
+   <indexterm>
+    <primary>to_tsquery</primary>
+   </indexterm>
+
+<synopsis>
+to_tsquery(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">querytext</replaceable> <type>text</type>) returns <type>tsquery</type>
+</synopsis>
+
+   <para>
+    <function>to_tsquery</function> creates a <type>tsquery</type> value from
+    <replaceable>querytext</replaceable>, which must consist of single tokens
+    separated by the <type>tsquery</type> operators <literal>&amp;</literal> (AND),
+    <literal>|</literal> (OR), <literal>!</literal> (NOT), and
+    <literal>&lt;-&gt;</literal> (FOLLOWED BY), possibly grouped
+    using parentheses.  In other words, the input to
+    <function>to_tsquery</function> must already follow the general rules for
+    <type>tsquery</type> input, as described in <xref
+    linkend="datatype-tsquery"/>.  The difference is that while basic
+    <type>tsquery</type> input takes the tokens at face value,
+    <function>to_tsquery</function> normalizes each token into a lexeme using
+    the specified or default configuration, and discards any tokens that are
+    stop words according to the configuration.  For example:
+
+<screen>
+SELECT to_tsquery('english', 'The &amp; Fat &amp; Rats');
+  to_tsquery
+---------------
+ 'fat' &amp; 'rat'
+</screen>
+
+    As in basic <type>tsquery</type> input, weight(s) can be attached to each
+    lexeme to restrict it to match only <type>tsvector</type> lexemes of those
+    weight(s).  For example:
+
+<screen>
+SELECT to_tsquery('english', 'Fat | Rats:AB');
+    to_tsquery
+------------------
+ 'fat' | 'rat':AB
+</screen>
+
+    Also, <literal>*</literal> can be attached to a lexeme to specify prefix matching:
+
+<screen>
+SELECT to_tsquery('supern:*A &amp; star:A*B');
+        to_tsquery
+--------------------------
+ 'supern':*A &amp; 'star':*AB
+</screen>
+
+    Such a lexeme will match any word in a <type>tsvector</type> that begins
+    with the given string.
+   </para>
+
+   <para>
+    <function>to_tsquery</function> can also accept single-quoted
+    phrases.  This is primarily useful when the configuration includes a
+    thesaurus dictionary that may trigger on such phrases.
+    In the example below, a thesaurus contains the rule <literal>supernovae
+    stars : sn</literal>:
+
+<screen>
+SELECT to_tsquery('''supernovae stars'' &amp; !crab');
+  to_tsquery
+---------------
+ 'sn' &amp; !'crab'
+</screen>
+
+    Without quotes, <function>to_tsquery</function> will generate a syntax
+    error for tokens that are not separated by an AND, OR, or FOLLOWED BY
+    operator.
+   </para>
+
+   <indexterm>
+    <primary>plainto_tsquery</primary>
+   </indexterm>
+
+<synopsis>
+plainto_tsquery(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">querytext</replaceable> <type>text</type>) returns <type>tsquery</type>
+</synopsis>
+
+   <para>
+    <function>plainto_tsquery</function> transforms the unformatted text
+    <replaceable>querytext</replaceable> to a <type>tsquery</type> value.
+    The text is parsed and normalized much as for <function>to_tsvector</function>,
+    then the <literal>&amp;</literal> (AND) <type>tsquery</type> operator is
+    inserted between surviving words.
+   </para>
+
+   <para>
+    Example:
+
+<screen>
+SELECT plainto_tsquery('english', 'The Fat Rats');
+ plainto_tsquery
+-----------------
+ 'fat' &amp; 'rat'
+</screen>
+
+    Note that <function>plainto_tsquery</function> will not
+    recognize <type>tsquery</type> operators, weight labels,
+    or prefix-match labels in its input:
+
+<screen>
+SELECT plainto_tsquery('english', 'The Fat &amp; Rats:C');
+   plainto_tsquery
+---------------------
+ 'fat' &amp; 'rat' &amp; 'c'
+</screen>
+
+    Here, all the input punctuation was discarded.
+   </para>
+
+   <indexterm>
+    <primary>phraseto_tsquery</primary>
+   </indexterm>
+
+<synopsis>
+phraseto_tsquery(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">querytext</replaceable> <type>text</type>) returns <type>tsquery</type>
+</synopsis>
+
+   <para>
+    <function>phraseto_tsquery</function> behaves much like
+    <function>plainto_tsquery</function>, except that it inserts
+    the <literal>&lt;-&gt;</literal> (FOLLOWED BY) operator between
+    surviving words instead of the <literal>&amp;</literal> (AND) operator.
+    Also, stop words are not simply discarded, but are accounted for by
+    inserting <literal>&lt;<replaceable>N</replaceable>&gt;</literal> operators rather
+    than <literal>&lt;-&gt;</literal> operators.  This function is useful
+    when searching for exact lexeme sequences, since the FOLLOWED BY
+    operators check lexeme order not just the presence of all the lexemes.
+   </para>
+
+   <para>
+    Example:
+
+<screen>
+SELECT phraseto_tsquery('english', 'The Fat Rats');
+ phraseto_tsquery
+------------------
+ 'fat' &lt;-&gt; 'rat'
+</screen>
+
+    Like <function>plainto_tsquery</function>, the
+    <function>phraseto_tsquery</function> function will not
+    recognize <type>tsquery</type> operators, weight labels,
+    or prefix-match labels in its input:
+
+<screen>
+SELECT phraseto_tsquery('english', 'The Fat &amp; Rats:C');
+      phraseto_tsquery
+-----------------------------
+ 'fat' &lt;-&gt; 'rat' &lt;-&gt; 'c'
+</screen>
+   </para>
+
+<synopsis>
+websearch_to_tsquery(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">querytext</replaceable> <type>text</type>) returns <type>tsquery</type>
+</synopsis>
+
+   <para>
+    <function>websearch_to_tsquery</function> creates a <type>tsquery</type>
+    value from <replaceable>querytext</replaceable> using an alternative
+    syntax in which simple unformatted text is a valid query.
+    Unlike <function>plainto_tsquery</function>
+    and <function>phraseto_tsquery</function>, it also recognizes certain
+    operators. Moreover, this function will never raise syntax errors,
+    which makes it possible to use raw user-supplied input for search.
+    The following syntax is supported:
+
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+       <para>
+        <literal>unquoted text</literal>: text not inside quote marks will be
+        converted to terms separated by <literal>&amp;</literal> operators, as
+        if processed by <function>plainto_tsquery</function>.
+      </para>
+     </listitem>
+     <listitem>
+       <para>
+        <literal>"quoted text"</literal>: text inside quote marks will be
+        converted to terms separated by <literal>&lt;-&gt;</literal>
+        operators, as if processed by <function>phraseto_tsquery</function>.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>OR</literal>: the word <quote>or</quote> will be converted to
+       the <literal>|</literal> operator.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>-</literal>: a dash will be converted to
+       the <literal>!</literal> operator.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    Other punctuation is ignored.  So
+    like <function>plainto_tsquery</function>
+    and <function>phraseto_tsquery</function>,
+    the <function>websearch_to_tsquery</function> function will not
+    recognize <type>tsquery</type> operators, weight labels, or prefix-match
+    labels in its input.
+   </para>
+
+   <para>
+    Examples:
+<screen>
+SELECT websearch_to_tsquery('english', 'The fat rats');
+ websearch_to_tsquery
+----------------------
+ 'fat' &amp; 'rat'
+(1 row)
+
+SELECT websearch_to_tsquery('english', '"supernovae stars" -crab');
+       websearch_to_tsquery
+----------------------------------
+ 'supernova' &lt;-&gt; 'star' &amp; !'crab'
+(1 row)
+
+SELECT websearch_to_tsquery('english', '"sad cat" or "fat rat"');
+       websearch_to_tsquery
+-----------------------------------
+ 'sad' &lt;-&gt; 'cat' | 'fat' &lt;-&gt; 'rat'
+(1 row)
+
+SELECT websearch_to_tsquery('english', 'signal -"segmentation fault"');
+         websearch_to_tsquery
+---------------------------------------
+ 'signal' &amp; !( 'segment' &lt;-&gt; 'fault' )
+(1 row)
+
+SELECT websearch_to_tsquery('english', '""" )( dummy \\ query &lt;-&gt;');
+ websearch_to_tsquery
+----------------------
+ 'dummi' &amp; 'queri'
+(1 row)
+</screen>
+    </para>
+  </sect2>
+
+  <sect2 id="textsearch-ranking">
+   <title>Ranking Search Results</title>
+
+   <para>
+    Ranking attempts to measure how relevant documents are to a particular
+    query, so that when there are many matches the most relevant ones can be
+    shown first.  <productname>PostgreSQL</productname> provides two
+    predefined ranking functions, which take into account lexical, proximity,
+    and structural information; that is, they consider how often the query
+    terms appear in the document, how close together the terms are in the
+    document, and how important is the part of the document where they occur.
+    However, the concept of relevancy is vague and very application-specific.
+    Different applications might require additional information for ranking,
+    e.g., document modification time.  The built-in ranking functions are only
+    examples.  You can write your own ranking functions and/or combine their
+    results with additional factors to fit your specific needs.
+   </para>
+
+   <para>
+    The two ranking functions currently available are:
+
+    <variablelist>
+
+     <varlistentry>
+
+      <term>
+       <indexterm>
+        <primary>ts_rank</primary>
+       </indexterm>
+
+       <literal>ts_rank(<optional> <replaceable class="parameter">weights</replaceable> <type>float4[]</type>, </optional> <replaceable class="parameter">vector</replaceable> <type>tsvector</type>, <replaceable class="parameter">query</replaceable> <type>tsquery</type> <optional>, <replaceable class="parameter">normalization</replaceable> <type>integer</type> </optional>) returns <type>float4</type></literal>
+      </term>
+
+      <listitem>
+       <para>
+        Ranks vectors based on the frequency of their matching lexemes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+
+      <term>
+      <indexterm>
+       <primary>ts_rank_cd</primary>
+      </indexterm>
+
+       <literal>ts_rank_cd(<optional> <replaceable class="parameter">weights</replaceable> <type>float4[]</type>, </optional> <replaceable class="parameter">vector</replaceable> <type>tsvector</type>, <replaceable class="parameter">query</replaceable> <type>tsquery</type> <optional>, <replaceable class="parameter">normalization</replaceable> <type>integer</type> </optional>) returns <type>float4</type></literal>
+      </term>
+
+      <listitem>
+       <para>
+        This function computes the <firstterm>cover density</firstterm>
+        ranking for the given document vector and query, as described in
+        Clarke, Cormack, and Tudhope's "Relevance Ranking for One to Three
+        Term Queries" in the journal "Information Processing and Management",
+        1999.  Cover density is similar to <function>ts_rank</function> ranking
+        except that the proximity of matching lexemes to each other is
+        taken into consideration.
+       </para>
+
+       <para>
+        This function requires lexeme positional information to perform
+        its calculation.  Therefore, it ignores any <quote>stripped</quote>
+        lexemes in the <type>tsvector</type>.  If there are no unstripped
+        lexemes in the input, the result will be zero.  (See <xref
+        linkend="textsearch-manipulate-tsvector"/> for more information
+        about the <function>strip</function> function and positional information
+        in <type>tsvector</type>s.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+
+   </para>
+
+   <para>
+    For both these functions,
+    the optional <replaceable class="parameter">weights</replaceable>
+    argument offers the ability to weigh word instances more or less
+    heavily depending on how they are labeled.  The weight arrays specify
+    how heavily to weigh each category of word, in the order:
+
+<synopsis>
+{D-weight, C-weight, B-weight, A-weight}
+</synopsis>
+
+    If no <replaceable class="parameter">weights</replaceable> are provided,
+    then these defaults are used:
+
+<programlisting>
+{0.1, 0.2, 0.4, 1.0}
+</programlisting>
+
+    Typically weights are used to mark words from special areas of the
+    document, like the title or an initial abstract, so they can be
+    treated with more or less importance than words in the document body.
+   </para>
+
+   <para>
+    Since a longer document has a greater chance of containing a query term
+    it is reasonable to take into account document size, e.g., a hundred-word
+    document with five instances of a search word is probably more relevant
+    than a thousand-word document with five instances.  Both ranking functions
+    take an integer <replaceable>normalization</replaceable> option that
+    specifies whether and how a document's length should impact its rank.
+    The integer option controls several behaviors, so it is a bit mask:
+    you can specify one or more behaviors using
+    <literal>|</literal> (for example, <literal>2|4</literal>).
+
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       0 (the default) ignores the document length
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       1 divides the rank by 1 + the logarithm of the document length
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       2 divides the rank by the document length
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       4 divides the rank by the mean harmonic distance between extents
+       (this is implemented only by <function>ts_rank_cd</function>)
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       8 divides the rank by the number of unique words in document
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       16 divides the rank by 1 + the logarithm of the number
+       of unique words in document
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       32 divides the rank by itself + 1
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    If more than one flag bit is specified, the transformations are
+    applied in the order listed.
+   </para>
+
+   <para>
+    It is important to note that the ranking functions do not use any global
+    information, so it is impossible to produce a fair normalization to 1% or
+    100% as sometimes desired.  Normalization option 32
+    (<literal>rank/(rank+1)</literal>) can be applied to scale all ranks
+    into the range zero to one, but of course this is just a cosmetic change;
+    it will not affect the ordering of the search results.
+   </para>
+
+   <para>
+    Here is an example that selects only the ten highest-ranked matches:
+
+<screen>
+SELECT title, ts_rank_cd(textsearch, query) AS rank
+FROM apod, to_tsquery('neutrino|(dark &amp; matter)') query
+WHERE query @@ textsearch
+ORDER BY rank DESC
+LIMIT 10;
+                     title                     |   rank
+-----------------------------------------------+----------
+ Neutrinos in the Sun                          |      3.1
+ The Sudbury Neutrino Detector                 |      2.4
+ A MACHO View of Galactic Dark Matter          |  2.01317
+ Hot Gas and Dark Matter                       |  1.91171
+ The Virgo Cluster: Hot Plasma and Dark Matter |  1.90953
+ Rafting for Solar Neutrinos                   |      1.9
+ NGC 4650A: Strange Galaxy and Dark Matter     |  1.85774
+ Hot Gas and Dark Matter                       |   1.6123
+ Ice Fishing for Cosmic Neutrinos              |      1.6
+ Weak Lensing Distorts the Universe            | 0.818218
+</screen>
+
+    This is the same example using normalized ranking:
+
+<screen>
+SELECT title, ts_rank_cd(textsearch, query, 32 /* rank/(rank+1) */ ) AS rank
+FROM apod, to_tsquery('neutrino|(dark &amp; matter)') query
+WHERE  query @@ textsearch
+ORDER BY rank DESC
+LIMIT 10;
+                     title                     |        rank
+-----------------------------------------------+-------------------
+ Neutrinos in the Sun                          | 0.756097569485493
+ The Sudbury Neutrino Detector                 | 0.705882361190954
+ A MACHO View of Galactic Dark Matter          | 0.668123210574724
+ Hot Gas and Dark Matter                       |  0.65655958650282
+ The Virgo Cluster: Hot Plasma and Dark Matter | 0.656301290640973
+ Rafting for Solar Neutrinos                   | 0.655172410958162
+ NGC 4650A: Strange Galaxy and Dark Matter     | 0.650072921219637
+ Hot Gas and Dark Matter                       | 0.617195790024749
+ Ice Fishing for Cosmic Neutrinos              | 0.615384618911517
+ Weak Lensing Distorts the Universe            | 0.450010798361481
+</screen>
+   </para>
+
+   <para>
+    Ranking can be expensive since it requires consulting the
+    <type>tsvector</type> of each matching document, which can be I/O bound and
+    therefore slow. Unfortunately, it is almost impossible to avoid since
+    practical queries often result in large numbers of matches.
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-headline">
+   <title>Highlighting Results</title>
+
+   <para>
+    To present search results it is ideal to show a part of each document and
+    how it is related to the query. Usually, search engines show fragments of
+    the document with marked search terms.  <productname>PostgreSQL</productname>
+    provides a function <function>ts_headline</function> that
+    implements this functionality.
+   </para>
+
+   <indexterm>
+    <primary>ts_headline</primary>
+   </indexterm>
+
+<synopsis>
+ts_headline(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">document</replaceable> <type>text</type>, <replaceable class="parameter">query</replaceable> <type>tsquery</type> <optional>, <replaceable class="parameter">options</replaceable> <type>text</type> </optional>) returns <type>text</type>
+</synopsis>
+
+   <para>
+    <function>ts_headline</function> accepts a document along
+    with a query, and returns an excerpt from
+    the document in which terms from the query are highlighted.  The
+    configuration to be used to parse the document can be specified by
+    <replaceable>config</replaceable>; if <replaceable>config</replaceable>
+    is omitted, the
+    <varname>default_text_search_config</varname> configuration is used.
+   </para>
+
+   <para>
+    If an <replaceable>options</replaceable> string is specified it must
+    consist of a comma-separated list of one or more
+    <replaceable>option</replaceable><literal>=</literal><replaceable>value</replaceable> pairs.
+    The available options are:
+
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       <literal>MaxWords</literal>, <literal>MinWords</literal> (integers):
+       these numbers determine the longest and shortest headlines to output.
+       The default values are 35 and 15.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>ShortWord</literal> (integer): words of this length or less
+       will be dropped at the start and end of a headline, unless they are
+       query terms.  The default value of three eliminates common English
+       articles.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>HighlightAll</literal> (boolean): if
+       <literal>true</literal> the whole document will be used as the
+       headline, ignoring the preceding three parameters.  The default
+       is <literal>false</literal>.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>MaxFragments</literal> (integer): maximum number of text
+       fragments to display.  The default value of zero selects a
+       non-fragment-based headline generation method.  A value greater
+       than zero selects fragment-based headline generation (see below).
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>StartSel</literal>, <literal>StopSel</literal> (strings):
+       the strings with which to delimit query words appearing in the
+       document, to distinguish them from other excerpted words.  The
+       default values are <quote><literal>&lt;b&gt;</literal></quote> and
+       <quote><literal>&lt;/b&gt;</literal></quote>, which can be suitable
+       for HTML output.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>FragmentDelimiter</literal> (string): When more than one
+       fragment is displayed, the fragments will be separated by this string.
+       The default is <quote><literal> ... </literal></quote>.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    These option names are recognized case-insensitively.
+    You must double-quote string values if they contain spaces or commas.
+   </para>
+
+   <para>
+    In non-fragment-based headline
+    generation, <function>ts_headline</function> locates matches for the
+    given <replaceable class="parameter">query</replaceable> and chooses a
+    single one to display, preferring matches that have more query words
+    within the allowed headline length.
+    In fragment-based headline generation, <function>ts_headline</function>
+    locates the query matches and splits each match
+    into <quote>fragments</quote> of no more than <literal>MaxWords</literal>
+    words each, preferring fragments with more query words, and when
+    possible <quote>stretching</quote> fragments to include surrounding
+    words.  The fragment-based mode is thus more useful when the query
+    matches span large sections of the document, or when it's desirable to
+    display multiple matches.
+    In either mode, if no query matches can be identified, then a single
+    fragment of the first <literal>MinWords</literal> words in the document
+    will be displayed.
+   </para>
+
+   <para>
+    For example:
+
+<screen>
+SELECT ts_headline('english',
+  'The most common type of search
+is to find all documents containing given query terms
+and return them in order of their similarity to the
+query.',
+  to_tsquery('english', 'query &amp; similarity'));
+                        ts_headline
+------------------------------------------------------------
+ containing given &lt;b&gt;query&lt;/b&gt; terms                       +
+ and return them in order of their &lt;b&gt;similarity&lt;/b&gt; to the+
+ &lt;b&gt;query&lt;/b&gt;.
+
+SELECT ts_headline('english',
+  'Search terms may occur
+many times in a document,
+requiring ranking of the search matches to decide which
+occurrences to display in the result.',
+  to_tsquery('english', 'search &amp; term'),
+  'MaxFragments=10, MaxWords=7, MinWords=3, StartSel=&lt;&lt;, StopSel=&gt;&gt;');
+                        ts_headline
+------------------------------------------------------------
+ &lt;&lt;Search&gt;&gt; &lt;&lt;terms&gt;&gt; may occur                            +
+ many times ... ranking of the &lt;&lt;search&gt;&gt; matches to decide
+</screen>
+   </para>
+
+   <para>
+    <function>ts_headline</function> uses the original document, not a
+    <type>tsvector</type> summary, so it can be slow and should be used with
+    care.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-features">
+  <title>Additional Features</title>
+
+  <para>
+   This section describes additional functions and operators that are
+   useful in connection with text search.
+  </para>
+
+  <sect2 id="textsearch-manipulate-tsvector">
+   <title>Manipulating Documents</title>
+
+   <para>
+    <xref linkend="textsearch-parsing-documents"/> showed how raw textual
+    documents can be converted into <type>tsvector</type> values.
+    <productname>PostgreSQL</productname> also provides functions and
+    operators that can be used to manipulate documents that are already
+    in <type>tsvector</type> form.
+   </para>
+
+   <variablelist>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>tsvector concatenation</primary>
+     </indexterm>
+
+      <literal><type>tsvector</type> || <type>tsvector</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       The <type>tsvector</type> concatenation operator
+       returns a vector which combines the lexemes and positional information
+       of the two vectors given as arguments.  Positions and weight labels
+       are retained during the concatenation.
+       Positions appearing in the right-hand vector are offset by the largest
+       position mentioned in the left-hand vector, so that the result is
+       nearly equivalent to the result of performing <function>to_tsvector</function>
+       on the concatenation of the two original document strings.  (The
+       equivalence is not exact, because any stop-words removed from the
+       end of the left-hand argument will not affect the result, whereas
+       they would have affected the positions of the lexemes in the
+       right-hand argument if textual concatenation were used.)
+      </para>
+
+      <para>
+       One advantage of using concatenation in the vector form, rather than
+       concatenating text before applying <function>to_tsvector</function>, is that
+       you can use different configurations to parse different sections
+       of the document.  Also, because the <function>setweight</function> function
+       marks all lexemes of the given vector the same way, it is necessary
+       to parse the text and do <function>setweight</function> before concatenating
+       if you want to label different parts of the document with different
+       weights.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>setweight</primary>
+     </indexterm>
+
+      <literal>setweight(<replaceable class="parameter">vector</replaceable> <type>tsvector</type>, <replaceable class="parameter">weight</replaceable> <type>"char"</type>) returns <type>tsvector</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       <function>setweight</function> returns a copy of the input vector in which every
+       position has been labeled with the given <replaceable>weight</replaceable>, either
+       <literal>A</literal>, <literal>B</literal>, <literal>C</literal>, or
+       <literal>D</literal>.  (<literal>D</literal> is the default for new
+       vectors and as such is not displayed on output.)  These labels are
+       retained when vectors are concatenated, allowing words from different
+       parts of a document to be weighted differently by ranking functions.
+      </para>
+
+      <para>
+       Note that weight labels apply to <emphasis>positions</emphasis>, not
+       <emphasis>lexemes</emphasis>.  If the input vector has been stripped of
+       positions then <function>setweight</function> does nothing.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+     <indexterm>
+      <primary>length(tsvector)</primary>
+     </indexterm>
+
+      <literal>length(<replaceable class="parameter">vector</replaceable> <type>tsvector</type>) returns <type>integer</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the number of lexemes stored in the vector.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>strip</primary>
+     </indexterm>
+
+      <literal>strip(<replaceable class="parameter">vector</replaceable> <type>tsvector</type>) returns <type>tsvector</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns a vector that lists the same lexemes as the given vector, but
+       lacks any position or weight information.  The result is usually much
+       smaller than an unstripped vector, but it is also less useful.
+       Relevance ranking does not work as well on stripped vectors as
+       unstripped ones.  Also,
+       the <literal>&lt;-&gt;</literal> (FOLLOWED BY) <type>tsquery</type> operator
+       will never match stripped input, since it cannot determine the
+       distance between lexeme occurrences.
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+   </variablelist>
+
+   <para>
+    A full list of <type>tsvector</type>-related functions is available
+    in <xref linkend="textsearch-functions-table"/>.
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-manipulate-tsquery">
+   <title>Manipulating Queries</title>
+
+   <para>
+    <xref linkend="textsearch-parsing-queries"/> showed how raw textual
+    queries can be converted into <type>tsquery</type> values.
+    <productname>PostgreSQL</productname> also provides functions and
+    operators that can be used to manipulate queries that are already
+    in <type>tsquery</type> form.
+   </para>
+
+   <variablelist>
+
+    <varlistentry>
+
+     <term>
+      <literal><type>tsquery</type> &amp;&amp; <type>tsquery</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the AND-combination of the two given queries.
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+      <literal><type>tsquery</type> || <type>tsquery</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the OR-combination of the two given queries.
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+      <literal>!! <type>tsquery</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the negation (NOT) of the given query.
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+      <literal><type>tsquery</type> &lt;-&gt; <type>tsquery</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns a query that searches for a match to the first given query
+       immediately followed by a match to the second given query, using
+       the <literal>&lt;-&gt;</literal> (FOLLOWED BY)
+       <type>tsquery</type> operator.  For example:
+
+<screen>
+SELECT to_tsquery('fat') &lt;-&gt; to_tsquery('cat | rat');
+          ?column?
+----------------------------
+ 'fat' &lt;-&gt; ( 'cat' | 'rat' )
+</screen>
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>tsquery_phrase</primary>
+     </indexterm>
+
+      <literal>tsquery_phrase(<replaceable class="parameter">query1</replaceable> <type>tsquery</type>, <replaceable class="parameter">query2</replaceable> <type>tsquery</type> [, <replaceable class="parameter">distance</replaceable> <type>integer</type> ]) returns <type>tsquery</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns a query that searches for a match to the first given query
+       followed by a match to the second given query at a distance of exactly
+       <replaceable>distance</replaceable> lexemes, using
+       the <literal>&lt;<replaceable>N</replaceable>&gt;</literal>
+       <type>tsquery</type> operator.  For example:
+
+<screen>
+SELECT tsquery_phrase(to_tsquery('fat'), to_tsquery('cat'), 10);
+  tsquery_phrase
+------------------
+ 'fat' &lt;10&gt; 'cat'
+</screen>
+      </para>
+     </listitem>
+
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>numnode</primary>
+     </indexterm>
+
+      <literal>numnode(<replaceable class="parameter">query</replaceable> <type>tsquery</type>) returns <type>integer</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the number of nodes (lexemes plus operators) in a
+       <type>tsquery</type>. This function is useful
+       to determine if the <replaceable>query</replaceable> is meaningful
+       (returns &gt; 0), or contains only stop words (returns 0).
+       Examples:
+
+<screen>
+SELECT numnode(plainto_tsquery('the any'));
+NOTICE:  query contains only stopword(s) or doesn't contain lexeme(s), ignored
+ numnode
+---------
+       0
+
+SELECT numnode('foo &amp; bar'::tsquery);
+ numnode
+---------
+       3
+</screen>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm>
+      <primary>querytree</primary>
+     </indexterm>
+
+      <literal>querytree(<replaceable class="parameter">query</replaceable> <type>tsquery</type>) returns <type>text</type></literal>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the portion of a <type>tsquery</type> that can be used for
+       searching an index.  This function is useful for detecting
+       unindexable queries, for example those containing only stop words
+       or only negated terms.  For example:
+
+<screen>
+SELECT querytree(to_tsquery('defined'));
+ querytree
+-----------
+ 'defin'
+
+SELECT querytree(to_tsquery('!defined'));
+ querytree
+-----------
+ T
+</screen>
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+
+   <sect3 id="textsearch-query-rewriting">
+    <title>Query Rewriting</title>
+
+    <indexterm zone="textsearch-query-rewriting">
+     <primary>ts_rewrite</primary>
+    </indexterm>
+
+    <para>
+     The <function>ts_rewrite</function> family of functions search a
+     given <type>tsquery</type> for occurrences of a target
+     subquery, and replace each occurrence with a
+     substitute subquery.  In essence this operation is a
+     <type>tsquery</type>-specific version of substring replacement.
+     A target and substitute combination can be
+     thought of as a <firstterm>query rewrite rule</firstterm>.  A collection
+     of such rewrite rules can be a powerful search aid.
+     For example, you can expand the search using synonyms
+     (e.g., <literal>new york</literal>, <literal>big apple</literal>, <literal>nyc</literal>,
+     <literal>gotham</literal>) or narrow the search to direct the user to some hot
+     topic.  There is some overlap in functionality between this feature
+     and thesaurus dictionaries (<xref linkend="textsearch-thesaurus"/>).
+     However, you can modify a set of rewrite rules on-the-fly without
+     reindexing, whereas updating a thesaurus requires reindexing to be
+     effective.
+    </para>
+
+    <variablelist>
+
+     <varlistentry>
+
+      <term>
+       <literal>ts_rewrite (<replaceable class="parameter">query</replaceable> <type>tsquery</type>, <replaceable class="parameter">target</replaceable> <type>tsquery</type>, <replaceable class="parameter">substitute</replaceable> <type>tsquery</type>) returns <type>tsquery</type></literal>
+      </term>
+
+      <listitem>
+       <para>
+        This form of <function>ts_rewrite</function> simply applies a single
+        rewrite rule: <replaceable class="parameter">target</replaceable>
+        is replaced by <replaceable class="parameter">substitute</replaceable>
+        wherever it appears in <replaceable
+        class="parameter">query</replaceable>.  For example:
+
+<screen>
+SELECT ts_rewrite('a &amp; b'::tsquery, 'a'::tsquery, 'c'::tsquery);
+ ts_rewrite
+------------
+ 'b' &amp; 'c'
+</screen>
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+
+      <term>
+       <literal>ts_rewrite (<replaceable class="parameter">query</replaceable> <type>tsquery</type>, <replaceable class="parameter">select</replaceable> <type>text</type>) returns <type>tsquery</type></literal>
+      </term>
+
+      <listitem>
+       <para>
+        This form of <function>ts_rewrite</function> accepts a starting
+        <replaceable>query</replaceable> and an SQL <replaceable>select</replaceable> command, which
+        is given as a text string.  The <replaceable>select</replaceable> must yield two
+        columns of <type>tsquery</type> type.  For each row of the
+        <replaceable>select</replaceable> result, occurrences of the first column value
+        (the target) are replaced by the second column value (the substitute)
+        within the current <replaceable>query</replaceable> value.  For example:
+
+<screen>
+CREATE TABLE aliases (t tsquery PRIMARY KEY, s tsquery);
+INSERT INTO aliases VALUES('a', 'c');
+
+SELECT ts_rewrite('a &amp; b'::tsquery, 'SELECT t,s FROM aliases');
+ ts_rewrite
+------------
+ 'b' &amp; 'c'
+</screen>
+       </para>
+
+       <para>
+        Note that when multiple rewrite rules are applied in this way,
+        the order of application can be important; so in practice you will
+        want the source query to <literal>ORDER BY</literal> some ordering key.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+
+    <para>
+     Let's consider a real-life astronomical example. We'll expand query
+     <literal>supernovae</literal> using table-driven rewriting rules:
+
+<screen>
+CREATE TABLE aliases (t tsquery primary key, s tsquery);
+INSERT INTO aliases VALUES(to_tsquery('supernovae'), to_tsquery('supernovae|sn'));
+
+SELECT ts_rewrite(to_tsquery('supernovae &amp; crab'), 'SELECT * FROM aliases');
+           ts_rewrite
+---------------------------------
+ 'crab' &amp; ( 'supernova' | 'sn' )
+</screen>
+
+     We can change the rewriting rules just by updating the table:
+
+<screen>
+UPDATE aliases
+SET s = to_tsquery('supernovae|sn &amp; !nebulae')
+WHERE t = to_tsquery('supernovae');
+
+SELECT ts_rewrite(to_tsquery('supernovae &amp; crab'), 'SELECT * FROM aliases');
+                 ts_rewrite
+---------------------------------------------
+ 'crab' &amp; ( 'supernova' | 'sn' &amp; !'nebula' )
+</screen>
+    </para>
+
+    <para>
+     Rewriting can be slow when there are many rewriting rules, since it
+     checks every rule for a possible match. To filter out obvious non-candidate
+     rules we can use the containment operators for the <type>tsquery</type>
+     type. In the example below, we select only those rules which might match
+     the original query:
+
+<screen>
+SELECT ts_rewrite('a &amp; b'::tsquery,
+                  'SELECT t,s FROM aliases WHERE ''a &amp; b''::tsquery @&gt; t');
+ ts_rewrite
+------------
+ 'b' &amp; 'c'
+</screen>
+    </para>
+
+   </sect3>
+
+  </sect2>
+
+  <sect2 id="textsearch-update-triggers">
+   <title>Triggers for Automatic Updates</title>
+
+   <indexterm>
+    <primary>trigger</primary>
+    <secondary>for updating a derived tsvector column</secondary>
+   </indexterm>
+
+   <note>
+    <para>
+     The method described in this section has been obsoleted by the use of
+     stored generated columns, as described in <xref
+     linkend="textsearch-tables-index"/>.
+    </para>
+   </note>
+
+   <para>
+    When using a separate column to store the <type>tsvector</type> representation
+    of your documents, it is necessary to create a trigger to update the
+    <type>tsvector</type> column when the document content columns change.
+    Two built-in trigger functions are available for this, or you can write
+    your own.
+   </para>
+
+<synopsis>
+tsvector_update_trigger(<replaceable class="parameter">tsvector_column_name</replaceable>,&zwsp; <replaceable class="parameter">config_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
+tsvector_update_trigger_column(<replaceable class="parameter">tsvector_column_name</replaceable>,&zwsp; <replaceable class="parameter">config_column_name</replaceable>, <replaceable class="parameter">text_column_name</replaceable> <optional>, ... </optional>)
+</synopsis>
+
+   <para>
+    These trigger functions automatically compute a <type>tsvector</type>
+    column from one or more textual columns, under the control of
+    parameters specified in the <command>CREATE TRIGGER</command> command.
+    An example of their use is:
+
+<screen>
+CREATE TABLE messages (
+    title       text,
+    body        text,
+    tsv         tsvector
+);
+
+CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
+ON messages FOR EACH ROW EXECUTE FUNCTION
+tsvector_update_trigger(tsv, 'pg_catalog.english', title, body);
+
+INSERT INTO messages VALUES('title here', 'the body text is here');
+
+SELECT * FROM messages;
+   title    |         body          |            tsv
+------------+-----------------------+----------------------------
+ title here | the body text is here | 'bodi':4 'text':5 'titl':1
+
+SELECT title, body FROM messages WHERE tsv @@ to_tsquery('title &amp; body');
+   title    |         body
+------------+-----------------------
+ title here | the body text is here
+</screen>
+
+    Having created this trigger, any change in <structfield>title</structfield> or
+    <structfield>body</structfield> will automatically be reflected into
+    <structfield>tsv</structfield>, without the application having to worry about it.
+   </para>
+
+   <para>
+    The first trigger argument must be the name of the <type>tsvector</type>
+    column to be updated.  The second argument specifies the text search
+    configuration to be used to perform the conversion.  For
+    <function>tsvector_update_trigger</function>, the configuration name is simply
+    given as the second trigger argument.  It must be schema-qualified as
+    shown above, so that the trigger behavior will not change with changes
+    in <varname>search_path</varname>.  For
+    <function>tsvector_update_trigger_column</function>, the second trigger argument
+    is the name of another table column, which must be of type
+    <type>regconfig</type>.  This allows a per-row selection of configuration
+    to be made.  The remaining argument(s) are the names of textual columns
+    (of type <type>text</type>, <type>varchar</type>, or <type>char</type>).  These
+    will be included in the document in the order given.  NULL values will
+    be skipped (but the other columns will still be indexed).
+   </para>
+
+   <para>
+    A limitation of these built-in triggers is that they treat all the
+    input columns alike.  To process columns differently &mdash; for
+    example, to weight title differently from body &mdash; it is necessary
+    to write a custom trigger.  Here is an example using
+    <application>PL/pgSQL</application> as the trigger language:
+
+<programlisting>
+CREATE FUNCTION messages_trigger() RETURNS trigger AS $$
+begin
+  new.tsv :=
+     setweight(to_tsvector('pg_catalog.english', coalesce(new.title,'')), 'A') ||
+     setweight(to_tsvector('pg_catalog.english', coalesce(new.body,'')), 'D');
+  return new;
+end
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
+    ON messages FOR EACH ROW EXECUTE FUNCTION messages_trigger();
+</programlisting>
+   </para>
+
+   <para>
+    Keep in mind that it is important to specify the configuration name
+    explicitly when creating <type>tsvector</type> values inside triggers,
+    so that the column's contents will not be affected by changes to
+    <varname>default_text_search_config</varname>.  Failure to do this is likely to
+    lead to problems such as search results changing after a dump and restore.
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-statistics">
+   <title>Gathering Document Statistics</title>
+
+   <indexterm>
+    <primary>ts_stat</primary>
+   </indexterm>
+
+   <para>
+    The function <function>ts_stat</function> is useful for checking your
+    configuration and for finding stop-word candidates.
+   </para>
+
+<synopsis>
+ts_stat(<replaceable class="parameter">sqlquery</replaceable> <type>text</type>, <optional> <replaceable class="parameter">weights</replaceable> <type>text</type>, </optional>
+        OUT <replaceable class="parameter">word</replaceable> <type>text</type>, OUT <replaceable class="parameter">ndoc</replaceable> <type>integer</type>,
+        OUT <replaceable class="parameter">nentry</replaceable> <type>integer</type>) returns <type>setof record</type>
+</synopsis>
+
+   <para>
+    <replaceable>sqlquery</replaceable> is a text value containing an SQL
+    query which must return a single <type>tsvector</type> column.
+    <function>ts_stat</function> executes the query and returns statistics about
+    each distinct lexeme (word) contained in the <type>tsvector</type>
+    data.  The columns returned are
+
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       <replaceable>word</replaceable> <type>text</type> &mdash; the value of a lexeme
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>ndoc</replaceable> <type>integer</type> &mdash; number of documents
+       (<type>tsvector</type>s) the word occurred in
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>nentry</replaceable> <type>integer</type> &mdash; total number of
+       occurrences of the word
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    If <replaceable>weights</replaceable> is supplied, only occurrences
+    having one of those weights are counted.
+   </para>
+
+   <para>
+    For example, to find the ten most frequent words in a document collection:
+
+<programlisting>
+SELECT * FROM ts_stat('SELECT vector FROM apod')
+ORDER BY nentry DESC, ndoc DESC, word
+LIMIT 10;
+</programlisting>
+
+    The same, but counting only word occurrences with weight <literal>A</literal>
+    or <literal>B</literal>:
+
+<programlisting>
+SELECT * FROM ts_stat('SELECT vector FROM apod', 'ab')
+ORDER BY nentry DESC, ndoc DESC, word
+LIMIT 10;
+</programlisting>
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-parsers">
+  <title>Parsers</title>
+
+  <para>
+   Text search parsers are responsible for splitting raw document text
+   into <firstterm>tokens</firstterm> and identifying each token's type, where
+   the set of possible types is defined by the parser itself.
+   Note that a parser does not modify the text at all &mdash; it simply
+   identifies plausible word boundaries.  Because of this limited scope,
+   there is less need for application-specific custom parsers than there is
+   for custom dictionaries.  At present <productname>PostgreSQL</productname>
+   provides just one built-in parser, which has been found to be useful for a
+   wide range of applications.
+  </para>
+
+  <para>
+   The built-in parser is named <literal>pg_catalog.default</literal>.
+   It recognizes 23 token types, shown in <xref linkend="textsearch-default-parser"/>.
+  </para>
+
+  <table id="textsearch-default-parser">
+   <title>Default Parser's Token Types</title>
+   <tgroup cols="3">
+    <colspec colname="col1" colwidth="2*"/>
+    <colspec colname="col2" colwidth="2*"/>
+    <colspec colname="col3" colwidth="3*"/>
+    <thead>
+     <row>
+      <entry>Alias</entry>
+      <entry>Description</entry>
+      <entry>Example</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>asciiword</literal></entry>
+      <entry>Word, all ASCII letters</entry>
+      <entry><literal>elephant</literal></entry>
+     </row>
+     <row>
+      <entry><literal>word</literal></entry>
+      <entry>Word, all letters</entry>
+      <entry><literal>ma&ntilde;ana</literal></entry>
+     </row>
+     <row>
+      <entry><literal>numword</literal></entry>
+      <entry>Word, letters and digits</entry>
+      <entry><literal>beta1</literal></entry>
+     </row>
+     <row>
+      <entry><literal>asciihword</literal></entry>
+      <entry>Hyphenated word, all ASCII</entry>
+      <entry><literal>up-to-date</literal></entry>
+     </row>
+     <row>
+      <entry><literal>hword</literal></entry>
+      <entry>Hyphenated word, all letters</entry>
+      <entry><literal>l&oacute;gico-matem&aacute;tica</literal></entry>
+     </row>
+     <row>
+      <entry><literal>numhword</literal></entry>
+      <entry>Hyphenated word, letters and digits</entry>
+      <entry><literal>postgresql-beta1</literal></entry>
+     </row>
+     <row>
+      <entry><literal>hword_asciipart</literal></entry>
+      <entry>Hyphenated word part, all ASCII</entry>
+      <entry><literal>postgresql</literal> in the context <literal>postgresql-beta1</literal></entry>
+     </row>
+     <row>
+      <entry><literal>hword_part</literal></entry>
+      <entry>Hyphenated word part, all letters</entry>
+      <entry><literal>l&oacute;gico</literal> or <literal>matem&aacute;tica</literal>
+       in the context <literal>l&oacute;gico-matem&aacute;tica</literal></entry>
+     </row>
+     <row>
+      <entry><literal>hword_numpart</literal></entry>
+      <entry>Hyphenated word part, letters and digits</entry>
+      <entry><literal>beta1</literal> in the context
+       <literal>postgresql-beta1</literal></entry>
+     </row>
+     <row>
+      <entry><literal>email</literal></entry>
+      <entry>Email address</entry>
+      <entry><literal>foo@example.com</literal></entry>
+     </row>
+     <row>
+      <entry><literal>protocol</literal></entry>
+      <entry>Protocol head</entry>
+      <entry><literal>http://</literal></entry>
+     </row>
+     <row>
+      <entry><literal>url</literal></entry>
+      <entry>URL</entry>
+      <entry><literal>example.com/stuff/index.html</literal></entry>
+     </row>
+     <row>
+      <entry><literal>host</literal></entry>
+      <entry>Host</entry>
+      <entry><literal>example.com</literal></entry>
+     </row>
+     <row>
+      <entry><literal>url_path</literal></entry>
+      <entry>URL path</entry>
+      <entry><literal>/stuff/index.html</literal>, in the context of a URL</entry>
+     </row>
+     <row>
+      <entry><literal>file</literal></entry>
+      <entry>File or path name</entry>
+      <entry><literal>/usr/local/foo.txt</literal>, if not within a URL</entry>
+     </row>
+     <row>
+      <entry><literal>sfloat</literal></entry>
+      <entry>Scientific notation</entry>
+      <entry><literal>-1.234e56</literal></entry>
+     </row>
+     <row>
+      <entry><literal>float</literal></entry>
+      <entry>Decimal notation</entry>
+      <entry><literal>-1.234</literal></entry>
+     </row>
+     <row>
+      <entry><literal>int</literal></entry>
+      <entry>Signed integer</entry>
+      <entry><literal>-1234</literal></entry>
+     </row>
+     <row>
+      <entry><literal>uint</literal></entry>
+      <entry>Unsigned integer</entry>
+      <entry><literal>1234</literal></entry>
+     </row>
+     <row>
+      <entry><literal>version</literal></entry>
+      <entry>Version number</entry>
+      <entry><literal>8.3.0</literal></entry>
+     </row>
+     <row>
+      <entry><literal>tag</literal></entry>
+      <entry>XML tag</entry>
+      <entry><literal>&lt;a href="dictionaries.html"&gt;</literal></entry>
+     </row>
+     <row>
+      <entry><literal>entity</literal></entry>
+      <entry>XML entity</entry>
+      <entry><literal>&amp;amp;</literal></entry>
+     </row>
+     <row>
+      <entry><literal>blank</literal></entry>
+      <entry>Space symbols</entry>
+      <entry>(any whitespace or punctuation not otherwise recognized)</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <note>
+   <para>
+    The parser's notion of a <quote>letter</quote> is determined by the database's
+    locale setting, specifically <varname>lc_ctype</varname>.  Words containing
+    only the basic ASCII letters are reported as a separate token type,
+    since it is sometimes useful to distinguish them.  In most European
+    languages, token types <literal>word</literal> and <literal>asciiword</literal>
+    should be treated alike.
+   </para>
+
+   <para>
+    <literal>email</literal> does not support all valid email characters as
+    defined by <ulink url="https://tools.ietf.org/html/rfc5322">RFC 5322</ulink>.
+    Specifically, the only non-alphanumeric characters supported for
+    email user names are period, dash, and underscore.
+   </para>
+  </note>
+
+  <para>
+   It is possible for the parser to produce overlapping tokens from the same
+   piece of text.  As an example, a hyphenated word will be reported both
+   as the entire word and as each component:
+
+<screen>
+SELECT alias, description, token FROM ts_debug('foo-bar-beta1');
+      alias      |               description                |     token
+-----------------+------------------------------------------+---------------
+ numhword        | Hyphenated word, letters and digits      | foo-bar-beta1
+ hword_asciipart | Hyphenated word part, all ASCII          | foo
+ blank           | Space symbols                            | -
+ hword_asciipart | Hyphenated word part, all ASCII          | bar
+ blank           | Space symbols                            | -
+ hword_numpart   | Hyphenated word part, letters and digits | beta1
+</screen>
+
+   This behavior is desirable since it allows searches to work for both
+   the whole compound word and for components.  Here is another
+   instructive example:
+
+<screen>
+SELECT alias, description, token FROM ts_debug('http://example.com/stuff/index.html');
+  alias   |  description  |            token
+----------+---------------+------------------------------
+ protocol | Protocol head | http://
+ url      | URL           | example.com/stuff/index.html
+ host     | Host          | example.com
+ url_path | URL path      | /stuff/index.html
+</screen>
+  </para>
+
+ </sect1>
+
+ <sect1 id="textsearch-dictionaries">
+  <title>Dictionaries</title>
+
+  <para>
+   Dictionaries are used to eliminate words that should not be considered in a
+   search (<firstterm>stop words</firstterm>), and to <firstterm>normalize</firstterm> words so
+   that different derived forms of the same word will match.  A successfully
+   normalized word is called a <firstterm>lexeme</firstterm>.  Aside from
+   improving search quality, normalization and removal of stop words reduce the
+   size of the <type>tsvector</type> representation of a document, thereby
+   improving performance.  Normalization does not always have linguistic meaning
+   and usually depends on application semantics.
+  </para>
+
+  <para>
+   Some examples of normalization:
+
+   <itemizedlist  spacing="compact" mark="bullet">
+
+    <listitem>
+     <para>
+      Linguistic &mdash; Ispell dictionaries try to reduce input words to a
+      normalized form; stemmer dictionaries remove word endings
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <acronym>URL</acronym> locations can be canonicalized to make
+      equivalent URLs match:
+
+      <itemizedlist  spacing="compact" mark="bullet">
+       <listitem>
+        <para>
+         http://www.pgsql.ru/db/mw/index.html
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         http://www.pgsql.ru/db/mw/
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         http://www.pgsql.ru/db/../db/mw/index.html
+        </para>
+       </listitem>
+      </itemizedlist>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Color names can be replaced by their hexadecimal values, e.g.,
+      <literal>red, green, blue, magenta -> FF0000, 00FF00, 0000FF, FF00FF</literal>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      If indexing numbers, we can
+      remove some fractional digits to reduce the range of possible
+      numbers, so for example <emphasis>3.14</emphasis>159265359,
+      <emphasis>3.14</emphasis>15926, <emphasis>3.14</emphasis> will be the same
+      after normalization if only two digits are kept after the decimal point.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+  </para>
+
+  <para>
+   A dictionary is a program that accepts a token as
+   input and returns:
+   <itemizedlist  spacing="compact" mark="bullet">
+    <listitem>
+     <para>
+      an array of lexemes if the input token is known to the dictionary
+      (notice that one token can produce more than one lexeme)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      a single lexeme with the <literal>TSL_FILTER</literal> flag set, to replace
+      the original token with a new token to be passed to subsequent
+      dictionaries (a dictionary that does this is called a
+      <firstterm>filtering dictionary</firstterm>)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      an empty array if the dictionary knows the token, but it is a stop word
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>NULL</literal> if the dictionary does not recognize the input token
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   <productname>PostgreSQL</productname> provides predefined dictionaries for
+   many languages.  There are also several predefined templates that can be
+   used to create new dictionaries with custom parameters.  Each predefined
+   dictionary template is described below.  If no existing
+   template is suitable, it is possible to create new ones; see the
+   <filename>contrib/</filename> area of the <productname>PostgreSQL</productname> distribution
+   for examples.
+  </para>
+
+  <para>
+   A text search configuration binds a parser together with a set of
+   dictionaries to process the parser's output tokens.  For each token
+   type that the parser can return, a separate list of dictionaries is
+   specified by the configuration.  When a token of that type is found
+   by the parser, each dictionary in the list is consulted in turn,
+   until some dictionary recognizes it as a known word.  If it is identified
+   as a stop word, or if no dictionary recognizes the token, it will be
+   discarded and not indexed or searched for.
+   Normally, the first dictionary that returns a non-<literal>NULL</literal>
+   output determines the result, and any remaining dictionaries are not
+   consulted; but a filtering dictionary can replace the given word
+   with a modified word, which is then passed to subsequent dictionaries.
+  </para>
+
+  <para>
+   The general rule for configuring a list of dictionaries
+   is to place first the most narrow, most specific dictionary, then the more
+   general dictionaries, finishing with a very general dictionary, like
+   a <application>Snowball</application> stemmer or <literal>simple</literal>, which
+   recognizes everything.  For example, for an astronomy-specific search
+   (<literal>astro_en</literal> configuration) one could bind token type
+   <type>asciiword</type> (ASCII word) to a synonym dictionary of astronomical
+   terms, a general English dictionary and a <application>Snowball</application> English
+   stemmer:
+
+<programlisting>
+ALTER TEXT SEARCH CONFIGURATION astro_en
+    ADD MAPPING FOR asciiword WITH astrosyn, english_ispell, english_stem;
+</programlisting>
+  </para>
+
+  <para>
+   A filtering dictionary can be placed anywhere in the list, except at the
+   end where it'd be useless.  Filtering dictionaries are useful to partially
+   normalize words to simplify the task of later dictionaries.  For example,
+   a filtering dictionary could be used to remove accents from accented
+   letters, as is done by the <xref linkend="unaccent"/> module.
+  </para>
+
+  <sect2 id="textsearch-stopwords">
+   <title>Stop Words</title>
+
+   <para>
+    Stop words are words that are very common, appear in almost every
+    document, and have no discrimination value. Therefore, they can be ignored
+    in the context of full text searching. For example, every English text
+    contains words like <literal>a</literal> and <literal>the</literal>, so it is
+    useless to store them in an index.  However, stop words do affect the
+    positions in <type>tsvector</type>, which in turn affect ranking:
+
+<screen>
+SELECT to_tsvector('english', 'in the list of stop words');
+        to_tsvector
+----------------------------
+ 'list':3 'stop':5 'word':6
+</screen>
+
+    The missing positions 1,2,4 are because of stop words.  Ranks
+    calculated for documents with and without stop words are quite different:
+
+<screen>
+SELECT ts_rank_cd (to_tsvector('english', 'in the list of stop words'), to_tsquery('list &amp; stop'));
+ ts_rank_cd
+------------
+       0.05
+
+SELECT ts_rank_cd (to_tsvector('english', 'list stop words'), to_tsquery('list &amp; stop'));
+ ts_rank_cd
+------------
+        0.1
+</screen>
+
+   </para>
+
+   <para>
+    It is up to the specific dictionary how it treats stop words. For example,
+    <literal>ispell</literal> dictionaries first normalize words and then
+    look at the list of stop words, while <literal>Snowball</literal> stemmers
+    first check the list of stop words. The reason for the different
+    behavior is an attempt to decrease noise.
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-simple-dictionary">
+   <title>Simple Dictionary</title>
+
+   <para>
+    The <literal>simple</literal> dictionary template operates by converting the
+    input token to lower case and checking it against a file of stop words.
+    If it is found in the file then an empty array is returned, causing
+    the token to be discarded.  If not, the lower-cased form of the word
+    is returned as the normalized lexeme.  Alternatively, the dictionary
+    can be configured to report non-stop-words as unrecognized, allowing
+    them to be passed on to the next dictionary in the list.
+   </para>
+
+   <para>
+    Here is an example of a dictionary definition using the <literal>simple</literal>
+    template:
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY public.simple_dict (
+    TEMPLATE = pg_catalog.simple,
+    STOPWORDS = english
+);
+</programlisting>
+
+    Here, <literal>english</literal> is the base name of a file of stop words.
+    The file's full name will be
+    <filename>$SHAREDIR/tsearch_data/english.stop</filename>,
+    where <literal>$SHAREDIR</literal> means the
+    <productname>PostgreSQL</productname> installation's shared-data directory,
+    often <filename>/usr/local/share/postgresql</filename> (use <command>pg_config
+    --sharedir</command> to determine it if you're not sure).
+    The file format is simply a list
+    of words, one per line.  Blank lines and trailing spaces are ignored,
+    and upper case is folded to lower case, but no other processing is done
+    on the file contents.
+   </para>
+
+   <para>
+    Now we can test our dictionary:
+
+<screen>
+SELECT ts_lexize('public.simple_dict', 'YeS');
+ ts_lexize
+-----------
+ {yes}
+
+SELECT ts_lexize('public.simple_dict', 'The');
+ ts_lexize
+-----------
+ {}
+</screen>
+   </para>
+
+   <para>
+    We can also choose to return <literal>NULL</literal>, instead of the lower-cased
+    word, if it is not found in the stop words file.  This behavior is
+    selected by setting the dictionary's <literal>Accept</literal> parameter to
+    <literal>false</literal>.  Continuing the example:
+
+<screen>
+ALTER TEXT SEARCH DICTIONARY public.simple_dict ( Accept = false );
+
+SELECT ts_lexize('public.simple_dict', 'YeS');
+ ts_lexize
+-----------
+
+
+SELECT ts_lexize('public.simple_dict', 'The');
+ ts_lexize
+-----------
+ {}
+</screen>
+   </para>
+
+   <para>
+    With the default setting of <literal>Accept</literal> = <literal>true</literal>,
+    it is only useful to place a <literal>simple</literal> dictionary at the end
+    of a list of dictionaries, since it will never pass on any token to
+    a following dictionary.  Conversely, <literal>Accept</literal> = <literal>false</literal>
+    is only useful when there is at least one following dictionary.
+   </para>
+
+   <caution>
+    <para>
+     Most types of dictionaries rely on configuration files, such as files of
+     stop words.  These files <emphasis>must</emphasis> be stored in UTF-8 encoding.
+     They will be translated to the actual database encoding, if that is
+     different, when they are read into the server.
+    </para>
+   </caution>
+
+   <caution>
+    <para>
+     Normally, a database session will read a dictionary configuration file
+     only once, when it is first used within the session.  If you modify a
+     configuration file and want to force existing sessions to pick up the
+     new contents, issue an <command>ALTER TEXT SEARCH DICTIONARY</command> command
+     on the dictionary.  This can be a <quote>dummy</quote> update that doesn't
+     actually change any parameter values.
+    </para>
+   </caution>
+
+  </sect2>
+
+  <sect2 id="textsearch-synonym-dictionary">
+   <title>Synonym Dictionary</title>
+
+   <para>
+    This dictionary template is used to create dictionaries that replace a
+    word with a synonym. Phrases are not supported (use the thesaurus
+    template (<xref linkend="textsearch-thesaurus"/>) for that).  A synonym
+    dictionary can be used to overcome linguistic problems, for example, to
+    prevent an English stemmer dictionary from reducing the word <quote>Paris</quote> to
+    <quote>pari</quote>.  It is enough to have a <literal>Paris paris</literal> line in the
+    synonym dictionary and put it before the <literal>english_stem</literal>
+    dictionary.  For example:
+
+<screen>
+SELECT * FROM ts_debug('english', 'Paris');
+   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes
+-----------+-----------------+-------+----------------+--------------+---------
+ asciiword | Word, all ASCII | Paris | {english_stem} | english_stem | {pari}
+
+CREATE TEXT SEARCH DICTIONARY my_synonym (
+    TEMPLATE = synonym,
+    SYNONYMS = my_synonyms
+);
+
+ALTER TEXT SEARCH CONFIGURATION english
+    ALTER MAPPING FOR asciiword
+    WITH my_synonym, english_stem;
+
+SELECT * FROM ts_debug('english', 'Paris');
+   alias   |   description   | token |       dictionaries        | dictionary | lexemes
+-----------+-----------------+-------+---------------------------+------------+---------
+ asciiword | Word, all ASCII | Paris | {my_synonym,english_stem} | my_synonym | {paris}
+</screen>
+   </para>
+
+   <para>
+    The only parameter required by the <literal>synonym</literal> template is
+    <literal>SYNONYMS</literal>, which is the base name of its configuration file
+    &mdash; <literal>my_synonyms</literal> in the above example.
+    The file's full name will be
+    <filename>$SHAREDIR/tsearch_data/my_synonyms.syn</filename>
+    (where <literal>$SHAREDIR</literal> means the
+    <productname>PostgreSQL</productname> installation's shared-data directory).
+    The file format is just one line
+    per word to be substituted, with the word followed by its synonym,
+    separated by white space.  Blank lines and trailing spaces are ignored.
+   </para>
+
+   <para>
+    The <literal>synonym</literal> template also has an optional parameter
+    <literal>CaseSensitive</literal>, which defaults to <literal>false</literal>.  When
+    <literal>CaseSensitive</literal> is <literal>false</literal>, words in the synonym file
+    are folded to lower case, as are input tokens.  When it is
+    <literal>true</literal>, words and tokens are not folded to lower case,
+    but are compared as-is.
+   </para>
+
+   <para>
+    An asterisk (<literal>*</literal>) can be placed at the end of a synonym
+    in the configuration file.  This indicates that the synonym is a prefix.
+    The asterisk is ignored when the entry is used in
+    <function>to_tsvector()</function>, but when it is used in
+    <function>to_tsquery()</function>, the result will be a query item with
+    the prefix match marker (see
+    <xref linkend="textsearch-parsing-queries"/>).
+    For example, suppose we have these entries in
+    <filename>$SHAREDIR/tsearch_data/synonym_sample.syn</filename>:
+<programlisting>
+postgres        pgsql
+postgresql      pgsql
+postgre pgsql
+gogle   googl
+indices index*
+</programlisting>
+    Then we will get these results:
+<screen>
+mydb=# CREATE TEXT SEARCH DICTIONARY syn (template=synonym, synonyms='synonym_sample');
+mydb=# SELECT ts_lexize('syn', 'indices');
+ ts_lexize
+-----------
+ {index}
+(1 row)
+
+mydb=# CREATE TEXT SEARCH CONFIGURATION tst (copy=simple);
+mydb=# ALTER TEXT SEARCH CONFIGURATION tst ALTER MAPPING FOR asciiword WITH syn;
+mydb=# SELECT to_tsvector('tst', 'indices');
+ to_tsvector
+-------------
+ 'index':1
+(1 row)
+
+mydb=# SELECT to_tsquery('tst', 'indices');
+ to_tsquery
+------------
+ 'index':*
+(1 row)
+
+mydb=# SELECT 'indexes are very useful'::tsvector;
+            tsvector
+---------------------------------
+ 'are' 'indexes' 'useful' 'very'
+(1 row)
+
+mydb=# SELECT 'indexes are very useful'::tsvector @@ to_tsquery('tst', 'indices');
+ ?column?
+----------
+ t
+(1 row)
+</screen>
+   </para>
+  </sect2>
+
+  <sect2 id="textsearch-thesaurus">
+   <title>Thesaurus Dictionary</title>
+
+   <para>
+    A thesaurus dictionary (sometimes abbreviated as <acronym>TZ</acronym>) is
+    a collection of words that includes information about the relationships
+    of words and phrases, i.e., broader terms (<acronym>BT</acronym>), narrower
+    terms (<acronym>NT</acronym>), preferred terms, non-preferred terms, related
+    terms, etc.
+   </para>
+
+   <para>
+    Basically a thesaurus dictionary replaces all non-preferred terms by one
+    preferred term and, optionally, preserves the original terms for indexing
+    as well.  <productname>PostgreSQL</productname>'s current implementation of the
+    thesaurus dictionary is an extension of the synonym dictionary with added
+    <firstterm>phrase</firstterm> support.  A thesaurus dictionary requires
+    a configuration file of the following format:
+
+<programlisting>
+# this is a comment
+sample word(s) : indexed word(s)
+more sample word(s) : more indexed word(s)
+...
+</programlisting>
+
+    where  the colon (<symbol>:</symbol>) symbol acts as a delimiter between a
+    phrase and its replacement.
+   </para>
+
+   <para>
+    A thesaurus dictionary uses a <firstterm>subdictionary</firstterm> (which
+    is specified in the dictionary's configuration) to normalize the input
+    text before checking for phrase matches. It is only possible to select one
+    subdictionary.  An error is reported if the subdictionary fails to
+    recognize a word. In that case, you should remove the use of the word or
+    teach the subdictionary about it.  You can place an asterisk
+    (<symbol>*</symbol>) at the beginning of an indexed word to skip applying
+    the subdictionary to it, but all sample words <emphasis>must</emphasis> be known
+    to the subdictionary.
+   </para>
+
+   <para>
+    The thesaurus dictionary chooses the longest match if there are multiple
+    phrases matching the input, and ties are broken by using the last
+    definition.
+   </para>
+
+   <para>
+    Specific stop words recognized by the subdictionary cannot be
+    specified;  instead use <literal>?</literal> to mark the location where any
+    stop word can appear.  For example, assuming that <literal>a</literal> and
+    <literal>the</literal> are stop words according to the subdictionary:
+
+<programlisting>
+? one ? two : swsw
+</programlisting>
+
+    matches <literal>a one the two</literal> and <literal>the one a two</literal>;
+    both would be replaced by <literal>swsw</literal>.
+   </para>
+
+   <para>
+    Since a thesaurus dictionary has the capability to recognize phrases it
+    must remember its state and interact with the parser. A thesaurus dictionary
+    uses these assignments to check if it should handle the next word or stop
+    accumulation.  The thesaurus dictionary must be configured
+    carefully. For example, if the thesaurus dictionary is assigned to handle
+    only the <literal>asciiword</literal> token, then a thesaurus dictionary
+    definition like <literal>one 7</literal> will not work since token type
+    <literal>uint</literal> is not assigned to the thesaurus dictionary.
+   </para>
+
+   <caution>
+    <para>
+     Thesauruses are used during indexing so any change in the thesaurus
+     dictionary's parameters <emphasis>requires</emphasis> reindexing.
+     For most other dictionary types, small changes such as adding or
+     removing stopwords does not force reindexing.
+    </para>
+   </caution>
+
+  <sect3 id="textsearch-thesaurus-config">
+   <title>Thesaurus Configuration</title>
+
+   <para>
+    To define a new thesaurus dictionary, use the <literal>thesaurus</literal>
+    template.  For example:
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY thesaurus_simple (
+    TEMPLATE = thesaurus,
+    DictFile = mythesaurus,
+    Dictionary = pg_catalog.english_stem
+);
+</programlisting>
+
+    Here:
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       <literal>thesaurus_simple</literal> is the new dictionary's name
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>mythesaurus</literal> is the base name of the thesaurus
+       configuration file.
+       (Its full name will be <filename>$SHAREDIR/tsearch_data/mythesaurus.ths</filename>,
+       where <literal>$SHAREDIR</literal> means the installation shared-data
+       directory.)
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <literal>pg_catalog.english_stem</literal> is the subdictionary (here,
+       a Snowball English stemmer) to use for thesaurus normalization.
+       Notice that the subdictionary will have its own
+       configuration (for example, stop words), which is not shown here.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    Now it is possible to bind the thesaurus dictionary <literal>thesaurus_simple</literal>
+    to the desired token types in a configuration, for example:
+
+<programlisting>
+ALTER TEXT SEARCH CONFIGURATION russian
+    ALTER MAPPING FOR asciiword, asciihword, hword_asciipart
+    WITH thesaurus_simple;
+</programlisting>
+   </para>
+
+  </sect3>
+
+  <sect3 id="textsearch-thesaurus-examples">
+   <title>Thesaurus Example</title>
+
+   <para>
+    Consider a simple astronomical thesaurus <literal>thesaurus_astro</literal>,
+    which contains some astronomical word combinations:
+
+<programlisting>
+supernovae stars : sn
+crab nebulae : crab
+</programlisting>
+
+    Below we create a dictionary and bind some token types to
+    an astronomical thesaurus and English stemmer:
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY thesaurus_astro (
+    TEMPLATE = thesaurus,
+    DictFile = thesaurus_astro,
+    Dictionary = english_stem
+);
+
+ALTER TEXT SEARCH CONFIGURATION russian
+    ALTER MAPPING FOR asciiword, asciihword, hword_asciipart
+    WITH thesaurus_astro, english_stem;
+</programlisting>
+
+    Now we can see how it works.
+    <function>ts_lexize</function> is not very useful for testing a thesaurus,
+    because it treats its input as a single token.  Instead we can use
+    <function>plainto_tsquery</function> and <function>to_tsvector</function>
+    which will break their input strings into multiple tokens:
+
+<screen>
+SELECT plainto_tsquery('supernova star');
+ plainto_tsquery
+-----------------
+ 'sn'
+
+SELECT to_tsvector('supernova star');
+ to_tsvector
+-------------
+ 'sn':1
+</screen>
+
+    In principle, one can use <function>to_tsquery</function> if you quote
+    the argument:
+
+<screen>
+SELECT to_tsquery('''supernova star''');
+ to_tsquery
+------------
+ 'sn'
+</screen>
+
+    Notice that <literal>supernova star</literal> matches <literal>supernovae
+    stars</literal> in <literal>thesaurus_astro</literal> because we specified
+    the <literal>english_stem</literal> stemmer in the thesaurus definition.
+    The stemmer removed the <literal>e</literal> and <literal>s</literal>.
+   </para>
+
+   <para>
+    To index the original phrase as well as the substitute, just include it
+    in the right-hand part of the definition:
+
+<screen>
+supernovae stars : sn supernovae stars
+
+SELECT plainto_tsquery('supernova star');
+       plainto_tsquery
+-----------------------------
+ 'sn' &amp; 'supernova' &amp; 'star'
+</screen>
+   </para>
+
+  </sect3>
+
+  </sect2>
+
+  <sect2 id="textsearch-ispell-dictionary">
+   <title><application>Ispell</application> Dictionary</title>
+
+   <para>
+    The <application>Ispell</application> dictionary template supports
+    <firstterm>morphological dictionaries</firstterm>, which can normalize many
+    different linguistic forms of a word into the same lexeme.  For example,
+    an English <application>Ispell</application> dictionary can match all declensions and
+    conjugations of the search term <literal>bank</literal>, e.g.,
+    <literal>banking</literal>, <literal>banked</literal>, <literal>banks</literal>,
+    <literal>banks'</literal>, and <literal>bank's</literal>.
+   </para>
+
+   <para>
+    The standard <productname>PostgreSQL</productname> distribution does
+    not include any <application>Ispell</application> configuration files.
+    Dictionaries for a large number of languages are available from <ulink
+    url="https://www.cs.hmc.edu/~geoff/ispell.html">Ispell</ulink>.
+    Also, some more modern dictionary file formats are supported &mdash; <ulink
+    url="https://en.wikipedia.org/wiki/MySpell">MySpell</ulink> (OO &lt; 2.0.1)
+    and <ulink url="https://hunspell.github.io/">Hunspell</ulink>
+    (OO &gt;= 2.0.2).  A large list of dictionaries is available on the <ulink
+    url="https://wiki.openoffice.org/wiki/Dictionaries">OpenOffice
+    Wiki</ulink>.
+   </para>
+
+   <para>
+    To create an <application>Ispell</application> dictionary perform these steps:
+   </para>
+   <itemizedlist spacing="compact" mark="bullet">
+    <listitem>
+     <para>
+      download dictionary configuration files. <productname>OpenOffice</productname>
+      extension files have the <filename>.oxt</filename> extension. It is necessary
+      to extract <filename>.aff</filename> and <filename>.dic</filename> files, change
+      extensions to <filename>.affix</filename> and <filename>.dict</filename>. For some
+      dictionary files it is also needed to convert characters to the UTF-8
+      encoding with commands (for example, for a Norwegian language dictionary):
+<programlisting>
+iconv -f ISO_8859-1 -t UTF-8 -o nn_no.affix nn_NO.aff
+iconv -f ISO_8859-1 -t UTF-8 -o nn_no.dict nn_NO.dic
+</programlisting>
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      copy files to the <filename>$SHAREDIR/tsearch_data</filename> directory
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      load files into PostgreSQL with the following command:
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY english_hunspell (
+    TEMPLATE = ispell,
+    DictFile = en_us,
+    AffFile = en_us,
+    Stopwords = english);
+</programlisting>
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    Here, <literal>DictFile</literal>, <literal>AffFile</literal>, and <literal>StopWords</literal>
+    specify the base names of the dictionary, affixes, and stop-words files.
+    The stop-words file has the same format explained above for the
+    <literal>simple</literal> dictionary type.  The format of the other files is
+    not specified here but is available from the above-mentioned web sites.
+   </para>
+
+   <para>
+    Ispell dictionaries usually recognize a limited set of words, so they
+    should be followed by another broader dictionary; for
+    example, a Snowball dictionary, which recognizes everything.
+   </para>
+
+   <para>
+    The <filename>.affix</filename> file of <application>Ispell</application> has the following
+    structure:
+<programlisting>
+prefixes
+flag *A:
+    .           >   RE      # As in enter > reenter
+suffixes
+flag T:
+    E           >   ST      # As in late > latest
+    [^AEIOU]Y   >   -Y,IEST # As in dirty > dirtiest
+    [AEIOU]Y    >   EST     # As in gray > grayest
+    [^EY]       >   EST     # As in small > smallest
+</programlisting>
+   </para>
+   <para>
+    And the <filename>.dict</filename> file has the following structure:
+<programlisting>
+lapse/ADGRS
+lard/DGRS
+large/PRTY
+lark/MRS
+</programlisting>
+   </para>
+
+   <para>
+    Format of the <filename>.dict</filename> file is:
+<programlisting>
+basic_form/affix_class_name
+</programlisting>
+   </para>
+
+   <para>
+    In the <filename>.affix</filename> file every affix flag is described in the
+    following format:
+<programlisting>
+condition > [-stripping_letters,] adding_affix
+</programlisting>
+   </para>
+
+   <para>
+    Here, condition has a format similar to the format of regular expressions.
+    It can use groupings <literal>[...]</literal> and <literal>[^...]</literal>.
+    For example, <literal>[AEIOU]Y</literal> means that the last letter of the word
+    is <literal>"y"</literal> and the penultimate letter is <literal>"a"</literal>,
+    <literal>"e"</literal>, <literal>"i"</literal>, <literal>"o"</literal> or <literal>"u"</literal>.
+    <literal>[^EY]</literal> means that the last letter is neither <literal>"e"</literal>
+    nor <literal>"y"</literal>.
+   </para>
+
+   <para>
+    Ispell dictionaries support splitting compound words;
+    a useful feature.
+    Notice that the affix file should specify a special flag using the
+    <literal>compoundwords controlled</literal> statement that marks dictionary
+    words that can participate in compound formation:
+
+<programlisting>
+compoundwords  controlled z
+</programlisting>
+
+    Here are some examples for the Norwegian language:
+
+<programlisting>
+SELECT ts_lexize('norwegian_ispell', 'overbuljongterningpakkmesterassistent');
+   {over,buljong,terning,pakk,mester,assistent}
+SELECT ts_lexize('norwegian_ispell', 'sjokoladefabrikk');
+   {sjokoladefabrikk,sjokolade,fabrikk}
+</programlisting>
+   </para>
+
+   <para>
+    <application>MySpell</application> format is a subset of <application>Hunspell</application>.
+    The <filename>.affix</filename> file of <application>Hunspell</application> has the following
+    structure:
+<programlisting>
+PFX A Y 1
+PFX A   0     re         .
+SFX T N 4
+SFX T   0     st         e
+SFX T   y     iest       [^aeiou]y
+SFX T   0     est        [aeiou]y
+SFX T   0     est        [^ey]
+</programlisting>
+   </para>
+
+   <para>
+    The first line of an affix class is the header. Fields of an affix rules are
+    listed after the header:
+   </para>
+   <itemizedlist spacing="compact" mark="bullet">
+    <listitem>
+     <para>
+      parameter name (PFX or SFX)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      flag (name of the affix class)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      stripping characters from beginning (at prefix) or end (at suffix) of the
+      word
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      adding affix
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      condition that has a format similar to the format of regular expressions.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    The <filename>.dict</filename> file looks like the <filename>.dict</filename> file of
+    <application>Ispell</application>:
+<programlisting>
+larder/M
+lardy/RT
+large/RSPMYT
+largehearted
+</programlisting>
+   </para>
+
+   <note>
+    <para>
+     <application>MySpell</application> does not support compound words.
+     <application>Hunspell</application> has sophisticated support for compound words. At
+     present, <productname>PostgreSQL</productname> implements only the basic
+     compound word operations of Hunspell.
+    </para>
+   </note>
+
+  </sect2>
+
+  <sect2 id="textsearch-snowball-dictionary">
+   <title><application>Snowball</application> Dictionary</title>
+
+   <para>
+    The <application>Snowball</application> dictionary template is based on a project
+    by Martin Porter, inventor of the popular Porter's stemming algorithm
+    for the English language.  Snowball now provides stemming algorithms for
+    many languages (see the <ulink url="https://snowballstem.org/">Snowball
+    site</ulink> for more information).  Each algorithm understands how to
+    reduce common variant forms of words to a base, or stem, spelling within
+    its language.  A Snowball dictionary requires a <literal>language</literal>
+    parameter to identify which stemmer to use, and optionally can specify a
+    <literal>stopword</literal> file name that gives a list of words to eliminate.
+    (<productname>PostgreSQL</productname>'s standard stopword lists are also
+    provided by the Snowball project.)
+    For example, there is a built-in definition equivalent to
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY english_stem (
+    TEMPLATE = snowball,
+    Language = english,
+    StopWords = english
+);
+</programlisting>
+
+    The stopword file format is the same as already explained.
+   </para>
+
+   <para>
+    A <application>Snowball</application> dictionary recognizes everything, whether
+    or not it is able to simplify the word, so it should be placed
+    at the end of the dictionary list. It is useless to have it
+    before any other dictionary because a token will never pass through it to
+    the next dictionary.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-configuration">
+  <title>Configuration Example</title>
+
+   <para>
+    A text search configuration specifies all options necessary to transform a
+    document into a <type>tsvector</type>: the parser to use to break text
+    into tokens, and the dictionaries to use to transform each token into a
+    lexeme.  Every call of
+    <function>to_tsvector</function> or <function>to_tsquery</function>
+    needs a text search configuration to perform its processing.
+    The configuration parameter
+    <xref linkend="guc-default-text-search-config"/>
+    specifies the name of the default configuration, which is the
+    one used by text search functions if an explicit configuration
+    parameter is omitted.
+    It can be set in <filename>postgresql.conf</filename>, or set for an
+    individual session using the <command>SET</command> command.
+   </para>
+
+   <para>
+    Several predefined text search configurations are available, and
+    you can create custom configurations easily.  To facilitate management
+    of text search objects, a set of <acronym>SQL</acronym> commands
+    is available, and there are several <application>psql</application> commands that display information
+    about text search objects (<xref linkend="textsearch-psql"/>).
+   </para>
+
+   <para>
+    As an example we will create a configuration
+    <literal>pg</literal>, starting by duplicating the built-in
+    <literal>english</literal> configuration:
+
+<programlisting>
+CREATE TEXT SEARCH CONFIGURATION public.pg ( COPY = pg_catalog.english );
+</programlisting>
+   </para>
+
+   <para>
+    We will use a PostgreSQL-specific synonym list
+    and store it in <filename>$SHAREDIR/tsearch_data/pg_dict.syn</filename>.
+    The file contents look like:
+
+<programlisting>
+postgres    pg
+pgsql       pg
+postgresql  pg
+</programlisting>
+
+    We define the synonym dictionary like this:
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY pg_dict (
+    TEMPLATE = synonym,
+    SYNONYMS = pg_dict
+);
+</programlisting>
+
+    Next we register the <productname>Ispell</productname> dictionary
+    <literal>english_ispell</literal>, which has its own configuration files:
+
+<programlisting>
+CREATE TEXT SEARCH DICTIONARY english_ispell (
+    TEMPLATE = ispell,
+    DictFile = english,
+    AffFile = english,
+    StopWords = english
+);
+</programlisting>
+
+    Now we can set up the mappings for words in configuration
+    <literal>pg</literal>:
+
+<programlisting>
+ALTER TEXT SEARCH CONFIGURATION pg
+    ALTER MAPPING FOR asciiword, asciihword, hword_asciipart,
+                      word, hword, hword_part
+    WITH pg_dict, english_ispell, english_stem;
+</programlisting>
+
+    We choose not to index or search some token types that the built-in
+    configuration does handle:
+
+<programlisting>
+ALTER TEXT SEARCH CONFIGURATION pg
+    DROP MAPPING FOR email, url, url_path, sfloat, float;
+</programlisting>
+   </para>
+
+   <para>
+    Now we can test our configuration:
+
+<programlisting>
+SELECT * FROM ts_debug('public.pg', '
+PostgreSQL, the highly scalable, SQL compliant, open source object-relational
+database management system, is now undergoing beta testing of the next
+version of our software.
+');
+</programlisting>
+   </para>
+
+   <para>
+    The next step is to set the session to use the new configuration, which was
+    created in the <literal>public</literal> schema:
+
+<screen>
+=&gt; \dF
+   List of text search configurations
+ Schema  | Name | Description
+---------+------+-------------
+ public  | pg   |
+
+SET default_text_search_config = 'public.pg';
+SET
+
+SHOW default_text_search_config;
+ default_text_search_config
+----------------------------
+ public.pg
+</screen>
+  </para>
+
+ </sect1>
+
+ <sect1 id="textsearch-debugging">
+  <title>Testing and Debugging Text Search</title>
+
+  <para>
+   The behavior of a custom text search configuration can easily become
+   confusing.  The functions described
+   in this section are useful for testing text search objects.  You can
+   test a complete configuration, or test parsers and dictionaries separately.
+  </para>
+
+  <sect2 id="textsearch-configuration-testing">
+   <title>Configuration Testing</title>
+
+  <para>
+   The function <function>ts_debug</function> allows easy testing of a
+   text search configuration.
+  </para>
+
+  <indexterm>
+   <primary>ts_debug</primary>
+  </indexterm>
+
+<synopsis>
+ts_debug(<optional> <replaceable class="parameter">config</replaceable> <type>regconfig</type>, </optional> <replaceable class="parameter">document</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">alias</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">description</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">token</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">dictionaries</replaceable> <type>regdictionary[]</type>,
+         OUT <replaceable class="parameter">dictionary</replaceable> <type>regdictionary</type>,
+         OUT <replaceable class="parameter">lexemes</replaceable> <type>text[]</type>)
+         returns setof record
+</synopsis>
+
+  <para>
+   <function>ts_debug</function> displays information about every token of
+   <replaceable class="parameter">document</replaceable> as produced by the
+   parser and processed by the configured dictionaries.  It uses the
+   configuration specified by <replaceable
+   class="parameter">config</replaceable>,
+   or <varname>default_text_search_config</varname> if that argument is
+   omitted.
+  </para>
+
+  <para>
+   <function>ts_debug</function> returns one row for each token identified in the text
+   by the parser.  The columns returned are
+
+    <itemizedlist  spacing="compact" mark="bullet">
+     <listitem>
+      <para>
+       <replaceable>alias</replaceable> <type>text</type> &mdash; short name of the token type
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>description</replaceable> <type>text</type> &mdash; description of the
+       token type
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>token</replaceable> <type>text</type> &mdash; text of the token
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>dictionaries</replaceable> <type>regdictionary[]</type> &mdash; the
+       dictionaries selected by the configuration for this token type
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>dictionary</replaceable> <type>regdictionary</type> &mdash; the dictionary
+       that recognized the token, or <literal>NULL</literal> if none did
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       <replaceable>lexemes</replaceable> <type>text[]</type> &mdash; the lexeme(s) produced
+       by the dictionary that recognized the token, or <literal>NULL</literal> if
+       none did; an empty array (<literal>{}</literal>) means it was recognized as a
+       stop word
+      </para>
+     </listitem>
+    </itemizedlist>
+  </para>
+
+  <para>
+   Here is a simple example:
+
+<screen>
+SELECT * FROM ts_debug('english', 'a fat  cat sat on a mat - it ate a fat rats');
+   alias   |   description   | token |  dictionaries  |  dictionary  | lexemes
+-----------+-----------------+-------+----------------+--------------+---------
+ asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | fat   | {english_stem} | english_stem | {fat}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | cat   | {english_stem} | english_stem | {cat}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | sat   | {english_stem} | english_stem | {sat}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | on    | {english_stem} | english_stem | {}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | mat   | {english_stem} | english_stem | {mat}
+ blank     | Space symbols   |       | {}             |              |
+ blank     | Space symbols   | -     | {}             |              |
+ asciiword | Word, all ASCII | it    | {english_stem} | english_stem | {}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | ate   | {english_stem} | english_stem | {ate}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | a     | {english_stem} | english_stem | {}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | fat   | {english_stem} | english_stem | {fat}
+ blank     | Space symbols   |       | {}             |              |
+ asciiword | Word, all ASCII | rats  | {english_stem} | english_stem | {rat}
+</screen>
+  </para>
+
+  <para>
+   For a more extensive demonstration, we
+   first create a <literal>public.english</literal> configuration and
+   Ispell dictionary for the English language:
+  </para>
+
+<programlisting>
+CREATE TEXT SEARCH CONFIGURATION public.english ( COPY = pg_catalog.english );
+
+CREATE TEXT SEARCH DICTIONARY english_ispell (
+    TEMPLATE = ispell,
+    DictFile = english,
+    AffFile = english,
+    StopWords = english
+);
+
+ALTER TEXT SEARCH CONFIGURATION public.english
+   ALTER MAPPING FOR asciiword WITH english_ispell, english_stem;
+</programlisting>
+
+<screen>
+SELECT * FROM ts_debug('public.english', 'The Brightest supernovaes');
+   alias   |   description   |    token    |         dictionaries          |   dictionary   |   lexemes
+-----------+-----------------+-------------+-------------------------------+----------------+-------------
+ asciiword | Word, all ASCII | The         | {english_ispell,english_stem} | english_ispell | {}
+ blank     | Space symbols   |             | {}                            |                |
+ asciiword | Word, all ASCII | Brightest   | {english_ispell,english_stem} | english_ispell | {bright}
+ blank     | Space symbols   |             | {}                            |                |
+ asciiword | Word, all ASCII | supernovaes | {english_ispell,english_stem} | english_stem   | {supernova}
+</screen>
+
+  <para>
+   In this example, the word <literal>Brightest</literal> was recognized by the
+   parser as an <literal>ASCII word</literal> (alias <literal>asciiword</literal>).
+   For this token type the dictionary list is
+   <literal>english_ispell</literal> and
+   <literal>english_stem</literal>. The word was recognized by
+   <literal>english_ispell</literal>, which reduced it to the noun
+   <literal>bright</literal>. The word <literal>supernovaes</literal> is
+   unknown to the <literal>english_ispell</literal> dictionary so it
+   was passed to the next dictionary, and, fortunately, was recognized (in
+   fact, <literal>english_stem</literal> is a Snowball dictionary which
+   recognizes everything; that is why it was placed at the end of the
+   dictionary list).
+  </para>
+
+  <para>
+   The word <literal>The</literal> was recognized by the
+   <literal>english_ispell</literal> dictionary as a stop word (<xref
+   linkend="textsearch-stopwords"/>) and will not be indexed.
+   The spaces are discarded too, since the configuration provides no
+   dictionaries at all for them.
+  </para>
+
+  <para>
+   You can reduce the width of the output by explicitly specifying which columns
+   you want to see:
+
+<screen>
+SELECT alias, token, dictionary, lexemes
+FROM ts_debug('public.english', 'The Brightest supernovaes');
+   alias   |    token    |   dictionary   |   lexemes
+-----------+-------------+----------------+-------------
+ asciiword | The         | english_ispell | {}
+ blank     |             |                |
+ asciiword | Brightest   | english_ispell | {bright}
+ blank     |             |                |
+ asciiword | supernovaes | english_stem   | {supernova}
+</screen>
+  </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-parser-testing">
+   <title>Parser Testing</title>
+
+  <para>
+   The following functions allow direct testing of a text search parser.
+  </para>
+
+  <indexterm>
+   <primary>ts_parse</primary>
+  </indexterm>
+
+<synopsis>
+ts_parse(<replaceable class="parameter">parser_name</replaceable> <type>text</type>, <replaceable class="parameter">document</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">tokid</replaceable> <type>integer</type>, OUT <replaceable class="parameter">token</replaceable> <type>text</type>) returns <type>setof record</type>
+ts_parse(<replaceable class="parameter">parser_oid</replaceable> <type>oid</type>, <replaceable class="parameter">document</replaceable> <type>text</type>,
+         OUT <replaceable class="parameter">tokid</replaceable> <type>integer</type>, OUT <replaceable class="parameter">token</replaceable> <type>text</type>) returns <type>setof record</type>
+</synopsis>
+
+  <para>
+   <function>ts_parse</function> parses the given <replaceable>document</replaceable>
+   and returns a series of records, one for each token produced by
+   parsing. Each record includes a <varname>tokid</varname> showing the
+   assigned token type and a <varname>token</varname> which is the text of the
+   token.  For example:
+
+<screen>
+SELECT * FROM ts_parse('default', '123 - a number');
+ tokid | token
+-------+--------
+    22 | 123
+    12 |
+    12 | -
+     1 | a
+    12 |
+     1 | number
+</screen>
+  </para>
+
+  <indexterm>
+   <primary>ts_token_type</primary>
+  </indexterm>
+
+<synopsis>
+ts_token_type(<replaceable class="parameter">parser_name</replaceable> <type>text</type>, OUT <replaceable class="parameter">tokid</replaceable> <type>integer</type>,
+              OUT <replaceable class="parameter">alias</replaceable> <type>text</type>, OUT <replaceable class="parameter">description</replaceable> <type>text</type>) returns <type>setof record</type>
+ts_token_type(<replaceable class="parameter">parser_oid</replaceable> <type>oid</type>, OUT <replaceable class="parameter">tokid</replaceable> <type>integer</type>,
+              OUT <replaceable class="parameter">alias</replaceable> <type>text</type>, OUT <replaceable class="parameter">description</replaceable> <type>text</type>) returns <type>setof record</type>
+</synopsis>
+
+  <para>
+   <function>ts_token_type</function> returns a table which describes each type of
+   token the specified parser can recognize.  For each token type, the table
+   gives the integer <varname>tokid</varname> that the parser uses to label a
+   token of that type, the <varname>alias</varname> that names the token type
+   in configuration commands, and a short <varname>description</varname>.  For
+   example:
+
+<screen>
+SELECT * FROM ts_token_type('default');
+ tokid |      alias      |               description
+-------+-----------------+------------------------------------------
+     1 | asciiword       | Word, all ASCII
+     2 | word            | Word, all letters
+     3 | numword         | Word, letters and digits
+     4 | email           | Email address
+     5 | url             | URL
+     6 | host            | Host
+     7 | sfloat          | Scientific notation
+     8 | version         | Version number
+     9 | hword_numpart   | Hyphenated word part, letters and digits
+    10 | hword_part      | Hyphenated word part, all letters
+    11 | hword_asciipart | Hyphenated word part, all ASCII
+    12 | blank           | Space symbols
+    13 | tag             | XML tag
+    14 | protocol        | Protocol head
+    15 | numhword        | Hyphenated word, letters and digits
+    16 | asciihword      | Hyphenated word, all ASCII
+    17 | hword           | Hyphenated word, all letters
+    18 | url_path        | URL path
+    19 | file            | File or path name
+    20 | float           | Decimal notation
+    21 | int             | Signed integer
+    22 | uint            | Unsigned integer
+    23 | entity          | XML entity
+</screen>
+   </para>
+
+  </sect2>
+
+  <sect2 id="textsearch-dictionary-testing">
+   <title>Dictionary Testing</title>
+
+   <para>
+    The <function>ts_lexize</function> function facilitates dictionary testing.
+   </para>
+
+   <indexterm>
+    <primary>ts_lexize</primary>
+   </indexterm>
+
+<synopsis>
+ts_lexize(<replaceable class="parameter">dict</replaceable> <type>regdictionary</type>, <replaceable class="parameter">token</replaceable> <type>text</type>) returns <type>text[]</type>
+</synopsis>
+
+   <para>
+    <function>ts_lexize</function> returns an array of lexemes if the input
+    <replaceable>token</replaceable> is known to the dictionary,
+    or an empty array if the token
+    is known to the dictionary but it is a stop word, or
+    <literal>NULL</literal> if it is an unknown word.
+   </para>
+
+   <para>
+    Examples:
+
+<screen>
+SELECT ts_lexize('english_stem', 'stars');
+ ts_lexize
+-----------
+ {star}
+
+SELECT ts_lexize('english_stem', 'a');
+ ts_lexize
+-----------
+ {}
+</screen>
+   </para>
+
+   <note>
+    <para>
+     The <function>ts_lexize</function> function expects a single
+     <emphasis>token</emphasis>, not text. Here is a case
+     where this can be confusing:
+
+<screen>
+SELECT ts_lexize('thesaurus_astro', 'supernovae stars') is null;
+ ?column?
+----------
+ t
+</screen>
+
+     The thesaurus dictionary <literal>thesaurus_astro</literal> does know the
+     phrase <literal>supernovae stars</literal>, but <function>ts_lexize</function>
+     fails since it does not parse the input text but treats it as a single
+     token. Use <function>plainto_tsquery</function> or <function>to_tsvector</function> to
+     test thesaurus dictionaries, for example:
+
+<screen>
+SELECT plainto_tsquery('supernovae stars');
+ plainto_tsquery
+-----------------
+ 'sn'
+</screen>
+    </para>
+   </note>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="textsearch-indexes">
+  <title>Preferred Index Types for Text Search</title>
+
+  <indexterm zone="textsearch-indexes">
+   <primary>text search</primary>
+   <secondary>indexes</secondary>
+  </indexterm>
+
+  <para>
+   There are two kinds of indexes that can be used to speed up full text
+   searches:
+   <link linkend="gin"><acronym>GIN</acronym></link> and
+   <link linkend="gist"><acronym>GiST</acronym></link>.
+   Note that indexes are not mandatory for full text searching, but in
+   cases where a column is searched on a regular basis, an index is
+   usually desirable.
+  </para>
+
+  <para>
+   To create such an index, do one of:
+
+   <variablelist>
+
+    <varlistentry>
+
+     <term>
+     <indexterm zone="textsearch-indexes">
+      <primary>index</primary>
+      <secondary>GIN</secondary>
+      <tertiary>text search</tertiary>
+     </indexterm>
+
+      <literal>CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable> USING GIN (<replaceable>column</replaceable>);</literal>
+     </term>
+
+     <listitem>
+      <para>
+       Creates a GIN (Generalized Inverted Index)-based index.
+       The <replaceable>column</replaceable> must be of <type>tsvector</type> type.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+
+     <term>
+     <indexterm zone="textsearch-indexes">
+      <primary>index</primary>
+      <secondary>GiST</secondary>
+      <tertiary>text search</tertiary>
+     </indexterm>
+
+      <literal>CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable> USING GIST (<replaceable>column</replaceable> [ { DEFAULT | tsvector_ops } (siglen = <replaceable>number</replaceable>) ] );</literal>
+     </term>
+
+     <listitem>
+      <para>
+       Creates a GiST (Generalized Search Tree)-based index.
+       The <replaceable>column</replaceable> can be of <type>tsvector</type> or
+       <type>tsquery</type> type.
+       Optional integer parameter <literal>siglen</literal> determines
+       signature length in bytes (see below for details).
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+  </para>
+
+  <para>
+   GIN indexes are the preferred text search index type.  As inverted
+   indexes, they contain an index entry for each word (lexeme), with a
+   compressed list of matching locations.  Multi-word searches can find
+   the first match, then use the index to remove rows that are lacking
+   additional words.  GIN indexes store only the words (lexemes) of
+   <type>tsvector</type> values, and not their weight labels.  Thus a table
+   row recheck is needed when using a query that involves weights.
+  </para>
+
+  <para>
+   A GiST index is <firstterm>lossy</firstterm>, meaning that the index
+   might produce false matches, and it is necessary
+   to check the actual table row to eliminate such false matches.
+   (<productname>PostgreSQL</productname> does this automatically when needed.)
+   GiST indexes are lossy because each document is represented in the
+   index by a fixed-length signature.  The signature length in bytes is determined
+   by the value of the optional integer parameter <literal>siglen</literal>.
+   The default signature length (when <literal>siglen</literal> is not specified) is
+   124 bytes, the maximum signature length is 2024 bytes. The signature is generated by hashing
+   each word into a single bit in an n-bit string, with all these bits OR-ed
+   together to produce an n-bit document signature.  When two words hash to
+   the same bit position there will be a false match.  If all words in
+   the query have matches (real or false) then the table row must be
+   retrieved to see if the match is correct.  Longer signatures lead to a more
+   precise search (scanning a smaller fraction of the index and fewer heap
+   pages), at the cost of a larger index.
+  </para>
+
+  <para>
+   A GiST index can be covering, i.e., use the <literal>INCLUDE</literal>
+   clause.  Included columns can have data types without any GiST operator
+   class.  Included attributes will be stored uncompressed.
+  </para>
+
+  <para>
+   Lossiness causes performance degradation due to unnecessary fetches of table
+   records that turn out to be false matches.  Since random access to table
+   records is slow, this limits the usefulness of GiST indexes.  The
+   likelihood of false matches depends on several factors, in particular the
+   number of unique words, so using dictionaries to reduce this number is
+   recommended.
+  </para>
+
+  <para>
+   Note that <acronym>GIN</acronym> index build time can often be improved
+   by increasing <xref linkend="guc-maintenance-work-mem"/>, while
+   <acronym>GiST</acronym> index build time is not sensitive to that
+   parameter.
+  </para>
+
+  <para>
+   Partitioning of big collections and the proper use of GIN and GiST indexes
+   allows the implementation of very fast searches with online update.
+   Partitioning can be done at the database level using table inheritance,
+   or by distributing documents over
+   servers and collecting external search results, e.g., via <link
+   linkend="ddl-foreign-data">Foreign Data</link> access.
+   The latter is possible because ranking functions use
+   only local information.
+  </para>
+
+ </sect1>
+
+ <sect1 id="textsearch-psql">
+  <title><application>psql</application> Support</title>
+
+  <para>
+   Information about text search configuration objects can be obtained
+   in <application>psql</application> using a set of commands:
+<synopsis>
+\dF{d,p,t}<optional>+</optional> <optional>PATTERN</optional>
+</synopsis>
+   An optional <literal>+</literal> produces more details.
+  </para>
+
+  <para>
+   The optional parameter <replaceable>PATTERN</replaceable> can be the name of
+   a text search object, optionally schema-qualified.  If
+   <replaceable>PATTERN</replaceable> is omitted then information about all
+   visible objects will be displayed.  <replaceable>PATTERN</replaceable> can be a
+   regular expression and can provide <emphasis>separate</emphasis> patterns
+   for the schema and object names.  The following examples illustrate this:
+
+<screen>
+=&gt; \dF *fulltext*
+       List of text search configurations
+ Schema |  Name        | Description
+--------+--------------+-------------
+ public | fulltext_cfg |
+</screen>
+
+<screen>
+=&gt; \dF *.fulltext*
+       List of text search configurations
+ Schema   |  Name        | Description
+----------+----------------------------
+ fulltext | fulltext_cfg |
+ public   | fulltext_cfg |
+</screen>
+
+   The available commands are:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>\dF<optional>+</optional> <optional>PATTERN</optional></literal></term>
+    <listitem>
+     <para>
+      List text search configurations (add <literal>+</literal> for more detail).
+<screen>
+=&gt; \dF russian
+            List of text search configurations
+   Schema   |  Name   |            Description
+------------+---------+------------------------------------
+ pg_catalog | russian | configuration for russian language
+
+=&gt; \dF+ russian
+Text search configuration "pg_catalog.russian"
+Parser: "pg_catalog.default"
+      Token      | Dictionaries
+-----------------+--------------
+ asciihword      | english_stem
+ asciiword       | english_stem
+ email           | simple
+ file            | simple
+ float           | simple
+ host            | simple
+ hword           | russian_stem
+ hword_asciipart | english_stem
+ hword_numpart   | simple
+ hword_part      | russian_stem
+ int             | simple
+ numhword        | simple
+ numword         | simple
+ sfloat          | simple
+ uint            | simple
+ url             | simple
+ url_path        | simple
+ version         | simple
+ word            | russian_stem
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>\dFd<optional>+</optional> <optional>PATTERN</optional></literal></term>
+    <listitem>
+     <para>
+      List text search dictionaries (add <literal>+</literal> for more detail).
+<screen>
+=&gt; \dFd
+                             List of text search dictionaries
+   Schema   |      Name       |                        Description
+------------+-----------------+-----------------------------------------------------------
+ pg_catalog | arabic_stem     | snowball stemmer for arabic language
+ pg_catalog | armenian_stem   | snowball stemmer for armenian language
+ pg_catalog | basque_stem     | snowball stemmer for basque language
+ pg_catalog | catalan_stem    | snowball stemmer for catalan language
+ pg_catalog | danish_stem     | snowball stemmer for danish language
+ pg_catalog | dutch_stem      | snowball stemmer for dutch language
+ pg_catalog | english_stem    | snowball stemmer for english language
+ pg_catalog | finnish_stem    | snowball stemmer for finnish language
+ pg_catalog | french_stem     | snowball stemmer for french language
+ pg_catalog | german_stem     | snowball stemmer for german language
+ pg_catalog | greek_stem      | snowball stemmer for greek language
+ pg_catalog | hindi_stem      | snowball stemmer for hindi language
+ pg_catalog | hungarian_stem  | snowball stemmer for hungarian language
+ pg_catalog | indonesian_stem | snowball stemmer for indonesian language
+ pg_catalog | irish_stem      | snowball stemmer for irish language
+ pg_catalog | italian_stem    | snowball stemmer for italian language
+ pg_catalog | lithuanian_stem | snowball stemmer for lithuanian language
+ pg_catalog | nepali_stem     | snowball stemmer for nepali language
+ pg_catalog | norwegian_stem  | snowball stemmer for norwegian language
+ pg_catalog | portuguese_stem | snowball stemmer for portuguese language
+ pg_catalog | romanian_stem   | snowball stemmer for romanian language
+ pg_catalog | russian_stem    | snowball stemmer for russian language
+ pg_catalog | serbian_stem    | snowball stemmer for serbian language
+ pg_catalog | simple          | simple dictionary: just lower case and check for stopword
+ pg_catalog | spanish_stem    | snowball stemmer for spanish language
+ pg_catalog | swedish_stem    | snowball stemmer for swedish language
+ pg_catalog | tamil_stem      | snowball stemmer for tamil language
+ pg_catalog | turkish_stem    | snowball stemmer for turkish language
+ pg_catalog | yiddish_stem    | snowball stemmer for yiddish language
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+   <term><literal>\dFp<optional>+</optional> <optional>PATTERN</optional></literal></term>
+    <listitem>
+     <para>
+      List text search parsers (add <literal>+</literal> for more detail).
+<screen>
+=&gt; \dFp
+        List of text search parsers
+   Schema   |  Name   |     Description
+------------+---------+---------------------
+ pg_catalog | default | default word parser
+=&gt; \dFp+
+    Text search parser "pg_catalog.default"
+     Method      |    Function    | Description
+-----------------+----------------+-------------
+ Start parse     | prsd_start     |
+ Get next token  | prsd_nexttoken |
+ End parse       | prsd_end       |
+ Get headline    | prsd_headline  |
+ Get token types | prsd_lextype   |
+
+        Token types for parser "pg_catalog.default"
+   Token name    |               Description
+-----------------+------------------------------------------
+ asciihword      | Hyphenated word, all ASCII
+ asciiword       | Word, all ASCII
+ blank           | Space symbols
+ email           | Email address
+ entity          | XML entity
+ file            | File or path name
+ float           | Decimal notation
+ host            | Host
+ hword           | Hyphenated word, all letters
+ hword_asciipart | Hyphenated word part, all ASCII
+ hword_numpart   | Hyphenated word part, letters and digits
+ hword_part      | Hyphenated word part, all letters
+ int             | Signed integer
+ numhword        | Hyphenated word, letters and digits
+ numword         | Word, letters and digits
+ protocol        | Protocol head
+ sfloat          | Scientific notation
+ tag             | XML tag
+ uint            | Unsigned integer
+ url             | URL
+ url_path        | URL path
+ version         | Version number
+ word            | Word, all letters
+(23 rows)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+   <term><literal>\dFt<optional>+</optional> <optional>PATTERN</optional></literal></term>
+    <listitem>
+     <para>
+      List text search templates (add <literal>+</literal> for more detail).
+<screen>
+=&gt; \dFt
+                           List of text search templates
+   Schema   |   Name    |                        Description
+------------+-----------+-----------------------------------------------------------
+ pg_catalog | ispell    | ispell dictionary
+ pg_catalog | simple    | simple dictionary: just lower case and check for stopword
+ pg_catalog | snowball  | snowball stemmer
+ pg_catalog | synonym   | synonym dictionary: replace word by its synonym
+ pg_catalog | thesaurus | thesaurus dictionary: phrase by phrase substitution
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+ </sect1>
+
+ <sect1 id="textsearch-limitations">
+  <title>Limitations</title>
+
+  <para>
+   The current limitations of <productname>PostgreSQL</productname>'s
+   text search features are:
+   <itemizedlist  spacing="compact" mark="bullet">
+    <listitem>
+     <para>The length of each lexeme must be less than 2 kilobytes</para>
+    </listitem>
+    <listitem>
+     <para>The length of a <type>tsvector</type> (lexemes + positions) must be
+     less than 1 megabyte</para>
+    </listitem>
+    <listitem>
+     <!-- TODO: number of lexemes in what?  This is unclear -->
+     <para>The number of lexemes must be less than
+     2<superscript>64</superscript></para>
+    </listitem>
+    <listitem>
+     <para>Position values in <type>tsvector</type> must be greater than 0 and
+     no more than 16,383</para>
+    </listitem>
+    <listitem>
+     <para>The match distance in a <literal>&lt;<replaceable>N</replaceable>&gt;</literal>
+     (FOLLOWED BY) <type>tsquery</type> operator cannot be more than
+     16,384</para>
+    </listitem>
+    <listitem>
+     <para>No more than 256 positions per lexeme</para>
+    </listitem>
+    <listitem>
+     <para>The number of nodes (lexemes + operators) in a <type>tsquery</type>
+     must be less than 32,768</para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   For comparison, the <productname>PostgreSQL</productname> 8.1 documentation
+   contained 10,441 unique words, a total of 335,420 words, and the most
+   frequent word <quote>postgresql</quote> was mentioned 6,127 times in 655
+   documents.
+  </para>
+
+   <!-- TODO we need to put a date on these numbers? -->
+  <para>
+   Another example &mdash; the <productname>PostgreSQL</productname> mailing
+   list archives contained 910,989 unique words with 57,491,343 lexemes in
+   461,020 messages.
+  </para>
+
+ </sect1>
+
+</chapter>

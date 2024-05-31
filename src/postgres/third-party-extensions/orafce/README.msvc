@@ -1,0 +1,53 @@
+Build on Microsoft Windows with Microsoft Visual Studio
+
+1. For Postgres 12 and higher you need libicu headers
+
+2. Orafce library is linked with runtime library - this library should to use
+   same platform toolset like Postgres server.
+
+3. Start empty project
+
+4. Add existing items - *.c and *.h files except "sqlscan.c". This file is compiled
+   as include of sqlparse.c and should not be compiled as separate c file!
+
+5. In configuration manager choose configuration - "Release" and platform. Platform must be
+   same like your Postgres server.
+
+6. V project properties set
+
+  Under "Configuration Properties" -> "General", set "Configuration Type" to "Dynamic Library (.dll)".
+
+  Under "C/C++" -> "Preprocessor Directives", add the directive "WIN32"
+
+  Under "C/C++" -> "Code Generation", set "Enable C++ Exceptions" to "No"
+  "C/C++" -> "Code generation" -> "Runtime library" must be /MD
+
+  Under "Advanced" set "Compile As" to "C Code"
+
+  Under "Linker" -> "Manifest File", set "Generate Manifest" to "No"
+
+  Under "Linker" -> "Input" -> "Additional Dependencies", add postgres.lib to the library list
+
+  In the properties dialog, go to "Configuration Properties" -> "C/C++" -> "General", "Additional
+  Include Directories"
+
+     include\server\port\win32_msvc
+     include\server\port\win32
+     include\server
+     include
+
+  Attention, there should be real paths to include files .. "include\server\port\win32_msvc" is in my case
+  "C:\Program Files\PostgreSQL\13\include\server\port\win32_msvc". All four paths to include folders should
+  be correct.
+
+  PostgreSQL 10 and higher requires lib ICU include file. I had install libICU before, and then add to
+  "Additional Include Directories" C:\Users\user\Documents\icu-59.1-vs2015\include
+
+  You’ll also need to set the library path. Under "Linker"->"General", in Additional Library Directories.
+  In my case that’s C:\Program Files\PostgreSQL\12\lib.
+
+  set "Linker"->"General"->"Link Library Dependencies" to No.
+
+7. Under "C/C++" -> "Advanced", Set "Disable Specific Warnings" to "4996"
+
+8. make build

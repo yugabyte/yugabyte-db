@@ -1,0 +1,25 @@
+#----------------------------------------------------------------------
+#
+# pg_language.dat
+#    Initial contents of the pg_language system catalog.
+#
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
+#
+# src/include/catalog/pg_language.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+{ oid => '12', oid_symbol => 'INTERNALlanguageId',
+  descr => 'built-in functions',
+  lanname => 'internal', lanvalidator => 'fmgr_internal_validator' },
+{ oid => '13', oid_symbol => 'ClanguageId',
+  descr => 'dynamically-loaded C functions',
+  lanname => 'c', lanvalidator => 'fmgr_c_validator' },
+{ oid => '14', oid_symbol => 'SQLlanguageId',
+  descr => 'SQL-language functions',
+  lanname => 'sql', lanpltrusted => 't', lanvalidator => 'fmgr_sql_validator' },
+
+]

@@ -1,0 +1,392 @@
+--
+-- INDEX SELECTIVITY
+--
+--
+-- The following queries can use any index depending on cost estimator.
+--
+EXPLAIN (COSTS OFF) SELECT count(*) FROM airports WHERE iso_region = 'US-CA';
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using airports_idx2 on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+         Partial Aggregate: true
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY ident;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using airports_pkey on airports
+   Index Cond: (iso_region = 'US-CA'::text)
+   Storage Filter: (type = 'small_airport'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY ident LIMIT 1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+         Storage Filter: (type = 'small_airport'::text)
+(4 rows)
+
+--
+-- The following query should use PRIMARY KEY index.
+--
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' LIMIT 1;
+                    QUERY PLAN
+--------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident LIMIT 1;
+                    QUERY PLAN
+--------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY ident ASC LIMIT 1;
+                    QUERY PLAN
+--------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports  WHERE iso_region = 'US-CA' ORDER BY ident DESC LIMIT 1;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' ORDER BY iso_region, ident LIMIT 1;
+                    QUERY PLAN
+--------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND ident >= '4' LIMIT 2;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (ident >= '4'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND ident < '4' LIMIT 2;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (ident < '4'::text))
+(3 rows)
+
+--
+-- The following query should use "airports_idx1" index
+--
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY name DESC LIMIT 1;
+                    QUERY PLAN
+--------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx1 on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY name ASC LIMIT 1;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using airports_idx1 on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+--
+-- The following query should use "airports_idx2" index
+--
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY gps_code ASC LIMIT 1;
+                      QUERY PLAN
+-------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx2 on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY gps_code DESC LIMIT 1;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Limit
+   ->  Index Only Scan Backward using airports_idx2 on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region, gps_code LIMIT 1;
+                      QUERY PLAN
+-------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx2 on airports
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region ASC, gps_code ASC LIMIT 1;
+                      QUERY PLAN
+-------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx2 on airports
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region DESC, gps_code DESC LIMIT 1;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Limit
+   ->  Index Only Scan Backward using airports_idx2 on airports
+(2 rows)
+
+--
+-- The following query should use "airports_idx3" index
+--
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates ASC, ident, name LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan Backward using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name ASC LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Only Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+--
+-- The following query also use "airports_idx3" index but not fully-covered.
+--
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates ASC, ident, name LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name ASC LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates LIMIT 1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airports_idx3 on airports
+         Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(3 rows)
+
+--
+-- The following query should use "airports_idx3" index without LIMIT.
+--
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+--
+-- The following query should use "airports_idx3" index but not fully-covered and no LIMIT.
+--
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Scan using airports_idx3 on airports
+   Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(2 rows)
+
+--
+-- The following queries cannot be optimized. Either WHERE clause is missing or its given filter
+-- cannot be optimized.
+--
+-- No where clause
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports;
+      QUERY PLAN
+----------------------
+ Seq Scan on airports
+(1 row)
+
+-- Use '!=' on hash column.
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region != 'US-CA';
+                   QUERY PLAN
+-------------------------------------------------
+ Seq Scan on airports
+   Storage Filter: (iso_region <> 'US-CA'::text)
+(2 rows)
+
+-- ORDER BY hash column.
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' ORDER BY type, coordinates;
+                    QUERY PLAN
+--------------------------------------------------
+ Sort
+   Sort Key: type, coordinates
+   ->  Index Scan using airports_pkey on airports
+         Index Cond: (iso_region = 'US-CA'::text)
+(4 rows)
+
+-- ORDER BY in wrong direction.
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports ORDER BY iso_region ASC, gps_code DESC LIMIT 1;
+                 QUERY PLAN
+---------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: iso_region, gps_code DESC
+         ->  Seq Scan on airports
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates DESC, ident, name LIMIT 1;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: coordinates DESC, ident, name
+         ->  Index Only Scan using airports_idx3 on airports
+               Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
+          ORDER BY coordinates, ident, name DESC LIMIT 1;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: coordinates, ident, name DESC
+         ->  Index Only Scan using airports_idx3 on airports
+               Index Cond: ((iso_region = 'US-CA'::text) AND (type = 'small_airport'::text))
+(5 rows)
+
+-- HASH column is not completely specified while ordering by RANGE column
+EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA'
+          ORDER BY type, coordinates LIMIT 1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: type, coordinates
+         ->  Index Scan using airports_pkey on airports
+               Index Cond: (iso_region = 'US-CA'::text)
+(5 rows)

@@ -1,0 +1,126 @@
+<!--
+doc/src/sgml/ref/drop_owned.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-drop-owned">
+ <indexterm zone="sql-drop-owned">
+  <primary>DROP OWNED</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP OWNED</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP OWNED</refname>
+  <refpurpose>remove database objects owned by a database role</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP OWNED BY { <replaceable class="parameter">name</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER } [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP OWNED</command> drops all the objects within the current
+   database that are owned by one of the specified roles. Any
+   privileges granted to the given roles on objects in the current
+   database or on shared objects (databases, tablespaces, configuration
+   parameters) will also be revoked.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a role whose objects will be dropped, and whose
+      privileges will be revoked.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the affected objects,
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the objects owned by a role if any other database
+      objects depend on one of the affected objects. This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+  <para>
+   <command>DROP OWNED</command> is often used to prepare for the
+   removal of one or more roles. Because <command>DROP OWNED</command>
+   only affects the objects in the current database, it is usually
+   necessary to execute this command in each database that contains
+   objects owned by a role that is to be removed.
+  </para>
+
+  <para>
+   Using the <literal>CASCADE</literal> option might make the command
+   recurse to objects owned by other users.
+  </para>
+
+  <para>
+   The <link linkend="sql-reassign-owned"><command>REASSIGN OWNED</command></link> command is an alternative that
+   reassigns the ownership of all the database objects owned by one or
+   more roles.  However, <command>REASSIGN OWNED</command> does not deal with
+   privileges for other objects.
+  </para>
+
+  <para>
+   Databases and tablespaces owned by the role(s) will not be removed.
+  </para>
+
+  <para>
+   See <xref linkend="role-removal"/> for more discussion.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The <command>DROP OWNED</command> command is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-reassign-owned"/></member>
+   <member><xref linkend="sql-droprole"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

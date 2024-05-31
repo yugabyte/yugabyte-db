@@ -1,0 +1,37 @@
+\set ECHO none
+ERROR:  advisory locks are not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/3642. React with thumbs up to raise its priority
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
+/* Register alerts */
+SELECT dbms_alert.register('a1');
+ register
+----------
+
+(1 row)
+
+SELECT dbms_alert.register('a2');
+ register
+----------
+
+(1 row)
+
+/* Test: multisession waitone */
+SELECT dbms_alert.waitone('a1',20);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Test: multisession waitany */
+SELECT dbms_alert.waitany(10);
+ waitany
+---------
+ (,,1)
+(1 row)
+
+/* cleanup */
+SELECT dbms_alert.removeall();
+ removeall
+-----------
+
+(1 row)
