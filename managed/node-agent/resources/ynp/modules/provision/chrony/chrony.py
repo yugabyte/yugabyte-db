@@ -3,9 +3,10 @@ import jinja2
 from jinja2 import Environment, FileSystemLoader
 
 
-class Hello(BaseYnpModule):
-    run_template = "hello_run.j2"
-    precheck_template = "hello_precheck.j2"
+class Chrony(BaseYnpModule):
+
+    run_template = "chrony_run.j2"
+    precheck_template = "chrony_precheck.j2"
 
     def render_templates(self, context):
         template_dir = context.get("templatedir")
