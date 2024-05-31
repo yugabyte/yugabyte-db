@@ -331,6 +331,14 @@ public class CustomerTaskManager {
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
+
+      // Change the DeleteInProgress backups state to QueuedForDeletion
+      for (Customer customer : Customer.getAll()) {
+        Backup.findAllBackupWithState(
+                customer.getUuid(), Arrays.asList(Backup.BackupState.DeleteInProgress))
+            .stream()
+            .forEach(b -> b.transitionState(Backup.BackupState.QueuedForDeletion));
+      }
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
     }

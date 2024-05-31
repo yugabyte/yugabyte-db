@@ -1660,6 +1660,11 @@
         "parentBackup" : {
           "type" : "boolean"
         },
+        "retryCount" : {
+          "description" : "Retry count for backup deletion",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "scheduleName" : {
           "description" : "Schedule Policy Name, if this backup is part of a schedule",
           "type" : "string"
