@@ -543,13 +543,6 @@ METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
     "The number of CreateTable request errors due to attempting to create too many tablets.");
 
-METRIC_DEFINE_counter(
-    cluster, split_tablet_too_many_tablets,
-    "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
-    yb::MetricUnit::kRequests,
-    "The number of SplitTablet operations failed because the cluster cannot host any more "
-    "tablets.");
-
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -976,8 +969,8 @@ CatalogManager::CatalogManager(Master* master)
       encryption_manager_(new EncryptionManager()),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
-      tablet_split_manager_(this, this, this, master_->metric_entity()),
-      snapshot_coordinator_(this, this) {
+      tablet_split_manager_(*this, master_->metric_entity(), master_->metric_entity_cluster()),
+      snapshot_coordinator_(this, this, tablet_split_manager_) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
                .set_max_threads(1)
@@ -1017,8 +1010,6 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
-  metric_split_tablet_too_many_tablets_ =
-    METRIC_split_tablet_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
@@ -3748,10 +3739,6 @@ Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
 Status CatalogManager::CanSupportAdditionalTablet(
     const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
   return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
-}
-
-void CatalogManager::IncrementSplitBlockedByTabletLimitCounter() {
-  IncrementCounter(metric_split_tablet_too_many_tablets_);
 }
 
 // Create a new table.
@@ -9569,50 +9556,6 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
       udtype->mutable_namespace_()->set_name(ns->name());
     }
   }
-  return Status::OK();
-}
-
-Status CatalogManager::DisableTabletSplitting(
-    const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  DisableTabletSplittingInternal(disable_duration, req->feature_name());
-  return Status::OK();
-}
-
-void CatalogManager::DisableTabletSplittingInternal(
-    const MonoDelta& duration, const std::string& feature) {
-  tablet_split_manager_.DisableSplittingFor(duration, feature);
-}
-
-void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
-  tablet_split_manager_.ReenableSplittingFor(feature);
-}
-
-bool CatalogManager::IsTabletSplittingCompleteInternal(
-    bool wait_for_parent_deletion, CoarseTimePoint deadline) {
-  vector<TableInfoPtr> tables;
-  {
-    SharedLock lock(mutex_);
-    // All non-colocated tables are primary tables. Only non-colocated tables can be split.
-    auto tables_it = tables_->GetPrimaryTables();
-    tables = std::vector(std::begin(tables_it), std::end(tables_it));
-  }
-  for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table,
-                                                         wait_for_parent_deletion,
-                                                         deadline)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-Status CatalogManager::IsTabletSplittingComplete(
-    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  resp->set_is_tablet_splitting_complete(
-      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
 }
 

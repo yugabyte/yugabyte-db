@@ -144,19 +144,6 @@ DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
     "during the import snapshot metadata phase of restore.");
 
-DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
-    "Total time to wait for all inflight splits to complete during Restore.");
-TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_max_restore_duration_secs, 600,
-    "Maximum amount of time to complete a PITR restore.");
-TAG_FLAG(pitr_max_restore_duration_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
-    "Delay before retrying to see if inflight tablet split operations have completed "
-    "after which PITR restore can be performed.");
-TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
-
 DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
@@ -3360,28 +3347,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
-      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
-  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
-      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
-
-  // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
-
-  bool inflight_splits_finished = false;
-  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
-    // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
-      inflight_splits_finished = true;
-      break;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
-  }
-
-  if (!inflight_splits_finished) {
-    ReenableTabletSplitting(kPitrFeatureName);
-    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
-  }
+  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
 
   return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3537,10 +3503,6 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
-}
-
-Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {

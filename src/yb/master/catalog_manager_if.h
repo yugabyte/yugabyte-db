@@ -342,6 +342,21 @@ class CatalogManagerIf {
       const std::vector<TableId>& table_ids,
       CoarseTimePoint deadline) = 0;
 
+  virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
+
+  virtual Status UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+
+  virtual Status UpdateCDCProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+  virtual Status ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
+  virtual Status CanAddPartitionsToTable(
+      size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
+
+  virtual Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
+
   virtual ~CatalogManagerIf() = default;
 };
 

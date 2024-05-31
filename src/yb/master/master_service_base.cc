@@ -25,6 +25,10 @@ CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager_impl();
 }
 
+TabletSplitManager* MasterServiceBase::handler(TabletSplitManager*) {
+  return &server_->tablet_split_manager();
+}
+
 FlushManager* MasterServiceBase::handler(FlushManager*) {
   return server_->flush_manager();
 }
