@@ -145,6 +145,7 @@ DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
+DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
 
@@ -3847,6 +3848,37 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
   poller->StoreReplicationError(ReplicationErrorPb::REPLICATION_OK);
 
   // Verify the error is cleared in the master.
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
+// Make sure the full replication error report is sent to a new master leader even when the metric
+// collection is skipped on the very first heartbeat to the new master.
+TEST_F_EX(XClusterTest, ReplicationErrorAfterMasterFailover, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 3, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      MonoTime::kMillisecondsPerHour;
+  SleepFor(FLAGS_heartbeat_interval_ms * 2ms);
+
+  ASSERT_OK(consumer_cluster()->StepDownMasterLeader());
+  ASSERT_OK(consumer_cluster()->WaitForAllTabletServers());
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
