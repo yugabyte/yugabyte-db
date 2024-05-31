@@ -30,7 +30,7 @@ The output is effectively the plan tree followed by a summary of timing and coun
     -   _cost_ attribute is the estimated cost of the node's operation according to YugabyteDB's query planner. This cost is based on factors like I/O operations, CPU usage, and memory requirements.
     -   _rows_ attribute is the estimated number of rows that will be processed or returned by the node.
 - **Actual Execution Statistics**:
-    -   _time_: The actual time taken to execute an operation represented by the node during query execution. This is represented in two parts as _T1..T2_ with T1 being the time taken to return the first row, and T2 the time taken to return the last row.
+    -   _time_: The actual time taken to execute an operation represented by the node during query execution. This is represented in two parts as _T1..T2_ with T1 being the time taken to return the first row, and T2 being the time taken to return the last row.
     -   _rows_: The actual number of rows processed or returned by the node during execution.
 - **Other Attributes**: Some nodes may have additional attributes depending on the operation they perform. For example:
     -   _Filter_: Indicates a filtering operation.
@@ -38,21 +38,21 @@ The output is effectively the plan tree followed by a summary of timing and coun
     -   _Index Name_: If applicable, the name of the index being used.
     -   _Sort Key_: The key used for sorting if a sort operation is involved.
     -   _Sort Method_: The sorting algorithm used (for example, _quicksort_, _mergesort_, and so on.)
-- **Timings**: At the end of the plan tree, YugabyteDB will add multiple time taken metrics when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. These are aggregate times across all plan nodes. Some of them are,
+- **Timings**: At the end of the plan tree, YugabyteDB will add multiple time-taken metrics when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. These are aggregate times across all plan nodes. Some of them are,
     - _Planning Time_: The time taken in milliseconds for the [query planner](../../../architecture/query-layer/#planner) to design the plan tree. Usually this value is higher the first time a query is executed. During subsequent runs, this time will be low as the plans are cached and re-used.
     - _Execution Time_: The total time taken in milliseconds for the query to execute. This includes all table/index read/write times.
     - _Storage Read Execution Time_: The sum of all round-trip times taken to read tables and indexes.
     - _Storage Write Execution Time_: The sum of all round-trip times taken to flush the write requests to tables and indexes.
-    - _Catalog Read Execution Time_: Time taken to read from the system catalog (typically during planning).
-    - _Storage Execution Time_ : Sum of _Storage Read_, _Storage Write_ and _Catalog Read_  execution times.
-    - _Time_: The total time taken by the request from the view point of the client as reported by ysqlsh. This includes _Planning_ and _Execution_ times along with the client to server latency.
+    - _Catalog Read Execution Time_: Time taken to read from the system catalog (typically during planning). _Note_: If catalog requests are issued as part of the rewrite phase, they are neither captured by _Planning Time_ nor _Execution Time_.
+    - _Storage Execution Time_: Sum of _Storage Read_, _Storage Write_ and _Catalog Read_ execution times.
+    - _Time_: The total time taken by the request from the viewpoint of the client as reported by ysqlsh. This includes _Planning_ and _Execution_ times along with the client-to-server latency.
 - **Distributed Storage Counters**: YugabyteDB adds specific counters related to the distributed execution of the query to the summary when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. Some of them are:
     -   _Storage Table Read Requests_: Number of RPC round-trips made to the local [YB-TServer](../../../architecture/yb-tserver) for main table scans.
     -   _Storage Table Rows Scanned_: The total number of rows visited in tables to identify the final resultset.
-    -   _Storage Table Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on a non-indexed table.
+    -   _Storage Table Writes_: Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on a non-indexed table.
     -   _Storage Index Rows Scanned_: The total number of rows visited in indexes to identify the final result set.
-    -   _Storage Index Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on an index.
-    -   _Storage Read Requests_: The sum of number of _table reads_ and _index reads_ across all plan nodes.
+    -   _Storage Index Writes_: Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on an index.
+    -   _Storage Read Requests_: The sum of a number of _table_ reads_ and _index reads_ across all plan nodes.
     -   _Storage Rows Scanned_: Sum of _Storage Table/Index_ row counters.
     -   _Storage Write Requests_: Sum of all _Storage Table Writes_ and _Storage Index Writes_.
     -   _Catalog Read Requests_: Number of requests to read catalog information from [YB-Master](../../../architecture/yb-master).
@@ -190,7 +190,7 @@ You can avoid this by including the `key` column in the index as follows:
 CREATE INDEX idx_value_2 ON kvstore(value) INCLUDE(key);
 ```
 
-If you run the same fetch by value query, you should see an output similar to the following:
+If you run the same fetch-by-value query, you should see an output similar to the following:
 
 ```yaml{linenos=inline, .nocopy}
 # EXPLAIN (ANALYZE, DIST, COSTS OFF) select * from kvstore where value='85d083991d';
@@ -209,7 +209,7 @@ If you run the same fetch by value query, you should see an output similar to th
  Storage Execution Time: 0.965 ms
 ```
 
-Notice that the operation has become an `Index Only Scan` instead of the `Index Scan` as before. Only one row has been scanned (via `Storage Rows Scanned: 1`) as only the index row was scanned (via `Storage Index Rows Scanned: 1`). The exection time has now been lowered to `1.117 ms`, a 40% improvement over previous execution.
+Notice that the operation has become an `Index Only Scan` instead of the `Index Scan` as before. Only one row has been scanned (via `Storage Rows Scanned: 1`) as only the index row was scanned (via `Storage Index Rows Scanned: 1`). The execution time has now been lowered to `1.117 ms`, a 40% improvement over the previous execution.
 
 ## Optimizing for ordering
 
@@ -269,11 +269,11 @@ If you run the same query, you should see,
  Storage Execution Time: 4.616 ms
 ```
 
-Now, only 41 rows were scanned (via `Storage Rows Scanned: 41`) to retrieve 41 rows (via `rows=41`) and there was no sorting involved as the data is stored sorted in the range index in `ASC` order. Even though YugabyteDB has optimizations for reverse scans, if most of your queries are going to retrieve the data in `DESC` order, then it would be better to define the ordering as `DESC` when creating a range sharded table/index.
+Now, only 41 rows were scanned (via `Storage Rows Scanned: 41`) to retrieve 41 rows (via `rows=41`) and there was no sorting involved as the data is stored sorted in the range index in `ASC` order. Even though YugabyteDB has optimizations for reverse scans, if most of your queries are going to retrieve the data in `DESC` order, then it would be better to define the ordering as `DESC` when creating a range-sharded table/index.
 
 ## Learn more
 
-- Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
+- Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track the planning and execution of all the SQL statements.
 - Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
 - Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
-- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.
+- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) to show the query execution plan generated by YSQL.
