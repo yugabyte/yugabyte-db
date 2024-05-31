@@ -58,6 +58,11 @@ typedef struct BsonOrderAggState
 	 * direction of sorting (ASC = true, DESC = false)
 	 */
 	bool sortDirections[32];
+
+	/* Input expression spec that will be applied against each
+	 * sorted pgbson value on this struct.
+	 */
+	pgbson *inputExpression;
 } BsonOrderAggState;
 
 /* Handles serialization of state */
@@ -73,7 +78,8 @@ void DeserializeOrderState(bytea *bytes,
  * isSingle is 'false' if there is an N param (i.e. firstN/LastN)
  *      and 'true' if there is no N param (i.e. first/last).
  */
-Datum BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle);
+Datum BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
+						  storeInputExpression);
 Datum BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle);
 Datum BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort);
 Datum BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle);

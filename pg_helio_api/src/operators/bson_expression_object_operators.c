@@ -37,8 +37,6 @@ static void AppendDocumentForMergeObjects(pgbson *sourceDocument, const
 										  bson_value_t *value,
 										  BsonIntermediatePathNode *tree,
 										  ExpressionResult *parent);
-static void TraverseTreeAndWrite(const BsonIntermediatePathNode *parentNode,
-								 pgbson_writer *writer, pgbson *parentDocument);
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
 static AggregationExpressionData * PerformConstantFolding(
@@ -151,24 +149,6 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 			}
 		}
 	}
-}
-
-
-/* Writes the given tree to a writer with no filter */
-static void
-TraverseTreeAndWrite(const BsonIntermediatePathNode *parentNode,
-					 pgbson_writer *writer, pgbson *parentDocument)
-{
-	WriteTreeContext context =
-	{
-		.state = NULL,
-		.filterNodeFunc = NULL,
-		.isNullOnEmpty = false,
-	};
-
-	ExpressionVariableContext *variableContext = NULL;
-	TraverseTreeAndWriteFieldsToWriter(parentNode, writer, parentDocument, &context,
-									   variableContext);
 }
 
 

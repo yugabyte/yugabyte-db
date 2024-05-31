@@ -113,6 +113,24 @@ TraverseTreeAndWriteFieldsToWriter(const BsonIntermediatePathNode *parentNode,
 }
 
 
+/* Writes the given tree to a writer with no filter */
+void
+TraverseTreeAndWrite(const BsonIntermediatePathNode *parentNode,
+					 pgbson_writer *writer, pgbson *parentDocument)
+{
+	WriteTreeContext context =
+	{
+		.state = NULL,
+		.filterNodeFunc = NULL,
+		.isNullOnEmpty = false,
+	};
+
+	ExpressionVariableContext *variableContext = NULL;
+	TraverseTreeAndWriteFieldsToWriter(parentNode, writer, parentDocument, &context,
+									   variableContext);
+}
+
+
 /* Core function to write the tree to a writer. */
 static void
 TraverseTreeAndWriteFieldsToWriterCore(const BsonIntermediatePathNode *parentNode,

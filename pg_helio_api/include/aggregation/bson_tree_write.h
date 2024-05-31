@@ -44,5 +44,6 @@ void AppendLeafArrayFieldChildrenToWriter(pgbson_array_writer *arrayWriter, cons
 										  BsonLeafArrayWithFieldPathNode *leafArrayNode,
 										  pgbson *document,
 										  const ExpressionVariableContext *variableContext);
-
+void TraverseTreeAndWrite(const BsonIntermediatePathNode *parentNode,
+						  pgbson_writer *writer, pgbson *parentDocument);
 #endif

@@ -582,6 +582,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_object_agg function */
 	Oid ApiCatalogBsonObjectAggregateFunctionOid;
 
+	/* OID of the bson_merge_objects_on_sorted function */
+	Oid ApiCatalogBsonMergeObjectsOnSortedFunctionOid;
+
+	/* OID of the bson_merge_objects function */
+	Oid ApiCatalogBsonMergeObjectsFunctionOid;
+
 	/* OID of the BSONMAX aggregate function */
 	Oid ApiCatalogBsonMaxAggregateFunctionOid;
 
@@ -2886,6 +2892,24 @@ BsonObjectAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonObjectAggregateFunctionOid,
 									  ApiCatalogSchemaName, "bson_object_agg");
+}
+
+
+Oid
+BsonMergeObjectsOnSortedFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonMergeObjectsOnSortedFunctionOid,
+		"helio_api_internal",
+		"bson_merge_objects_on_sorted");
+}
+
+
+Oid
+BsonMergeObjectsFunctionOid(void)
+{
+	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonMergeObjectsFunctionOid,
+									  "helio_api_internal", "bson_merge_objects");
 }
 
 

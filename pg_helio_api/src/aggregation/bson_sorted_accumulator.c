@@ -30,7 +30,7 @@
 /*
  * Converts a BsonOrderAggState into a serialized form to allow the internal type to be bytea
  * Resulting bytes look like:
- * | Varlena Header | numAggValues | numSortKeys | BsonOrderAggValue * numAggValues | sortDirections |
+ * | Varlena Header | numAggValues | numSortKeys | BsonOrderAggValue * numAggValues | sortDirections | inputExpression (pgbson)
  */
 bytea *
 SerializeOrderState(MemoryContext aggregateContext,
@@ -71,9 +71,16 @@ SerializeOrderState(MemoryContext aggregateContext,
 		}
 	}
 
+	/* We account for the null flag byte by default. */
+	int inputExpressionValueSize = 1;
+	if (state->inputExpression != NULL)
+	{
+		inputExpressionValueSize += VARSIZE(state->inputExpression);
+	}
+
 	/*
 	 * Make sure the byte array is big enough to fit the whole state if numAggValues is 1:
-	 * varlena Header | numAggValues | numSortKeys  | BsonOrderAggValues * numAggValues | sortDirections (bool)
+	 * varlena Header | numAggValues | numSortKeys  | BsonOrderAggValues * numAggValues | sortDirections (bool) | inputExpression (pgbson)
 	 *
 	 * We can't reuse the same block with muliple values as we would potentially
 	 * overwrite the existing values if it was shifted to later in the list.
@@ -85,7 +92,8 @@ SerializeOrderState(MemoryContext aggregateContext,
 						   sizeof(int64) + /* currentCount */
 						   sizeof(int) + /* numSortKeys */
 						   valueSize + /* BsonOrderAggValues */
-						   state->numSortKeys * sizeof(bool); /* sortDirections */
+						   state->numSortKeys * sizeof(bool) + /* sortDirections */
+						   inputExpressionValueSize; /* inputExpression (pgbson) + null flag */
 	char *bytes;
 	int existingByteSize = (byteArray == NULL) ? 0 : VARSIZE(byteArray);
 
@@ -167,6 +175,17 @@ SerializeOrderState(MemoryContext aggregateContext,
 		byteAllocationPointer += sizeof(bool);
 	}
 
+	/* Write pgbson input expression spec. */
+	*byteAllocationPointer = (char) (state->inputExpression != NULL);
+	byteAllocationPointer += 1;
+
+	if (state->inputExpression != NULL)
+	{
+		int size = VARSIZE(state->inputExpression);
+		memcpy(byteAllocationPointer, state->inputExpression, size);
+		byteAllocationPointer += size;
+	}
+
 	return (bytea *) bytes;
 }
 
@@ -174,7 +193,7 @@ SerializeOrderState(MemoryContext aggregateContext,
 /*
  * Converts a BsonOrderAggState from a serialized form to allow the internal type to be bytea
  * Incoming bytes look like:
- * varlena Header | numAggValues | numSortKeys  | BsonOrderAggValues * numAggValues | sortDirections (bool)
+ * varlena Header | numAggValues | numSortKeys  | BsonOrderAggValues * numAggValues | sortDirections (bool) | inputExpression (pgbson)
  */
 void
 DeserializeOrderState(bytea *byteArray,
@@ -256,6 +275,20 @@ DeserializeOrderState(bytea *byteArray,
 		state->sortDirections[i] = *((bool *) bytes);
 		bytes += sizeof(bool);
 	}
+
+	if (*bytes == 0)
+	{
+		/* inputExpression is NULL */
+		state->inputExpression = NULL;
+		bytes++;
+	}
+	else
+	{
+		/* skip nullity byte flag */
+		bytes++;
+		state->inputExpression = (pgbson *) bytes;
+		bytes += VARSIZE(state->inputExpression);
+	}
 }
 
 
@@ -264,18 +297,25 @@ DeserializeOrderState(bytea *byteArray,
  * The args in PG_FUNCTION_ARGS:
  *      0) The current aggregation state
  *      1) The document/evaluated expression which will eventually be returned
+ *
  * For isSingle == true:
  *      2) An array of bsons representing the sort specs.
+ * For isSingle == true && storeInputExpression == true
+ *      3) The input expression to be applied on the sorted results.
+ *
  * For isSingle == false:
  *      2) The number of documents to be returned or 'N'
  *      3) An array of bsons representing the sort specs.
+ * For isSingle == false && storeInputExpression == true
+ *      4) The input expression to be applied on the sorted results.
  *
  * invertSort is 'false' for ascending and 'true' for descending.
  * isSingle is 'false' for N param accumulators (i.e. firstN/lastN/topN/bottomN)
  *      and 'true' for single accumulators (i.e. first/last/top/bottom).
  */
 Datum
-BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
+BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
+					storeInputExpression)
 {
 	MemoryContext aggregateContext;
 	if (!AggCheckCallContext(fcinfo, &aggregateContext))
@@ -348,6 +388,20 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 			bool ascOrder = (BsonValueAsInt32(&sortKeyElement.bsonValue) == 1) ?
 							true : false;
 			inputAggregateState.sortDirections[i] = ascOrder;
+		}
+
+		/* Check if this is a single element sort call. */
+		if (isSingle)
+		{
+			/* The 4th argument is the pgbson input expression. */
+			inputAggregateState.inputExpression = storeInputExpression ?
+												  PG_GETARG_MAYBE_NULL_PGBSON(3) : NULL;
+		}
+		else
+		{
+			/* The 5th argument is the pgbson input expression. */
+			inputAggregateState.inputExpression = storeInputExpression ?
+												  PG_GETARG_MAYBE_NULL_PGBSON(4) : NULL;
 		}
 	}
 

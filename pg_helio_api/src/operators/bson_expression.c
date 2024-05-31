@@ -934,6 +934,11 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 										   CreateStringFromStringView(&varName))));
 				}
 
+				if (variableValue.value_type == BSON_TYPE_EOD)
+				{
+					return;
+				}
+
 				if (!isDottedExpression)
 				{
 					ExpressionResultSetValue(expressionResult, &variableValue);

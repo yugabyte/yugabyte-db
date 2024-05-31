@@ -1,0 +1,277 @@
+SET search_path TO helio_api_catalog;
+SET helio_api.next_collection_id TO 14200;
+SET helio_api.next_collection_index_id TO 14200;
+SELECT helio_api.insert_one('db','objColl1','{ "_id": 1, "year": 2017, "item": "A", "quantity": { "2017Q1": 1, "2017Q2": 300 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl1','{ "_id": 2, "year": 2016, "item": "A", "quantity": { "2016Q1": 400, "2016Q2": 300, "2016Q3": 0, "2016Q4": 0 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl1','{ "_id": 3, "year": 2017, "item": "B", "quantity": { "2017Q1": 300 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl1','{ "_id": 4, "year": 2016, "item": "B", "quantity": { "2016Q3": 100, "2016Q4": 250 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl1','{ "_id": 5, "year": 2017, "item": "C", "quantity": { "2016Q3": 1200, "2016Q4": 312 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $mergeObjects accumulators with different expressions */
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                     document                                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2016" }, "mergedobjColl1" : { "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
+ { "_id" : { "$numberInt" : "2017" }, "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+(2 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$item", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                                            document                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : "A", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "1" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "0" }, "2016Q4" : { "$numberInt" : "0" } } }
+ { "_id" : "B", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
+ { "_id" : "C", "mergedobjColl1" : { "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "lastItemSold": { "$mergeObjects": { "item": "$item" } } } } ] }');
+                                 document                                 
+--------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2016" }, "lastItemSold" : { "item" : "B" } }
+ { "_id" : { "$numberInt" : "2017" }, "lastItemSold" : { "item" : "C" } }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                                                      QUERY PLAN                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true)), 'mergedobjColl1'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$quantity" }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$item", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                                                      QUERY PLAN                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$item" }'::helio_core.bson, true)), 'mergedobjColl1'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$quantity" }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$item" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$item" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$item" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$item" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$group": { "_id": "$year", "lastItemSold": { "$mergeObjects": { "item": "$item" } } } } ] }');
+                                                                                                                                         QUERY PLAN                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true)), 'lastItemSold'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14200 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14200'::bigint)
+(13 rows)
+
+SELECT helio_api.insert_one('db','objColl2','{ "_id": 13, "group": 1, "obj": {}, "c": null }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl2','{ "_id": 14, "group": 1, "obj": { "a": 2, "b": 2 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl2','{ "_id": 15, "group": 1, "obj": { "a": 1, "c": 3, "b": null } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','objColl2','{ "_id": 16, "group": 2, "obj": { "a": 1, "b": 1 }, "c": null }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $mergeObjects accumulators with different expressions */
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj" } } } ] }');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedDocument" : { "a" : { "$numberInt" : "1" }, "b" : null, "c" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "2" }, "mergedDocument" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } }
+(2 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj.a" } } } ] }');
+ERROR:  $mergeObjects requires object inputs, but input 2 is of type int
+HINT:  $mergeObjects requires object inputs, but input is of type int
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": { "result": "$obj.b" } } } } ] }');
+                                           document                                           
+----------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedDocument" : { "result" : null } }
+ { "_id" : { "$numberInt" : "2" }, "mergedDocument" : { "result" : { "$numberInt" : "1" } } }
+(2 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$c" } } } ] }');
+                          document                           
+-------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedDocument" : null }
+ { "_id" : { "$numberInt" : "2" }, "mergedDocument" : null }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj" } } } ] }');
+                                                                                                                                    QUERY PLAN                                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), 'mergedDocument'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$obj" }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14201 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14201'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14201'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$obj.a" } } } ] }');
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), 'mergedDocument'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$obj.a" }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14201 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14201'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14201'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": { "result": "$obj.b" } } } } ] }');
+                                                                                                                                            QUERY PLAN                                                                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), 'mergedDocument'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : { "result" : "$obj.b" } }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14201 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14201'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14201'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedDocument": { "$mergeObjects": "$c" } } } ] }');
+                                                                                                                                   QUERY PLAN                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: helio_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), 'mergedDocument'::text, helio_api_internal.bson_merge_objects_on_sorted(bson_expression_get(collection.document, '{ "" : "$c" }'::helio_core.bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_14201 collection
+                     Output: bson_expression_get(collection.document, '{ "" : "$group" }'::helio_core.bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '14201'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '14201'::bigint)
+(13 rows)
+
+/* shard collections and test for order and validations */
+SELECT helio_api.shard_collection('db', 'objColl1', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                     document                                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2016" }, "mergedobjColl1" : { "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
+ { "_id" : { "$numberInt" : "2017" }, "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+(2 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$item", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
+                                                                                                                            document                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : "A", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "1" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "0" }, "2016Q4" : { "$numberInt" : "0" } } }
+ { "_id" : "B", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
+ { "_id" : "C", "mergedobjColl1" : { "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+(3 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "lastItemSold": { "$mergeObjects": { "item": "$item" } } } } ] }');
+                                 document                                 
+--------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2016" }, "lastItemSold" : { "item" : "B" } }
+ { "_id" : { "$numberInt" : "2017" }, "lastItemSold" : { "item" : "C" } }
+(2 rows)
+
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "shouldFail": { "$mergeObjects": "$item" } } } ] }');
+ERROR:  $mergeObjects requires object inputs, but input "A" is of type string
+HINT:  $mergeObjects requires object inputs, but input is of type string
+select helio_api.drop_collection('db','objColl1');
+ drop_collection 
+-----------------
+ t
+(1 row)
+
+select helio_api.drop_collection('db','objColl2');
+ drop_collection 
+-----------------
+ t
+(1 row)
+

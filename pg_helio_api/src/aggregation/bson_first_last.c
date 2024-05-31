@@ -42,7 +42,8 @@ bson_first_transition(PG_FUNCTION_ARGS)
 {
 	bool isLast = false;
 	bool isSingle = true;
-	return BsonOrderTransition(fcinfo, isLast, isSingle);
+	bool storeInputExpression = false;
+	return BsonOrderTransition(fcinfo, isLast, isSingle, storeInputExpression);
 }
 
 
@@ -55,7 +56,8 @@ bson_last_transition(PG_FUNCTION_ARGS)
 	/* LAST will invert the transition so that it takes the element opposite of the true comparison result */
 	bool isLast = true;
 	bool isSingle = true;
-	return BsonOrderTransition(fcinfo, isLast, isSingle);
+	bool storeInputExpression = false;
+	return BsonOrderTransition(fcinfo, isLast, isSingle, storeInputExpression);
 }
 
 
@@ -136,7 +138,8 @@ bson_firstn_transition(PG_FUNCTION_ARGS)
 {
 	bool isLast = false;
 	bool isSingle = false;
-	return BsonOrderTransition(fcinfo, isLast, isSingle);
+	bool storeInputExpression = false;
+	return BsonOrderTransition(fcinfo, isLast, isSingle, storeInputExpression);
 }
 
 
@@ -149,7 +152,8 @@ bson_lastn_transition(PG_FUNCTION_ARGS)
 	/* LAST will invert the transition so that it takes the element opposite of the true comparison result */
 	bool isLast = true;
 	bool isSingle = false;
-	return BsonOrderTransition(fcinfo, isLast, isSingle);
+	bool storeInputExpression = false;
+	return BsonOrderTransition(fcinfo, isLast, isSingle, storeInputExpression);
 }
 
 

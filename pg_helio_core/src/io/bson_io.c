@@ -462,7 +462,8 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		else if (types[i + 1] == BsonTypeId() || types[i + 1] == HelioCoreBsonTypeId())
 		{
 			pgbsonelement elem;
-			if (TryGetSinglePgbsonElementFromPgbson(DatumGetPgBson(args[i + 1]), &elem))
+			pgbson *pbson = DatumGetPgBson(args[i + 1]);
+			if (TryGetSinglePgbsonElementFromPgbson(pbson, &elem))
 			{
 				PgbsonWriterAppendValue(&writer, path, len, &elem.bsonValue);
 			}

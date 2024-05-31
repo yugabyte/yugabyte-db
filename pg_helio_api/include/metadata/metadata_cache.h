@@ -270,6 +270,8 @@ Oid PgRandomFunctionOid(void);
 Oid BsonArrayAggregateFunctionOid(void);
 Oid BsonArrayAggregateAllArgsFunctionOid(void);
 Oid BsonObjectAggregateFunctionOid(void);
+Oid BsonMergeObjectsOnSortedFunctionOid(void);
+Oid BsonMergeObjectsFunctionOid(void);
 Oid BsonDollarFacetProjectFunctionOid(void);
 Oid BsonFirstOnSortedAggregateFunctionOid(void);
 Oid BsonLastOnSortedAggregateFunctionOid(void);

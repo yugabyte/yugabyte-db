@@ -21,6 +21,10 @@
 #include "commands/insert.h"
 #include "sharding/sharding.h"
 #include "utils/hashset_utils.h"
+#include "aggregation/bson_tree.h"
+#include "aggregation/bson_tree_write.h"
+#include "aggregation/bson_sorted_accumulator.h"
+
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -41,8 +45,9 @@ typedef struct BsonArrayAggState
 
 typedef struct BsonObjectAggState
 {
-	pgbson_writer writer;
+	BsonIntermediatePathNode *tree;
 	int64_t currentSizeWritten;
+	bool addEmptyPath;
 } BsonObjectAggState;
 
 typedef struct BsonAddToSetState
@@ -92,6 +97,10 @@ const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
 static bytea * AllocateBsonNumericAggState(void);
 static void CheckAggregateIntermediateResultSize(uint32_t size);
 static void GenerateUnqiqueStagingCollectionNameForOut(char *collectionName);
+static void CreateObjectAggTreeNodes(BsonObjectAggState *currentState,
+									 pgbson *currentValue);
+static void ValidateMergeObjectsInput(pgbson *input);
+static Datum ParseAndReturnMergeObjectsTree(BsonObjectAggState *state);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -117,6 +126,9 @@ PG_FUNCTION_INFO_V1(bson_out_transition);
 PG_FUNCTION_INFO_V1(bson_out_final);
 PG_FUNCTION_INFO_V1(bson_add_to_set_transition);
 PG_FUNCTION_INFO_V1(bson_add_to_set_final);
+PG_FUNCTION_INFO_V1(bson_merge_objects_transition_on_sorted);
+PG_FUNCTION_INFO_V1(bson_merge_objects_transition);
+PG_FUNCTION_INFO_V1(bson_merge_objects_final);
 
 Datum
 bson_out_transition(PG_FUNCTION_ARGS)
@@ -551,8 +563,12 @@ bson_distinct_array_agg_final(PG_FUNCTION_ARGS)
 }
 
 
-Datum
-bson_object_agg_transition(PG_FUNCTION_ARGS)
+/*
+ * Core implementation of the object aggregation stage. This is used by both object_agg and merge_objects.
+ * Both have the same implementation but differ in validations made inside the caller method.
+ */
+inline static Datum
+AggregateObjectsCore(PG_FUNCTION_ARGS)
 {
 	BsonObjectAggState *currentState;
 	bytea *bytes;
@@ -576,7 +592,8 @@ bson_object_agg_transition(PG_FUNCTION_ARGS)
 
 		currentState = (BsonObjectAggState *) VARDATA(bytes);
 		currentState->currentSizeWritten = 0;
-		PgbsonWriterInit(&currentState->writer);
+		currentState->tree = MakeRootNode();
+		currentState->addEmptyPath = false;
 	}
 	else
 	{
@@ -585,31 +602,124 @@ bson_object_agg_transition(PG_FUNCTION_ARGS)
 	}
 
 	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
-
 	if (currentValue != NULL)
 	{
-		bson_iter_t pathSpecIter;
-		PgbsonInitIterator(currentValue, &pathSpecIter);
-		while (bson_iter_next(&pathSpecIter))
+		CheckAggregateIntermediateResultSize(currentState->currentSizeWritten +
+											 PgbsonGetBsonSize(currentValue));
+
+		/*
+		 * We need to copy the whole pgbson because otherwise the pointers we store
+		 * in the tree will reference an address in the stack. These are released after
+		 * the function resolves and will point to garbage.
+		 */
+		currentValue = PgbsonCloneFromPgbson(currentValue);
+		CreateObjectAggTreeNodes(currentState, currentValue);
+		currentState->currentSizeWritten += PgbsonGetBsonSize(currentValue);
+	}
+
+	MemoryContextSwitchTo(oldContext);
+	PG_RETURN_POINTER(bytes);
+}
+
+
+Datum
+bson_object_agg_transition(PG_FUNCTION_ARGS)
+{
+	return AggregateObjectsCore(fcinfo);
+}
+
+
+/*
+ * Merge objects transition function for pipelines without a sort spec.
+ */
+Datum
+bson_merge_objects_transition_on_sorted(PG_FUNCTION_ARGS)
+{
+	pgbson *input = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	ValidateMergeObjectsInput(input);
+	return AggregateObjectsCore(fcinfo);
+}
+
+
+/*
+ * Merge objects transition function for pipelines that contain a sort spec.
+ */
+Datum
+bson_merge_objects_transition(PG_FUNCTION_ARGS)
+{
+	bool isLast = false;
+	bool isSingle = false;
+	bool storeInputExpression = true;
+
+	/* If there is a sort spec, we push it to the mergeObjects accumulator stage. */
+	return BsonOrderTransition(fcinfo, isLast, isSingle, storeInputExpression);
+}
+
+
+/*
+ * Merge objects final function for aggregation pipelines that contain a sort spec.
+ */
+Datum
+bson_merge_objects_final(PG_FUNCTION_ARGS)
+{
+	BsonOrderAggState orderState = { 0 };
+	BsonObjectAggState mergeObjectsState = { 0 };
+
+	/*
+	 * Here we initialize BsonObjectAggState.
+	 * It is necessary to build the bson tree used by $mergeObjects.
+	 */
+	mergeObjectsState.currentSizeWritten = 0;
+	mergeObjectsState.tree = MakeRootNode();
+	mergeObjectsState.addEmptyPath = false;
+
+	/* Deserializing the structure used to sort data. */
+	DeserializeOrderState(PG_GETARG_BYTEA_P(0), &orderState);
+
+	/* Preparing expressionData to evaluate expression against each sorted bson value. */
+	pgbsonelement expressionElement;
+	pgbson_writer writer;
+
+	AggregationExpressionData expressionData;
+	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+	PgbsonToSinglePgbsonElement(orderState.inputExpression, &expressionElement);
+	ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+	const AggregationExpressionData *state = &expressionData;
+	StringView path = {
+		.length = expressionElement.pathLength,
+		.string = expressionElement.path,
+	};
+
+	/* Populate tree with sorted documents. */
+	for (int i = 0; i < orderState.currentCount; i++)
+	{
+		/* No more results*/
+		if (orderState.currentResult[i] == NULL)
 		{
-			const char *path = bson_iter_key(&pathSpecIter);
-			CheckAggregateIntermediateResultSize(currentState->currentSizeWritten +
-												 strlen(
-													 path) * 8);
+			break;
+		}
 
-			PgbsonWriterAppendValue(&currentState->writer, path, strlen(path),
-									bson_iter_value(
-										&pathSpecIter));
+		/* Check for null value*/
+		if (orderState.currentResult[i]->value != NULL)
+		{
+			PgbsonWriterInit(&writer);
+			EvaluateAggregationExpressionDataToWriter(state,
+													  orderState.currentResult[i]->value,
+													  path, &writer,
+													  NULL, false);
 
-			currentState->currentSizeWritten += strlen(path) * 8;
+			pgbson *evaluatedDoc = PgbsonWriterGetPgbson(&writer);
+
+			/* We need to validate the result here since we sorted the original documents first. */
+			ValidateMergeObjectsInput(evaluatedDoc);
+
+			/* Feed the tree with the evaluated bson. */
+			CreateObjectAggTreeNodes(&mergeObjectsState,
+									 evaluatedDoc);
 		}
 	}
 
-	/* Null is ignored */
-
-	MemoryContextSwitchTo(oldContext);
-
-	PG_RETURN_POINTER(bytes);
+	return ParseAndReturnMergeObjectsTree(&mergeObjectsState);
 }
 
 
@@ -622,8 +732,7 @@ bson_object_agg_final(PG_FUNCTION_ARGS)
 	{
 		BsonObjectAggState *state = (BsonObjectAggState *) VARDATA_ANY(
 			currentArrayAgg);
-
-		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->writer));
+		return ParseAndReturnMergeObjectsTree(state);
 	}
 	else
 	{
@@ -1258,4 +1367,131 @@ GenerateUnqiqueStagingCollectionNameForOut(char *collectionName)
 		}
 	}
 	collectionName[44] = '\0';
+}
+
+
+/*
+ * Helper method that iterates a pgbson writing its values to a bson tree. If a key already
+ * exists in the tree, then it's overwritten.
+ */
+static void
+CreateObjectAggTreeNodes(BsonObjectAggState *currentState, pgbson *currentValue)
+{
+	bson_iter_t docIter;
+	pgbsonelement singleBsonElement;
+	bool treatLeafDataAsConstant = true;
+
+	/*
+	 * If currentValue has the form of { "": value } and value is a bson document,
+	 * write only the value in the BsonTree. We need this because of how accumulators work
+	 * with bson_repath_and_build.
+	 */
+	if (TryGetSinglePgbsonElementFromPgbson(currentValue, &singleBsonElement) &&
+		singleBsonElement.pathLength == 0 &&
+		singleBsonElement.bsonValue.value_type == BSON_TYPE_DOCUMENT)
+	{
+		BsonValueInitIterator(&singleBsonElement.bsonValue, &docIter);
+		currentState->addEmptyPath = true;
+	}
+	else
+	{
+		PgbsonInitIterator(currentValue, &docIter);
+	}
+
+	while (bson_iter_next(&docIter))
+	{
+		StringView pathView = bson_iter_key_string_view(&docIter);
+		const bson_value_t *docValue = bson_iter_value(&docIter);
+
+		bool nodeCreated = false;
+		const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
+			&pathView, docValue,
+			currentState->tree, BsonDefaultCreateLeafNode,
+			treatLeafDataAsConstant, &nodeCreated);
+
+		/* If the node already exists we need to update the value as object agg and merge objects
+		 * have the behavior that the last path spec (if duplicate) takes precedence. */
+		if (!nodeCreated)
+		{
+			ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
+							   treatLeafDataAsConstant);
+		}
+	}
+}
+
+
+/*
+ * Validates $mergeObject input. It must be a non-null document.
+ */
+static void
+ValidateMergeObjectsInput(pgbson *input)
+{
+	pgbsonelement singleBsonElement;
+
+	/*
+	 * The $mergeObjects accumulator expects a document in the form of
+	 * { "": <document> }. This required by the bson_repath_and_build function.
+	 * Hence we check for a document with a single element below.
+	 */
+	if (input == NULL || !TryGetSinglePgbsonElementFromPgbson(input, &singleBsonElement))
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("Bad input format for mergeObjects transition.")));
+	}
+
+
+	/*
+	 * We fail if the bson value type is not DOCUMENT or NULL.
+	 */
+	if (singleBsonElement.bsonValue.value_type != BSON_TYPE_DOCUMENT &&
+		singleBsonElement.bsonValue.value_type != BSON_TYPE_NULL)
+	{
+		ereport(ERROR,
+				errcode(MongoDollarMergeObjectsInvalidType),
+				errmsg("$mergeObjects requires object inputs, but input %s is of type %s",
+					   BsonValueToJsonForLogging(&singleBsonElement.bsonValue),
+					   BsonTypeName(singleBsonElement.bsonValue.value_type)),
+				errhint("$mergeObjects requires object inputs, but input is of type %s",
+						BsonTypeName(singleBsonElement.bsonValue.value_type)));
+	}
+}
+
+
+/*
+ * Function used to parse and return a mergeObjects tree.
+ */
+static Datum
+ParseAndReturnMergeObjectsTree(BsonObjectAggState *state)
+{
+	if (state != NULL)
+	{
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+
+		/*
+		 * If we removed the original empty path, then we need to include it
+		 * again for bson_repath_and_build.
+		 */
+		if (state->addEmptyPath)
+		{
+			pgbson_writer childWriter;
+			PgbsonWriterStartDocument(&writer, "", 0, &childWriter);
+			TraverseTreeAndWrite(state->tree, &childWriter, NULL);
+			PgbsonWriterEndDocument(&writer, &childWriter);
+		}
+		else
+		{
+			TraverseTreeAndWrite(state->tree, &writer, NULL);
+		}
+
+
+		pgbson *result = PgbsonWriterGetPgbson(&writer);
+		FreeTree(state->tree);
+
+		PG_RETURN_POINTER(result);
+	}
+	else
+	{
+		PG_RETURN_POINTER(PgbsonInitEmpty());
+	}
 }

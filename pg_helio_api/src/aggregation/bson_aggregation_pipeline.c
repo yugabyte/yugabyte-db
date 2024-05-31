@@ -172,6 +172,7 @@ static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
 extern bool EnableGroupAddToSetSupport;
+extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 
 /* Stages and their definitions sorted by name.
@@ -3208,6 +3209,71 @@ AddArrayAggGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 
 /*
+ * Simple helper method that has logic to insert a BSON_MERGE_OBJECTS accumulator to a query.
+ * This adds the group aggregate to the TargetEntry (for projection)
+ * and also adds the necessary data to the bson_repath_and_build arguments.
+ */
+inline static List *
+AddMergeObjectsGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
+								List *repathArgs, Const *accumulatorText,
+								ParseState *parseState, char *identifiers,
+								Expr *documentExpr, Oid aggregateFunctionOid,
+								const bson_value_t *sortSpec)
+{
+	/* First apply the sorted aggs */
+	int nelems = BsonDocumentValueCountKeys(sortSpec);
+	Datum *sortDatumArray = palloc(sizeof(Datum) * nelems);
+
+	bson_iter_t sortIter;
+	BsonValueInitIterator(sortSpec, &sortIter);
+	int i = 0;
+	while (bson_iter_next(&sortIter))
+	{
+		pgbsonelement sortElement = { 0 };
+		sortElement.path = bson_iter_key(&sortIter);
+		sortElement.pathLength = strlen(sortElement.path);
+		sortElement.bsonValue = *bson_iter_value(&sortIter);
+		sortDatumArray[i] = PointerGetDatum(PgbsonElementToPgbson(&sortElement));
+		i++;
+	}
+
+	/* Here we use INT_MAX to sort the whole array regardless of its length. */
+	Const *nConst = makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
+							  Int64GetDatum(INT_MAX), false, true);
+	ArrayType *arrayValue = construct_array(sortDatumArray, nelems, BsonTypeId(), -1,
+											false, TYPALIGN_INT);
+
+	Const *sortArrayConst = makeConst(get_array_type(BsonTypeId()), -1, InvalidOid, -1,
+									  PointerGetDatum(arrayValue), false, false);
+
+	/*
+	 * Here we add a parameter with the input expression. The reason is we need
+	 * to evaluate it against the document after the sort takes place.
+	 */
+	Expr *inputExpression = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+													   accumulatorValue));
+	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
+											 list_make4(documentExpr, nConst,
+														sortArrayConst,
+														inputExpression),
+											 list_make4_oid(BsonTypeId(),
+															nConst->consttype,
+															sortArrayConst->consttype,
+															BsonTypeId()),
+											 parseState);
+
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
+														parseState, identifiers,
+														query, TEXTOID, NULL));
+	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) aggref,
+														parseState, identifiers,
+														query, BsonTypeId(),
+														NULL));
+	return repathArgs;
+}
+
+
+/*
  * Simple helper method that has logic to insert a Group accumulator to a query.
  * This adds the group aggregate to the TargetEntry (for projection)
  * and also adds the necessary data to the bson_expression_map arguments.
@@ -3690,8 +3756,37 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Accumulator $mergeObjects not implemented yet")));
+			if (EnableGroupMergeObjectsSupport || IsClusterVersionAtleastThis(1, 18, 0))
+			{
+				if (context->sortSpec.value_type == BSON_TYPE_EOD)
+				{
+					repathArgs = AddSimpleGroupAccumulator(query,
+														   &accumulatorElement.bsonValue,
+														   repathArgs,
+														   accumulatorText, parseState,
+														   identifiers,
+														   origEntry->expr,
+														   BsonMergeObjectsOnSortedFunctionOid());
+				}
+				else
+				{
+					repathArgs = AddMergeObjectsGroupAccumulator(query,
+																 &accumulatorElement.
+																 bsonValue,
+																 repathArgs,
+																 accumulatorText,
+																 parseState,
+																 identifiers,
+																 origEntry->expr,
+																 BsonMergeObjectsFunctionOid(),
+																 &context->sortSpec);
+				}
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $mergeObjects not implemented yet")));
+			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
 		{
