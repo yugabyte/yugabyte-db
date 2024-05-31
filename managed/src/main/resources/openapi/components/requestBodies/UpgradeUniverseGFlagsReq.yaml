@@ -1,4 +1,4 @@
 content:
   application/json:
     schema:
-      $ref: ../schemas/UpgradeUniverseGFlags.yaml
+      $ref: "../schemas/UpgradeUniverseGFlags.yaml"

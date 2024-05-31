@@ -25,7 +25,7 @@ tags:
   - name: Universe Upgrades Management
     description: APIs to upgrade various parts of a Universe
 paths:
-  $ref: paths/_index.yaml
+  $ref: "paths/_index.yaml"
 components:
   securitySchemes:
     apiKeyAuth:
