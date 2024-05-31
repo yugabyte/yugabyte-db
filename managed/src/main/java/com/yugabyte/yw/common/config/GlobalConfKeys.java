@@ -1128,4 +1128,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " bundle, without propagating it to the in-use Universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> oidcRefreshTokenEndpoint =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenEndpoint",
+          ScopeType.GLOBAL,
+          "Endpoint for fetching the access token",
+          "YBA will fetch the access token using the refresh token if specified from the endpoint",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> oidcRefreshTokenInterval =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenInterval",
+          ScopeType.GLOBAL,
+          "OIDC Refresh Access Token Interval",
+          "If configured, YBA will refresh the access token at the specified duration, defaulted to"
+              + " 5 minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -91,4 +91,11 @@ public class ThirdPartyLoginHandler {
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
+
+  public ProfileManager<CommonProfile> getProfileManager(Request request) {
+    final PlayWebContext context = new PlayWebContext(request, sessionStore);
+    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+
+    return profileManager;
+  }
 }
