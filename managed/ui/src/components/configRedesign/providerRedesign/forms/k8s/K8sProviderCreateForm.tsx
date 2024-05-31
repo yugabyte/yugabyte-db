@@ -15,7 +15,12 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { KubernetesProvider, KubernetesProviderType, ProviderCode } from '../../constants';
+import {
+  KubernetesProvider,
+  KubernetesProviderType,
+  ProviderCode,
+  ProviderOperation
+} from '../../constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
@@ -376,12 +381,13 @@ export const K8sProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.KUBERNETES}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message && (

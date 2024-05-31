@@ -41,12 +41,14 @@ interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;
   providerType: ProviderCode;
   viewMode: 'CREATE' | 'EDIT';
+  inUseImageBundleUuids: Set<string>;
 }
 
 export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
   control,
   providerType,
-  viewMode
+  viewMode,
+  inUseImageBundleUuids
 }) => {
   const { replace, update, remove } = useFieldArray({
     control,
@@ -134,6 +136,8 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
           setDeleteImageBundleDetails(img);
         }}
         viewMode={viewMode}
+        inUseImageBundleUuids={inUseImageBundleUuids}
+        showMoreActions={true}
       />
       <div style={{ marginTop: '24px' }} />
       {providerType === ProviderCode.AWS && (
@@ -148,6 +152,8 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
             setDeleteImageBundleDetails(img);
           }}
           viewMode={viewMode}
+          inUseImageBundleUuids={inUseImageBundleUuids}
+          showMoreActions={true}
         />
       )}
 
@@ -209,27 +215,36 @@ const LinuxVersionCardStyles = makeStyles((theme) => ({
   }
 }));
 
-interface LinuxVersionCardProps {
+interface LinuxVersionCardCommonProps {
   setImageAsDefault: (img: ImageBundle) => void;
   images: ImageBundle[];
   archType: string;
   setEditDetails: (img: ImageBundle) => void;
   viewMode: 'CREATE' | 'EDIT';
   onDelete: (img: ImageBundle) => void;
-  showMoreActions?: boolean;
+
   showTitle?: boolean;
 }
+type LinuxVersionCardProps =
+  | (LinuxVersionCardCommonProps & {
+      showMoreActions: false;
+    })
+  | (LinuxVersionCardCommonProps & { inUseImageBundleUuids: Set<string>; showMoreActions: true });
 
-export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
-  images,
-  archType,
-  setEditDetails,
-  setImageAsDefault,
-  onDelete,
-  showMoreActions = true,
-  showTitle = true,
-  viewMode
-}) => {
+export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
+  const {
+    images,
+    archType,
+    setEditDetails,
+    setImageAsDefault,
+    onDelete,
+    showMoreActions,
+    showTitle = true,
+    viewMode
+  } = props;
+  const inUseImageBundleUuids = props.showMoreActions
+    ? props.inUseImageBundleUuids
+    : new Set<string>();
   const classes = LinuxVersionCardStyles();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
 
@@ -259,7 +274,8 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                   {elem}
                 </RbacValidator>
               );
-            }
+            },
+            disabled: inUseImageBundleUuids.has(image.uuid)
           },
           {
             text: t('setDefault'),
@@ -311,7 +327,8 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                   {elem}
                 </RbacValidator>
               );
-            }
+            },
+            disabled: inUseImageBundleUuids.has(image.uuid)
           }
         ]}
       >

@@ -149,6 +149,12 @@ export const SUPPORTED_KUBERNETES_PROVIDERS = [
   ...KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.TANZU]
 ];
 
+export const ProviderOperation = {
+  CREATE: 'create',
+  EDIT: 'edit'
+} as const;
+export type ProviderOperation = typeof ProviderOperation[keyof typeof ProviderOperation];
+
 export const InstanceTypeOperation = {
   ADD: 'add',
   EDIT: 'edit'

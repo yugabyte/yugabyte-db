@@ -26,6 +26,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
@@ -47,7 +48,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { AZURegionMutation, AZUAvailabilityZoneMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -80,7 +85,7 @@ export interface AZUProviderCreateFormFieldValues {
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
-  imageBundles: ImageBundle[]
+  imageBundles: ImageBundle[];
 }
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
@@ -140,7 +145,6 @@ export const AZUProviderCreateForm = ({
     defaultValues: DEFAULT_FORM_VALUES,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
-
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
@@ -320,12 +324,13 @@ export const AZUProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.AZU}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message && (
@@ -334,7 +339,12 @@ export const AZUProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='CREATE'/>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={ProviderCode.AZU}
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
+            />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}
               <FormField>

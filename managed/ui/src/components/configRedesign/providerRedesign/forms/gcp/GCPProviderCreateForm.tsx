@@ -28,6 +28,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
@@ -57,7 +58,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -86,7 +91,7 @@ interface GCPProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
-  imageBundles: ImageBundle[]
+  imageBundles: ImageBundle[];
 }
 
 const ProviderCredentialType = {
@@ -164,7 +169,6 @@ export const GCPProviderCreateForm = ({
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
-
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
     return <YBLoading />;
   }
@@ -205,7 +209,7 @@ export const GCPProviderCreateForm = ({
     try {
       sshPrivateKeyContent =
         formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-          formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
     } catch (error) {
@@ -217,39 +221,39 @@ export const GCPProviderCreateForm = ({
     const vpcConfig =
       formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
         ? {
-          useHostVPC: true
-        }
+            useHostVPC: true
+          }
         : formValues.vpcSetupType === VPCSetupType.EXISTING
-          ? {
+        ? {
             useHostVPC: true,
             destVpcId: formValues.destVpcId
           }
-          : formValues.vpcSetupType === VPCSetupType.NEW
-            ? {
-              useHostVPC: false,
-              destVpcId: formValues.destVpcId
-            }
-            : assertUnreachableCase(formValues.vpcSetupType);
+        : formValues.vpcSetupType === VPCSetupType.NEW
+        ? {
+            useHostVPC: false,
+            destVpcId: formValues.destVpcId
+          }
+        : assertUnreachableCase(formValues.vpcSetupType);
 
     const gcpCredentials =
       formValues.providerCredentialType === ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
         ? {
-          useHostCredentials: true
-        }
+            useHostCredentials: true
+          }
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
-          ? {
+        ? {
             gceApplicationCredentials: googleServiceAccount,
             gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
-          : assertUnreachableCase(formValues.providerCredentialType);
+        : assertUnreachableCase(formValues.providerCredentialType);
 
     const allAccessKeysPayload = constructAccessKeysCreatePayload(
       formValues.sshKeypairManagement,
       formValues.sshKeypairName,
       sshPrivateKeyContent
     );
-    
+
     const imageBundles = constructImageBundlePayload(formValues);
 
     const providerPayload: YBProviderMutation = {
@@ -470,12 +474,13 @@ export const GCPProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.GCP}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message && (
@@ -484,7 +489,12 @@ export const GCPProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.gcp} viewMode='CREATE'/>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={ProviderCode.GCP}
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
+            />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}
               <FormField>

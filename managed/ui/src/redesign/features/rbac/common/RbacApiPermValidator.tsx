@@ -9,7 +9,11 @@
 
 import { CSSProperties, FC } from 'react';
 import { endsWith, find } from 'lodash';
-import { ApiEndpointPermMappingType, ApiProps, Operators } from '../ApiAndUserPermMapping';
+import {
+  ApiEndpointPermMappingType,
+  ApiPermissionProps,
+  Operators
+} from '../ApiAndUserPermMapping';
 import { Permission, Resource, ResourceType } from '../permission';
 import { isRbacEnabled } from './RbacUtils';
 import { ControlComp, getErrorBoundary } from './validator/ValidatorUtils';
@@ -36,7 +40,7 @@ class RBACLogger {
 const rbacLog = new RBACLogger();
 
 export interface RbacApiPermValidatorProps {
-  accessRequiredOn?: ApiProps & { onResource?: OnResourceType };
+  accessRequiredOn?: ApiPermissionProps & { onResource?: OnResourceType };
   children: React.ReactNode;
   isControl?: boolean;
   overrideStyle?: CSSProperties;
@@ -76,8 +80,8 @@ const getResourceId = (permissionDef: Permission, onResource: OnResourceType) =>
         onResource === 'CUSTOMER_ID'
           ? localStorage.getItem('customerId')
           : typeof onResource === 'string'
-            ? onResource
-            : onResource?.OTHER;
+          ? onResource
+          : onResource?.OTHER;
       break;
     case Resource.ROLE:
       uuid = typeof onResource === 'string' ? onResource : onResource?.ROLE;
@@ -214,7 +218,6 @@ export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
 export const customPermValidateFunction = (
   validateFn: RbacApiPermValidatorProps['customValidateFunction']
 ) => {
-
   if (!isRbacEnabled()) {
     return true;
   }

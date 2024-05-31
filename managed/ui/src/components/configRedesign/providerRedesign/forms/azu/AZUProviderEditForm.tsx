@@ -26,6 +26,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
@@ -76,7 +77,11 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ConfigureSSHDetailsMsg, IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
@@ -427,6 +432,7 @@ export const AZUProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.AZU}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -434,7 +440,7 @@ export const AZUProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AZU,
                   'regions',
                   isFormDisabled,
@@ -450,7 +456,19 @@ export const AZUProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={ProviderCode.AZU}
+              providerOperation={ProviderOperation.EDIT}
+              providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AZU,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
+            />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}
               <FormField>
@@ -458,12 +476,14 @@ export const AZUProviderEditForm = ({
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -474,12 +494,14 @@ export const AZUProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  ) || isOsPatchingEnabled}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
