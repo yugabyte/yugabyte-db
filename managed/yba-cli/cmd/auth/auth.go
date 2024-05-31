@@ -95,7 +95,6 @@ var AuthCmd = &cobra.Command{
 				formatter.RedColor))
 		}
 		viper.GetViper().Set("host", &host)
-		viper.GetViper().Set("apiToken", &apiToken)
 
 		logrus.Infoln("\n")
 

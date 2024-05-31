@@ -228,10 +228,7 @@ var RegisterCmd = &cobra.Command{
 		}
 		logrus.Debugf("API Login response without errors\n")
 
-		apiToken := r.GetApiToken()
-		viper.GetViper().Set("apiToken", &apiToken)
-
-		authUtil(url, apiToken)
+		authUtil(url, r.GetApiToken())
 	},
 }
 
