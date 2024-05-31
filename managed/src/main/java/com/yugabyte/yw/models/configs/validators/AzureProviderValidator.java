@@ -62,17 +62,17 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     AzureCloudInfo cloudInfo = CloudInfoInterface.get(provider);
     JsonNode cloudInfoJson = processedJson.get("details").get("cloudInfo").get("azu");
 
-    String TENANT_ERROR = String.format("Tenant '%s' not found.", cloudInfo.azuTenantId);
+    String TENANT_ERROR = "Invalid tenant id provided.";
     String CLIENT_ERROR =
         String.format("Application with identifier '%s' was not found", cloudInfo.azuClientId);
     String SECRET_ERROR = "Invalid client secret provided.";
 
     // Try building the API Client to validate
     // Client ID, Client Secret, Subscription ID & Tenant ID
-    AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
-    AzureResourceManager azure = client.getResourceManager(cloudInfo, 0);
     try {
       // try to list RGs to verify creds
+      AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
+      AzureResourceManager azure = client.getResourceManager(cloudInfo, 0);
       for (ResourceGroup rg : azure.resourceGroups().list()) {
         String rgName = rg.name();
       }
@@ -89,16 +89,17 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
             TENANT_ERROR
                 + " Check to make sure you have the correct tenant ID."
                 + " This may happen if there are no active subscriptions for the tenant.");
-      }
-      if (error.contains(CLIENT_ERROR)) {
+      } else if (error.contains(CLIENT_ERROR)) {
         validationErrorsMap.put(
             clientJsonPath,
             CLIENT_ERROR
                 + ".This can happen if the application has not been installed by the administrator"
                 + " of the tenant or consented to by any user in the tenant.");
-      }
-      if (error.contains(SECRET_ERROR)) {
+      } else if (error.contains(SECRET_ERROR)) {
         validationErrorsMap.put(secretJsonPath, SECRET_ERROR);
+      } else {
+        // to make sure error doesn't go unescaped.
+        throw e;
       }
     }
 
@@ -106,6 +107,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     if (!validationErrorsMap.isEmpty()) {
       throwMultipleProviderValidatorError(validationErrorsMap, providerJson);
     }
+
+    AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
+    AzureResourceManager azure = client.getResourceManager(cloudInfo, 3);
 
     String resourceGroup = cloudInfo.getAzuRG();
     String subscriptionID = cloudInfo.getAzuSubscriptionId();
