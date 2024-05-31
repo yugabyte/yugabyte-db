@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -888,4 +889,31 @@ func AbsoluteBundlePath(fp string) string {
 	}
 	rootDir := filepath.Dir(executable)
 	return filepath.Join(rootDir, fp)
+}
+
+func FindRecentBackup(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
+	}
+	// Looks for most recent backup first.
+	sort.Slice(files, func(i, j int) bool {
+		iinfo, e1 := files[i].Info()
+		jinfo, e2 := files[j].Info()
+		if e1 != nil || e2 != nil {
+			log.Fatal("Error determining modification time for backups.")
+		}
+		return iinfo.ModTime().After(jinfo.ModTime())
+	})
+	// Find the old backup.
+	for _, file := range files {
+		match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
+		if match {
+			input := fmt.Sprintf("%s/%s", dir, file.Name())
+			log.Info(fmt.Sprintf("Found backup file %s", input))
+			return input
+		}
+	}
+	log.Fatal("Could not find backup file in " + dir)
+	return ""
 }

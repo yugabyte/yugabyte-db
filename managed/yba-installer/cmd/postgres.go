@@ -87,6 +87,10 @@ func (pg Postgres) TemplateFile() string {
 	return pg.templateFileName
 }
 
+func (pg Postgres) SystemdFile() string {
+	return pg.SystemdFileLocation
+}
+
 // Name returns the name of the service.
 func (pg Postgres) Name() string {
 	return pg.name
@@ -460,7 +464,9 @@ func (pg Postgres) UpgradeMajorVersion() error {
 func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
 	pg.postgresDirectories = newPostgresDirectories()
-	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
+	if err := config.GenerateTemplate(pg); err != nil {
+		return err
+	}
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}

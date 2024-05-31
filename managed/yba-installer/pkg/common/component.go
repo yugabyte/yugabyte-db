@@ -20,4 +20,5 @@ type Component interface {
 	Install() error
 	MigrateFromReplicated() error
 	FinishReplicatedMigrate() error
+	SystemdFile() string
 }
