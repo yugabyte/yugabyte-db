@@ -155,7 +155,9 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
-  @JsonIgnore private String apiToken;
+  @ApiModelProperty(value = "Hash of API Token")
+  @JsonIgnore
+  private String apiToken;
 
   @JsonIgnore private Long apiTokenVersion = 0L;
 
@@ -216,6 +218,10 @@ public class Users extends Model {
 
   public static List<Users> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  public static List<Users> getAll() {
+    return find.query().where().findList();
   }
 
   public Users() {
@@ -357,10 +363,12 @@ public class Users extends Model {
       if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
-      apiToken = UUID.randomUUID().toString();
+      String apiTokenUnhashed = UUID.randomUUID().toString();
+      apiToken = Users.hasher.hash(apiTokenUnhashed);
+
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
-      return apiToken;
+      return apiTokenUnhashed;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
@@ -377,7 +385,7 @@ public class Users extends Model {
     usersLock.acquireLock(uuidToLock);
     try {
       if (StringUtils.isEmpty(apiToken)) {
-        return upsertApiToken();
+        upsertApiToken();
       }
       return apiToken;
     } finally {
@@ -432,7 +440,13 @@ public class Users extends Model {
     }
 
     try {
-      return find.query().where().eq("apiToken", apiToken).findOne();
+      List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+      for (Users user : usersList) {
+        if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+          return user;
+        }
+      }
+      return null;
     } catch (Exception e) {
       return null;
     }

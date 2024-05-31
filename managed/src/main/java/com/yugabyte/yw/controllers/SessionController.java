@@ -362,7 +362,7 @@ public class SessionController extends AbstractPlatformController {
                 .build());
   }
 
-  @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
+  @ApiOperation(value = "Authenticate user using email and password", response = SessionInfo.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CustomerLoginFormData",
@@ -377,11 +377,7 @@ public class SessionController extends AbstractPlatformController {
 
     SessionInfo sessionInfo =
         new SessionInfo(
-            null,
-            user.getOrCreateApiToken(),
-            user.getApiTokenVersion(),
-            cust.getUuid(),
-            user.getUuid());
+            null, user.upsertApiToken(), user.getApiTokenVersion(), cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
@@ -607,7 +603,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @With(TokenAuthenticator.class)
-  @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @ApiOperation(value = "Regenerate and fetch API token", response = SessionInfo.class)
   @AuthzPath
   public Result api_token(UUID customerUUID, Long apiTokenVersion, Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
@@ -729,7 +725,7 @@ public class SessionController extends AbstractPlatformController {
     }
 
     String authToken = user.createAuthToken();
-    String apiToken = generateApiToken ? user.getOrCreateApiToken() : null;
+    String apiToken = generateApiToken ? user.upsertApiToken() : null;
     SessionInfo sessionInfo =
         new SessionInfo(
             authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
