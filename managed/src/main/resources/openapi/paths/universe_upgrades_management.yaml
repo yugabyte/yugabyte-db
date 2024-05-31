@@ -25,14 +25,14 @@
     tags:
       - Universe Upgrades Management
     requestBody:
-      $ref: ../components/requestBodies/UpgradeUniverseGFlagsReq.yaml
+      $ref: "../components/requestBodies/UpgradeUniverseGFlagsReq.yaml"
     responses:
       '202':
         description: successful operation
         content:
           application/json:
             schema:
-              $ref: ../components/schemas/YBPTask.yaml
+              $ref: "../components/schemas/YBPTask.yaml"
       '400':
         description: Invalid input
       '500':

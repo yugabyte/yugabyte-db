@@ -172,4 +172,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enable IMDSv2 support for AWS providers",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
+      new ConfKeyInfo<>(
+          "yb.backupGC.number_of_retries",
+          ScopeType.CUSTOMER,
+          "Backup Garbage Collector Number of Retries",
+          "Number of retries during backup deletion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
