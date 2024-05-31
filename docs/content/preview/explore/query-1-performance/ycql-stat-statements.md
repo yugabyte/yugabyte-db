@@ -16,7 +16,7 @@ type: docs
 {{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" active="true" >}}
 {{</tabs>}}
 
-Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your CQL can be very helpful in minimizing resource utilization. The `ycql_stat_statements` module helps you track planning and execution statistics for all the YCQL statements executed by a server.
+Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your CQL, you can minimize resource use. The `ycql_stat_statements` module helps you track planning and execution statistics for all the YCQL statements executed by a server.
 
 This view provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`, accessible via YSQL. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view using the query ID.
 
