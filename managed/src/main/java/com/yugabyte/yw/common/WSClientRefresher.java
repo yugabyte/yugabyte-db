@@ -87,9 +87,11 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     Config customWsConfig = getWsConfig(ybWsConfigPath);
     ConfigValue ybWsOverrides = customWsConfig.getValue("play.ws");
 
-    log.debug(
-        "Creating ws client with config override: {}",
-        ybWsOverrides.render(ConfigRenderOptions.concise()));
+    if (ybWsOverrides != null) {
+      log.debug(
+          "Creating ws client with config override: {}",
+          ybWsOverrides.render(ConfigRenderOptions.concise()));
+    }
 
     return customWsClientFactory.forCustomConfig(ybWsOverrides);
   }

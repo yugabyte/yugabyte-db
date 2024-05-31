@@ -44,6 +44,7 @@ const OIDC_FIELDS = [
   'oidcScope',
   'oidcEmailAttribute',
   'showJWTInfoOnLogin',
+  'oidcRefreshTokenEndpoint',
   'oidc_default_role'
 ];
 
@@ -503,6 +504,32 @@ export const OIDCAuth = (props) => {
                         <Col lg={12} className="ua-field">
                           <Field
                             name="oidcEmailAttribute"
+                            component={YBFormInput}
+                            disabled={isDisabled}
+                            className="ua-form-field"
+                          />
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+
+                  <Row key="oidc_refresh_token_url">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c">
+                          <div>
+                            Refresh Token URL&nbsp;
+                            <YBInfoTip
+                              title="Refresh Token URL"
+                              content="Provide the endpoint that will be used for re-fetching the access token"
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <Field
+                            name="oidcRefreshTokenEndpoint"
                             component={YBFormInput}
                             disabled={isDisabled}
                             className="ua-form-field"

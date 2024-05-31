@@ -73,6 +73,13 @@ public class ApiHelper {
     return handleJSONPromise(jsonPromise);
   }
 
+  public JsonNode postRequestEncodedData(
+      String url, String encodedData, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers);
+    CompletionStage<String> jsonPromise = request.post(encodedData).thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
   public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
     CompletionStage<String> jsonPromise = request.put(data).thenApply(WSResponse::getBody);
