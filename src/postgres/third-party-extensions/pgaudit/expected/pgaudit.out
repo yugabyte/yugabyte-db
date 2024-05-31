@@ -69,7 +69,7 @@ NOTICE:  AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.test,"CREATE TABLE pub
 );",<not logged>
 SELECT *
   FROM test;
- id
+ id 
 ----
 (0 rows)
 
@@ -170,7 +170,7 @@ SELECT count(*)
 	  FROM pg_class
 	  LIMIT 1
 ) SUBQUERY;
- count
+ count 
 -------
      1
 (1 row)
@@ -180,7 +180,7 @@ SELECT *
 WARNING:  AUDIT: SESSION,1,1,READ,SELECT,,,"SELECT *
   FROM test3, test2;",<not logged>
 WARNING:  AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.test2,<previously logged>,<previously logged>
- id | id
+ id | id 
 ----+----
 (0 rows)
 
@@ -194,7 +194,7 @@ WARNING:  AUDIT: SESSION,2,1,READ,SELECT,,,"SELECT *
   FROM vw_test3, test2;",<not logged>
 WARNING:  AUDIT: OBJECT,2,1,READ,SELECT,TABLE,public.test2,<previously logged>,<previously logged>
 WARNING:  AUDIT: OBJECT,2,1,READ,SELECT,VIEW,public.vw_test3,<previously logged>,<previously logged>
- id | id
+ id | id 
 ----+----
 (0 rows)
 
@@ -303,7 +303,7 @@ WARNING:  AUDIT: SESSION,8,1,READ,SELECT,,,"SELECT *
   FROM test2
  ORDER BY ID;",<not logged>
 WARNING:  AUDIT: OBJECT,8,1,READ,SELECT,TABLE,public.test2,<previously logged>,<previously logged>
- id
+ id  
 -----
   45
  127
@@ -335,7 +335,7 @@ GRANT insert (name)
 -- Not object logged
 SELECT id
   FROM public.test4;
- id
+ id 
 ----
 (0 rows)
 
@@ -346,7 +346,7 @@ SELECT name
   FROM public.test4;
 WARNING:  AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.test4,"SELECT name
   FROM public.test4;",<not logged>
- name
+ name 
 ------
 (0 rows)
 
@@ -414,7 +414,7 @@ SELECT *
   FROM account;
 NOTICE:  AUDIT: SESSION,2,1,READ,SELECT,,,"SELECT *
   FROM account;",<not logged>
- id | name | password | description
+ id | name | password | description 
 ----+------+----------+-------------
 (0 rows)
 
@@ -441,7 +441,7 @@ GRANT SELECT (password),
 SELECT id,
 	   name
   FROM account;
- id | name
+ id | name  
 ----+-------
   1 | user1
 (1 row)
@@ -453,7 +453,7 @@ SELECT password
   FROM account;
 NOTICE:  AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.account,"SELECT password
   FROM account;",<not logged>
- password
+ password 
 ----------
  HASH1
 (1 row)
@@ -519,7 +519,7 @@ NOTICE:  AUDIT: SESSION,1,1,READ,SELECT,TABLE,public.account_role_map,"SELECT ac
   FROM account
 	   INNER JOIN account_role_map
 			on account.id = account_role_map.account_id;",<not logged>
- password | role_id
+ password | role_id 
 ----------+---------
 (0 rows)
 
@@ -533,7 +533,7 @@ NOTICE:  AUDIT: OBJECT,2,1,READ,SELECT,TABLE,public.account,"SELECT password
   FROM account;",<not logged>
 NOTICE:  AUDIT: SESSION,2,1,READ,SELECT,TABLE,public.account,"SELECT password
   FROM account;",<not logged>
- password
+ password 
 ----------
  HASH2
 (1 row)
@@ -635,7 +635,7 @@ SELECT *
   FROM account
  WHERE id = $1;",1
 NOTICE:  AUDIT: SESSION,12,2,MISC,EXECUTE,,,EXECUTE pgclassstmt (1);,<none>
- id | name  | password | description
+ id | name  | password | description 
 ----+-------+----------+-------------
   1 | user1 | HASH2    | yada, yada
 (1 row)
@@ -672,7 +672,7 @@ SELECT count(*)
  ) subquery;",<none>
 FETCH NEXT FROM ctest;
 NOTICE:  AUDIT: SESSION,16,1,MISC,FETCH,,,FETCH NEXT FROM ctest;,<none>
- count
+ count 
 -------
      1
 (1 row)
@@ -692,7 +692,7 @@ SELECT count(*)
 	  FROM pg_class
 	 LIMIT 1
  ) subquery;
- count
+ count 
 -------
      1
 (1 row)
@@ -758,7 +758,7 @@ SELECT *
   FROM test;
 NOTICE:  AUDIT: SESSION,26,1,READ,SELECT,TABLE,public.test,"SELECT *
   FROM test;",<none>
- id | name | description
+ id | name | description 
 ----+------+-------------
 (0 rows)
 
@@ -774,7 +774,7 @@ SELECT 1,
 	   substring('Thomas' from 2 for 3);
 NOTICE:  AUDIT: SESSION,28,1,READ,SELECT,,,"SELECT 1,
 	   substring('Thomas' from 2 for 3);",<none>
- ?column? | substring
+ ?column? | substring 
 ----------+-----------
         1 | hom
 (1 row)
@@ -797,7 +797,7 @@ NOTICE:  AUDIT: SESSION,29,2,READ,SELECT,,,SELECT 1,<none>
 explain select 1;
 NOTICE:  AUDIT: SESSION,30,1,READ,SELECT,,,explain select 1;,<none>
 NOTICE:  AUDIT: SESSION,30,2,MISC,EXPLAIN,,,explain select 1;,<none>
-                QUERY PLAN
+                QUERY PLAN                
 ------------------------------------------
  Result  (cost=0.00..0.01 rows=1 width=4)
 (1 row)
@@ -950,7 +950,7 @@ END $$;",<none>
 SELECT int_add(1, 1);
 NOTICE:  AUDIT: SESSION,45,1,READ,SELECT,,,"SELECT int_add(1, 1);",<none>
 NOTICE:  AUDIT: SESSION,45,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT int_add(1, 1);",<none>
- int_add
+ int_add 
 ---------
        2
 (1 row)
@@ -999,25 +999,25 @@ BEGIN
 END $$;
 BEGIN;
     SELECT get_test_id('_ret');
- get_test_id
+ get_test_id 
 -------------
  _ret
 (1 row)
 
     SELECT get_test_id('_ret2');
- get_test_id
+ get_test_id 
 -------------
  _ret2
 (1 row)
 
     FETCH ALL FROM _ret;
- ?column?
+ ?column? 
 ----------
       200
 (1 row)
 
     FETCH ALL FROM _ret2;
- ?column?
+ ?column? 
 ----------
       200
 (1 row)
@@ -1063,9 +1063,9 @@ SELECT test();
 NOTICE:  AUDIT: SESSION,59,1,READ,SELECT,,,SELECT test();,<none>
 NOTICE:  AUDIT: SESSION,59,2,FUNCTION,EXECUTE,FUNCTION,public.test,SELECT test();,<none>
 NOTICE:  AUDIT: SESSION,59,3,READ,SELECT,TABLE,public.hoge,select * from hoge,<none>
- test
+ test 
 ------
-
+     
 (1 row)
 
 --
@@ -1163,14 +1163,14 @@ INSERT INTO h VALUES(1,1);
 NOTICE:  AUDIT: SESSION,69,1,WRITE,INSERT,TABLE,public.h,"INSERT INTO h VALUES(1,1);",<none>
 SELECT * FROM h;
 NOTICE:  AUDIT: SESSION,70,1,READ,SELECT,TABLE,public.h,SELECT * FROM h;,<none>
- x | y
+ x | y 
 ---+---
  1 | 1
 (1 row)
 
 SELECT * FROM h_0;
 NOTICE:  AUDIT: SESSION,71,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0;,<none>
- x | y
+ x | y 
 ---+---
  1 | 1
 (1 row)
