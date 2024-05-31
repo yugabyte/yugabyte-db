@@ -40,6 +40,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
@@ -153,6 +154,8 @@ void YBTest::SetUp() {
       LOG(INFO) << "Environment variable " << env_var_name << ": " << value;
     }
   }
+
+  global_curl_ = std::make_unique<CurlGlobalInitializer>();
 }
 
 string YBTest::GetTestPath(const string& relative_path) {
