@@ -35,12 +35,9 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/gutil/macros.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace tserver {
@@ -98,8 +95,7 @@ class Heartbeater {
 
 class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
  public:
-  PeriodicalHeartbeatDataProvider(TabletServer* server, const MonoDelta& period) :
-    HeartbeatDataProvider(server), period_(period) {}
+  explicit PeriodicalHeartbeatDataProvider(TabletServer* server) : HeartbeatDataProvider(server) {}
 
   void AddData(
       const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) override;
@@ -107,11 +103,11 @@ class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
   CoarseTimePoint prev_run_time() const { return prev_run_time_; }
 
  private:
-  virtual void DoAddData(
-      const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) = 0;
+  virtual void DoAddData(bool needs_full_tablet_report, master::TSHeartbeatRequestPB* req) = 0;
+  virtual MonoDelta Period() const = 0;
 
-  MonoDelta period_;
   CoarseTimePoint prev_run_time_;
+  bool needs_full_tablet_report_ = false;
 };
 
 } // namespace tserver
