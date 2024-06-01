@@ -2,6 +2,7 @@
 -- ALTER TABLE ADD COLUMN DEFAULT test
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 SET search_path = fast_default;
 CREATE SCHEMA fast_default;
 CREATE TABLE m(id OID);

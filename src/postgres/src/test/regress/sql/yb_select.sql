@@ -2,6 +2,7 @@
 -- SELECT
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 CREATE TABLE nr (i int, j int, PRIMARY KEY (j ASC));
 CREATE INDEX ON nr (i ASC);
 INSERT INTO nr VALUES (1, 2), (3, 4);
