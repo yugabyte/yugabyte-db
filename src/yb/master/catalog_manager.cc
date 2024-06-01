@@ -10251,6 +10251,8 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
     bool transaction_status_tablet;
   };
 
+  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::Start");
+
   std::vector<TabletInfoPtr> marked_as_hidden;
 
   std::vector<TabletData> tablets_data;
@@ -10259,20 +10261,16 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   tablet_infos.reserve(tablets_data.size());
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
-  {
-    SharedLock read_lock(mutex_);
+  for (const auto& tablet : tablets) {
+    auto tablet_data = TabletData{
+        .tablet = tablet,
+        .lock = tablet->LockForWrite(),
+        .transaction_status_tablet =
+            (tablet->table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE),
+    };
 
-    for (const auto& tablet : tablets) {
-      auto tablet_data = TabletData{
-          .tablet = tablet,
-          .lock = tablet->LockForWrite(),
-          .transaction_status_tablet =
-              (tablet->table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE),
-      };
-
-      tablets_data.emplace_back(std::move(tablet_data));
-      tablet_infos.emplace_back(tablet.get());
-    }
+    tablets_data.emplace_back(std::move(tablet_data));
+    tablet_infos.emplace_back(tablet.get());
   }
 
   // Use the same hybrid time for all hidden tablets.
@@ -10305,6 +10303,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   // Update all the tablet states in raft in bulk.
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
 
+  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
   RecordHiddenTablets(marked_as_hidden, delete_retainer);
 
   for (auto& tablet_data : tablets_data) {
