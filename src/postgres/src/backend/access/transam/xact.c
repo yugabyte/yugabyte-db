@@ -1947,7 +1947,8 @@ YBInitializeTransaction(void)
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
