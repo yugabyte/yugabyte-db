@@ -20,9 +20,9 @@
       "appVersion": "2024.1.0.0-b129",
       "isStable": true,
       "isSTS": true,
-      "initialRelease": "2024-05-31",
-      "endOfMaintenance": "2025-08-31",
-      "endOfLife": "2026-03-03",
+      "initialRelease": "2024-06-03",
+      "endOfMaintenance": "2025-09-03",
+      "endOfLife": "2026-03-06",
       "PreviewBehindStable": true
     },
     {
