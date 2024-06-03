@@ -129,7 +129,7 @@ main {
 
         &:nth-child(2):last-child {
           padding: 11px 15px;
-        }		
+        }
 
         &:not(:last-child) {
           > span > span {
@@ -149,12 +149,11 @@ main {
       }
 
       .highlight {
-        margin-bottom: 20px !important;	
+        margin-bottom: 20px !important;
         > pre {
           margin-top: 1rem;
           margin-bottom: 1rem;
         }
-		
       }
 
       button.copy {
@@ -263,7 +262,7 @@ main {
         border-radius: 5px;
       }
 
-      .click-to-copy{
+      .click-to-copy {
         display: none;
       }
 
@@ -296,7 +295,6 @@ main {
     }
   }
 }
-
 
 body.is-safari {
   main {

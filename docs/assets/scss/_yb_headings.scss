@@ -158,14 +158,15 @@
 }
 
 .td-heading-self-link:before {
-    content: "";
-    background: url(/icons/heading-link.svg) 50% no-repeat;
-    height: 15px;
-    width: 15px;
-    display: inline-block;
+  content: "";
+  background: url(/icons/heading-link.svg) 50% no-repeat;
+  height: 15px;
+  width: 15px;
+  display: inline-block;
 }
+
 @media (hover: none) and (pointer: coarse), (max-width: 576px) {
-    .td-heading-self-link {
-        visibility: hidden;
-    }
+  .td-heading-self-link {
+    visibility: hidden;
+  }
 }
