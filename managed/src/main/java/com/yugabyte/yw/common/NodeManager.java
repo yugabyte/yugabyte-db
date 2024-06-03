@@ -2018,11 +2018,13 @@ public class NodeManager extends DevopsBase {
                   ServerType.TSERVER,
                   cluster,
                   universe.getUniverseDetails().clusters);
+
+          // Add audit log config
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              userIntent.auditLogConfig,
+              taskParam.auditLogConfig,
               GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);

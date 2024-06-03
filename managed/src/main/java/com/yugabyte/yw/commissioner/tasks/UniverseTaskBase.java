@@ -1235,7 +1235,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
-    params.auditLogConfig = userIntent.auditLogConfig;
+
+    // Add audit log config from the primary cluster
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    params.auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
