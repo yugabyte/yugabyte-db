@@ -14739,7 +14739,7 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	 * copy the results into pg_init_privs.  This is how we preserve the
 	 * contents of that catalog across binary upgrades.
 	 */
-	if (dopt->binary_upgrade && privtype == 'e' &&
+	if ((dopt->binary_upgrade || dopt->include_yb_metadata) && privtype == 'e' &&
 		initprivs && *initprivs != '\0')
 	{
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
@@ -19039,12 +19039,9 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 	ExtensionInfo *extinfo;
 	PQExpBuffer	   update_query = createPQExpBuffer();
 	char		 **extconfigarray = NULL;
-#ifdef YB_TODO
-	/* Need rework to match Pg15 */
 	int			   nconfigitems;
 	Oid			   tbloid;
 	TableInfo	  *tblinfo;
-#endif
 
 	Assert(yb_dumpable_extensions_with_config_relations &&
 		   yb_num_dumpable_extensions_with_config_relations > 0);
@@ -19057,26 +19054,22 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		appendPQExpBuffer(update_query,
 						  "UPDATE pg_extension SET extconfig = ARRAY[");
 		/* Shouldn't happen. */
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
-			fatal("error parsing OIDs of configuration relations "
-				  "of extension with OID %u\n", extinfo->dobj.catId.oid);
+			pg_fatal("error parsing OIDs of configuration relations "
+					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
 
-		/* Need rework to match Pg15 */
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
 			tblinfo = findTableByOid(tbloid);
 			if (!tblinfo)
-				fatal("configuration relation with OID %u of extension with OID %u not found\n",
-					  tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
+				pg_fatal("configuration relation with OID %u of extension with OID %u not found\n",
+						 tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
 			if (j)
 				appendPQExpBuffer(update_query, ",");
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
 			appendPQExpBuffer(update_query, "::regclass::oid");
 		}
-#endif
 		appendPQExpBuffer(update_query,
 						  "]::oid[] WHERE extname = ");
 		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);

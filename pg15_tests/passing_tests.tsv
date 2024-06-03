@@ -100,6 +100,7 @@ JAVA	org.yb.pgsql.TestYbBackup#testBackupRestoreRoles
 JAVA	org.yb.pgsql.TestYbBackup#testBackupRestoreTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testBackupRolesWithoutRestoreRoles
 JAVA	org.yb.pgsql.TestYbBackup#testBackupRolesWithoutUseRoles
+JAVA	org.yb.pgsql.TestYbBackup#testExtensionBackupUsingTestExtension
 JAVA	org.yb.pgsql.TestYbBackup#testFailureOnExistingTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioning
 JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningNoRegionsWithTablespaces
@@ -109,6 +110,9 @@ JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningRestoringIntoExisting
 JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningRestoringIntoExistingWithTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testGeoPartitioningWithTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testIgnoreExistingTablespaces
+JAVA	org.yb.pgsql.TestYbBackup#testOrafce
+JAVA	org.yb.pgsql.TestYbBackup#testPgHintPlan
+JAVA	org.yb.pgsql.TestYbBackup#testPostgresfdw
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanChangeUserProfile[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanChangeUserProfile[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanLockAndUnlock[0]
