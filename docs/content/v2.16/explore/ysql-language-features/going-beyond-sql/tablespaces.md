@@ -52,13 +52,13 @@ The differences between single-zone, multi-zone and multi-region configuration b
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Yugabyted
     </a>
   </li>
   <li>
-    <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
+    <a href="#platform" class="nav-link" id="platform-tab" data-bs-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
       <i class="fa-solid fa-cloud" aria-hidden="true"></i>
       YugabyteDB Anywhere
     </a>
