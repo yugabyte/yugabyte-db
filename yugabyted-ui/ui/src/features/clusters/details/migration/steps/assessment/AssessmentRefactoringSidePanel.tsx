@@ -131,6 +131,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
           renderChips={() => (
             <YBBadge icon={false} text={"0 / 1 Tables"} variant={BadgeVariant.Light} />
           )}
+          graySummaryBg
           defaultExpanded
         >
           <Box display="flex" flexDirection="column">
