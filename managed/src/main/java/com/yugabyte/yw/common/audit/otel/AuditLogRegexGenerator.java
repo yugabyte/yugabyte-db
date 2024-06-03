@@ -18,8 +18,8 @@ public class AuditLogRegexGenerator {
       Arrays.stream(LogPrefixTokens.values())
           .collect(Collectors.toMap(LogPrefixTokens::getPlaceholder, Function.identity()));
 
-  public LogRegexResult generateAuditLogRegex(String logPrefix) {
-    String result = "^(";
+  public LogRegexResult generateAuditLogRegex(String logPrefix, boolean onlyPrefix) {
+    String result = "";
     List<LogPrefixTokens> namedTokens = new ArrayList<>();
     boolean lastPercent = false;
     List<LogPrefixTokens> collectedTokens = new ArrayList<>();
@@ -53,12 +53,15 @@ public class AuditLogRegexGenerator {
     if (!collectedTokens.isEmpty()) {
       result += outputTokens(collectedTokens, namedTokens, null);
     }
+    if (onlyPrefix) {
+      return new LogRegexResult(result, namedTokens);
+    }
     // See https://github.com/pgaudit/pgaudit/#format for placeholders description
     result +=
         "(?P<log_level>\\w+):  AUDIT:"
             + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
             + "(?P<class>\\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),"
-            + "(?P<statement>.*))|(.*)$";
+            + "(?P<statement>(.|\\n|\\r|\\s)*)";
     return new LogRegexResult(result, namedTokens);
   }
 
