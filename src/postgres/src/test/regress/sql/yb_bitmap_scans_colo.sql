@@ -1,4 +1,12 @@
 --
+-- YB Bitmap Scans on a Colocated DB (bitmap index scans + YB bitmap table scans)
+--
+CREATE DATABASE colo WITH colocation = true;
+\c colo;
+SET yb_explain_hide_non_deterministic_fields = true;
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+--
 -- YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
 SET yb_explain_hide_non_deterministic_fields = true;
@@ -136,7 +144,7 @@ SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
 --
 CREATE TABLE multi (a INT, b INT, c INT, h INT, PRIMARY KEY (a ASC, b ASC));
 CREATE INDEX ON multi (c ASC) INCLUDE (a);
-CREATE INDEX ON multi (h HASH) INCLUDE (a);
+CREATE INDEX ON multi (h ASC) INCLUDE (a);
 CREATE INDEX ON multi (b ASC, c ASC);
 INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1, 1000) i;
 
