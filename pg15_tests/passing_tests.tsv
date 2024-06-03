@@ -72,6 +72,7 @@ JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
 JAVA	org.yb.pgsql.TestPgRegressTable
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgHintPlan
+JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgaudit
 JAVA	org.yb.pgsql.TestPgRegressTransactionSavepoints#testPgRegressTransaction
 JAVA	org.yb.pgsql.TestPgRegressTransactionSavepoints#testPgRegressTransactionWithReadCommitted
 JAVA	org.yb.pgsql.TestPgRegressTrigger

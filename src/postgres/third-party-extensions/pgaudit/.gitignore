@@ -6,4 +6,3 @@ regression.out
 *.bc
 *.o
 *.so
-.vagrant

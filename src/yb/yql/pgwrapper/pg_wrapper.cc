@@ -441,12 +441,8 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
-#ifdef YB_TODO
-  // Enabling this block throws FATAL:  could not access file "<extension name>": No such file or
-  // directory error.
-  metricsLibs.push_back("pgaudit");
-#endif
   metricsLibs.push_back("yb_pg_metrics");
+  metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
 
   vector<string> lines;

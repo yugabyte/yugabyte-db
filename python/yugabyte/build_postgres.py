@@ -783,6 +783,7 @@ class PostgresBuilder(YbBuildToolBase):
                                    in ('third-party-extensions/hypopg',
                                        'third-party-extensions/orafce',
                                        'third-party-extensions/pg_hint_plan',
+                                       'third-party-extensions/pgaudit',
                                        'third-party-extensions/pgvector',
                                        'third-party-extensions/postgresql-hll',
                                        'yb-extensions')]

@@ -5,7 +5,7 @@
  * object level logging, and fully-qualified object names for all DML and DDL
  * statements where possible (See README.md for details).
  *
- * Copyright (c) 2014-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *------------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -13,11 +13,13 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/relation.h"
 #include "catalog/catalog.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_class.h"
 #include "catalog/namespace.h"
 #include "commands/dbcommands.h"
+#include "commands/extension.h"
 #include "catalog/pg_proc.h"
 #include "commands/event_trigger.h"
 #include "executor/executor.h"
@@ -65,6 +67,7 @@ PG_FUNCTION_INFO_V1(pgaudit_sql_drop);
 #define LOG_READ        (1 << 3)    /* SELECTs */
 #define LOG_ROLE        (1 << 4)    /* GRANT/REVOKE, CREATE/ALTER/DROP ROLE */
 #define LOG_WRITE       (1 << 5)    /* INSERT, UPDATE, DELETE, TRUNCATE */
+#define LOG_MISC_SET    (1 << 6)    /* SET ... */
 
 #define LOG_NONE        0               /* nothing */
 #define LOG_ALL         (0xFFFFFFFF)    /* All */
@@ -82,6 +85,7 @@ static int auditLogBitmap = LOG_NONE;
 #define CLASS_DDL       "DDL"
 #define CLASS_FUNCTION  "FUNCTION"
 #define CLASS_MISC      "MISC"
+#define CLASS_MISC_SET  "MISC_SET"
 #define CLASS_READ      "READ"
 #define CLASS_ROLE      "ROLE"
 #define CLASS_WRITE     "WRITE"
@@ -135,6 +139,21 @@ bool auditLogParameter = false;
 bool auditLogRelation = false;
 
 /*
+ * GUC variable for pgaudit.log_rows
+ *
+ * Administrators can choose if the rows retrieved or affected by a statement
+ * are included in the audit log.
+ */
+bool auditLogRows = false;
+
+/*
+ * GUC variable for pgaudit.log_statement
+ *
+ * Administrators can choose to not have the full statement text logged.
+ */
+bool auditLogStatement = true;
+
+/*
  * GUC variable for pgaudit.log_statement_once
  *
  * Administrators can choose to have the statement run logged only once instead
@@ -164,24 +183,6 @@ char *auditRole = NULL;
 #define AUDIT_TYPE_SESSION  "SESSION"
 
 /*
- * Command, used for SELECT/DML and function calls.
- *
- * We hook into the executor, but we do not have access to the parsetree there.
- * Therefore we can't simply call CreateCommandTag() to get the command and have
- * to build it ourselves based on what information we do have.
- *
- * These should be updated if new commands are added to what the exectuor
- * currently handles.  Note that most of the interesting commands do not go
- * through the executor but rather ProcessUtility, where we have the parsetree.
- */
-#define COMMAND_SELECT      "SELECT"
-#define COMMAND_INSERT      "INSERT"
-#define COMMAND_UPDATE      "UPDATE"
-#define COMMAND_DELETE      "DELETE"
-#define COMMAND_EXECUTE     "EXECUTE"
-#define COMMAND_UNKNOWN     "UNKNOWN"
-
-/*
  * Object type, used for SELECT/DML statements and function calls.
  *
  * For relation objects, this is essentially relkind (though we do not have
@@ -206,17 +207,6 @@ char *auditRole = NULL;
 #define OBJECT_TYPE_UNKNOWN         "UNKNOWN"
 
 /*
- * String constants for testing role commands.  Rename and drop role statements
- * are assigned the nodeTag T_RenameStmt and T_DropStmt respectively.  This is
- * not very useful for classification, so we resort to comparing strings
- * against the result of CreateCommandTag(parsetree).
- */
-#define COMMAND_ALTER_ROLE          "ALTER ROLE"
-#define COMMAND_DROP_ROLE           "DROP ROLE"
-#define COMMAND_GRANT               "GRANT"
-#define COMMAND_REVOKE              "REVOKE"
-
-/*
  * String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
  */
@@ -236,7 +226,7 @@ typedef struct
     LogStmtLevel logStmtLevel;  /* From GetCommandLogLevel when possible,
                                    generated when not. */
     NodeTag commandTag;         /* same here */
-    const char *command;        /* same here */
+    int command;                /* same here */
     const char *objectType;     /* From event trigger when possible,
                                    generated when not. */
     char *objectName;           /* Fully qualified object identification */
@@ -247,6 +237,10 @@ typedef struct
     bool logged;                /* Track if we have logged this event, used
                                    post-ProcessUtility to make sure we log */
     bool statementLogged;       /* Track if we have logged the statement */
+    int64 rows;                 /* Track rows processed by the statement */
+    MemoryContext queryContext; /* Context for query tracking rows */
+    Oid auditOid;               /* Role running query tracking rows  */
+    List *rangeTabls;           /* Tables in query tracking rows */
 } AuditEvent;
 
 /*
@@ -426,6 +420,26 @@ stack_valid(int64 stackId)
 }
 
 /*
+ * Find an item on the stack by the specified query memory context.
+ */
+static AuditEventStackItem *
+stack_find_context(MemoryContext findContext)
+{
+    AuditEventStackItem *nextItem = auditEventStack;
+
+    /* Look through the stack for the stack entry by query memory context */
+    while (nextItem != NULL)
+    {
+        if (nextItem->auditEvent.queryContext == findContext)
+            break;
+
+        nextItem = nextItem->next;
+    }
+
+    return nextItem;
+}
+
+/*
  * Appends a properly quoted CSV field to StringInfo.
  */
 static void
@@ -483,6 +497,19 @@ log_audit_event(AuditEventStackItem *stackItem)
     MemoryContext contextOld;
     StringInfoData auditStr;
 
+    /*
+     * Skip logging script statements if an extension is currently being created
+     * or altered. PostgreSQL reports the statement text for each statement in
+     * the script as the entire script text, which can blow up the logs. The
+     * create/alter statement will still be logged.
+     *
+     * Since a superuser is responsible for determining which extensions are
+     * available, and in most cases installing them, it should not be necessary
+     * to log each statement in the script.
+     */
+    if (creating_extension)
+        return;
+
     /* If this event has already been logged don't log it again */
     if (stackItem->auditEvent.logged)
         return;
@@ -529,6 +556,8 @@ log_audit_event(AuditEventStackItem *stackItem)
                     }
                     switch_fallthrough();
 
+                /* Fall through */
+
                 /* Classify role statements */
                 case T_GrantStmt:
                 case T_GrantRoleStmt:
@@ -546,10 +575,8 @@ log_audit_event(AuditEventStackItem *stackItem)
                  */
                 case T_RenameStmt:
                 case T_DropStmt:
-                    if (pg_strcasecmp(stackItem->auditEvent.command,
-                                      COMMAND_ALTER_ROLE) == 0 ||
-                        pg_strcasecmp(stackItem->auditEvent.command,
-                                      COMMAND_DROP_ROLE) == 0)
+                    if (stackItem->auditEvent.command == CMDTAG_ALTER_ROLE ||
+                        stackItem->auditEvent.command == CMDTAG_DROP_ROLE)
                     {
                         className = CLASS_ROLE;
                         class = LOG_ROLE;
@@ -579,6 +606,15 @@ log_audit_event(AuditEventStackItem *stackItem)
                 case T_DoStmt:
                     className = CLASS_FUNCTION;
                     class = LOG_FUNCTION;
+                    break;
+
+                /*
+                 * SET statements reported as MISC but filtered by MISC_SET
+                 * flags to maintain existing functionality.
+                 */
+                case T_VariableSetStmt:
+                    className = CLASS_MISC;
+                    class = LOG_MISC_SET;
                     break;
 
                 default:
@@ -628,7 +664,7 @@ log_audit_event(AuditEventStackItem *stackItem)
      * this string is everything else.
      */
     initStringInfo(&auditStr);
-    append_valid_csv(&auditStr, stackItem->auditEvent.command);
+    append_valid_csv(&auditStr, GetCommandTagName(stackItem->auditEvent.command));
 
     appendStringInfoCharMacro(&auditStr, ',');
     append_valid_csv(&auditStr, stackItem->auditEvent.objectType);
@@ -641,7 +677,7 @@ log_audit_event(AuditEventStackItem *stackItem)
      * parameters if they have not already been logged for this substatement.
      */
     appendStringInfoCharMacro(&auditStr, ',');
-    if (!stackItem->auditEvent.statementLogged || !auditLogStatementOnce)
+    if (auditLogStatement && !(stackItem->auditEvent.statementLogged && auditLogStatementOnce))
     {
         append_valid_csv(&auditStr, stackItem->auditEvent.commandText);
 
@@ -695,10 +731,18 @@ log_audit_event(AuditEventStackItem *stackItem)
 
         stackItem->auditEvent.statementLogged = true;
     }
+    /* we were asked to not log it */
+    else if (!auditLogStatement)
+        appendStringInfoString(&auditStr,
+                               "<not logged>,<not logged>");
     else
-        /* we were asked to not log it */
         appendStringInfoString(&auditStr,
                                "<previously logged>,<previously logged>");
+
+    /* Log rows affected */
+    if (auditLogRows)
+        appendStringInfo(&auditStr, "," INT64_FORMAT,
+                         stackItem->auditEvent.rows);
 
     /*
      * Log the audit entry.  Note: use of INT64_FORMAT here is bad for
@@ -990,37 +1034,40 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * We don't have access to the parsetree here, so we have to generate
          * the node type, object type, and command tag by decoding
-         * rte->requiredPerms and rte->relkind.
+         * rte->requiredPerms and rte->relkind. For updates we also check
+         * rellockmode so that only true UPDATE commands (not
+         * SELECT FOR UPDATE, etc.) are logged as UPDATE.
          */
         if (rte->requiredPerms & ACL_INSERT)
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_MOD;
             auditEventStack->auditEvent.commandTag = T_InsertStmt;
-            auditEventStack->auditEvent.command = COMMAND_INSERT;
+            auditEventStack->auditEvent.command = CMDTAG_INSERT;
         }
-        else if (rte->requiredPerms & ACL_UPDATE)
+        else if (rte->requiredPerms & ACL_UPDATE &&
+                 rte->rellockmode >= RowExclusiveLock)
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_MOD;
             auditEventStack->auditEvent.commandTag = T_UpdateStmt;
-            auditEventStack->auditEvent.command = COMMAND_UPDATE;
+            auditEventStack->auditEvent.command = CMDTAG_UPDATE;
         }
         else if (rte->requiredPerms & ACL_DELETE)
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_MOD;
             auditEventStack->auditEvent.commandTag = T_DeleteStmt;
-            auditEventStack->auditEvent.command = COMMAND_DELETE;
+            auditEventStack->auditEvent.command = CMDTAG_DELETE;
         }
         else if (rte->requiredPerms & ACL_SELECT)
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_ALL;
             auditEventStack->auditEvent.commandTag = T_SelectStmt;
-            auditEventStack->auditEvent.command = COMMAND_SELECT;
+            auditEventStack->auditEvent.command = CMDTAG_SELECT;
         }
         else
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_ALL;
             auditEventStack->auditEvent.commandTag = T_Invalid;
-            auditEventStack->auditEvent.command = COMMAND_UNKNOWN;
+            auditEventStack->auditEvent.command = CMDTAG_UNKNOWN;
         }
 
         /* Use the relation type to assign object type */
@@ -1194,7 +1241,7 @@ log_function_execute(Oid objectId)
     /* Log the function call */
     stackItem->auditEvent.logStmtLevel = LOGSTMT_ALL;
     stackItem->auditEvent.commandTag = T_DoStmt;
-    stackItem->auditEvent.command = COMMAND_EXECUTE;
+    stackItem->auditEvent.command = CMDTAG_EXECUTE;
     stackItem->auditEvent.objectType = OBJECT_TYPE_FUNCTION;
     stackItem->auditEvent.commandText = stackItem->next->auditEvent.commandText;
 
@@ -1211,6 +1258,9 @@ static ExecutorCheckPerms_hook_type next_ExecutorCheckPerms_hook = NULL;
 static ProcessUtility_hook_type next_ProcessUtility_hook = NULL;
 static object_access_hook_type next_object_access_hook = NULL;
 static ExecutorStart_hook_type next_ExecutorStart_hook = NULL;
+/* The following hook functions are required to get rows */
+static ExecutorRun_hook_type next_ExecutorRun_hook = NULL;
+static ExecutorEnd_hook_type next_ExecutorEnd_hook = NULL;
 
 static void pgaudit_NextExecutorStart_hook(QueryDesc *queryDesc, int eflags) {
     /* Call the previous hook or standard function */
@@ -1249,31 +1299,31 @@ pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
             case CMD_SELECT:
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_ALL;
                 stackItem->auditEvent.commandTag = T_SelectStmt;
-                stackItem->auditEvent.command = COMMAND_SELECT;
+                stackItem->auditEvent.command = CMDTAG_SELECT;
                 break;
 
             case CMD_INSERT:
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_MOD;
                 stackItem->auditEvent.commandTag = T_InsertStmt;
-                stackItem->auditEvent.command = COMMAND_INSERT;
+                stackItem->auditEvent.command = CMDTAG_INSERT;
                 break;
 
             case CMD_UPDATE:
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_MOD;
                 stackItem->auditEvent.commandTag = T_UpdateStmt;
-                stackItem->auditEvent.command = COMMAND_UPDATE;
+                stackItem->auditEvent.command = CMDTAG_UPDATE;
                 break;
 
             case CMD_DELETE:
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_MOD;
                 stackItem->auditEvent.commandTag = T_DeleteStmt;
-                stackItem->auditEvent.command = COMMAND_DELETE;
+                stackItem->auditEvent.command = CMDTAG_DELETE;
                 break;
 
             default:
                 stackItem->auditEvent.logStmtLevel = LOGSTMT_ALL;
                 stackItem->auditEvent.commandTag = T_Invalid;
-                stackItem->auditEvent.command = COMMAND_UNKNOWN;
+                stackItem->auditEvent.command = CMDTAG_UNKNOWN;
                 break;
         }
 
@@ -1293,8 +1343,14 @@ pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
      * standard_ExecutorStart().
      */
     if (stackItem)
+    {
         MemoryContextSetParent(stackItem->contextAudit,
                                queryDesc->estate->es_query_cxt);
+
+        /* Set query context for tracking rows processed */
+        if (auditLogRows)
+            stackItem->auditEvent.queryContext = queryDesc->estate->es_query_cxt;
+    }
 }
 
 /*
@@ -1313,7 +1369,36 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort)
     /* Log DML if the audit role is valid or session logging is enabled */
     if ((auditOid != InvalidOid || auditLogBitmap != 0) &&
         !IsAbortedTransactionBlockState())
-        log_select_dml(auditOid, rangeTabls);
+    {
+        /* If auditLogRows is on, wait for rows processed to be set */
+        if (auditLogRows && auditEventStack != NULL)
+        {
+            /* Check if the top item is SELECT/INSERT for CREATE TABLE AS */
+            if (auditEventStack->auditEvent.commandTag == T_SelectStmt &&
+                auditEventStack->next != NULL &&
+                auditEventStack->next->auditEvent.command == CMDTAG_CREATE_TABLE_AS &&
+                auditEventStack->auditEvent.rangeTabls != NULL)
+            {
+                /*
+                 * First, log the INSERT event for CREATE TABLE AS here.
+                 * The SELECT event for CREATE TABLE AS will be logged
+                 * in pgaudit_ExecutorEnd_hook() later to get rows.
+                 */
+                log_select_dml(auditOid, rangeTabls);
+            }
+            else
+            {
+                /*
+                 * Save auditOid and rangeTabls to call log_select_dml()
+                 * in pgaudit_ExecutorEnd_hook() later.
+                 */
+                auditEventStack->auditEvent.auditOid = auditOid;
+                auditEventStack->auditEvent.rangeTabls = rangeTabls;
+            }
+        }
+        else
+            log_select_dml(auditOid, rangeTabls);
+    }
 
     /* Call the next hook function */
     if (next_ExecutorCheckPerms_hook &&
@@ -1326,18 +1411,80 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort)
 static void pgaudit_NextProcessUtility_hook(
     PlannedStmt *pstmt,
     const char *queryString,
+    bool readOnlyTree,
     ProcessUtilityContext context,
     ParamListInfo params,
     QueryEnvironment *queryEnv,
     DestReceiver *dest,
-    char *completionTag) {
+    QueryCompletion *qc) {
     /* Call the standard process utility chain. */
     if (next_ProcessUtility_hook)
-        (*next_ProcessUtility_hook) (pstmt, queryString, context, params,
-                                     queryEnv, dest, completionTag);
+        (*next_ProcessUtility_hook) (pstmt, queryString, readOnlyTree, context,
+                                     params, queryEnv, dest, qc);
     else
-        standard_ProcessUtility(pstmt, queryString, context, params,
-                                queryEnv, dest, completionTag);
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+                                params, queryEnv, dest, qc);
+}
+
+/*
+ * Hook ExecutorRun to get rows processed by the current statement.
+ */
+static void
+pgaudit_ExecutorRun_hook(QueryDesc *queryDesc, ScanDirection direction, uint64 count, bool execute_once)
+{
+    AuditEventStackItem *stackItem = NULL;
+
+    /* Call the previous hook or standard function */
+    if (next_ExecutorRun_hook)
+        next_ExecutorRun_hook(queryDesc, direction, count, execute_once);
+    else
+        standard_ExecutorRun(queryDesc, direction, count, execute_once);
+
+    if (auditLogRows && !internalStatement)
+    {
+        /* Find an item from the stack by the query memory context */
+        stackItem = stack_find_context(queryDesc->estate->es_query_cxt);
+
+        /* Accumulate the number of rows processed */
+        if (stackItem != NULL)
+            stackItem->auditEvent.rows += queryDesc->estate->es_processed;
+    }
+}
+
+/*
+ * Hook ExecutorEnd to get rows processed by the current statement.
+ */
+static void
+pgaudit_ExecutorEnd_hook(QueryDesc *queryDesc)
+{
+    AuditEventStackItem *stackItem = NULL;
+    AuditEventStackItem *auditEventStackFull = NULL;
+
+    if (auditLogRows && !internalStatement)
+    {
+        /* Find an item from the stack by the query memory context */
+        stackItem = stack_find_context(queryDesc->estate->es_query_cxt);
+
+        if (stackItem != NULL && stackItem->auditEvent.rangeTabls != NULL)
+        {
+            /* Reset auditEventStack to use in log_select_dml() */
+            auditEventStackFull = auditEventStack;
+            auditEventStack = stackItem;
+
+            /* Log SELECT/DML audit entry */
+            log_select_dml(stackItem->auditEvent.auditOid,
+                           stackItem->auditEvent.rangeTabls);
+
+            /* Switch back to the previous auditEventStack */
+            auditEventStack = auditEventStackFull;
+        }
+    }
+
+    /* Call the previous hook or standard function */
+    if (next_ExecutorEnd_hook)
+        next_ExecutorEnd_hook(queryDesc);
+    else
+        standard_ExecutorEnd(queryDesc);
 }
 
 /*
@@ -1346,11 +1493,12 @@ static void pgaudit_NextProcessUtility_hook(
 static void
 pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                             const char *queryString,
+                            bool readOnlyTree,
                             ProcessUtilityContext context,
                             ParamListInfo params,
                             QueryEnvironment *queryEnv,
                             DestReceiver *dest,
-                            char *completionTag)
+                            QueryCompletion *qc)
 {
     AuditEventStackItem *stackItem = NULL;
     int64 stackId = 0;
@@ -1365,7 +1513,7 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
   if (isAuditLoggingDisabled() &&
       (pstmt->utilityStmt->type != T_VariableSetStmt && !strstr(queryString, "pgaudit."))) {
     pgaudit_NextProcessUtility_hook(
-        pstmt, queryString, context, params, queryEnv, dest, completionTag);
+        pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     return;
   }
     /*
@@ -1429,6 +1577,18 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
             log_audit_event(stackItem);
 
         /*
+         * If this is a create/alter extension command log it before calling
+         * the next ProcessUtility hook. Otherwise, any warnings will be emitted
+         * before the create/alter is logged and errors will prevent it from
+         * being logged at all.
+         */
+        if (auditLogBitmap & LOG_DDL &&
+            (stackItem->auditEvent.commandTag == T_CreateExtensionStmt ||
+                stackItem->auditEvent.commandTag == T_AlterExtensionStmt) &&
+            !IsAbortedTransactionBlockState())
+            log_audit_event(stackItem);
+
+        /*
          * A close will free the open cursor which will also free the close
          * audit entry. Immediately log the close and set stackItem to NULL so
          * it won't be logged later.
@@ -1444,7 +1604,8 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
 
     /* Call the standard process utility chain. */
     pgaudit_NextProcessUtility_hook(
-        pstmt, queryString, context, params, queryEnv, dest, completionTag);
+        pstmt, queryString, readOnlyTree, context, params, queryEnv, dest,
+        qc);
 
     /*
      * Process the audit event if there is one.  Also check that this event
@@ -1543,7 +1704,9 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
         CreateCommandTag(eventData->parsetree);
 
     /* Return objects affected by the (non drop) DDL statement */
-    query = "SELECT UPPER(object_type), object_identity, UPPER(command_tag)\n"
+    query = "SELECT pg_catalog.upper(object_type),\n"
+            "       object_identity,\n"
+            "       pg_catalog.upper(command_tag)\n"
             "  FROM pg_catalog.pg_event_trigger_ddl_commands()";
 
     /* Attempt to connect */
@@ -1572,7 +1735,7 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
         auditEventStack->auditEvent.objectName =
             SPI_getvalue(spiTuple, spiTupDesc, 2);
         auditEventStack->auditEvent.command =
-            SPI_getvalue(spiTuple, spiTupDesc, 3);
+            GetCommandTagEnum(SPI_getvalue(spiTuple, spiTupDesc, 3));
 
         auditEventStack->auditEvent.logged = false;
 
@@ -1580,8 +1743,8 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
          * Identify grant/revoke commands - these are the only non-DDL class
          * commands that should be coming through the event triggers.
          */
-        if (pg_strcasecmp(auditEventStack->auditEvent.command, COMMAND_GRANT) == 0 ||
-            pg_strcasecmp(auditEventStack->auditEvent.command, COMMAND_REVOKE) == 0)
+        if (auditEventStack->auditEvent.command == CMDTAG_GRANT ||
+            auditEventStack->auditEvent.command == CMDTAG_REVOKE)
         {
             NodeTag currentCommandTag = auditEventStack->auditEvent.commandTag;
 
@@ -1642,11 +1805,11 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
     contextOld = MemoryContextSwitchTo(contextQuery);
 
     /* Return objects affected by the drop statement */
-    query = "SELECT UPPER(object_type),\n"
-        "       object_identity\n"
-        "  FROM pg_catalog.pg_event_trigger_dropped_objects()\n"
-        " WHERE lower(object_type) <> 'type'\n"
-        "   AND schema_name <> 'pg_toast'";
+    query = "SELECT pg_catalog.upper(object_type),\n"
+            "       object_identity\n"
+            "  FROM pg_catalog.pg_event_trigger_dropped_objects()\n"
+            " WHERE pg_catalog.lower(object_type) operator(pg_catalog.<>) 'type'\n"
+            "   AND schema_name operator(pg_catalog.<>) 'pg_toast'";
 
     /* Attempt to connect */
     result = SPI_connect();
@@ -1748,7 +1911,9 @@ check_pgaudit_log(char **newVal, void **extra, GucSource source)
         else if (pg_strcasecmp(token, CLASS_FUNCTION) == 0)
             class = LOG_FUNCTION;
         else if (pg_strcasecmp(token, CLASS_MISC) == 0)
-            class = LOG_MISC;
+            class = LOG_MISC | LOG_MISC_SET;
+        else if (pg_strcasecmp(token, CLASS_MISC_SET) == 0)
+            class = LOG_MISC_SET;
         else if (pg_strcasecmp(token, CLASS_READ) == 0)
             class = LOG_READ;
         else if (pg_strcasecmp(token, CLASS_ROLE) == 0)
@@ -1968,6 +2133,35 @@ _PG_init(void)
         GUC_NOT_IN_SAMPLE,
         NULL, NULL, NULL);
 
+    /* Define pgaudit.log_rows */
+    DefineCustomBoolVariable(
+        "pgaudit.log_rows",
+
+        "Specifies whether logging will include the rows retrieved or "
+        "affected by a statement.",
+
+        NULL,
+        &auditLogRows,
+        false,
+        PGC_SUSET,
+        GUC_NOT_IN_SAMPLE,
+        NULL, NULL, NULL);
+
+    /* Define pgaudit.log_statement */
+    DefineCustomBoolVariable(
+        "pgaudit.log_statement",
+
+        "Specifies whether logging will include the statement text and "
+        "parameters.  Depending on requirements, the full statement text might "
+        "not be required in the audit log.",
+
+        NULL,
+        &auditLogStatement,
+        true,
+        PGC_SUSET,
+        GUC_NOT_IN_SAMPLE,
+        NULL, NULL, NULL);
+
     /* Define pgaudit.log_statement_once */
     DefineCustomBoolVariable(
         "pgaudit.log_statement_once",
@@ -1991,7 +2185,7 @@ _PG_init(void)
     DefineCustomStringVariable(
         "pgaudit.role",
 
-        "Specifies the master role to use for object audit logging.  Muliple "
+        "Specifies the master role to use for object audit logging.  Multiple "
         "audit roles can be defined by granting them to the master role. This "
         "allows multiple groups to be in charge of different aspects of audit "
         "logging.",
@@ -2018,6 +2212,13 @@ _PG_init(void)
 
     next_object_access_hook = object_access_hook;
     object_access_hook = pgaudit_object_access_hook;
+
+    /* The following hook functions are required to get rows */
+    next_ExecutorRun_hook = ExecutorRun_hook;
+    ExecutorRun_hook = pgaudit_ExecutorRun_hook;
+
+    next_ExecutorEnd_hook = ExecutorEnd_hook;
+    ExecutorEnd_hook = pgaudit_ExecutorEnd_hook;
 
     /* Log that the extension has completed initialization */
 #ifndef EXEC_BACKEND
