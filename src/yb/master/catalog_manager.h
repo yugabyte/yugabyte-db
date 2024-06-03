@@ -490,9 +490,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data);
 
-  Status WaitForDdlVerificationToFinish(
-      const TableInfoPtr& table, const std::string& pb_txn_id);
-
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
   void RemoveDdlTransactionState(
