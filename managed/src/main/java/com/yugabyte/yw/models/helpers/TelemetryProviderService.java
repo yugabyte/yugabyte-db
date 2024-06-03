@@ -14,6 +14,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
@@ -36,10 +38,12 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   private final BeanValidator beanValidator;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public TelemetryProviderService(BeanValidator beanValidator) {
+  public TelemetryProviderService(BeanValidator beanValidator, RuntimeConfGetter confGetter) {
     this.beanValidator = beanValidator;
+    this.confGetter = confGetter;
   }
 
   @Transactional
@@ -137,6 +141,17 @@ public class TelemetryProviderService {
           .error()
           .forField("name", "provider with such name already exists.")
           .throwError();
+    }
+  }
+
+  public void throwExceptionIfRuntimeFlagDisabled() {
+    boolean isDBAuditLoggingEnabled =
+        confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
+    if (!isDBAuditLoggingEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DB Audit Logging is not enabled. Please set runtime flag"
+              + " 'yb.universe.audit_logging_enabled' to true.");
     }
   }
 
