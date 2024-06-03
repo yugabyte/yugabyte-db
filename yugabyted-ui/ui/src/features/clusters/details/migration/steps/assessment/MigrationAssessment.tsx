@@ -84,6 +84,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
 
       <MigrationAssessmentSummary
         {...newMigration.summary}
+        complexity={migration.complexity || newMigration.summary.complexity}
         estimatedMigrationTime={
           newMigration.Sizing.SizingRecommendation.EstimatedTimeInMinForImport
         }

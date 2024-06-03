@@ -85,7 +85,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
           migration_phase: 0,
           invocation_sequence: 2,
           source_db: "oracle",
-          complexity: "N/A",
+          complexity: "Easy",
           database_name: "DMS",
           schema_name: "YUGABYTED",
           status: "COMPLETED",
