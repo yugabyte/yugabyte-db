@@ -39,8 +39,14 @@ DEFINE_test_flag(bool, pause_ddl_rollback, false, "Pause DDL rollback");
 DEFINE_test_flag(bool, hang_on_ddl_verification_progress, false,
     "Used in tests to simulate a hang while checking ddl verification progress.");
 
-DEFINE_test_flag(int32, ysql_ddl_rollback_failure_percentage, 0,
+DEFINE_test_flag(double, ysql_fail_probability_of_catalog_writes_by_ddl_verification, 0.0,
+    "Inject random failure in sys catalog writes made by ddl transaction verification");
+
+DEFINE_test_flag(double, ysql_ddl_rollback_failure_probability, 0.0,
     "Inject random failure of ddl rollback operations");
+
+DEFINE_test_flag(double, ysql_ddl_verification_failure_probability, 0.0,
+    "Inject random failure of ddl verification operations");
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -110,8 +116,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
     LOG_IF(DFATAL, state->txn_state == TxnState::kCommitted)
         << "Transaction " << txn << " is already complete, but received request to verify table "
         << table;
-    LOG(INFO) << "Enqueuing table " << table << " to the list of tables being verified for "
-              << "transaction " << txn;
+    LOG(INFO) << "Enqueuing table " << table->ToString()
+              << " to the list of tables being verified for transaction " << txn;
     state->tables.push_back(table);
     return false;
   }
@@ -227,6 +233,12 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
                 << " is also being dropped";
         continue;
       }
+    }
+
+    if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_verification_failure_probability)) {
+      LOG(ERROR) << "Injected random failure for testing";
+      ddl_verification_success = false;
+      continue;
     }
 
     auto s = background_tasks_thread_pool_->SubmitFunc([this, table, txn, is_committed, epoch]() {
@@ -372,11 +384,16 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
 
 Status CatalogManager::ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data) {
   auto& pb = txn_data.write_lock.mutable_data()->pb;
-  VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table " << txn_data.table->id();
+  VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table "
+          << txn_data.table->id() << ", txn_id: " << txn_data.ddl_txn_id;
   pb.clear_ysql_ddl_txn_verifier_state();
   pb.clear_transaction();
 
   RETURN_NOT_OK(sys_catalog_->Upsert(txn_data.epoch, txn_data.table));
+  if (RandomActWithProbability(
+      FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
+    return STATUS(InternalError, "Injected random failure for testing.");
+  }
   txn_data.write_lock.Commit();
   RemoveDdlTransactionState(txn_data.table->id(), {txn_data.ddl_txn_id});
   return Status::OK();
@@ -394,7 +411,8 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   table_pb.set_state_msg(
     strings::Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
-  VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table " << txn_data.table->id();
+  VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table "
+          << txn_data.table->id() << ", txn_id: " << txn_data.ddl_txn_id;
   table_pb.clear_ysql_ddl_txn_verifier_state();
   table_pb.clear_transaction();
 
@@ -406,6 +424,12 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
         new_table_name,
         txn_data.epoch,
         nullptr /* resp */));
+
+  if (RandomActWithProbability(
+      FLAGS_TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification)) {
+    return STATUS(InternalError, "Injected random failure for testing.");
+  }
+
   txn_data.write_lock.Commit();
 
   // Enqueue this transaction to be notified when the alter operation is updated.
@@ -415,8 +439,7 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   auto action = success ? "roll forward" : "rollback";
   LOG(INFO) << "Sending Alter Table request as part of " << action
             << " for table " << table->name();
-  if (FLAGS_TEST_ysql_ddl_rollback_failure_percentage > 0 &&
-    RandomUniformInt(1, 99) <= FLAGS_TEST_ysql_ddl_rollback_failure_percentage) {
+  if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_rollback_failure_probability)) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
@@ -434,6 +457,10 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
   dtreq.set_is_index_table(table->is_index());
   auto action = success ? "roll forward" : "rollback";
   LOG(INFO) << "Delete table " << table->id() << " as part of " << action;
+
+  if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_rollback_failure_probability)) {
+    return STATUS(InternalError, "Injected random failure for testing.");
+  }
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
 
@@ -493,6 +520,9 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     if (tables.empty()) {
       LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
       ysql_ddl_txn_verfication_state_map_.erase(iter);
+    } else {
+      VLOG(1) << "DDL Verification state for " << txn_id << " has "
+              << tables.size() << " tables remaining";
     }
   }
 }

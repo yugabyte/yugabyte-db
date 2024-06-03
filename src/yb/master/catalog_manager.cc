@@ -4158,6 +4158,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
 
         if (tablegroup) {
+          lock.lock();
           RETURN_NOT_OK(tablegroup->AddChildTable(table->id(), colocation_id));
         }
       }
