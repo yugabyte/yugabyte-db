@@ -50,7 +50,7 @@ DEFINE_test_flag(bool, skip_transaction_verification, false,
     "Test only flag to keep the txn metadata in SysTablesEntryPB and skip"
     " transaction verification on the master");
 
-DEFINE_test_flag(int32, ysql_ddl_transaction_verification_failure_percentage, 0,
+DEFINE_test_flag(double, ysql_ddl_transaction_verification_failure_probability, 0,
     "Inject random failure in checking transaction status for DDL transactions");
 
 DEFINE_test_flag(bool, yb_test_table_rewrite_keep_old_table, false,
@@ -584,8 +584,7 @@ Status PollTransactionStatusBase::VerifyTransaction() {
 
 void PollTransactionStatusBase::TransactionReceived(
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  if (FLAGS_TEST_ysql_ddl_transaction_verification_failure_percentage > 0 &&
-    RandomUniformInt(1, 99) <= FLAGS_TEST_ysql_ddl_transaction_verification_failure_percentage) {
+  if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_transaction_verification_failure_probability)) {
     LOG(ERROR) << "Injecting failure for transaction, inducing failure to enqueue callback";
     FinishPollTransaction(STATUS_FORMAT(InternalError, "Injected failure"));
     return;
