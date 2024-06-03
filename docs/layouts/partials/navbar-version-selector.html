@@ -1,6 +1,6 @@
 {{ $versionName := .Site.Params.version_menu }}
 {{ $pagePermalink := .Page.RelPermalink }}
-<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
   {{ range .Site.Params.versions }}
     {{ $versionUrl := printf "%s/" .url }}
     {{ if hasPrefix $pagePermalink $versionUrl }}
