@@ -1043,7 +1043,8 @@ class YBBackup:
         else:
             raise ex
 
-    def run_program(self, args, num_retry=1, timeout=10, env=None, **kwargs):
+    def run_program(self, args, num_retry=1, timeout=10, env=None,
+                    redirect_stderr=subprocess.STDOUT, **kwargs):
         """
         Runs the given program with the given set of arguments. Arguments are the same as in
         subprocess.check_output. Logs the program and the output in verbose mode. Also logs the
@@ -1062,7 +1063,7 @@ class YBBackup:
                 proc_env.update(env if env is not None else {})
 
                 subprocess_result = str(subprocess.check_output(
-                    args, stderr=subprocess.STDOUT,
+                    args, stderr=redirect_stderr,
                     env=proc_env, **kwargs).decode('utf-8', errors='replace')
                     .encode("ascii", "ignore")
                     .decode("ascii"))
@@ -1073,10 +1074,11 @@ class YBBackup:
                             cmd_as_str, subprocess_result))
                 return subprocess_result
             except subprocess.CalledProcessError as e:
+                log_out = e.output if (redirect_stderr == subprocess.STDOUT) else e.stderr
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace')
-                                                          .encode("ascii", "ignore")
-                                                          .decode("ascii"))))
+                    cmd_as_str, e.returncode, str(log_out.decode('utf-8', errors='replace')
+                                                         .encode("ascii", "ignore")
+                                                         .decode("ascii"))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -2076,7 +2078,8 @@ class YBBackup:
                 '-c',
                 cmd],
                 num_retry=num_retries,
-                env=k8s_details.env_config)
+                env=k8s_details.env_config,
+                redirect_stderr=subprocess.PIPE)
         elif not self.args.no_ssh:
             ssh_key_path = self.args.ssh_key_path
             if self.ip_to_ssh_key_map:
