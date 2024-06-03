@@ -48,134 +48,105 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
--- tenk1 already has 4 ASC indexes: unique1, unique2, hundred, and (thousand, tenthous)
--- each query has an order by to make asserting results easier
 
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 ORDER BY unique1;
+CREATE TABLE simple (k INT PRIMARY KEY, ind_a INT, ind_b INT);
+INSERT INTO simple SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
+CREATE INDEX ON simple(ind_a ASC);
+CREATE INDEX ON simple(ind_b ASC);
 
-/*+ BitmapScan(tenk1) */
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 ORDER BY unique1;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE k = 1;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE k = 1;
 
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique2 BETWEEN 4 and 6 ORDER BY unique1;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;
 
-/*+ BitmapScan(tenk1) */
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique2 BETWEEN 4 and 6 ORDER BY unique1;
-
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
-
-/*+ BitmapScan(tenk1) */
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
-
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
-
-/*+ BitmapScan(tenk1) */
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
-
-/*+ Set(enable_bitmapscan false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
-
-/*+ Set(enable_bitmapscan false) */
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;
 
 --
--- test exceeding work_mem
+-- test UPDATE
 --
-SET work_mem TO '4MB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
-
-SET work_mem TO '100kB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 OR unique2 < 1000;
-
--- verify that remote filters still apply to sequential scan when we've exceeded work_mem.
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
-
--- verify we still do the right thing when pushdown is disabled.
-/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE ((unique1 BETWEEN 1000 AND 8000) OR unique2 < 1000) AND twothousand = 0;
-
-SET work_mem TO '4GB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 < 6000 or unique2 < 1000;
-RESET work_mem;
-
---
--- test recheck condition and UPDATE
---
-CREATE TABLE tenk3 AS (SELECT * FROM tenk1);
-CREATE INDEX NONCONCURRENTLY tenk3_unique1 ON tenk3 (unique1 ASC);
-CREATE INDEX NONCONCURRENTLY tenk3_unique2 ON tenk3 (unique2 ASC);
 
 -- use Bitmap Scan to update some rows
-/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
-UPDATE tenk3 SET unique2 = NULL WHERE unique2 < 100 OR unique1 < 10;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+UPDATE simple SET ind_a = NULL WHERE ind_a < 10 OR ind_b > 25;
 
-/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
 
 SET yb_pushdown_is_not_null = false;
 
-/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;
 
 RESET yb_pushdown_is_not_null;
 
 -- use Bitmap Scan to delete rows and validate their deletion
-/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, COSTS OFF)
-DELETE FROM tenk3 WHERE unique2 IS NULL OR unique1 < 1000;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+DELETE FROM simple WHERE ind_a IS NULL OR ind_b < 15;
 
-/*+ BitmapScan(tenk3) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT unique1, unique2 FROM tenk3 WHERE unique1 < 100 or unique2 IS NULL;
+/*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
+/*+ BitmapScan(simple) */
+SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;
 
 --
 -- test cases where we could skip fetching the table rows (TODO: #22044)
 --
+CREATE TABLE test_skip (a INT PRIMARY KEY, b INT);
+CREATE INDEX ON test_skip(b ASC);
+INSERT INTO test_skip SELECT i, i FROM generate_series(1, 10) i;
+
 -- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
-/*+ BitmapScan(tenk1) */
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR b < 10;
+/*+ BitmapScan(test_skip) */
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR b < 10;
 
 -- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_skip WHERE a = 1 OR b < 10;
 
 -- this query has a recheck condition, so we need to fetch the rows
-/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
-/*+ BitmapScan(tenk1) Set(yb_enable_expression_pushdown false) */
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+/*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
 
 -- when the expression can be pushed down, we don't need a recheck but we do
 -- still need to send the request.
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
-/*+ BitmapScan(tenk1) */
-SELECT COUNT(*) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000 AND unique2 % 2 = 0;
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */
+SELECT COUNT(*) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
 
 -- other aggregates may require the rows
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT SUM(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
-/*+ BitmapScan(tenk1) */
-SELECT SUM(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
-/*+ BitmapScan(tenk1) */
-SELECT MAX(unique1) FROM tenk1 WHERE unique1 < 2000 OR unique2 < 2000;
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT SUM(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */
+SELECT SUM(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT MAX(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */
+SELECT MAX(a) FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
 
 -- when we don't need the actual value, we can avoid fetching
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
-/*+ BitmapScan(tenk1) */
-SELECT 1 FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT random() FROM tenk1 WHERE unique1 < 5 OR unique2 < 5;
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT 1 FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */
+SELECT 1 FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
+/*+ BitmapScan(test_skip) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT random() FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
 
 --
 -- test primary key queries
