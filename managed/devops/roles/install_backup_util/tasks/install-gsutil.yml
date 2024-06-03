@@ -1,0 +1,58 @@
+# Copyright 2020 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- set_fact:
+    gsutil_cur_version: "{{ util_cur_version.stdout | regex_search('gsutil version: (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
+
+- debug:
+    msg: "gsutil current version {{ gsutil_cur_version }} new version {{ gsutil_version }}"
+  when: util_exists.rc == 0
+
+- block:
+    - name: Check if python exists
+      raw: "which python 2> /dev/null"
+      register: python
+      ignore_errors: true
+
+    - name: Check if python3 exists
+      raw: "which python3 2> /dev/null"
+      register: python3
+      ignore_errors: true
+
+    - name: Symlink python3 to python
+      file:
+        src: "{{ python3.stdout | trim }}"
+        path: "{{ bin_path }}/python"
+        state: link
+        force: yes
+      when: python.stdout == "" and python3.stdout != ""
+
+    - set_fact:
+        gsutil_package_path: "/usr/local/{{ gsutil_package_name }}"
+
+    - name: gsutil | Remove current gsutil
+      file:
+        path: "{{ gsutil_package_path }}"
+        state: absent
+
+    - name: gsutil | Copy and unarchive {{ gsutil_package }} from {{ package_path }}
+      unarchive:
+        src: "{{ package_path }}/{{ gsutil_package }}"
+        dest: "/usr/local"
+        creates: "{{ gsutil_package_path }}"
+        remote_src: "{{ is_remote }}"
+
+    - name: gsutil | Create symlinks to {{ bin_path }}
+      file:
+        src: "{{ gsutil_package_path }}/gsutil"
+        path: "{{ bin_path }}/gsutil"
+        state: link
+        force: yes
+  when: util_exists.rc != 0 or gsutil_version != gsutil_cur_version

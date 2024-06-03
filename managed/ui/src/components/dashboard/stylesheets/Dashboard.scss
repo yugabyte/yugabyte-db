@@ -1,0 +1,17 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.yb-dashboard {
+  position: inherit;
+  background-color: transparent;
+  min-height: 100%;
+
+  .header-row {
+    padding-bottom: 2px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .yb-region-map {
+    height: 400px;
+  }
+}

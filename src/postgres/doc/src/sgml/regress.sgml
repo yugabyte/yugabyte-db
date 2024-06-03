@@ -1,0 +1,851 @@
+<!-- doc/src/sgml/regress.sgml -->
+
+ <chapter id="regress">
+  <title>Regression Tests</title>
+
+  <indexterm zone="regress">
+   <primary>regression tests</primary>
+  </indexterm>
+
+  <indexterm zone="regress">
+   <primary>test</primary>
+  </indexterm>
+
+  <para>
+   The regression tests are a comprehensive set of tests for the SQL
+   implementation in <productname>PostgreSQL</productname>.  They test
+   standard SQL operations as well as the extended capabilities of
+   <productname>PostgreSQL</productname>.
+  </para>
+
+  <sect1 id="regress-run">
+   <title>Running the Tests</title>
+
+  <para>
+   The regression tests can be run against an already installed and
+   running server, or using a temporary installation within the build
+   tree.  Furthermore, there is a <quote>parallel</quote> and a
+   <quote>sequential</quote> mode for running the tests.  The
+   sequential method runs each test script alone, while the
+   parallel method starts up multiple server processes to run groups
+   of tests in parallel.  Parallel testing adds confidence that
+   interprocess communication and locking are working correctly.
+  </para>
+
+  <sect2>
+   <title>Running the Tests Against a Temporary Installation</title>
+
+  <para>
+   To run the parallel regression tests after building but before installation,
+   type:
+<screen>
+make check
+</screen>
+   in the top-level directory.  (Or you can change to
+   <filename>src/test/regress</filename> and run the command there.)
+   At the end you should see something like:
+<screen>
+<computeroutput>
+=======================
+ All 193 tests passed.
+=======================
+</computeroutput>
+</screen>
+   or otherwise a note about which tests failed.  See <xref
+   linkend="regress-evaluation"/> below before assuming that a
+   <quote>failure</quote> represents a serious problem.
+  </para>
+
+   <para>
+    Because this test method runs a temporary server, it will not work
+    if you did the build as the root user, since the server will not start as
+    root.  Recommended procedure is not to do the build as root, or else to
+    perform testing after completing the installation.
+   </para>
+
+   <para>
+    If you have configured <productname>PostgreSQL</productname> to install
+    into a location where an older <productname>PostgreSQL</productname>
+    installation already exists, and you perform <literal>make check</literal>
+    before installing the new version, you might find that the tests fail
+    because the new programs try to use the already-installed shared
+    libraries.  (Typical symptoms are complaints about undefined symbols.)
+    If you wish to run the tests before overwriting the old installation,
+    you'll need to build with <literal>configure --disable-rpath</literal>.
+    It is not recommended that you use this option for the final installation,
+    however.
+   </para>
+
+   <para>
+    The parallel regression test starts quite a few processes under your
+    user ID.  Presently, the maximum concurrency is twenty parallel test
+    scripts, which means forty processes: there's a server process and a
+    <application>psql</application> process for each test script.
+    So if your system enforces a per-user limit on the number of processes,
+    make sure this limit is at least fifty or so, else you might get
+    random-seeming failures in the parallel test.  If you are not in
+    a position to raise the limit, you can cut down the degree of parallelism
+    by setting the <literal>MAX_CONNECTIONS</literal> parameter.  For example:
+<screen>
+make MAX_CONNECTIONS=10 check
+</screen>
+    runs no more than ten tests concurrently.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Running the Tests Against an Existing Installation</title>
+
+  <para>
+   To run the tests after installation (see <xref linkend="installation"/>),
+   initialize a data directory and start the
+   server as explained in <xref linkend="runtime"/>, then type:
+<screen>
+make installcheck
+</screen>
+or for a parallel test:
+<screen>
+make installcheck-parallel
+</screen>
+   The tests will expect to contact the server at the local host and the
+   default port number, unless directed otherwise by <envar>PGHOST</envar> and
+   <envar>PGPORT</envar> environment variables.  The tests will be run in a
+   database named <literal>regression</literal>; any existing database by this name
+   will be dropped.
+  </para>
+
+  <para>
+   The tests will also transiently create some cluster-wide objects, such as
+   roles, tablespaces, and subscriptions.  These objects will have names
+   beginning with <literal>regress_</literal>.  Beware of
+   using <literal>installcheck</literal> mode with an installation that has
+   any actual global objects named that way.
+  </para>
+  </sect2>
+
+  <sect2>
+   <title>Additional Test Suites</title>
+
+  <para>
+   The <literal>make check</literal> and <literal>make installcheck</literal> commands
+   run only the <quote>core</quote> regression tests, which test built-in
+   functionality of the <productname>PostgreSQL</productname> server.  The source
+   distribution contains many additional test suites, most of them having
+   to do with add-on functionality such as optional procedural languages.
+  </para>
+
+  <para>
+   To run all test suites applicable to the modules that have been selected
+   to be built, including the core tests, type one of these commands at the
+   top of the build tree:
+<screen>
+make check-world
+make installcheck-world
+</screen>
+   These commands run the tests using temporary servers or an
+   already-installed server, respectively, just as previously explained
+   for <literal>make check</literal> and <literal>make installcheck</literal>.  Other
+   considerations are the same as previously explained for each method.
+   Note that <literal>make check-world</literal> builds a separate instance
+   (temporary data directory) for each tested module, so it requires more
+   time and disk space than <literal>make installcheck-world</literal>.
+  </para>
+
+  <para>
+   On a modern machine with multiple CPU cores and no tight operating-system
+   limits, you can make things go substantially faster with parallelism.
+   The recipe that most PostgreSQL developers actually use for running all
+   tests is something like
+<screen>
+make check-world -j8 >/dev/null
+</screen>
+   with a <option>-j</option> limit near to or a bit more than the number
+   of available cores.  Discarding <systemitem>stdout</systemitem>
+   eliminates chatter that's not interesting when you just want to verify
+   success.  (In case of failure, the <systemitem>stderr</systemitem>
+   messages are usually enough to determine where to look closer.)
+  </para>
+
+  <para>
+   Alternatively, you can run individual test suites by typing
+   <literal>make check</literal> or <literal>make installcheck</literal> in the appropriate
+   subdirectory of the build tree.  Keep in mind that <literal>make
+   installcheck</literal> assumes you've installed the relevant module(s), not
+   only the core server.
+  </para>
+
+  <para>
+   The additional tests that can be invoked this way include:
+  </para>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     Regression tests for optional procedural languages.
+     These are located under <filename>src/pl</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Regression tests for <filename>contrib</filename> modules,
+     located under <filename>contrib</filename>.
+     Not all <filename>contrib</filename> modules have tests.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Regression tests for the ECPG interface library,
+     located in <filename>src/interfaces/ecpg/test</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests for core-supported authentication methods,
+     located in <filename>src/test/authentication</filename>.
+     (See below for additional authentication-related tests.)
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests stressing behavior of concurrent sessions,
+     located in <filename>src/test/isolation</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests for crash recovery and physical replication,
+     located in <filename>src/test/recovery</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests for logical replication,
+     located in <filename>src/test/subscription</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests of client programs, located under <filename>src/bin</filename>.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   When using <literal>installcheck</literal> mode, these tests will create
+   and destroy test databases whose names
+   include <literal>regression</literal>, for
+   example <literal>pl_regression</literal>
+   or <literal>contrib_regression</literal>.  Beware of
+   using <literal>installcheck</literal> mode with an installation that has
+   any non-test databases named that way.
+  </para>
+
+  <para>
+   Some of these auxiliary test suites use the TAP infrastructure explained
+   in <xref linkend="regress-tap"/>.
+   The TAP-based tests are run only when PostgreSQL was configured with the
+   option <option>--enable-tap-tests</option>.  This is recommended for
+   development, but can be omitted if there is no suitable Perl installation.
+  </para>
+
+  <para>
+   Some test suites are not run by default, either because they are not secure
+   to run on a multiuser system or because they require special software.  You
+   can decide which test suites to run additionally by setting the
+   <command>make</command> or environment variable
+   <varname>PG_TEST_EXTRA</varname> to a whitespace-separated list, for
+   example:
+<programlisting>
+make check-world PG_TEST_EXTRA='kerberos ldap ssl'
+</programlisting>
+   The following values are currently supported:
+   <variablelist>
+    <varlistentry>
+     <term><literal>kerberos</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>src/test/kerberos</filename>.  This
+       requires an MIT Kerberos installation and opens TCP/IP listen sockets.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>ldap</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>src/test/ldap</filename>.  This
+       requires an <productname>OpenLDAP</productname> installation and opens
+       TCP/IP listen sockets.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>ssl</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>src/test/ssl</filename>.  This opens TCP/IP listen sockets.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>wal_consistency_checking</literal></term>
+     <listitem>
+      <para>
+       Uses <literal>wal_consistency_checking=all</literal> while running
+       certain tests under <filename>src/test/recovery</filename>.  Not
+       enabled by default because it is resource intensive.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+
+   Tests for features that are not supported by the current build
+   configuration are not run even if they are mentioned in
+   <varname>PG_TEST_EXTRA</varname>.
+  </para>
+
+  <para>
+   In addition, there are tests in <filename>src/test/modules</filename>
+   which will be run by <literal>make check-world</literal> but not
+   by <literal>make installcheck-world</literal>.  This is because they
+   install non-production extensions or have other side-effects that are
+   considered undesirable for a production installation.  You can
+   use <literal>make install</literal> and <literal>make
+   installcheck</literal> in one of those subdirectories if you wish,
+   but it's not recommended to do so with a non-test server.
+  </para>
+  </sect2>
+
+  <sect2>
+   <title>Locale and Encoding</title>
+
+   <para>
+    By default, tests using a temporary installation use the
+    locale defined in the current environment and the corresponding
+    database encoding as determined by <command>initdb</command>.  It
+    can be useful to test different locales by setting the appropriate
+    environment variables, for example:
+<screen>
+make check LANG=C
+make check LC_COLLATE=en_US.utf8 LC_CTYPE=fr_CA.utf8
+</screen>
+    For implementation reasons, setting <envar>LC_ALL</envar> does not
+    work for this purpose; all the other locale-related environment
+    variables do work.
+   </para>
+
+   <para>
+    When testing against an existing installation, the locale is
+    determined by the existing database cluster and cannot be set
+    separately for the test run.
+   </para>
+
+   <para>
+    You can also choose the database encoding explicitly by setting
+    the variable <envar>ENCODING</envar>, for example:
+<screen>
+make check LANG=C ENCODING=EUC_JP
+</screen>
+    Setting the database encoding this way typically only makes sense
+    if the locale is C; otherwise the encoding is chosen automatically
+    from the locale, and specifying an encoding that does not match
+    the locale will result in an error.
+   </para>
+
+   <para>
+    The database encoding can be set for tests against either a temporary or
+    an existing installation, though in the latter case it must be
+    compatible with the installation's locale.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Custom Server Settings</title>
+
+   <para>
+    Custom server settings to use when running a regression test suite can be
+    set in the <varname>PGOPTIONS</varname> environment variable (for settings
+    that allow this):
+<screen>
+make check PGOPTIONS="-c force_parallel_mode=regress -c work_mem=50MB"
+</screen>
+    When running against a temporary installation, custom settings can also be
+    set by supplying a pre-written <filename>postgresql.conf</filename>:
+<screen>
+echo 'log_checkpoints = on' > test_postgresql.conf
+echo 'work_mem = 50MB' >> test_postgresql.conf
+make check EXTRA_REGRESS_OPTS="--temp-config=test_postgresql.conf"
+</screen>
+   </para>
+
+   <para>
+    This can be useful to enable additional logging, adjust resource limits,
+    or enable extra run-time checks such as <xref
+    linkend="guc-debug-discard-caches"/>.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Extra Tests</title>
+
+   <para>
+    The core regression test suite contains a few test files that are not
+    run by default, because they might be platform-dependent or take a
+    very long time to run.  You can run these or other extra test
+    files by setting the variable <envar>EXTRA_TESTS</envar>.  For
+    example, to run the <literal>numeric_big</literal> test:
+<screen>
+make check EXTRA_TESTS=numeric_big
+</screen>
+   </para>
+  </sect2>
+  </sect1>
+
+  <sect1 id="regress-evaluation">
+   <title>Test Evaluation</title>
+
+   <para>
+    Some properly installed and fully functional
+    <productname>PostgreSQL</productname> installations can
+    <quote>fail</quote> some of these regression tests due to
+    platform-specific artifacts such as varying floating-point representation
+    and message wording. The tests are currently evaluated using a simple
+    <command>diff</command> comparison against the outputs
+    generated on a reference system, so the results are sensitive to
+    small system differences.  When a test is reported as
+    <quote>failed</quote>, always examine the differences between
+    expected and actual results; you might find that the
+    differences are not significant.  Nonetheless, we still strive to
+    maintain accurate reference files across all supported platforms,
+    so it can be expected that all tests pass.
+   </para>
+
+   <para>
+    The actual outputs of the regression tests are in files in the
+    <filename>src/test/regress/results</filename> directory. The test
+    script uses <command>diff</command> to compare each output
+    file against the reference outputs stored in the
+    <filename>src/test/regress/expected</filename> directory.  Any
+    differences are saved for your inspection in
+    <filename>src/test/regress/regression.diffs</filename>.
+    (When running a test suite other than the core tests, these files
+    of course appear in the relevant subdirectory,
+    not <filename>src/test/regress</filename>.)
+   </para>
+
+   <para>
+    If you don't
+    like the <command>diff</command> options that are used by default, set the
+    environment variable <envar>PG_REGRESS_DIFF_OPTS</envar>, for
+    instance <literal>PG_REGRESS_DIFF_OPTS='-c'</literal>.  (Or you
+    can run <command>diff</command> yourself, if you prefer.)
+   </para>
+
+   <para>
+    If for some reason a particular platform generates a <quote>failure</quote>
+    for a given test, but inspection of the output convinces you that
+    the result is valid, you can add a new comparison file to silence
+    the failure report in future test runs.  See
+    <xref linkend="regress-variant"/> for details.
+   </para>
+
+   <sect2>
+    <title>Error Message Differences</title>
+
+    <para>
+     Some of the regression tests involve intentional invalid input
+     values.  Error messages can come from either the
+     <productname>PostgreSQL</productname> code or from the host
+     platform system routines. In the latter case, the messages can
+     vary between platforms, but should reflect similar
+     information. These differences in messages will result in a
+     <quote>failed</quote> regression test that can be validated by
+     inspection.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Locale Differences</title>
+
+    <para>
+     If you run the tests against a server that was
+     initialized with a collation-order locale other than C, then
+     there might be differences due to sort order and subsequent
+     failures.  The regression test suite is set up to handle this
+     problem by providing alternate result files that together are
+     known to handle a large number of locales.
+    </para>
+
+    <para>
+     To run the tests in a different locale when using the
+     temporary-installation method, pass the appropriate
+     locale-related environment variables on
+     the <command>make</command> command line, for example:
+<programlisting>
+make check LANG=de_DE.utf8
+</programlisting>
+     (The regression test driver unsets <envar>LC_ALL</envar>, so it
+     does not work to choose the locale using that variable.)  To use
+     no locale, either unset all locale-related environment variables
+     (or set them to <literal>C</literal>) or use the following
+     special invocation:
+<programlisting>
+make check NO_LOCALE=1
+</programlisting>
+     When running the tests against an existing installation, the
+     locale setup is determined by the existing installation.  To
+     change it, initialize the database cluster with a different
+     locale by passing the appropriate options
+     to <command>initdb</command>.
+    </para>
+
+    <para>
+     In general, it is advisable to try to run the
+     regression tests in the locale setup that is wanted for
+     production use, as this will exercise the locale- and
+     encoding-related code portions that will actually be used in
+     production.  Depending on the operating system environment, you
+     might get failures, but then you will at least know what
+     locale-specific behaviors to expect when running real
+     applications.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Date and Time Differences</title>
+
+    <para>
+     Most of the date and time results are dependent on the time zone
+     environment.  The reference files are generated for time zone
+     <literal>PST8PDT</literal> (Berkeley, California), and there will be
+     apparent failures if the tests are not run with that time zone setting.
+     The regression test driver sets environment variable
+     <envar>PGTZ</envar> to <literal>PST8PDT</literal>, which normally
+     ensures proper results.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Floating-Point Differences</title>
+
+    <para>
+     Some of the tests involve computing 64-bit floating-point numbers (<type>double
+     precision</type>) from table columns. Differences in
+     results involving mathematical functions of <type>double
+     precision</type> columns have been observed.  The <literal>float8</literal> and
+     <literal>geometry</literal> tests are particularly prone to small differences
+     across platforms, or even with different compiler optimization settings.
+     Human eyeball comparison is needed to determine the real
+     significance of these differences which are usually 10 places to
+     the right of the decimal point.
+    </para>
+
+    <para>
+     Some systems display minus zero as <literal>-0</literal>, while others
+     just show <literal>0</literal>.
+    </para>
+
+    <para>
+     Some systems signal errors from <function>pow()</function> and
+     <function>exp()</function> differently from the mechanism
+     expected by the current <productname>PostgreSQL</productname>
+     code.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Row Ordering Differences</title>
+
+    <para>
+You might see differences in which the same rows are output in a
+different order than what appears in the expected file.  In most cases
+this is not, strictly speaking, a bug.  Most of the regression test
+scripts are not so pedantic as to use an <literal>ORDER BY</literal> for every single
+<literal>SELECT</literal>, and so their result row orderings are not well-defined
+according to the SQL specification.  In practice, since we are
+looking at the same queries being executed on the same data by the same
+software, we usually get the same result ordering on all platforms,
+so the lack of <literal>ORDER BY</literal> is not a problem.  Some queries do exhibit
+cross-platform ordering differences, however.  When testing against an
+already-installed server, ordering differences can also be caused by
+non-C locale settings or non-default parameter settings, such as custom values
+of <varname>work_mem</varname> or the planner cost parameters.
+    </para>
+
+    <para>
+Therefore, if you see an ordering difference, it's not something to
+worry about, unless the query does have an <literal>ORDER BY</literal> that your
+result is violating.  However, please report it anyway, so that we can add an
+<literal>ORDER BY</literal> to that particular query to eliminate the bogus
+<quote>failure</quote> in future releases.
+    </para>
+
+    <para>
+You might wonder why we don't order all the regression test queries explicitly
+to get rid of this issue once and for all.  The reason is that that would
+make the regression tests less useful, not more, since they'd tend
+to exercise query plan types that produce ordered results to the
+exclusion of those that don't.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Insufficient Stack Depth</title>
+
+    <para>
+     If the <literal>errors</literal> test results in a server crash
+     at the <literal>select infinite_recurse()</literal> command, it means that
+     the platform's limit on process stack size is smaller than the
+     <xref linkend="guc-max-stack-depth"/> parameter indicates.  This
+     can be fixed by running the server under a higher stack
+     size limit (4MB is recommended with the default value of
+     <varname>max_stack_depth</varname>).  If you are unable to do that, an
+     alternative is to reduce the value of <varname>max_stack_depth</varname>.
+    </para>
+
+    <para>
+     On platforms supporting <function>getrlimit()</function>, the server should
+     automatically choose a safe value of <varname>max_stack_depth</varname>;
+     so unless you've manually overridden this setting, a failure of this
+     kind is a reportable bug.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>The <quote>random</quote> Test</title>
+
+    <para>
+     The <literal>random</literal> test script is intended to produce
+     random results.   In very rare cases, this causes that regression
+     test to fail.  Typing:
+<programlisting>
+diff results/random.out expected/random.out
+</programlisting>
+     should produce only one or a few lines of differences.  You need
+     not worry unless the random test fails repeatedly.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Configuration Parameters</title>
+
+    <para>
+     When running the tests against an existing installation, some non-default
+     parameter settings could cause the tests to fail.  For example, changing
+     parameters such as <varname>enable_seqscan</varname> or
+     <varname>enable_indexscan</varname> could cause plan changes that would
+     affect the results of tests that use <command>EXPLAIN</command>.
+    </para>
+   </sect2>
+  </sect1>
+
+<!-- We might want to move the following section into the developer's guide. -->
+  <sect1 id="regress-variant">
+   <title>Variant Comparison Files</title>
+
+   <para>
+    Since some of the tests inherently produce environment-dependent
+    results, we have provided ways to specify alternate <quote>expected</quote>
+    result files.  Each regression test can have several comparison files
+    showing possible results on different platforms.  There are two
+    independent mechanisms for determining which comparison file is used
+    for each test.
+   </para>
+
+   <para>
+    The first mechanism allows comparison files to be selected for
+    specific platforms.  There is a mapping file,
+    <filename>src/test/regress/resultmap</filename>, that defines
+    which comparison file to use for each platform.
+    To eliminate bogus test <quote>failures</quote> for a particular platform,
+    you first choose or make a variant result file, and then add a line to the
+    <filename>resultmap</filename> file.
+   </para>
+
+   <para>
+    Each line in the mapping file is of the form
+<synopsis>
+testname:output:platformpattern=comparisonfilename
+</synopsis>
+    The test name is just the name of the particular regression test
+    module. The output value indicates which output file to check. For the
+    standard regression tests, this is always <literal>out</literal>. The
+    value corresponds to the file extension of the output file.
+    The platform pattern is a pattern in the style of the Unix
+    tool <command>expr</command> (that is, a regular expression with an implicit
+    <literal>^</literal> anchor at the start).  It is matched against the
+    platform name as printed by <command>config.guess</command>.
+    The comparison file name is the base name of the substitute result
+    comparison file.
+   </para>
+
+   <para>
+    For example: some systems lack a working <literal>strtof</literal> function,
+    for which our workaround causes rounding errors in the
+    <filename>float4</filename> regression test.
+    Therefore, we provide a variant comparison file,
+    <filename>float4-misrounded-input.out</filename>, which includes
+    the results to be expected on these systems.  To silence the bogus
+    <quote>failure</quote> message on <systemitem>HP-UX 10</systemitem>
+    platforms, <filename>resultmap</filename> includes:
+<programlisting>
+float4:out:hppa.*-hp-hpux10.*=float4-misrounded-input.out
+</programlisting>
+    which will trigger on any machine where the output of
+    <command>config.guess</command> matches <literal>hppa.*-hp-hpux10.*</literal>.
+    Other lines in <filename>resultmap</filename> select the variant comparison
+    file for other platforms where it's appropriate.
+   </para>
+
+   <para>
+    The second selection mechanism for variant comparison files is
+    much more automatic: it simply uses the <quote>best match</quote> among
+    several supplied comparison files.  The regression test driver
+    script considers both the standard comparison file for a test,
+    <literal><replaceable>testname</replaceable>.out</literal>, and variant files named
+    <literal><replaceable>testname</replaceable>_<replaceable>digit</replaceable>.out</literal>
+    (where the <replaceable>digit</replaceable> is any single digit
+    <literal>0</literal>-<literal>9</literal>).  If any such file is an exact match,
+    the test is considered to pass; otherwise, the one that generates
+    the shortest diff is used to create the failure report.  (If
+    <filename>resultmap</filename> includes an entry for the particular
+    test, then the base <replaceable>testname</replaceable> is the substitute
+    name given in <filename>resultmap</filename>.)
+   </para>
+
+   <para>
+    For example, for the <literal>char</literal> test, the comparison file
+    <filename>char.out</filename> contains results that are expected
+    in the <literal>C</literal> and <literal>POSIX</literal> locales, while
+    the file <filename>char_1.out</filename> contains results sorted as
+    they appear in many other locales.
+   </para>
+
+   <para>
+    The best-match mechanism was devised to cope with locale-dependent
+    results, but it can be used in any situation where the test results
+    cannot be predicted easily from the platform name alone.  A limitation of
+    this mechanism is that the test driver cannot tell which variant is
+    actually <quote>correct</quote> for the current environment; it will just pick
+    the variant that seems to work best.  Therefore it is safest to use this
+    mechanism only for variant results that you are willing to consider
+    equally valid in all contexts.
+   </para>
+
+  </sect1>
+
+  <sect1 id="regress-tap">
+   <title>TAP Tests</title>
+
+   <para>
+    Various tests, particularly the client program tests
+    under <filename>src/bin</filename>, use the Perl TAP tools and are run
+    using the Perl testing program <command>prove</command>.  You can pass
+    command-line options to <command>prove</command> by setting
+    the <command>make</command> variable <varname>PROVE_FLAGS</varname>, for example:
+<programlisting>
+make -C src/bin check PROVE_FLAGS='--timer'
+</programlisting>
+    See the manual page of <command>prove</command> for more information.
+   </para>
+
+   <para>
+    The <command>make</command> variable <varname>PROVE_TESTS</varname>
+    can be used to define a whitespace-separated list of paths relative
+    to the <filename>Makefile</filename> invoking <command>prove</command>
+    to run the specified subset of tests instead of the default
+    <filename>t/*.pl</filename>.  For example:
+<programlisting>
+make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
+</programlisting>
+   </para>
+
+   <para>
+    The TAP tests require the Perl module <literal>IPC::Run</literal>.
+    This module is available from CPAN or an operating system package.
+    They also require <productname>PostgreSQL</productname> to be
+    configured with the option <option>--enable-tap-tests</option>.
+   </para>
+
+   <para>
+    Generically speaking, the TAP tests will test the executables in a
+    previously-installed installation tree if you say <literal>make
+    installcheck</literal>, or will build a new local installation tree from
+    current sources if you say <literal>make check</literal>.  In either
+    case they will initialize a local instance (data directory) and
+    transiently run a server in it.  Some of these tests run more than one
+    server.  Thus, these tests can be fairly resource-intensive.
+   </para>
+
+   <para>
+    It's important to realize that the TAP tests will start test server(s)
+    even when you say <literal>make installcheck</literal>; this is unlike
+    the traditional non-TAP testing infrastructure, which expects to use an
+    already-running test server in that case.  Some PostgreSQL
+    subdirectories contain both traditional-style and TAP-style tests,
+    meaning that <literal>make installcheck</literal> will produce a mix of
+    results from temporary servers and the already-running test server.
+   </para>
+  </sect1>
+
+  <sect1 id="regress-coverage">
+   <title>Test Coverage Examination</title>
+
+   <para>
+    The PostgreSQL source code can be compiled with coverage testing
+    instrumentation, so that it becomes possible to examine which
+    parts of the code are covered by the regression tests or any other
+    test suite that is run with the code.  This is currently supported
+    when compiling with GCC, and it requires the <command>gcov</command>
+    and <command>lcov</command> programs.
+   </para>
+
+   <para>
+    A typical workflow looks like this:
+<screen>
+./configure --enable-coverage ... OTHER OPTIONS ...
+make
+make check # or other test suite
+make coverage-html
+</screen>
+    Then point your HTML browser
+    to <filename>coverage/index.html</filename>.
+   </para>
+
+   <para>
+    If you don't have <command>lcov</command> or prefer text output over an
+    HTML report, you can run
+<screen>
+make coverage
+</screen>
+    instead of <literal>make coverage-html</literal>, which will
+    produce <filename>.gcov</filename> output files for each source file
+    relevant to the test.  (<literal>make coverage</literal> and <literal>make
+    coverage-html</literal> will overwrite each other's files, so mixing them
+    might be confusing.)
+   </para>
+
+   <para>
+    You can run several different tests before making the coverage report;
+    the execution counts will accumulate.  If you want
+    to reset the execution counts between test runs, run:
+<screen>
+make coverage-clean
+</screen>
+   </para>
+
+   <para>
+    You can run the <literal>make coverage-html</literal> or <literal>make
+    coverage</literal> command in a subdirectory if you want a coverage
+    report for only a portion of the code tree.
+   </para>
+
+   <para>
+    Use <literal>make distclean</literal> to clean up when done.
+   </para>
+  </sect1>
+
+</chapter>

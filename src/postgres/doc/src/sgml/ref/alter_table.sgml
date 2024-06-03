@@ -1,0 +1,1776 @@
+<!--
+doc/src/sgml/ref/alter_table.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altertable">
+ <indexterm zone="sql-altertable">
+  <primary>ALTER TABLE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER TABLE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER TABLE</refname>
+  <refpurpose>change the definition of a table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ]
+    <replaceable class="parameter">action</replaceable> [, ... ]
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ]
+    RENAME [ COLUMN ] <replaceable class="parameter">column_name</replaceable> TO <replaceable class="parameter">new_column_name</replaceable>
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ]
+    RENAME CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> TO <replaceable class="parameter">new_constraint_name</replaceable>
+ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+    RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+    SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
+ALTER TABLE ALL IN TABLESPACE <replaceable class="parameter">name</replaceable> [ OWNED BY <replaceable class="parameter">role_name</replaceable> [, ... ] ]
+    SET TABLESPACE <replaceable class="parameter">new_tablespace</replaceable> [ NOWAIT ]
+ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+    ATTACH PARTITION <replaceable class="parameter">partition_name</replaceable> { FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }
+ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+    DETACH PARTITION <replaceable class="parameter">partition_name</replaceable> [ CONCURRENTLY | FINALIZE ]
+
+<phrase>where <replaceable class="parameter">action</replaceable> is one of:</phrase>
+
+    ADD [ COLUMN ] [ IF NOT EXISTS ] <replaceable class="parameter">column_name</replaceable> <replaceable class="parameter">data_type</replaceable> [ COLLATE <replaceable class="parameter">collation</replaceable> ] [ <replaceable class="parameter">column_constraint</replaceable> [ ... ] ]
+    DROP [ COLUMN ] [ IF EXISTS ] <replaceable class="parameter">column_name</replaceable> [ RESTRICT | CASCADE ]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> [ SET DATA ] TYPE <replaceable class="parameter">data_type</replaceable> [ COLLATE <replaceable class="parameter">collation</replaceable> ] [ USING <replaceable class="parameter">expression</replaceable> ]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET DEFAULT <replaceable class="parameter">expression</replaceable>
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP DEFAULT
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> { SET | DROP } NOT NULL
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP EXPRESSION [ IF EXISTS ]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> { SET GENERATED { ALWAYS | BY DEFAULT } | SET <replaceable>sequence_option</replaceable> | RESTART [ [ WITH ] <replaceable class="parameter">restart</replaceable> ] } [...]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP IDENTITY [ IF EXISTS ]
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET STATISTICS <replaceable class="parameter">integer</replaceable>
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET ( <replaceable class="parameter">attribute_option</replaceable> = <replaceable class="parameter">value</replaceable> [, ... ] )
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> RESET ( <replaceable class="parameter">attribute_option</replaceable> [, ... ] )
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN }
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET COMPRESSION <replaceable class="parameter">compression_method</replaceable>
+    ADD <replaceable class="parameter">table_constraint</replaceable> [ NOT VALID ]
+    ADD <replaceable class="parameter">table_constraint_using_index</replaceable>
+    ALTER CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+    VALIDATE CONSTRAINT <replaceable class="parameter">constraint_name</replaceable>
+    DROP CONSTRAINT [ IF EXISTS ]  <replaceable class="parameter">constraint_name</replaceable> [ RESTRICT | CASCADE ]
+    DISABLE TRIGGER [ <replaceable class="parameter">trigger_name</replaceable> | ALL | USER ]
+    ENABLE TRIGGER [ <replaceable class="parameter">trigger_name</replaceable> | ALL | USER ]
+    ENABLE REPLICA TRIGGER <replaceable class="parameter">trigger_name</replaceable>
+    ENABLE ALWAYS TRIGGER <replaceable class="parameter">trigger_name</replaceable>
+    DISABLE RULE <replaceable class="parameter">rewrite_rule_name</replaceable>
+    ENABLE RULE <replaceable class="parameter">rewrite_rule_name</replaceable>
+    ENABLE REPLICA RULE <replaceable class="parameter">rewrite_rule_name</replaceable>
+    ENABLE ALWAYS RULE <replaceable class="parameter">rewrite_rule_name</replaceable>
+    DISABLE ROW LEVEL SECURITY
+    ENABLE ROW LEVEL SECURITY
+    FORCE ROW LEVEL SECURITY
+    NO FORCE ROW LEVEL SECURITY
+    CLUSTER ON <replaceable class="parameter">index_name</replaceable>
+    SET WITHOUT CLUSTER
+    SET WITHOUT OIDS
+    SET ACCESS METHOD <replaceable class="parameter">new_access_method</replaceable>
+    SET TABLESPACE <replaceable class="parameter">new_tablespace</replaceable>
+    SET { LOGGED | UNLOGGED }
+    SET ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+    RESET ( <replaceable class="parameter">storage_parameter</replaceable> [, ... ] )
+    INHERIT <replaceable class="parameter">parent_table</replaceable>
+    NO INHERIT <replaceable class="parameter">parent_table</replaceable>
+    OF <replaceable class="parameter">type_name</replaceable>
+    NOT OF
+    OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+    REPLICA IDENTITY { DEFAULT | USING INDEX <replaceable class="parameter">index_name</replaceable> | FULL | NOTHING }
+
+<phrase>and <replaceable class="parameter">partition_bound_spec</replaceable> is:</phrase>
+
+IN ( <replaceable class="parameter">partition_bound_expr</replaceable> [, ...] ) |
+FROM ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] )
+  TO ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] ) |
+WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REMAINDER <replaceable class="parameter">numeric_literal</replaceable> )
+
+<phrase>and <replaceable class="parameter">column_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
+{ NOT NULL |
+  NULL |
+  CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] |
+  DEFAULT <replaceable>default_expr</replaceable> |
+  GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED |
+  GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ] |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] <replaceable class="parameter">index_parameters</replaceable> |
+  PRIMARY KEY <replaceable class="parameter">index_parameters</replaceable> |
+  REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
+    [ ON DELETE <replaceable class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<phrase>and <replaceable class="parameter">table_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
+{ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> |
+  PRIMARY KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> |
+  EXCLUDE [ USING <replaceable class="parameter">index_method</replaceable> ] ( <replaceable class="parameter">exclude_element</replaceable> WITH <replaceable class="parameter">operator</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> [ WHERE ( <replaceable class="parameter">predicate</replaceable> ) ] |
+  FOREIGN KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> [, ... ] ) ]
+    [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE <replaceable class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<phrase>and <replaceable class="parameter">table_constraint_using_index</replaceable> is:</phrase>
+
+    [ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
+    { UNIQUE | PRIMARY KEY } USING INDEX <replaceable class="parameter">index_name</replaceable>
+    [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<phrase><replaceable class="parameter">index_parameters</replaceable> in <literal>UNIQUE</literal>, <literal>PRIMARY KEY</literal>, and <literal>EXCLUDE</literal> constraints are:</phrase>
+
+[ INCLUDE ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ]
+[ WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+[ USING INDEX TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> ]
+
+<phrase><replaceable class="parameter">exclude_element</replaceable> in an <literal>EXCLUDE</literal> constraint is:</phrase>
+
+{ <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
+
+<phrase><replaceable class="parameter">referential_action</replaceable> in a <literal>FOREIGN KEY</literal>/<literal>REFERENCES</literal> constraint is:</phrase>
+
+{ NO ACTION | RESTRICT | CASCADE | SET NULL [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] | SET DEFAULT [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER TABLE</command> changes the definition of an existing table.
+   There are several subforms described below. Note that the lock level required
+   may differ for each subform. An <literal>ACCESS EXCLUSIVE</literal> lock is
+   acquired unless explicitly noted. When multiple subcommands are given, the
+   lock acquired will be the strictest one required by any subcommand.
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ADD COLUMN [ IF NOT EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form adds a new column to the table, using the same syntax as
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link>. If <literal>IF NOT EXISTS</literal>
+      is specified and a column already exists with this name,
+      no error is thrown.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP COLUMN [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form drops a column from a table.  Indexes and
+      table constraints involving the column will be automatically
+      dropped as well.
+      Multivariate statistics referencing the dropped column will also be
+      removed if the removal of the column would cause the statistics to
+      contain data for only a single column.
+      You will need to say <literal>CASCADE</literal> if anything outside the table
+      depends on the column, for example, foreign key references or views.
+      If <literal>IF EXISTS</literal> is specified and the column
+      does not exist, no error is thrown. In this case a notice
+      is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET DATA TYPE</literal></term>
+    <listitem>
+     <para>
+      This form changes the type of a column of a table. Indexes and
+      simple table constraints involving the column will be automatically
+      converted to use the new column type by reparsing the originally
+      supplied expression.
+      The optional <literal>COLLATE</literal> clause specifies a collation
+      for the new column; if omitted, the collation is the default for the
+      new column type.
+      The optional <literal>USING</literal>
+      clause specifies how to compute the new column value from the old;
+      if omitted, the default conversion is the same as an assignment
+      cast from old data type to new.  A  <literal>USING</literal>
+      clause must be provided if there is no implicit or assignment
+      cast from old to new type.
+     </para>
+
+     <para>
+      When this form is used, the column's statistics are removed,
+      so running <link linkend="sql-analyze"><command>ANALYZE</command></link>
+      on the table afterwards is recommended.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET</literal>/<literal>DROP DEFAULT</literal></term>
+    <listitem>
+     <para>
+      These forms set or remove the default value for a column (where
+      removal is equivalent to setting the default value to NULL).  The new
+      default value will only apply in subsequent <command>INSERT</command>
+      or <command>UPDATE</command> commands; it does not cause rows already
+      in the table to change.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET</literal>/<literal>DROP NOT NULL</literal></term>
+    <listitem>
+     <para>
+      These forms change whether a column is marked to allow null
+      values or to reject null values.
+     </para>
+
+     <para>
+      <literal>SET NOT NULL</literal> may only be applied to a column
+      provided none of the records in the table contain a
+      <literal>NULL</literal> value for the column.  Ordinarily this is
+      checked during the <literal>ALTER TABLE</literal> by scanning the
+      entire table; however, if a valid <literal>CHECK</literal> constraint is
+      found which proves no <literal>NULL</literal> can exist, then the
+      table scan is skipped.
+     </para>
+
+     <para>
+      If this table is a partition, one cannot perform <literal>DROP NOT NULL</literal>
+      on a column if it is marked <literal>NOT NULL</literal> in the parent
+      table.  To drop the <literal>NOT NULL</literal> constraint from all the
+      partitions, perform <literal>DROP NOT NULL</literal> on the parent
+      table.  Even if there is no <literal>NOT NULL</literal> constraint on the
+      parent, such a constraint can still be added to individual partitions,
+      if desired; that is, the children can disallow nulls even if the parent
+      allows them, but not the other way around.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP EXPRESSION [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form turns a stored generated column into a normal base column.
+      Existing data in the columns is retained, but future changes will no
+      longer apply the generation expression.
+     </para>
+
+     <para>
+      If <literal>DROP EXPRESSION IF EXISTS</literal> is specified and the
+      column is not a stored generated column, no error is thrown.  In this
+      case a notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY</literal></term>
+    <term><literal>SET GENERATED { ALWAYS | BY DEFAULT }</literal></term>
+    <term><literal>DROP IDENTITY [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      These forms change whether a column is an identity column or change the
+      generation attribute of an existing identity column.
+      See <link linkend="sql-createtable"><command>CREATE TABLE</command></link> for details.
+      Like <literal>SET DEFAULT</literal>, these forms only affect the
+      behavior of subsequent <command>INSERT</command>
+      and <command>UPDATE</command> commands; they do not cause rows
+      already in the table to change.
+     </para>
+
+     <para>
+      If <literal>DROP IDENTITY IF EXISTS</literal> is specified and the
+      column is not an identity column, no error is thrown.  In this case a
+      notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET <replaceable>sequence_option</replaceable></literal></term>
+    <term><literal>RESTART</literal></term>
+    <listitem>
+     <para>
+      These forms alter the sequence that underlies an existing identity
+      column.  <replaceable>sequence_option</replaceable> is an option
+      supported by <link linkend="sql-altersequence"><command>ALTER SEQUENCE</command></link> such
+      as <literal>INCREMENT BY</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET STATISTICS</literal></term>
+    <listitem>
+     <para>
+      This form
+      sets the per-column statistics-gathering target for subsequent
+      <link linkend="sql-analyze"><command>ANALYZE</command></link> operations.
+      The target can be set in the range 0 to 10000; alternatively, set it
+      to -1 to revert to using the system default statistics
+      target (<xref linkend="guc-default-statistics-target"/>).
+      For more information on the use of statistics by the
+      <productname>PostgreSQL</productname> query planner, refer to
+      <xref linkend="planner-stats"/>.
+     </para>
+     <para>
+      <literal>SET STATISTICS</literal> acquires a
+      <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">attribute_option</replaceable> = <replaceable class="parameter">value</replaceable> [, ... ] )</literal></term>
+    <term><literal>RESET ( <replaceable class="parameter">attribute_option</replaceable> [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This form sets or resets per-attribute options.  Currently, the only
+      defined per-attribute options are <literal>n_distinct</literal> and
+      <literal>n_distinct_inherited</literal>, which override the
+      number-of-distinct-values estimates made by subsequent
+      <link linkend="sql-analyze"><command>ANALYZE</command></link>
+      operations.  <literal>n_distinct</literal> affects the statistics for the table
+      itself, while <literal>n_distinct_inherited</literal> affects the statistics
+      gathered for the table plus its inheritance children.  When set to a
+      positive value, <command>ANALYZE</command> will assume that the column contains
+      exactly the specified number of distinct nonnull values.  When set to a
+      negative value, which must be greater
+      than or equal to -1, <command>ANALYZE</command> will assume that the number of
+      distinct nonnull values in the column is linear in the size of the
+      table; the exact count is to be computed by multiplying the estimated
+      table size by the absolute value of the given number.  For example,
+      a value of -1 implies that all values in the column are distinct, while
+      a value of -0.5 implies that each value appears twice on the average.
+      This can be useful when the size of the table changes over time, since
+      the multiplication by the number of rows in the table is not performed
+      until query planning time.  Specify a value of 0 to revert to estimating
+      the number of distinct values normally.  For more information on the use
+      of statistics by the <productname>PostgreSQL</productname> query
+      planner, refer to <xref linkend="planner-stats"/>.
+     </para>
+     <para>
+      Changing per-attribute options acquires a
+      <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>SET STORAGE</literal>
+     <indexterm>
+      <primary>TOAST</primary>
+      <secondary>per-column storage settings</secondary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      This form sets the storage mode for a column. This controls whether this
+      column is held inline or in a secondary <acronym>TOAST</acronym> table, and
+      whether the data
+      should be compressed or not. <literal>PLAIN</literal> must be used
+      for fixed-length values such as <type>integer</type> and is
+      inline, uncompressed. <literal>MAIN</literal> is for inline,
+      compressible data. <literal>EXTERNAL</literal> is for external,
+      uncompressed data, and <literal>EXTENDED</literal> is for external,
+      compressed data.  <literal>EXTENDED</literal> is the default for most
+      data types that support non-<literal>PLAIN</literal> storage.
+      Use of <literal>EXTERNAL</literal> will make substring operations on
+      very large <type>text</type> and <type>bytea</type> values run faster,
+      at the penalty of increased storage space.  Note that
+      <literal>SET STORAGE</literal> doesn't itself change anything in the table,
+      it just sets the strategy to be pursued during future table updates.
+      See <xref linkend="storage-toast"/> for more information.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>SET COMPRESSION <replaceable class="parameter">compression_method</replaceable></literal>
+    </term>
+    <listitem>
+     <para>
+      This form sets the compression method for a column, determining how
+      values inserted in future will be compressed (if the storage mode
+      permits compression at all).
+      This does not cause the table to be rewritten, so existing data may still
+      be compressed with other compression methods.  If the table is restored
+      with <application>pg_restore</application>, then all values are rewritten
+      with the configured compression method.
+      However, when data is inserted from another relation (for example,
+      by <command>INSERT ... SELECT</command>), values from the source table are
+      not necessarily detoasted, so any previously compressed data may retain
+      its existing compression method, rather than being recompressed with the
+      compression method of the target column.
+      The supported compression
+      methods are <literal>pglz</literal> and <literal>lz4</literal>.
+      (<literal>lz4</literal> is available only if <option>--with-lz4</option>
+      was used when building <productname>PostgreSQL</productname>.)  In
+      addition, <replaceable class="parameter">compression_method</replaceable>
+      can be <literal>default</literal>, which selects the default behavior of
+      consulting the <xref linkend="guc-default-toast-compression"/> setting
+      at the time of data insertion to determine the method to use.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD <replaceable class="parameter">table_constraint</replaceable> [ NOT VALID ]</literal></term>
+    <listitem>
+     <para>
+      This form adds a new constraint to a table using the same constraint
+      syntax as <link linkend="sql-createtable"><command>CREATE TABLE</command></link>, plus the option <literal>NOT
+      VALID</literal>, which is currently only allowed for foreign key
+      and CHECK constraints.
+     </para>
+
+     <para>
+      Normally, this form will cause a scan of the table to verify that all
+      existing rows in the table satisfy the new constraint.  But if
+      the <literal>NOT VALID</literal> option is used, this
+      potentially-lengthy scan is skipped.  The constraint will still be
+      enforced against subsequent inserts or updates (that is, they'll fail
+      unless there is a matching row in the referenced table, in the case
+      of foreign keys, or they'll fail unless the new row matches the
+      specified check condition).  But the
+      database will not assume that the constraint holds for all rows in
+      the table, until it is validated by using the <literal>VALIDATE
+      CONSTRAINT</literal> option.
+      See <xref linkend="sql-altertable-notes"/> below for more information
+      about using the <literal>NOT VALID</literal> option.
+     </para>
+
+     <para>
+      Although most forms of <literal>ADD
+      <replaceable class="parameter">table_constraint</replaceable></literal>
+      require an <literal>ACCESS EXCLUSIVE</literal> lock, <literal>ADD
+      FOREIGN KEY</literal> requires only a <literal>SHARE ROW
+      EXCLUSIVE</literal> lock.  Note that <literal>ADD FOREIGN KEY</literal>
+      also acquires a <literal>SHARE ROW EXCLUSIVE</literal> lock on the
+      referenced table, in addition to the lock on the table on which the
+      constraint is declared.
+     </para>
+
+     <para>
+      Additional restrictions apply when unique or primary key constraints
+      are added to partitioned tables; see <link linkend="sql-createtable"><command>CREATE TABLE</command></link>.
+      Also, foreign key constraints on partitioned
+      tables may not be declared <literal>NOT VALID</literal> at present.
+     </para>
+
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD <replaceable class="parameter">table_constraint_using_index</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form adds a new <literal>PRIMARY KEY</literal> or <literal>UNIQUE</literal>
+      constraint to a table based on an existing unique index.  All the
+      columns of the index will be included in the constraint.
+     </para>
+
+     <para>
+      The index cannot have expression columns nor be a partial index.
+      Also, it must be a b-tree index with default sort ordering.  These
+      restrictions ensure that the index is equivalent to one that would be
+      built by a regular <literal>ADD PRIMARY KEY</literal> or <literal>ADD UNIQUE</literal>
+      command.
+     </para>
+
+     <para>
+      If <literal>PRIMARY KEY</literal> is specified, and the index's columns are not
+      already marked <literal>NOT NULL</literal>, then this command will attempt to
+      do <literal>ALTER COLUMN SET NOT NULL</literal> against each such column.
+      That requires a full table scan to verify the column(s) contain no
+      nulls.  In all other cases, this is a fast operation.
+     </para>
+
+     <para>
+      If a constraint name is provided then the index will be renamed to match
+      the constraint name.  Otherwise the constraint will be named the same as
+      the index.
+     </para>
+
+     <para>
+      After this command is executed, the index is <quote>owned</quote> by the
+      constraint, in the same way as if the index had been built by
+      a regular <literal>ADD PRIMARY KEY</literal> or <literal>ADD UNIQUE</literal>
+      command.  In particular, dropping the constraint will make the index
+      disappear too.
+     </para>
+
+     <para>
+      This form is not currently supported on partitioned tables.
+     </para>
+
+     <note>
+      <para>
+       Adding a constraint using an existing index can be helpful in
+       situations where a new constraint needs to be added without blocking
+       table updates for a long time.  To do that, create the index using
+       <command>CREATE INDEX CONCURRENTLY</command>, and then install it as an
+       official constraint using this syntax.  See the example below.
+      </para>
+     </note>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALTER CONSTRAINT</literal></term>
+    <listitem>
+     <para>
+      This form alters the attributes of a constraint that was previously
+      created. Currently only foreign key constraints may be altered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VALIDATE CONSTRAINT</literal></term>
+    <listitem>
+     <para>
+      This form validates a foreign key or check constraint that was
+      previously created as <literal>NOT VALID</literal>, by scanning the
+      table to ensure there are no rows for which the constraint is not
+      satisfied.  Nothing happens if the constraint is already marked valid.
+      (See <xref linkend="sql-altertable-notes"/> below for an explanation
+      of the usefulness of this command.)
+     </para>
+     <para>
+      This command acquires a <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP CONSTRAINT [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form drops the specified constraint on a table, along with
+      any index underlying the constraint.
+      If <literal>IF EXISTS</literal> is specified and the constraint
+      does not exist, no error is thrown. In this case a notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE</literal>/<literal>ENABLE [ REPLICA | ALWAYS ] TRIGGER</literal></term>
+    <listitem>
+     <para>
+      These forms configure the firing of trigger(s) belonging to the table.
+      A disabled trigger is still known to the system, but is not executed
+      when its triggering event occurs.  For a deferred trigger, the enable
+      status is checked when the event occurs, not when the trigger function
+      is actually executed.  One can disable or enable a single
+      trigger specified by name, or all triggers on the table, or only
+      user triggers (this option excludes internally generated constraint
+      triggers such as those that are used to implement foreign key
+      constraints or deferrable uniqueness and exclusion constraints).
+      Disabling or enabling internally generated constraint triggers
+      requires superuser privileges; it should be done with caution since
+      of course the integrity of the constraint cannot be guaranteed if the
+      triggers are not executed.
+     </para>
+
+     <para>
+      The trigger firing mechanism is also affected by the configuration
+      variable <xref linkend="guc-session-replication-role"/>. Simply enabled
+      triggers (the default) will fire when the replication role is <quote>origin</quote>
+      (the default) or <quote>local</quote>. Triggers configured as <literal>ENABLE
+      REPLICA</literal> will only fire if the session is in <quote>replica</quote>
+      mode, and triggers configured as <literal>ENABLE ALWAYS</literal> will
+      fire regardless of the current replication role.
+     </para>
+
+     <para>
+      The effect of this mechanism is that in the default configuration,
+      triggers do not fire on replicas.  This is useful because if a trigger
+      is used on the origin to propagate data between tables, then the
+      replication system will also replicate the propagated data, and the
+      trigger should not fire a second time on the replica, because that would
+      lead to duplication.  However, if a trigger is used for another purpose
+      such as creating external alerts, then it might be appropriate to set it
+      to <literal>ENABLE ALWAYS</literal> so that it is also fired on
+      replicas.
+     </para>
+
+     <para>
+      This command acquires a <literal>SHARE ROW EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE</literal>/<literal>ENABLE [ REPLICA | ALWAYS ] RULE</literal></term>
+    <listitem>
+     <para>
+      These forms configure the firing of rewrite rules belonging to the table.
+      A disabled rule is still known to the system, but is not applied
+      during query rewriting. The semantics are as for disabled/enabled
+      triggers. This configuration is ignored for <literal>ON SELECT</literal> rules, which
+      are always applied in order to keep views working even if the current
+      session is in a non-default replication role.
+     </para>
+
+     <para>
+      The rule firing mechanism is also affected by the configuration variable
+      <xref linkend="guc-session-replication-role"/>, analogous to triggers as
+      described above.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE</literal>/<literal>ENABLE ROW LEVEL SECURITY</literal></term>
+    <listitem>
+     <para>
+      These forms control the application of row security policies belonging
+      to the table.  If enabled and no policies exist for the table, then a
+      default-deny policy is applied.  Note that policies can exist for a table
+      even if row-level security is disabled.  In this case, the policies will
+      <emphasis>not</emphasis> be applied and the policies will be ignored.
+      See also
+      <link linkend="sql-createpolicy"><command>CREATE POLICY</command></link>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NO FORCE</literal>/<literal>FORCE ROW LEVEL SECURITY</literal></term>
+    <listitem>
+     <para>
+      These forms control the application of row security policies belonging
+      to the table when the user is the table owner.  If enabled, row-level
+      security policies will be applied when the user is the table owner.  If
+      disabled (the default) then row-level security will not be applied when
+      the user is the table owner.
+      See also
+      <link linkend="sql-createpolicy"><command>CREATE POLICY</command></link>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CLUSTER ON</literal></term>
+    <listitem>
+     <para>
+      This form selects the default index for future
+      <link linkend="sql-cluster"><command>CLUSTER</command></link>
+      operations.  It does not actually re-cluster the table.
+     </para>
+     <para>
+      Changing cluster options acquires a <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET WITHOUT CLUSTER</literal></term>
+    <listitem>
+     <para>
+      This form removes the most recently used
+      <link linkend="sql-cluster"><command>CLUSTER</command></link>
+      index specification from the table.  This affects
+      future cluster operations that don't specify an index.
+     </para>
+     <para>
+      Changing cluster options acquires a <literal>SHARE UPDATE EXCLUSIVE</literal> lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET WITHOUT OIDS</literal></term>
+    <listitem>
+     <para>
+      Backward-compatible syntax for removing the <literal>oid</literal>
+      system column.  As <literal>oid</literal> system columns cannot be
+      added anymore, this never has an effect.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ACCESS METHOD</literal></term>
+    <listitem>
+     <para>
+      This form changes the access method of the table by rewriting it. See
+      <xref linkend="tableam"/> for more information.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET TABLESPACE</literal></term>
+    <listitem>
+     <para>
+      This form changes the table's tablespace to the specified tablespace and
+      moves the data file(s) associated with the table to the new tablespace.
+      Indexes on the table, if any, are not moved; but they can be moved
+      separately with additional <literal>SET TABLESPACE</literal> commands.
+      When applied to a partitioned table, nothing is moved, but any
+      partitions created afterwards with
+      <command>CREATE TABLE PARTITION OF</command> will use that tablespace,
+      unless overridden by a <literal>TABLESPACE</literal> clause.
+     </para>
+
+     <para>
+      All tables in the current database in a tablespace can be moved by using
+      the <literal>ALL IN TABLESPACE</literal> form, which will lock all tables
+      to be moved first and then move each one.  This form also supports
+      <literal>OWNED BY</literal>, which will only move tables owned by the
+      roles specified.  If the <literal>NOWAIT</literal> option is specified
+      then the command will fail if it is unable to acquire all of the locks
+      required immediately.  Note that system catalogs are not moved by this
+      command; use <command>ALTER DATABASE</command> or explicit
+      <command>ALTER TABLE</command> invocations instead if desired.  The
+      <literal>information_schema</literal> relations are not considered part
+      of the system catalogs and will be moved.
+      See also
+      <link linkend="sql-createtablespace"><command>CREATE TABLESPACE</command></link>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET { LOGGED | UNLOGGED }</literal></term>
+    <listitem>
+     <para>
+      This form changes the table from unlogged to logged or vice-versa
+      (see <xref linkend="sql-createtable-unlogged"/>).  It cannot be applied
+      to a temporary table.
+     </para>
+
+     <para>
+      This also changes the persistence of any sequences linked to the table
+      (for identity or serial columns).  However, it is also possible to
+      change the persistence of such sequences separately.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This form changes one or more storage parameters for the table.  See
+      <xref linkend="sql-createtable-storage-parameters"/> in the
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link> documentation
+      for details on the available parameters.  Note that the table contents
+      will not be modified immediately by this command; depending on the
+      parameter you might need to rewrite the table to get the desired effects.
+      That can be done with <link linkend="sql-vacuum"><command>VACUUM
+      FULL</command></link>, <link linkend="sql-cluster"><command>CLUSTER</command></link> or one of the forms
+      of <command>ALTER TABLE</command> that forces a table rewrite.
+      For planner related parameters, changes will take effect from the next
+      time the table is locked so currently executing queries will not be
+      affected.
+     </para>
+
+     <para>
+      <literal>SHARE UPDATE EXCLUSIVE</literal> lock will be taken for
+      fillfactor, toast and autovacuum storage parameters, as well as the
+      planner parameter <varname>parallel_workers</varname>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESET ( <replaceable class="parameter">storage_parameter</replaceable> [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This form resets one or more storage parameters to their
+      defaults.  As with <literal>SET</literal>, a table rewrite might be
+      needed to update the table entirely.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>INHERIT <replaceable class="parameter">parent_table</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form adds the target table as a new child of the specified parent
+      table.  Subsequently, queries against the parent will include records
+      of the target table.  To be added as a child, the target table must
+      already contain all the same columns as the parent (it could have
+      additional columns, too).  The columns must have matching data types,
+      and if they have <literal>NOT NULL</literal> constraints in the parent
+      then they must also have <literal>NOT NULL</literal> constraints in the
+      child.
+     </para>
+
+     <para>
+      There must also be matching child-table constraints for all
+      <literal>CHECK</literal> constraints of the parent, except those
+      marked non-inheritable (that is, created with <literal>ALTER TABLE ... ADD CONSTRAINT ... NO INHERIT</literal>)
+      in the parent, which are ignored; all child-table constraints matched
+      must not be marked non-inheritable.
+      Currently
+      <literal>UNIQUE</literal>, <literal>PRIMARY KEY</literal>, and
+      <literal>FOREIGN KEY</literal> constraints are not considered, but
+      this might change in the future.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NO INHERIT <replaceable class="parameter">parent_table</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form removes the target table from the list of children of the
+      specified parent table.
+      Queries against the parent table will no longer include records drawn
+      from the target table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OF <replaceable class="parameter">type_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form links the table to a composite type as though <command>CREATE
+      TABLE OF</command> had formed it.  The table's list of column names and types
+      must precisely match that of the composite type.  The table must
+      not inherit from any other table.  These restrictions ensure
+      that <command>CREATE TABLE OF</command> would permit an equivalent table
+      definition.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NOT OF</literal></term>
+    <listitem>
+     <para>
+      This form dissociates a typed table from its type.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OWNER TO</literal></term>
+    <listitem>
+     <para>
+      This form changes the owner of the table, sequence, view, materialized view,
+      or foreign table to the specified user.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altertable-replica-identity">
+    <term><literal>REPLICA IDENTITY</literal></term>
+    <listitem>
+     <para>
+      This form changes the information which is written to the write-ahead log
+      to identify rows which are updated or deleted.
+      In most cases, the old value of each column is only logged if it differs
+      from the new value; however, if the old value is stored externally, it is
+      always logged regardless of whether it changed.
+      This option has no effect except when logical replication is in use.
+     <variablelist>
+      <varlistentry>
+       <term><literal>DEFAULT</literal></term>
+       <listitem>
+        <para>
+         Records the old values of the columns of the primary key, if any.
+         This is the default for non-system tables.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><literal>USING INDEX <replaceable class="parameter">index_name</replaceable></literal></term>
+       <listitem>
+        <para>
+         Records the old values of the columns covered by the named index,
+         that must be unique, not partial, not deferrable, and include only
+         columns marked <literal>NOT NULL</literal>. If this index is
+         dropped, the behavior is the same as <literal>NOTHING</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><literal>FULL</literal></term>
+       <listitem>
+        <para>
+         Records the old values of all columns in the row.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><literal>NOTHING</literal></term>
+       <listitem>
+        <para>
+         Records no information about the old row. This is the default for
+         system tables.
+        </para>
+       </listitem>
+      </varlistentry>
+     </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RENAME</literal></term>
+    <listitem>
+     <para>
+      The <literal>RENAME</literal> forms change the name of a table
+      (or an index, sequence, view, materialized view, or foreign table), the
+      name of an individual column in a table, or the name of a constraint of
+      the table.  When renaming a constraint that has an underlying index,
+      the index is renamed as well.
+      There is no effect on the stored data.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET SCHEMA</literal></term>
+    <listitem>
+     <para>
+      This form moves the table into another schema.  Associated indexes,
+      constraints, and sequences owned by table columns are moved as well.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altertable-attach-partition">
+    <term><literal>ATTACH PARTITION <replaceable class="parameter">partition_name</replaceable> { FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }</literal></term>
+    <listitem>
+     <para>
+      This form attaches an existing table (which might itself be partitioned)
+      as a partition of the target table. The table can be attached
+      as a partition for specific values using <literal>FOR VALUES</literal>
+      or as a default partition by using <literal>DEFAULT</literal>.
+      For each index in the target table, a corresponding
+      one will be created in the attached table; or, if an equivalent
+      index already exists, it will be attached to the target table's index,
+      as if <command>ALTER INDEX ATTACH PARTITION</command> had been executed.
+      Note that if the existing table is a foreign table, it is currently not
+      allowed to attach the table as a partition of the target table if there
+      are <literal>UNIQUE</literal> indexes on the target table.  (See also
+      <xref linkend="sql-createforeigntable"/>.)  For each user-defined
+      row-level trigger that exists in the target table, a corresponding one
+      is created in the attached table.
+     </para>
+
+     <para>
+      A partition using <literal>FOR VALUES</literal> uses same syntax for
+      <replaceable class="parameter">partition_bound_spec</replaceable> as
+      <link linkend="sql-createtable"><command>CREATE TABLE</command></link>.  The partition bound specification
+      must correspond to the partitioning strategy and partition key of the
+      target table.  The table to be attached must have all the same columns
+      as the target table and no more; moreover, the column types must also
+      match.  Also, it must have all the <literal>NOT NULL</literal> and
+      <literal>CHECK</literal> constraints of the target table.  Currently
+      <literal>FOREIGN KEY</literal> constraints are not considered.
+      <literal>UNIQUE</literal> and <literal>PRIMARY KEY</literal> constraints
+      from the parent table will be created in the partition, if they don't
+      already exist.
+      If any of the <literal>CHECK</literal> constraints of the table being
+      attached are marked <literal>NO INHERIT</literal>, the command will fail;
+      such constraints must be recreated without the
+      <literal>NO INHERIT</literal> clause.
+     </para>
+
+     <para>
+      If the new partition is a regular table, a full table scan is performed
+      to check that existing rows in the table do not violate the partition
+      constraint. It is possible to avoid this scan by adding a valid
+      <literal>CHECK</literal> constraint to the table that allows only
+      rows satisfying the desired partition constraint before running this
+      command. The <literal>CHECK</literal> constraint will be used to
+      determine that the table need not be scanned to validate the partition
+      constraint. This does not work, however, if any of the partition keys
+      is an expression and the partition does not accept
+      <literal>NULL</literal> values. If attaching a list partition that will
+      not accept <literal>NULL</literal> values, also add a
+      <literal>NOT NULL</literal> constraint to the partition key column,
+      unless it's an expression.
+     </para>
+
+     <para>
+      If the new partition is a foreign table, nothing is done to verify
+      that all the rows in the foreign table obey the partition constraint.
+      (See the discussion in <xref linkend="sql-createforeigntable"/> about
+      constraints on the foreign table.)
+     </para>
+
+     <para>
+      When a table has a default partition, defining a new partition changes
+      the partition constraint for the default partition. The default
+      partition can't contain any rows that would need to be moved to the new
+      partition, and will be scanned to verify that none are present. This
+      scan, like the scan of the new partition, can be avoided if an
+      appropriate <literal>CHECK</literal> constraint is present. Also like
+      the scan of the new partition, it is always skipped when the default
+      partition is a foreign table.
+     </para>
+
+     <para>
+      Attaching a partition acquires a
+      <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the parent table,
+      in addition to the <literal>ACCESS EXCLUSIVE</literal> locks on the table
+      being attached and on the default partition (if any).
+     </para>
+
+     <para>
+      Further locks must also be held on all sub-partitions if the table being
+      attached is itself a partitioned table.  Likewise if the default
+      partition is itself a partitioned table.  The locking of the
+      sub-partitions can be avoided by adding a <literal>CHECK</literal>
+      constraint as described in
+      <xref linkend="ddl-partitioning-declarative-maintenance"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altertable-detach-partition">
+    <term><literal>DETACH PARTITION <replaceable class="parameter">partition_name</replaceable> [ CONCURRENTLY | FINALIZE ]</literal></term>
+
+    <listitem>
+     <para>
+      This form detaches the specified partition of the target table.  The detached
+      partition continues to exist as a standalone table, but no longer has any
+      ties to the table from which it was detached.  Any indexes that were
+      attached to the target table's indexes are detached.  Any triggers that
+      were created as clones of those in the target table are removed.
+      <literal>SHARE</literal> lock is obtained on any tables that reference
+      this partitioned table in foreign key constraints.
+     </para>
+     <para>
+      If <literal>CONCURRENTLY</literal> is specified, it runs using a reduced
+      lock level to avoid blocking other sessions that might be accessing the
+      partitioned table.  In this mode, two transactions are used internally.
+      During the first transaction, a <literal>SHARE UPDATE EXCLUSIVE</literal>
+      lock is taken on both parent table and partition, and the partition is
+      marked as undergoing detach; at that point, the transaction is committed
+      and all other transactions using the partitioned table are waited for.
+      Once all those transactions have completed, the second transaction
+      acquires <literal>SHARE UPDATE EXCLUSIVE</literal> on the partitioned
+      table and <literal>ACCESS EXCLUSIVE</literal> on the partition,
+      and the detach process completes.  A <literal>CHECK</literal> constraint
+      that duplicates the partition constraint is added to the partition.
+      <literal>CONCURRENTLY</literal> cannot be run in a transaction block and
+      is not allowed if the partitioned table contains a default partition.
+     </para>
+     <para>
+      If <literal>FINALIZE</literal> is specified, a previous
+      <literal>DETACH CONCURRENTLY</literal> invocation that was canceled or
+      interrupted is completed.
+      At most one partition in a partitioned table can be pending detach at
+      a time.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </para>
+
+  <para>
+   All the forms of ALTER TABLE that act on a single table, except
+   <literal>RENAME</literal>, <literal>SET SCHEMA</literal>,
+   <literal>ATTACH PARTITION</literal>, and
+   <literal>DETACH PARTITION</literal> can be combined into
+   a list of multiple alterations to be applied together.  For example, it
+   is possible to add several columns and/or alter the type of several
+   columns in a single command.  This is particularly useful with large
+   tables, since only one pass over the table need be made.
+  </para>
+
+  <para>
+   You must own the table to use <command>ALTER TABLE</command>.
+   To change the schema or tablespace of a table, you must also have
+   <literal>CREATE</literal> privilege on the new schema or tablespace.
+   To add the table as a new child of a parent table, you must own the parent
+   table as well.  Also, to attach a table as a new partition of the table,
+   you must own the table being attached.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the table's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the table.
+   However, a superuser can alter ownership of any table anyway.)
+   To add a column or alter a column type or use the <literal>OF</literal>
+   clause, you must also have <literal>USAGE</literal> privilege on the data
+   type.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+    <variablelist>
+
+     <varlistentry>
+      <term><literal>IF EXISTS</literal></term>
+      <listitem>
+       <para>
+        Do not throw an error if the table does not exist. A notice is issued
+        in this case.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (optionally schema-qualified) of an existing table to
+        alter. If <literal>ONLY</literal> is specified before the table name, only
+        that table is altered. If <literal>ONLY</literal> is not specified, the table
+        and all its descendant tables (if any) are altered.  Optionally,
+        <literal>*</literal> can be specified after the table name to explicitly
+        indicate that descendant tables are included.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">column_name</replaceable></term>
+      <listitem>
+       <para>
+        Name of a new or existing column.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_column_name</replaceable></term>
+      <listitem>
+       <para>
+        New name for an existing column.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_name</replaceable></term>
+      <listitem>
+       <para>
+        New name for the table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">data_type</replaceable></term>
+      <listitem>
+       <para>
+        Data type of the new column, or new data type for an existing
+        column.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">table_constraint</replaceable></term>
+      <listitem>
+       <para>
+        New table constraint for the table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">constraint_name</replaceable></term>
+      <listitem>
+       <para>
+        Name of a new or existing constraint.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>CASCADE</literal></term>
+      <listitem>
+       <para>
+        Automatically drop objects that depend on the dropped column
+        or constraint (for example, views referencing the column),
+        and in turn all objects that depend on those objects
+        (see <xref linkend="ddl-depend"/>).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>RESTRICT</literal></term>
+      <listitem>
+       <para>
+        Refuse to drop the column or constraint if there are any dependent
+        objects. This is the default behavior.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">trigger_name</replaceable></term>
+      <listitem>
+       <para>
+        Name of a single trigger to disable or enable.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>ALL</literal></term>
+      <listitem>
+       <para>
+        Disable or enable all triggers belonging to the table.
+        (This requires superuser privilege if any of the triggers are
+        internally generated constraint triggers such as those that are used
+        to implement foreign key constraints or deferrable uniqueness and
+        exclusion constraints.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>USER</literal></term>
+      <listitem>
+       <para>
+        Disable or enable all triggers belonging to the table except for
+        internally generated constraint triggers such as those that are used
+        to implement foreign key constraints or deferrable uniqueness and
+        exclusion constraints.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">index_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of an existing index.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">storage_parameter</replaceable></term>
+      <listitem>
+       <para>
+        The name of a table storage parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">value</replaceable></term>
+      <listitem>
+       <para>
+        The new value for a table storage parameter.
+        This might be a number or a word depending on the parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">parent_table</replaceable></term>
+      <listitem>
+       <para>
+        A parent table to associate or de-associate with this table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_owner</replaceable></term>
+      <listitem>
+       <para>
+        The user name of the new owner of the table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_access_method</replaceable></term>
+      <listitem>
+       <para>
+        The name of the access method to which the table will be converted.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_tablespace</replaceable></term>
+      <listitem>
+       <para>
+        The name of the tablespace to which the table will be moved.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_schema</replaceable></term>
+      <listitem>
+       <para>
+        The name of the schema to which the table will be moved.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">partition_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the table to attach as a new partition or to detach from this table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">partition_bound_spec</replaceable></term>
+      <listitem>
+       <para>
+        The partition bound specification for a new partition.  Refer to
+        <xref linkend="sql-createtable"/> for more details on the syntax of the same.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-altertable-notes" xreflabel="Notes">
+  <title>Notes</title>
+
+   <para>
+    The key word <literal>COLUMN</literal> is noise and can be omitted.
+   </para>
+
+   <para>
+    When a column is added with <literal>ADD COLUMN</literal> and a
+    non-volatile <literal>DEFAULT</literal> is specified, the default is
+    evaluated at the time of the statement and the result stored in the
+    table's metadata.  That value will be used for the column for all existing
+    rows.  If no <literal>DEFAULT</literal> is specified, NULL is used.  In
+    neither case is a rewrite of the table required.
+   </para>
+
+   <para>
+    Adding a column with a volatile <literal>DEFAULT</literal> or
+    changing the type of an existing column will require the entire table and
+    its indexes to be rewritten. As an exception, when changing the type of an
+    existing column, if the <literal>USING</literal> clause does not change
+    the column contents and the old type is either binary coercible to the new
+    type or an unconstrained domain over the new type, a table rewrite is not
+    needed. However, indexes must always be rebuilt unless the system can
+    verify that the new index would be logically equivalent to the existing
+    one.  For example, if the collation for a column has been changed, an index
+    rebuild is always required because the new sort order might be different.
+    However, in the absence of a collation change, a column can be changed
+    from <type>text</type> to <type>varchar</type> (or vice versa) without
+    rebuilding the indexes because these data types sort identically.
+    Table and/or index rebuilds may take a
+    significant amount of time for a large table; and will temporarily require
+    as much as double the disk space.
+   </para>
+
+   <para>
+    Adding a <literal>CHECK</literal> or <literal>NOT NULL</literal> constraint requires
+    scanning the table to verify that existing rows meet the constraint,
+    but does not require a table rewrite.
+   </para>
+
+   <para>
+    Similarly, when attaching a new partition it may be scanned to verify that
+    existing rows meet the partition constraint.
+   </para>
+
+   <para>
+    The main reason for providing the option to specify multiple changes
+    in a single <command>ALTER TABLE</command> is that multiple table scans or
+    rewrites can thereby be combined into a single pass over the table.
+   </para>
+
+   <para>
+    Scanning a large table to verify a new foreign key or check constraint
+    can take a long time, and other updates to the table are locked out
+    until the <command>ALTER TABLE ADD CONSTRAINT</command> command is
+    committed.  The main purpose of the <literal>NOT VALID</literal>
+    constraint option is to reduce the impact of adding a constraint on
+    concurrent updates.  With <literal>NOT VALID</literal>,
+    the <command>ADD CONSTRAINT</command> command does not scan the table
+    and can be committed immediately.  After that, a <literal>VALIDATE
+    CONSTRAINT</literal> command can be issued to verify that existing rows
+    satisfy the constraint.  The validation step does not need to lock out
+    concurrent updates, since it knows that other transactions will be
+    enforcing the constraint for rows that they insert or update; only
+    pre-existing rows need to be checked.  Hence, validation acquires only
+    a <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the table being
+    altered.  (If the constraint is a foreign key then a <literal>ROW
+    SHARE</literal> lock is also required on the table referenced by the
+    constraint.)  In addition to improving concurrency, it can be useful to
+    use <literal>NOT VALID</literal> and <literal>VALIDATE
+    CONSTRAINT</literal> in cases where the table is known to contain
+    pre-existing violations.  Once the constraint is in place, no new
+    violations can be inserted, and the existing problems can be corrected
+    at leisure until <literal>VALIDATE CONSTRAINT</literal> finally
+    succeeds.
+   </para>
+
+   <para>
+    The <literal>DROP COLUMN</literal> form does not physically remove
+    the column, but simply makes it invisible to SQL operations.  Subsequent
+    insert and update operations in the table will store a null value for the
+    column. Thus, dropping a column is quick but it will not immediately
+    reduce the on-disk size of your table, as the space occupied
+    by the dropped column is not reclaimed.  The space will be
+    reclaimed over time as existing rows are updated.
+   </para>
+
+   <para>
+    To force immediate reclamation of space occupied by a dropped column,
+    you can execute one of the forms of <command>ALTER TABLE</command> that
+    performs a rewrite of the whole table.  This results in reconstructing
+    each row with the dropped column replaced by a null value.
+   </para>
+
+   <para>
+    The rewriting forms of <command>ALTER TABLE</command> are not MVCC-safe.
+    After a table rewrite, the table will appear empty to concurrent
+    transactions, if they are using a snapshot taken before the rewrite
+    occurred.  See <xref linkend="mvcc-caveats"/> for more details.
+   </para>
+
+   <para>
+    The <literal>USING</literal> option of <literal>SET DATA TYPE</literal> can actually
+    specify any expression involving the old values of the row; that is, it
+    can refer to other columns as well as the one being converted.  This allows
+    very general conversions to be done with the <literal>SET DATA TYPE</literal>
+    syntax.  Because of this flexibility, the <literal>USING</literal>
+    expression is not applied to the column's default value (if any); the
+    result might not be a constant expression as required for a default.
+    This means that when there is no implicit or assignment cast from old to
+    new type, <literal>SET DATA TYPE</literal> might fail to convert the default even
+    though a <literal>USING</literal> clause is supplied.  In such cases,
+    drop the default with <literal>DROP DEFAULT</literal>, perform the <literal>ALTER
+    TYPE</literal>, and then use <literal>SET DEFAULT</literal> to add a suitable new
+    default.  Similar considerations apply to indexes and constraints involving
+    the column.
+   </para>
+
+   <para>
+    If a table has any descendant tables, it is not permitted to add,
+    rename, or change the type of a column in the parent table without doing
+    the same to the descendants.  This ensures that the descendants always
+    have columns matching the parent.  Similarly, a <literal>CHECK</literal>
+    constraint cannot be renamed in the parent without also renaming it in
+    all descendants, so that <literal>CHECK</literal> constraints also match
+    between the parent and its descendants.  (That restriction does not apply
+    to index-based constraints, however.)
+    Also, because selecting from the parent also selects from its descendants,
+    a constraint on the parent cannot be marked valid unless it is also marked
+    valid for those descendants.  In all of these cases, <command>ALTER TABLE
+    ONLY</command> will be rejected.
+   </para>
+
+   <para>
+    A recursive <literal>DROP COLUMN</literal> operation will remove a
+    descendant table's column only if the descendant does not inherit
+    that column from any other parents and never had an independent
+    definition of the column.  A nonrecursive <literal>DROP
+    COLUMN</literal> (i.e., <command>ALTER TABLE ONLY ... DROP
+    COLUMN</command>) never removes any descendant columns, but
+    instead marks them as independently defined rather than inherited.
+    A nonrecursive <literal>DROP COLUMN</literal> command will fail for a
+    partitioned table, because all partitions of a table must have the same
+    columns as the partitioning root.
+   </para>
+
+   <para>
+    The actions for identity columns (<literal>ADD
+    GENERATED</literal>, <literal>SET</literal> etc., <literal>DROP
+    IDENTITY</literal>), as well as the actions
+    <literal>TRIGGER</literal>, <literal>CLUSTER</literal>, <literal>OWNER</literal>,
+    and <literal>TABLESPACE</literal> never recurse to descendant tables;
+    that is, they always act as though <literal>ONLY</literal> were specified.
+    Adding a constraint recurses only for <literal>CHECK</literal> constraints
+    that are not marked <literal>NO INHERIT</literal>.
+   </para>
+
+   <para>
+    Changing any part of a system catalog table is not permitted.
+   </para>
+
+   <para>
+    Refer to <xref linkend="sql-createtable"/> for a further description of valid
+    parameters. <xref linkend="ddl"/> has further information on
+    inheritance.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To add a column of type <type>varchar</type> to a table:
+<programlisting>
+ALTER TABLE distributors ADD COLUMN address varchar(30);
+</programlisting>
+   That will cause all existing rows in the table to be filled with null
+   values for the new column.
+  </para>
+
+  <para>
+   To add a column with a non-null default:
+<programlisting>
+ALTER TABLE measurements
+  ADD COLUMN mtime timestamp with time zone DEFAULT now();
+</programlisting>
+   Existing rows will be filled with the current time as the value of the
+   new column, and then new rows will receive the time of their insertion.
+  </para>
+
+  <para>
+   To add a column and fill it with a value different from the default to
+   be used later:
+<programlisting>
+ALTER TABLE transactions
+  ADD COLUMN status varchar(30) DEFAULT 'old',
+  ALTER COLUMN status SET default 'current';
+</programlisting>
+   Existing rows will be filled with <literal>old</literal>, but then
+   the default for subsequent commands will be <literal>current</literal>.
+   The effects are the same as if the two sub-commands had been issued
+   in separate <command>ALTER TABLE</command> commands.
+  </para>
+
+  <para>
+   To drop a column from a table:
+<programlisting>
+ALTER TABLE distributors DROP COLUMN address RESTRICT;
+</programlisting>
+  </para>
+
+  <para>
+   To change the types of two existing columns in one operation:
+<programlisting>
+ALTER TABLE distributors
+    ALTER COLUMN address TYPE varchar(80),
+    ALTER COLUMN name TYPE varchar(100);
+</programlisting>
+  </para>
+
+  <para>
+   To change an integer column containing Unix timestamps to <type>timestamp
+   with time zone</type> via a <literal>USING</literal> clause:
+<programlisting>
+ALTER TABLE foo
+    ALTER COLUMN foo_timestamp SET DATA TYPE timestamp with time zone
+    USING
+        timestamp with time zone 'epoch' + foo_timestamp * interval '1 second';
+</programlisting>
+  </para>
+
+  <para>
+   The same, when the column has a default expression that won't automatically
+   cast to the new data type:
+<programlisting>
+ALTER TABLE foo
+    ALTER COLUMN foo_timestamp DROP DEFAULT,
+    ALTER COLUMN foo_timestamp TYPE timestamp with time zone
+    USING
+        timestamp with time zone 'epoch' + foo_timestamp * interval '1 second',
+    ALTER COLUMN foo_timestamp SET DEFAULT now();
+</programlisting>
+  </para>
+
+  <para>
+   To rename an existing column:
+<programlisting>
+ALTER TABLE distributors RENAME COLUMN address TO city;
+</programlisting>
+  </para>
+
+  <para>
+   To rename an existing table:
+<programlisting>
+ALTER TABLE distributors RENAME TO suppliers;
+</programlisting>
+  </para>
+
+  <para>
+   To rename an existing constraint:
+<programlisting>
+ALTER TABLE distributors RENAME CONSTRAINT zipchk TO zip_check;
+</programlisting>
+  </para>
+
+  <para>
+   To add a not-null constraint to a column:
+<programlisting>
+ALTER TABLE distributors ALTER COLUMN street SET NOT NULL;
+</programlisting>
+   To remove a not-null constraint from a column:
+<programlisting>
+ALTER TABLE distributors ALTER COLUMN street DROP NOT NULL;
+</programlisting>
+  </para>
+
+  <para>
+   To add a check constraint to a table and all its children:
+<programlisting>
+ALTER TABLE distributors ADD CONSTRAINT zipchk CHECK (char_length(zipcode) = 5);
+</programlisting>
+  </para>
+
+  <para>
+   To add a check constraint only to a table and not to its children:
+<programlisting>
+ALTER TABLE distributors ADD CONSTRAINT zipchk CHECK (char_length(zipcode) = 5) NO INHERIT;
+</programlisting>
+   (The check constraint will not be inherited by future children, either.)
+  </para>
+
+  <para>
+   To remove a check constraint from a table and all its children:
+<programlisting>
+ALTER TABLE distributors DROP CONSTRAINT zipchk;
+</programlisting>
+  </para>
+
+  <para>
+   To remove a check constraint from one table only:
+<programlisting>
+ALTER TABLE ONLY distributors DROP CONSTRAINT zipchk;
+</programlisting>
+   (The check constraint remains in place for any child tables.)
+  </para>
+
+  <para>
+   To add a foreign key constraint to a table:
+<programlisting>
+ALTER TABLE distributors ADD CONSTRAINT distfk FOREIGN KEY (address) REFERENCES addresses (address);
+</programlisting>
+  </para>
+
+  <para>
+   To add a foreign key constraint to a table with the least impact on other work:
+<programlisting>
+ALTER TABLE distributors ADD CONSTRAINT distfk FOREIGN KEY (address) REFERENCES addresses (address) NOT VALID;
+ALTER TABLE distributors VALIDATE CONSTRAINT distfk;
+</programlisting>
+  </para>
+
+  <para>
+   To add a (multicolumn) unique constraint to a table:
+<programlisting>
+ALTER TABLE distributors ADD CONSTRAINT dist_id_zipcode_key UNIQUE (dist_id, zipcode);
+</programlisting>
+  </para>
+
+  <para>
+   To add an automatically named primary key constraint to a table, noting
+   that a table can only ever have one primary key:
+<programlisting>
+ALTER TABLE distributors ADD PRIMARY KEY (dist_id);
+</programlisting>
+  </para>
+
+  <para>
+   To move a table to a different tablespace:
+<programlisting>
+ALTER TABLE distributors SET TABLESPACE fasttablespace;
+</programlisting>
+  </para>
+
+  <para>
+   To move a table to a different schema:
+<programlisting>
+ALTER TABLE myschema.distributors SET SCHEMA yourschema;
+</programlisting>
+  </para>
+
+  <para>
+   To recreate a primary key constraint, without blocking updates while the
+   index is rebuilt:
+<programlisting>
+CREATE UNIQUE INDEX CONCURRENTLY dist_id_temp_idx ON distributors (dist_id);
+ALTER TABLE distributors DROP CONSTRAINT distributors_pkey,
+    ADD CONSTRAINT distributors_pkey PRIMARY KEY USING INDEX dist_id_temp_idx;
+</programlisting></para>
+
+  <para>
+   To attach a partition to a range-partitioned table:
+<programlisting>
+ALTER TABLE measurement
+    ATTACH PARTITION measurement_y2016m07 FOR VALUES FROM ('2016-07-01') TO ('2016-08-01');
+</programlisting></para>
+
+  <para>
+   To attach a partition to a list-partitioned table:
+<programlisting>
+ALTER TABLE cities
+    ATTACH PARTITION cities_ab FOR VALUES IN ('a', 'b');
+</programlisting></para>
+
+  <para>
+   To attach a partition to a hash-partitioned table:
+<programlisting>
+ALTER TABLE orders
+    ATTACH PARTITION orders_p4 FOR VALUES WITH (MODULUS 4, REMAINDER 3);
+</programlisting></para>
+
+  <para>
+   To attach a default partition to a partitioned table:
+<programlisting>
+ALTER TABLE cities
+    ATTACH PARTITION cities_partdef DEFAULT;
+</programlisting></para>
+
+  <para>
+   To detach a partition from a partitioned table:
+<programlisting>
+ALTER TABLE measurement
+    DETACH PARTITION measurement_y2015m12;
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The forms <literal>ADD</literal> (without <literal>USING INDEX</literal>),
+   <literal>DROP [COLUMN]</literal>, <literal>DROP IDENTITY</literal>, <literal>RESTART</literal>,
+   <literal>SET DEFAULT</literal>, <literal>SET DATA TYPE</literal> (without <literal>USING</literal>),
+   <literal>SET GENERATED</literal>, and <literal>SET <replaceable>sequence_option</replaceable></literal>
+   conform with the SQL standard.  The other forms are
+   <productname>PostgreSQL</productname> extensions of the SQL standard.
+   Also, the ability to specify more than one manipulation in a single
+   <command>ALTER TABLE</command> command is an extension.
+  </para>
+
+  <para>
+   <command>ALTER TABLE DROP COLUMN</command> can be used to drop the only
+   column of a table, leaving a zero-column table.  This is an
+   extension of SQL, which disallows zero-column tables.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createtable"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

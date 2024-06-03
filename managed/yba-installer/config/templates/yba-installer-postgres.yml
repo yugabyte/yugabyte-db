@@ -1,0 +1,26 @@
+ services:
+  - name: postgresService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=Postgres
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      Type=forking
+      TimeoutSec=300
+
+      ExecStart={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
+
+      ExecStop={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
+
+      Restart=always
+      RestartSec={{ yamlPath "postgres.restartSeconds"}}
+
+      [Install]
+      WantedBy=multi-user.target

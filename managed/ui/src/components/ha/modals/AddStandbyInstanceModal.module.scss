@@ -1,0 +1,32 @@
+@use '../../../_style/colors.scss';
+
+.peerCertsField {
+  margin-top: 15px;
+
+  .certsContainer {
+    margin: 10px 0;
+    .emptyCertsPlaceholder {
+      width: fit-content;
+      margin: 0 auto;
+    }
+    .certificate {
+      display: flex;
+
+      .identifier {
+        min-width: 520px;
+      }
+
+      .ellipse {
+        min-width: 35px;
+      }
+    }
+  }
+
+  .addCertsButton {
+    width: 100%;
+  }
+
+  .errorContainer {
+    color: colors.$YB_FAIL_COLOR;
+  }
+}

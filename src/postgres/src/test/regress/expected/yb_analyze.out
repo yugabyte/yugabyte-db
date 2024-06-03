@@ -1,0 +1,199 @@
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+-- Create new tables
+CREATE TABLE x(a int PRIMARY KEY, b text);
+CREATE TABLE y(a int PRIMARY KEY, b text);
+INSERT INTO x
+  SELECT i, chr(ascii('A') + i) FROM generate_series(0, 24) as s(i);
+INSERT INTO y
+  SELECT i, CASE i % 4 WHEN 1 THEN 'odd' WHEN 2 THEN 'two' WHEN 3 THEN 'odd' END
+  FROM generate_series(1, 25000) as s(i);
+-- Check statistics is not there
+SELECT
+  relname,
+  reltuples,
+  staattnum,
+  stanullfrac,
+  stawidth,
+  stadistinct
+FROM
+  pg_class LEFT JOIN pg_statistic ON pg_class.oid = starelid
+WHERE
+  relname IN ('x', 'y')
+ORDER BY
+  relname, staattnum;
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+---------+-----------+-----------+-------------+----------+-------------
+ x       |        -1 |           |             |          |
+ y       |        -1 |           |             |          |
+(2 rows)
+
+-- Explain queries without statistics
+EXPLAIN SELECT * FROM x;
+                      QUERY PLAN
+-------------------------------------------------------
+ Seq Scan on x  (cost=0.00..100.00 rows=1000 width=36)
+(1 row)
+
+EXPLAIN SELECT * FROM y;
+                      QUERY PLAN
+-------------------------------------------------------
+ Seq Scan on y  (cost=0.00..100.00 rows=1000 width=36)
+(1 row)
+
+EXPLAIN SELECT DISTINCT b FROM y;
+                         QUERY PLAN
+-------------------------------------------------------------
+ HashAggregate  (cost=102.50..104.50 rows=200 width=32)
+   Group Key: b
+   ->  Seq Scan on y  (cost=0.00..100.00 rows=1000 width=32)
+(3 rows)
+
+EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..224.00 rows=1000 width=72)
+   Join Filter: (x.a = y.a)
+   ->  Seq Scan on x  (cost=0.00..100.00 rows=1000 width=36)
+   ->  Index Scan using y_pkey on y  (cost=0.00..0.11 rows=1 width=36)
+         Index Cond: (a = ANY (ARRAY[x.a, $1, $2, ..., $1023]))
+(5 rows)
+
+EXPLAIN SELECT * FROM y, x WHERE x.a = y.a;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..224.00 rows=1000 width=72)
+   Join Filter: (y.a = x.a)
+   ->  Seq Scan on y  (cost=0.00..100.00 rows=1000 width=36)
+   ->  Index Scan using x_pkey on x  (cost=0.00..0.11 rows=1 width=36)
+         Index Cond: (a = ANY (ARRAY[y.a, $1, $2, ..., $1023]))
+(5 rows)
+
+ANALYZE x, y;
+-- Check statistic is there
+SELECT
+  relname,
+  reltuples,
+  staattnum,
+  stanullfrac,
+  stawidth,
+  stadistinct
+FROM
+  pg_class LEFT JOIN pg_statistic ON pg_class.oid = starelid
+WHERE
+  relname IN ('x', 'y')
+ORDER BY
+  relname, staattnum;
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+---------+-----------+-----------+-------------+----------+-------------
+ x       |        25 |         1 |           0 |        4 |          -1
+ x       |        25 |         2 |           0 |        2 |          -1
+ y       |     25000 |         1 |           0 |        4 |          -1
+ y       |     25000 |         2 |        0.25 |        4 |           2
+(4 rows)
+
+-- Explain queries with statistics
+EXPLAIN SELECT * FROM x;
+                    QUERY PLAN
+---------------------------------------------------
+ Seq Scan on x  (cost=0.00..2.50 rows=25 width=36)
+(1 row)
+
+EXPLAIN SELECT * FROM y;
+                       QUERY PLAN
+---------------------------------------------------------
+ Seq Scan on y  (cost=0.00..2500.00 rows=25000 width=36)
+(1 row)
+
+EXPLAIN SELECT DISTINCT b FROM y;
+                          QUERY PLAN
+---------------------------------------------------------------
+ HashAggregate  (cost=2562.50..2562.52 rows=2 width=32)
+   Group Key: b
+   ->  Seq Scan on y  (cost=0.00..2500.00 rows=25000 width=32)
+(3 rows)
+
+EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..9.50 rows=25 width=72)
+   Join Filter: (x.a = y.a)
+   ->  Seq Scan on x  (cost=0.00..2.50 rows=25 width=36)
+   ->  Index Scan using y_pkey on y  (cost=0.00..0.27 rows=1 width=36)
+         Index Cond: (a = ANY (ARRAY[x.a, $1, $2, ..., $1023]))
+(5 rows)
+
+EXPLAIN SELECT * FROM y, x WHERE x.a = y.a;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=0.00..9.25 rows=25 width=72)
+   Join Filter: (y.a = x.a)
+   ->  Seq Scan on x  (cost=0.00..2.50 rows=25 width=36)
+   ->  Index Scan using y_pkey on y  (cost=0.00..0.27 rows=1 width=36)
+         Index Cond: (a = ANY (ARRAY[x.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- Modify tables
+INSERT INTO x VALUES (25, 'Z');
+DELETE FROM y WHERE a % 10 = 0;
+ALTER TABLE y ADD COLUMN c int;
+UPDATE y SET c = LENGTH(b) WHERE b IS NOT NULL;
+ANALYZE x;
+ANALYZE y;
+-- Check updated statistics
+SELECT
+  relname,
+  reltuples,
+  staattnum,
+  stanullfrac,
+  stawidth,
+  stadistinct
+FROM
+  pg_class LEFT JOIN pg_statistic ON pg_class.oid = starelid
+WHERE
+  relname IN ('x', 'y')
+ORDER BY
+  relname, staattnum;
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+---------+-----------+-----------+-------------+----------+-------------
+ x       |        26 |         1 |           0 |        4 |          -1
+ x       |        26 |         2 |           0 |        2 |          -1
+ y       |     22500 |         1 |           0 |        4 |          -1
+ y       |     22500 |         2 |    0.222222 |        4 |           2
+ y       |     22500 |         3 |    0.222222 |        4 |           1
+(5 rows)
+
+create temp table prtx1 (a integer, b integer, c integer)
+  partition by range (a);
+create temp table prtx1_1 partition of prtx1 for values from (1) to (11);
+create temp table prtx1_2 partition of prtx1 for values from (11) to (21);
+create temp table prtx1_3 partition of prtx1 for values from (21) to (31);
+insert into prtx1 select 1 + i%30, i, i
+  from generate_series(1,1000) i;
+analyze prtx1;
+-- Verify analyze works after dropping a table column.
+ALTER TABLE x DROP COLUMN b;
+ANALYZE x;
+SELECT
+  relname,
+  reltuples,
+  staattnum,
+  stanullfrac,
+  stawidth,
+  stadistinct
+FROM
+  pg_class LEFT JOIN pg_statistic ON pg_class.oid = starelid
+WHERE
+  relname = 'x'
+ORDER BY
+  relname, staattnum;
+ relname | reltuples | staattnum | stanullfrac | stawidth | stadistinct
+---------+-----------+-----------+-------------+----------+-------------
+ x       |        26 |         1 |           0 |        4 |          -1
+(1 row)
+
+-- Cleanup
+DROP TABLE x;
+DROP TABLE y;
+-- Analyze all tables
+ANALYZE;

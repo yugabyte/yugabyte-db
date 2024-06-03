@@ -1,0 +1,25 @@
+#include <stdio.h>
+
+EXEC SQL INCLUDE sqlca;
+exec sql include ../regression;
+
+EXEC SQL WHENEVER SQLERROR sqlprint;
+
+int
+main ()
+{
+  ECPGdebug (1, stderr);
+
+  EXEC SQL CONNECT TO REGRESSDB1;
+  EXEC SQL CREATE TABLE foo (a int, b varchar);
+  EXEC SQL INSERT INTO foo VALUES (5, 'abc');
+  EXEC SQL INSERT INTO foo VALUES (6, 'def');
+  EXEC SQL INSERT INTO foo VALUES (7, 'ghi');
+
+  EXEC SQL COPY foo TO STDOUT WITH DELIMITER ',';
+  printf ("copy to STDOUT : sqlca.sqlcode = %ld\n", sqlca.sqlcode);
+
+  EXEC SQL DISCONNECT;
+
+  return 0;
+}

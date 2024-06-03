@@ -1,0 +1,155 @@
+<!--
+doc/src/sgml/ref/set_role.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-set-role">
+ <indexterm zone="sql-set-role">
+  <primary>SET ROLE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SET ROLE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SET ROLE</refname>
+  <refpurpose>set the current user identifier of the current session</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SET [ SESSION | LOCAL ] ROLE <replaceable class="parameter">role_name</replaceable>
+SET [ SESSION | LOCAL ] ROLE NONE
+RESET ROLE
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   This command sets the current user
+   identifier of the current SQL session to be <replaceable
+   class="parameter">role_name</replaceable>.  The role name can be
+   written as either an identifier or a string literal.
+   After <command>SET ROLE</command>, permissions checking for SQL commands
+   is carried out as though the named role were the one that had logged
+   in originally.
+  </para>
+
+  <para>
+   The specified <replaceable class="parameter">role_name</replaceable>
+   must be a role that the current session user is a member of.
+   (If the session user is a superuser, any role can be selected.)
+  </para>
+
+  <para>
+   The <literal>SESSION</literal> and <literal>LOCAL</literal> modifiers act the same
+   as for the regular <link linkend="sql-set"><command>SET</command></link>
+   command.
+  </para>
+
+  <para>
+   <literal>SET ROLE NONE</literal> sets the current user identifier to the
+   current session user identifier, as returned by
+   <function>session_user</function>.  <literal>RESET ROLE</literal> sets the
+   current user identifier to the connection-time setting specified by the
+   <link linkend="libpq-connect-options">command-line options</link>,
+   <link linkend="sql-alterrole"><command>ALTER ROLE</command></link>, or
+   <link linkend="sql-alterdatabase"><command>ALTER DATABASE</command></link>,
+   if any such settings exist.  Otherwise, <literal>RESET ROLE</literal> sets
+   the current user identifier to the current session user identifier.  These
+   forms can be executed by any user.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Using this command, it is possible to either add privileges or restrict
+   one's privileges.  If the session user role has the <literal>INHERIT</literal>
+   attribute, then it automatically has all the privileges of every role that
+   it could <command>SET ROLE</command> to; in this case <command>SET ROLE</command>
+   effectively drops all the privileges assigned directly to the session user
+   and to the other roles it is a member of, leaving only the privileges
+   available to the named role.  On the other hand, if the session user role
+   has the <literal>NOINHERIT</literal> attribute, <command>SET ROLE</command> drops the
+   privileges assigned directly to the session user and instead acquires the
+   privileges available to the named role.
+  </para>
+
+  <para>
+   In particular, when a superuser chooses to <command>SET ROLE</command> to a
+   non-superuser role, they lose their superuser privileges.
+  </para>
+
+  <para>
+   <command>SET ROLE</command> has effects comparable to
+   <link linkend="sql-set-session-authorization"><command>SET SESSION AUTHORIZATION</command></link>, but the privilege
+   checks involved are quite different.  Also,
+   <command>SET SESSION AUTHORIZATION</command> determines which roles are
+   allowable for later <command>SET ROLE</command> commands, whereas changing
+   roles with <command>SET ROLE</command> does not change the set of roles
+   allowed to a later <command>SET ROLE</command>.
+  </para>
+
+  <para>
+   <command>SET ROLE</command> does not process session variables as specified by
+   the role's <link linkend="sql-alterrole"><command>ALTER ROLE</command></link> settings;  this only happens during
+   login.
+  </para>
+
+  <para>
+   <command>SET ROLE</command> cannot be used within a
+   <literal>SECURITY DEFINER</literal> function.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+<programlisting>
+SELECT SESSION_USER, CURRENT_USER;
+
+ session_user | current_user
+--------------+--------------
+ peter        | peter
+
+SET ROLE 'paul';
+
+SELECT SESSION_USER, CURRENT_USER;
+
+ session_user | current_user
+--------------+--------------
+ peter        | paul
+</programlisting>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <productname>PostgreSQL</productname>
+   allows identifier syntax (<literal>"<replaceable>rolename</replaceable>"</literal>), while
+   the SQL standard requires the role name to be written as a string
+   literal.  SQL does not allow this command during a transaction;
+   <productname>PostgreSQL</productname> does not make this
+   restriction because there is no reason to.
+   The <literal>SESSION</literal> and <literal>LOCAL</literal> modifiers are a
+   <productname>PostgreSQL</productname> extension, as is the
+   <literal>RESET</literal> syntax.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-set-session-authorization"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

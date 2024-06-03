@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>CD4C1D22-22E3-4DD2-9BF1-82A3FD96D183</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="800" height="600" rx="8"></rect>
+        <filter x="-1.9%" y="-2.5%" width="103.8%" height="105.0%" filterUnits="objectBoundingBox" id="filter-3">
+            <feOffset dx="0" dy="0" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="5" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.25 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Clusters---Connect" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Clusters/Connect" transform="translate(-360.000000, -200.000000)">
+            <g id="Layout/Modal-(Default)">
+                <g id="Group" fill="#0B1117" opacity="0.75">
+                    <g id="Rectangle-2">
+                        <rect id="Rectangle" x="0" y="0" width="1456" height="1024"></rect>
+                    </g>
+                </g>
+                <g id="Modal" transform="translate(328.000000, 64.000000)">
+                    <mask id="mask-2" fill="white">
+                        <use xlink:href="#path-1"></use>
+                    </mask>
+                    <g id="Mask">
+                        <use fill="transparent" fill-opacity="1" filter="url(#filter-3)" xlink:href="#path-1"></use>
+                        <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+                    </g>
+                </g>
+            </g>
+            <g id="Wizard/Provider" transform="translate(344.000000, 184.000000)">
+                <rect id="Rectangle" stroke="#E9EEF2" fill="transparent" x="0.5" y="0.5" width="767" height="127" rx="8"></rect>
+                <g id="Icon/Console" transform="translate(16.000000, 16.000000)">
+                    <polygon id="Shape" points="0 0 32 0 32 32 0 32"></polygon>
+                    <path d="M16,6 C21.1773333,6 25.5406667,9.80142857 26.1757333,14.7528571 C28.7732,15.3657143 30.6666667,17.65 30.6666667,20.2857143 C30.6666667,23.3444538 28.187967,25.8487346 25.0838626,25.9933992 L24.8,26 L7.93333333,26 C4.29453333,26 1.33333333,23.1157143 1.33333333,19.5714286 C1.33333333,16.7171429 3.30746667,14.1914286 6.08973333,13.4028571 C7.28213333,9.08714286 11.3785333,6 16,6 Z M11.0141215,13.9406771 C10.7552778,13.759868 10.3974009,13.7856978 10.1668524,14.0181668 L10.1668524,14.0181668 L10.0900028,14.1109151 C9.91068734,14.371915 9.93630384,14.732773 10.1668524,14.9652419 L10.1668524,14.9652419 L12.7400654,17.5606395 L10.1668524,20.15693 L10.0900028,20.2496783 C9.91068734,20.5106782 9.93630384,20.8715362 10.1668524,21.1040051 C10.4262194,21.3655327 10.8467365,21.3655327 11.1061036,21.1040051 L11.1061036,21.1040051 L14.1501288,18.0346235 L14.2269783,17.9418752 C14.4062938,17.6808754 14.3806773,17.3200174 14.1501288,17.0875484 L14.1501288,17.0875484 L11.1061036,14.0181668 Z M22.8125786,17.505279 L17.9421384,17.505279 L17.8227564,17.5160685 C17.512931,17.5727719 17.2779874,17.8462015 17.2779874,18.1749623 C17.2779874,18.5448181 17.5753379,18.8446456 17.9421384,18.8446456 L17.9421384,18.8446456 L22.8125786,18.8446456 L22.9319606,18.8338561 C23.241786,18.7771527 23.4767296,18.503723 23.4767296,18.1749623 C23.4767296,17.8051064 23.1793791,17.505279 22.8125786,17.505279 L22.8125786,17.505279 Z" id="Combined-Shape" fill="currentColor"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

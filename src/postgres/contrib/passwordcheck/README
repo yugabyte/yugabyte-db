@@ -1,0 +1,62 @@
+passwordcheck_extra
+===================
+
+Development
+-----------
+
+passwordcheck_extra is a fork of passwordcheck, contrib module to check
+a password quality using a fork of PostgreSQL core.
+
+There are two ways to compile and install the code:
+1) Copy it as contrib/passwordcheck_extra in PostgreSQL code and use the
+following command:
+make install
+2) Include PostgreSQL libraries in LD_LIBRARY_PATH and use the following
+command:
+make USE_PGXS=1
+make USE_PGXS=1 install
+
+Regression tests can be run as follows:
+1) Module copied in contrib of PostgreSQL:
+make check
+make installcheck # Run on existing server
+2) Module managed independently, needs a server already running.
+make installcheck USE_PGXS=1 # Run on existing server
+
+In order to install it, install the library to server, add the following
+parameter value to postgresql.conf and restart server.
+shared_preload_libraries = '$libdir/passwordcheck_extra'
+
+Features
+--------
+
+This module strengthens the minimum password requirement it should have
+at creation with a user-defined policy:
+- passwordcheck_extra.special_chars, to define a list of special characters
+  with the password needing at least one. Default is "!@#$%^&*()_+{}|<>?=".
+- passwordcheck_extra.restrict_lower, to enforce the use of at least one
+  lower-case character.
+- passwordcheck_extra.restrict_upper, to enforce the use of at least one
+  upper-case character.
+- passwordcheck_extra.restrict_numbers, to enforce the use of at least
+  one number.
+- passwordcheck_extra.restrict_special, to enforce the use of at least
+  one special character listed in \"passwordcheck_extra.special_chars\".
+- passwordcheck_extra.minimum_length, minimum length of password allowed.
+  Default is 8, which likely sucks.
+- passwordcheck_extra.maximum_length, maximum length of password allowed.
+  Default is 15, which definitely sucks, but it is useful for tests.
+
+YB note:
+passwordcheck has been replaced by passwordcheck_extra.
+However the name of the plugin continues to be passwordcheck because the team
+decided that it will be confusing to have two plugins for the same function.
+
+The steps followed to replace the plugin are:
+
+* Choose commit referred below as subsequent commits add support for PG15.
+* Overwrite passwordcheck.c with passwordcheck_extra.c (using cp)
+* Remove all occurrences of "_extra" as the name of the plugin is unchanged.
+
+Tests from passwordcheck (with some changes) and passwordcheck_extra are also
+run.

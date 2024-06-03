@@ -1,0 +1,88 @@
+--
+-- ALTER RENAME
+-- rename column, table, database
+--
+create database test_rename;
+create database test_rename1;
+\c test_rename
+create table foo(a int primary key, b int);
+insert into foo (a, b) values (1, 2);
+\d
+        List of relations
+ Schema | Name | Type  |  Owner   
+--------+------+-------+----------
+ public | foo  | table | yugabyte
+(1 row)
+
+\d foo
+                Table "public.foo"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           |          | 
+Indexes:
+    "foo_pkey" PRIMARY KEY, lsm (a HASH)
+
+alter table foo rename column b to c;
+select a, b from foo; -- fail
+ERROR:  column "b" does not exist
+LINE 1: select a, b from foo;
+                  ^
+select a, c from foo;
+ a | c 
+---+---
+ 1 | 2
+(1 row)
+
+insert into foo (a, b) values (2, 3); -- fail
+ERROR:  column "b" of relation "foo" does not exist
+LINE 1: insert into foo (a, b) values (2, 3);
+                            ^
+insert into foo (a, c) values (3, 4);
+\d foo
+                Table "public.foo"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ c      | integer |           |          | 
+Indexes:
+    "foo_pkey" PRIMARY KEY, lsm (a HASH)
+
+alter table foo rename to bar;
+select * from foo; -- fail
+ERROR:  relation "foo" does not exist
+LINE 1: select * from foo;
+                      ^
+select * from bar;
+ a | c 
+---+---
+ 1 | 2
+ 3 | 4
+(2 rows)
+
+\d
+        List of relations
+ Schema | Name | Type  |  Owner   
+--------+------+-------+----------
+ public | bar  | table | yugabyte
+(1 row)
+
+\c test_rename1;
+alter database test_rename rename to test_rename2;
+alter database test_rename2 rename to postgres; -- fail
+ERROR:  database "postgres" already exists
+\l
+                                                  List of databases
+      Name       |  Owner   | Encoding | Collate |    Ctype    | ICU Locale | Locale Provider |   Access privileges
+-----------------+----------+----------+---------+-------------+------------+-----------------+-----------------------
+ postgres        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ system_platform | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ template0       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
+                 |          |          |         |             |            |                 | postgres=CTc/postgres
+ template1       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | =c/postgres          +
+                 |          |          |         |             |            |                 | postgres=CTc/postgres
+ test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            |
+ yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            |
+(7 rows)
+

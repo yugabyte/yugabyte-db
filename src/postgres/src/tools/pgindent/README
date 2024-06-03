@@ -1,0 +1,159 @@
+pgindent'ing the PostgreSQL source tree
+=======================================
+
+We run this process at least once in each development cycle,
+to maintain uniform layout style in our C and Perl code.
+
+You might find this blog post interesting:
+http://adpgtech.blogspot.com/2015/05/running-pgindent-on-non-core-code-or.html
+
+
+PREREQUISITES:
+
+1) Install pg_bsd_indent in your PATH.  Fetch its source code with
+   git clone https://git.postgresql.org/git/pg_bsd_indent.git
+   then follow the directions in README.pg_bsd_indent therein.
+
+2) Install perltidy.  Please be sure it is version 20170521 (older and newer
+   versions make different formatting choices, and we want consistency).
+   You can get the correct version from
+   https://cpan.metacpan.org/authors/id/S/SH/SHANCOCK/
+   To install, follow the usual install process for a Perl module
+   ("man perlmodinstall" explains it).  Or, if you have cpan installed,
+   this should work:
+   cpan SHANCOCK/Perl-Tidy-20170521.tar.gz
+
+DOING THE INDENT RUN:
+
+1) Change directory to the top of the source tree.
+
+2) Download the latest typedef file from the buildfarm:
+
+	wget -O src/tools/pgindent/typedefs.list https://buildfarm.postgresql.org/cgi-bin/typedefs.pl
+
+   (See https://buildfarm.postgresql.org/cgi-bin/typedefs.pl?show_list for a full
+   list of typedef files, if you want to indent some back branch.)
+
+3) Run pgindent on the C files:
+
+	src/tools/pgindent/pgindent
+
+   If any files generate errors, restore their original versions with
+   "git checkout", and see below for cleanup ideas.
+
+4) Indent the Perl code using perltidy:
+
+	src/tools/pgindent/pgperltidy
+
+   If you want to use some perltidy version that's not in your PATH,
+   first set the PERLTIDY environment variable to point to it.
+
+5) Reformat the bootstrap catalog data files:
+
+	./configure     # "make" will not work in an unconfigured tree
+	cd src/include/catalog
+	make reformat-dat-files
+	cd ../../..
+
+VALIDATION:
+
+1) Check for any newly-created files using "git status"; there shouldn't
+   be any.  (pgindent leaves *.BAK files behind if it has trouble, while
+   perltidy leaves *.LOG files behind.)
+
+2) Do a full test build:
+
+	make -s clean
+	make -s all	# look for unexpected warnings, and errors of course
+	make check-world
+
+   Your configure switches should include at least --enable-tap-tests
+   or else much of the Perl code won't get exercised.
+   The ecpg regression tests may well fail due to pgindent's updates of
+   header files that get copied into ecpg output; if so, adjust the
+   expected-files to match.
+
+3) If you have the patience, it's worth eyeballing the "git diff" output
+   for any egregiously ugly changes.  See below for cleanup ideas.
+
+
+When you're done, "git commit" everything including the typedefs.list file
+you used.
+
+4) Add the newly created commits to the .git-blame-ignore-revs file so
+   that "git blame" ignores the commits (for anybody that has opted-in
+   to using the ignore file).  Follow the instructions that appear at
+   the top of the .git-blame-ignore-revs file.
+
+Another "git commit" will be required for your ignore file changes.
+
+---------------------------------------------------------------------------
+
+Cleaning up in case of failure or ugly output
+---------------------------------------------
+
+If you don't like the results for any particular file, "git checkout"
+that file to undo the changes, patch the file as needed, then repeat
+the indent process.
+
+pgindent will reflow any comment block that's not at the left margin.
+If this messes up manual formatting that ought to be preserved, protect
+the comment block with some dashes:
+
+	/*----------
+	 * Text here will not be touched by pgindent.
+	 *----------
+	 */
+
+Odd spacing around typedef names might indicate an incomplete typedefs list.
+
+pgindent will mangle both declaration and definition of a C function whose
+name matches a typedef.  Currently the best workaround is to choose
+non-conflicting names.
+
+pgindent can get confused by #if sequences that look correct to the compiler
+but have mismatched braces/parentheses when considered as a whole.  Usually
+that looks pretty unreadable to humans too, so best practice is to rearrange
+the #if tests to avoid it.
+
+Sometimes, if pgindent or perltidy produces odd-looking output, it's because
+of minor bugs like extra commas.  Don't hesitate to clean that up while
+you're at it.
+
+---------------------------------------------------------------------------
+
+BSD indent
+----------
+
+We have standardized on FreeBSD's indent, and renamed it pg_bsd_indent.
+pg_bsd_indent does differ slightly from FreeBSD's version, mostly in
+being more easily portable to non-BSD platforms.  You can obtain it from
+https://git.postgresql.org/git/pg_bsd_indent.git
+
+GNU indent, version 2.2.6, has several problems, and is not recommended.
+These bugs become pretty major when you are doing >500k lines of code.
+If you don't believe me, take a directory and make a copy.  Run pgindent
+on the copy using GNU indent, and do a diff -r. You will see what I
+mean. GNU indent does some things better, but mangles too.  For details,
+see:
+
+	http://archives.postgresql.org/pgsql-hackers/2003-10/msg00374.php
+	http://archives.postgresql.org/pgsql-hackers/2011-04/msg01436.php
+
+---------------------------------------------------------------------------
+
+Which files are processed
+-------------------------
+
+The pgindent run processes (nearly) all PostgreSQL *.c and *.h files,
+but we currently exclude *.y and *.l files, as well as *.c and *.h files
+derived from *.y and *.l files.  Additional exceptions are listed
+in exclude_file_patterns; see the notes therein for rationale.
+
+Note that we do not exclude ecpg's header files from the run.  Some of them
+get copied verbatim into ecpg's output, meaning that ecpg's expected files
+may need to be updated to match.
+
+The perltidy run processes all *.pl and *.pm files, plus a few
+executable Perl scripts that are not named that way.  See the "find"
+rules in pgperltidy for details.

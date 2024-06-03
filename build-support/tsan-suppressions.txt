@@ -1,0 +1,204 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+race:_dl_deallocate_tls
+race:yb::tablet::ScopedRowLock::Release
+
+# libunwind uses some double-checked locking which isn't perfectly safe.
+# Reported at http://savannah.nongnu.org/bugs/index.php?42677
+#
+# With TSAN in clang 3.5, it's the init() function that's flagged as a data
+# race (not local_addr_space_init()), due to the former calling sigfillset()
+# on an unprotected global variable. Given that init() invokes
+# local_addr_space_init(), suppressing init() suppresses both races.
+race:_ULx86_64_init
+
+# libev uses some lock-free synchronization, but doesn't have TSAN annotations.
+# See http://lists.schmorp.de/pipermail/libev/2013q2/002178.html or KUDU-366
+# for examples.
+race:evpipe_write
+race:evpipe_init
+race:epoll_ctl
+
+# We're currently a little lax on using atomic instructions for mutations where
+# we might need to. There are possible bugs lurking here, though likely we are
+# hiding behind x86 TSO for now.
+race:yb::RowChangeListDecoder::Init
+
+# GLog's fatal signal handler isn't signal-safe -- it allocates memory.
+# This isn't great, but nothing we can do about it. See
+# https://code.google.com/p/google-glog/issues/detail?id=191
+signal:logging_fail
+
+# This method in Boost's UUID library operates on static state with impunity,
+# triggering (harmless) data races in TSAN when boost::uuids::random_generator
+# instances are created across threads (see yb::ObjectIdGenerator).
+race:boost::uuids::detail::seed_rng::sha1_random_digest_
+
+# ------------------------------------------------------------
+# Known bugs below. As these JIRAs are resolved, please remove the relevant
+# suppression.
+# ------------------------------------------------------------
+
+# KUDU-1283: TSAN warning from consensus OpIdPB
+race:yb::OpIdPB::CopyFrom
+
+# KUDU-186: sketchy synchronization in catalog manager
+race:yb::master::CatalogManager::Shutdown
+race:yb::master::CatalogManagerBgTasks::Shutdown
+race:yb::master::CatalogManager::~CatalogManager
+
+# KUDU-189: unsynchronized access to 'state_' in DeferredCallback
+race:yb::master::AsyncTabletRequestTask::DeferredCallback
+
+# KUDU-574: raft_consensus_quorum-test race on LocalTestPeerProxy destruction
+race:yb::consensus::LocalTestPeerProxy::~LocalTestPeerProxy
+
+# KUDU-569: unsynchronized access to 'state_', 'acceptor_pools_', in
+# GetBoundAddresses()
+race:yb::Webserver::GetBoundAddresses
+race:yb::RpcServer::GetBoundAddresses
+
+# https://yugabyte.atlassian.net/browse/ENG-354
+race:gutil::SubmitSpinLockProfileData
+
+# Setting width on a stream is not thread-safe, but some of our tests do it:
+# https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-randomized-test/AlterTableRandomized_TestRandomSequence.log
+race:std::ios_base::width
+
+# -------------------------------------------------------------------------------------------------
+# Known YB concurrency issues
+
+# There are some race conditions in shutting down ExternalMiniCluster's log tailer threads, e.g.
+# https://goo.gl/jWwsRY.
+race:yb::ExternalDaemon::LogTailerThread::LogTailerThread
+
+# Known well implemented lock-free containers
+race:boost::lockfree
+
+# Suppress TSAN data race in boost::regex_match (potential false positive)
+race:boost::re_detail_500::saved_state::saved_state
+
+# -------------------------------------------------------------------------------------------------
+# Supressions from libcds:
+
+# false: LazyList potential deadlock
+deadlock:cds/intrusive/impl/lazy_list.h
+deadlock:cds/intrusive/lazy_list_nogc.h
+
+# false: BronsonAVLTree potential deadlock
+deadlock:cds/container/impl/bronson_avltree_map_rcu.h
+
+# Until the third party fix for cassandra-cpp-driver lands.
+# TODO(#14710)
+deadlock:libcassandra
+# TODO(#14677)
+deadlock:MasterSnapshotCoordinator
+
+#TODO: temporarily suppressed. Must be researched later
+race:cds/container/impl/bronson_avltree_map_rcu.h
+
+race:cds::gc::dhp::retired_array
+
+# https://gist.githubusercontent.com/mbautin/fcb0ce293027b7bc3f93cb358c4c053c/raw
+race:cds::intrusive::BasketQueue
+
+# https://gist.githubusercontent.com/mbautin/268c31aaa4daef367d8d76809f8ca5ba/raw
+race:cds::threading::pthread::Manager::attachThread
+
+# yb_build.sh tsan --cxx-test util_lockfree-test --gtest_filter LockfreeTest.QueuePerformance
+# https://gist.githubusercontent.com/mbautin/22ad5dd7378d55340821182b22ff120d/raw
+race:cds::intrusive::OptimisticQueue
+race:cds::container::MSQueue
+race:cds::intrusive::SegmentedQueue
+race:cds::container::MoirQueue
+race:cds::gc::dhp::smr::free_thread_data
+
+# And more like these, so we silence all of these warnings in our test using just this:
+race:yb::QueuePerformanceHelper::RunAll
+
+# End of suppressions from libcds.
+# -------------------------------------------------------------------------------------------------
+
+
+# std::locale is thread safe
+race:std::locale::classic
+
+# libbacktrace
+race:backtrace_vector_grow
+race:read_line_header
+race:read_abbrevs
+race:backtrace_alloc
+race:dwarf_lookup_pc
+race:read_function_entry
+
+# False positives of TSAN, because we use atomic to check whether all responses are filled.
+race:yb::redisserver::RedisInboundCall::DoSerialize
+race:yb::redisserver::RedisInboundCall::DynamicMemoryUsage
+race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
+
+# Usages of URCU
+race:yb::internal::ConcurrentValue
+
+# Bugs in glog
+race:google::FlushLogFilesUnsafe
+race:google::GetStackTrace
+race:google::InitVLOG3__
+race:google::RawLog__SetLastTime
+
+# Bug in gflags
+race:google::FlagSaverImpl::RestoreToRegistry
+
+# On shutdown we get a lot of signal-unsafe calls originating from PostgreSQL's ServerLoop.
+signal:src/postgres/src/backend/postmaster/postmaster.c
+
+# C++ Cassandra driver uses classic thread-safe implementation of SharedPtr based on atomics.
+# The implementation is correct but TSAN has false positive data races during SharedPtr
+# destruction.
+race:cass::RefCounted<cass::*>::dec_ref
+
+# In the C++ Cassandra driver there is a data race in 'cass::Metadata::update_partitions'.
+# Github issue: https://github.com/yugabyte/yugabyte-db/issues/13059
+#               [DocDB] Race condition in Cassandra C++ driver between
+#               cass::Metadata::update_partitions and cass::Metadata::clear_and_update_back
+# Github issue: https://github.com/yugabyte/yugabyte-db/issues/14977
+#               [YCQL][TSan Unit Test] Data race in
+#               CppCassandraDriverTest.TestCreateUniqueIndexPartial
+# The following lines should be removed from the supressions after the issues fixing.
+race:cass::Metadata::clear_and_update_back
+race:cass::Metadata::update_partitions
+race:cass::Metadata::update_keyspaces
+
+# Races in libuv.so
+race:uv__io_feed
+race:uv__update_time
+race:uv_timer_start
+
+# protobuf updates size cache at end of ByteSizeLong, and this update is surrounded by
+# GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN and GOOGLE_SAFE_CONCURRENT_WRITES_END.
+# But they are defined to empty, so have to suppress it here.
+race:google::protobuf::Any::ByteSizeLong
+
+# Races on gflag changes should be strictly test-only issues, as we never update gflags from the
+# code, at runtime.
+race:fLI::*
+
+# Known problem with PstackWatcher
+signal:yb::PstackWatcher::DumpStacks
+
+# Unexpected tsan warning in the getpwuid_r standard thread safe function which is called
+# from the pqGetpwuid function
+race:pqGetpwuid

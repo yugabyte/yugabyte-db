@@ -1,0 +1,174 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+
+.parentPerfAdvisor {
+  margin: 20px 20px 20px 20px;
+}
+
+.perfAdvisor {
+  padding-top: 50px;
+  padding-bottom: 50px;
+  background-color: white;
+
+  &__containerTitleGrid {
+    display: grid;
+    // justify-content: center;
+    align-items: center;
+  }
+
+  &__containerTitleFlex {
+    display: flex;
+    align-items: baseline;
+  }
+
+  &__containerRecommendationFlex {
+    display: flex;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+
+  .secondaryDescription,
+  .primaryDescription {
+    line-height: 1.25;
+    font-family: "Inter", sans-serif;
+  }
+
+  .primaryDescription {
+    margin: 12px 0 16px 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .secondaryDescription {
+    color: #4E5F6D;
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .scanBtn,
+  .rescanBtn {
+    margin-top: 24px;
+    margin-bottom: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    height: 32px;
+    padding: 0px 11px;
+  }
+
+  .scanBtn {
+    box-shadow: none;
+    width: 78px;
+  }
+
+  .rescanBtn {
+    width: 98px;
+  }
+
+  .rescanBtnRecPage {
+    height: 32px;
+    margin-top: -9px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px 11px;
+  }
+
+  .contentContainer {
+    text-align: center;
+  }
+
+  .dbImage {
+    height: '51px';
+    width: '51px';
+    margin-top: 16px;
+  }
+
+  .learnMoreLink {
+    width: fit-content;
+    margin: 0px auto 24px;
+
+    &:hover {
+      text-decoration: underline;
+      color: #2B59C3;
+    }
+  }
+
+  .ticketLink {
+    color: #4E5F6D;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+      color: #2B59C3;
+    }
+  }
+
+  .ticketContent {
+    width: fit-content;
+    margin: 0px auto;
+    font-size: 11px;
+  }
+
+  .learnMoreContent {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .learnMoreImage {
+    width: 16px;
+    height: 16px;
+    margin-top: 4px;
+    margin-right: 8px;
+  }
+
+  // Applies to React Bootstap button
+  .button-wrapper {
+    display: inline-block;
+  }
+}
+
+.numRecommendations {
+  font-size: 15px;
+  font-family: "Inter", sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.scanFailureContainer {
+  height: 46px;
+  background: rgba(231, 62, 54, 0.15);
+  border: 1px solid rgba(231, 62, 54, 0.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.scanFailureMessage {
+  font-size: 13px;
+  font-family: "Inter";
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.warningIcon {
+  margin-right: 8px;
+  margin-top: -3px;
+}
+
+.scanTime {
+  font-size: 13px;
+  font-family: "Inter", sans-serif;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #4E5F6D;
+  padding: 0px 20px;
+  margin-left: auto;
+}
+
+.filterDropdowns {
+  max-width: 280px;
+  flex: 1 0 20%;
+  margin-right: 8px !important;
+}

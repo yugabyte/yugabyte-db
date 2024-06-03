@@ -1,0 +1,136 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/common/common_types.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+
+// ============================================================================
+//  Authentication and Authorization
+// ============================================================================
+
+message CreateRoleRequestPB {
+  optional string name = 1;
+  optional string salted_hash = 2;
+  optional bool login = 3;
+  optional bool superuser = 4;
+  // Name of the role creating this role.
+  optional string creator_role_name = 5;
+}
+
+message CreateRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message AlterRoleRequestPB {
+  optional string name = 1;
+  optional string salted_hash = 2;
+  optional bool login = 3;
+  optional bool superuser = 4;
+
+  // Name of the role trying to alter the role.
+  optional string current_role = 5;
+}
+
+message AlterRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteRoleRequestPB {
+  optional string name = 1;
+
+  // Name of the role trying to drop the role.
+  optional string current_role = 2;
+}
+
+message DeleteRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message GrantRevokeRoleRequestPB {
+  optional string granted_role = 1;
+  optional string recipient_role = 2;
+
+  // true if this is a revoke request.
+  optional bool revoke = 3 [ default = false ];
+}
+
+message GrantRevokeRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message GrantRevokePermissionRequestPB {
+  optional PermissionType permission = 1;
+  optional ResourceType resource_type = 2;
+  optional string canonical_resource = 3;
+  optional string resource_name = 4;
+  optional NamespaceIdentifierPB namespace = 5;
+  optional string role_name = 6;
+
+  // true if this is a revoke request.
+  optional bool revoke = 7 [ default = false ];
+}
+
+message GrantRevokePermissionResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message GetPermissionsRequestPB {
+  // Only get the permissions if the cache version in the master is greater than this version.
+  optional uint64 if_version_greater_than = 1;
+}
+
+message ResourcePermissionInfoPB {
+  optional string canonical_resource = 1;
+  // Bitmap representing the permissions.
+  optional uint32 permissions = 2;
+}
+
+message RolePermissionInfoPB {
+  optional string role = 1;
+  // Bitmap representing the permissions for 'ALL KEYSPACES' and 'ALL ROLES'.
+  optional uint32 all_keyspaces_permissions = 2;
+  optional uint32 all_roles_permissions = 3;
+  repeated ResourcePermissionInfoPB resource_permissions = 4;
+  optional string salted_hash = 5;
+  optional bool can_login = 6;
+}
+
+message GetPermissionsResponsePB {
+  optional uint64 version = 1;
+  optional MasterErrorPB error = 2;
+  repeated RolePermissionInfoPB role_permissions = 3;
+}
+
+service MasterDcl {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  //  Authentication and Authorization.
+  rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
+  rpc AlterRole(AlterRoleRequestPB) returns (AlterRoleResponsePB);
+  rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
+  rpc GrantRevokeRole(GrantRevokeRoleRequestPB) returns (GrantRevokeRoleResponsePB);
+  rpc GrantRevokePermission(GrantRevokePermissionRequestPB)
+      returns (GrantRevokePermissionResponsePB);
+  rpc GetPermissions(GetPermissionsRequestPB) returns (GetPermissionsResponsePB);
+}

@@ -1,0 +1,238 @@
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+============================================================
+The Catalog Manager and System Tables
+============================================================
+
+The Catalog Manager keeps track of the tables and tablets defined by the
+user in the cluster.
+
+All the table and tablet information is stored in-memory in copy-on-write
+TableInfo / TabletInfo objects, as well as on-disk, in the "sys.catalog"
+system table hosted only on the Masters.  This system table is loaded
+into memory on Master startup.  At the time of this writing, the "sys.catalog"
+table consists of only a single tablet in order to provide strong consistency
+for the metadata under RAFT replication (as currently, each tablet has its own
+log).
+
+To add or modify a table or tablet, the Master writes, but does not yet commit
+the changes to memory, then writes and flushes the system table to disk, and
+then makes the changes visible in-memory (commits them) if the disk write (and,
+in a distributed master setup, config-based replication) is successful. This
+allows readers to access the in-memory state in a consistent
+way, even while a write is in-progress.
+
+This design prevents having to go through the whole scan path to service tablet
+location calls, which would be more expensive, and allows for easily keeping
+"soft" state in the Master for every Table and Tablet.
+
+The catalog manager maintains 3 hash-maps for looking up info in the sys table:
+- [Table Id] -> TableInfo
+- [Table Name] -> TableInfo
+- [Tablet Id] -> TabletInfo
+
+The TableInfo has a map [tablet-start-key] -> TabletInfo used to provide
+the tablets locations to the user based on a key-range request.
+
+
+Table Creation
+--------------
+
+The below corresponds to the code in CatalogManager::CreateTable().
+
+1. Client -> Master request: Create "table X" with N tablets and schema S.
+2. Master: CatalogManager::CreateTable():
+   a. Validate user request (e.g. ensure a valid schema).
+   b. Verify that the table name is not already taken.
+      TODO: What about old, deleted tables?
+   c. Add (in-memory) the new TableInfo (in "preparing" state).
+   d. Add (in-memory) the TabletInfo based on the user-provided pre-split-keys
+      field (in "preparing" state).
+   e. Write the tablets info to "sys.catalog"
+      (The Master process is killed if the write fails).
+      - Master begins writing to disk.
+      - Note: If the Master crashes or restarts here or at any time previous to
+        this point, the table will not exist when the Master comes back online.
+   f. Write the table info to "sys.catalog" with the "running" state
+      (The Master process is killed if the write fails).
+      - Master completes writing to disk.
+      - After this point, the table will exist and be re-created as necessary
+        at startup time after a crash or process restart.
+   g. Commit the "running" state to memory, which allows clients to see the table.
+3. Master -> Client response: The table has been created with some ID, i.e. "xyz"
+   (or, in case something went wrong, an error message).
+
+After this point in time, the table is reported as created, which means that if
+the cluster is shut down, when it starts back up the table will still exist.
+However, the tablets are not yet created (see Table Assignment, below).
+
+
+Table Deletion
+--------------
+
+When the user sends a DeleteTable request for table T, table T is marked as
+deleted by writing a "deleted" flag in the state field in T's record in the
+"sys.catalog" table, table T is removed from the in-memory "table names"
+map on the Master, and the table is marked as being "deleted" in the
+in-memory TableInfo / TabletInfo "state" field on the Master.
+TODO: Could this race with table deletion / creation??
+
+At this point, the table is no longer externally visible to clients via Master
+RPC calls, but the tablet configs that make up the table may still be up and
+running. New clients trying to open the table will get a NotFound error, while
+clients that already have the tablet locations cached may still be able to
+read and write to the tablet configs, as long as the corresponding tablet
+servers are online and their respective tablets have not yet been deleted.
+In some ways, this is similar the design of FS unlink.
+
+The Master will asynchronously send a DeleteTablet RPC request to each tablet
+(one RPC request per tablet server in the config, for each tablet), and the
+tablets will therefore be deleted in parallel in some unspecified order. If the
+Master or tablet server goes offline before a particular DeleteTablet operation
+successfully completes, the Master will send a new DeleteTablet request at the
+time that the next heartbeat is received from the tablet that is to be deleted.
+
+A "Cleaner" process will be reponsible for removing the data from deleted tables
+and tablets in the future, both on-disk and cached in memory (TODO).
+
+
+Table Assignment (Tablet Creation)
+----------------------------------
+
+Once a table is created, the tablets must be created on a set of replicas. In
+order to do that, the master has to select the replicas and associate them to
+the tablet.
+
+For each tablet not created we select a set of replicas and a leader and we
+send the "create tablet" request. On the next TS-heartbeat from the leader we
+can mark the tablet as "running", if reported. If we don't receive a "tablet
+created" report after ASSIGNMENT-TIMEOUT-MSEC we replace the tablet with a new
+one, following these same steps for the new tablet.
+
+The Assignment is processed by the "CatalogManagerBgTasks" thread. This thread
+is waiting for an event that can be:
+
+- Create Table (need to process the new tablet for assignment)
+- Assignment Timeout (some tablet request timeout expired, replace it)
+
+This is the current control flow:
+
+- CatalogManagerBgTasks thread:
+  1. Process Pending Assignments:
+     - For each tablet pending assignment:
+       - If tablet creation was already requested:
+          - If we did not receive a response yet, and the configurable
+            assignment timeout period has passed, mark the tablet as "replaced":
+            1. Delete the tablet if it ever reports in.
+            2. Create a new tablet in its place, add that tablet to the
+               "create table" list.
+       - Else, if the tablet is new (just created by CreateTable in "preparing" state):
+         - Add it to the "create tablet" list.
+     - Now, for each tablet in the "create tablet" list:
+       - Select a set of tablet servers to host the tablet config.
+       - Select a tablet server to be the initial config leader.
+       [BEGIN-WRITE-TO-DISK]
+       - Flush the "to create" to sys.catalog with state "creating"
+       [If something fails here, the "Process Pending Assignments" will
+        reprocess these tablets. As nothing was done, running tables will be replaced]
+       [END-WRITE-TO-DISK]
+       - For each tablet server in the config:
+         - Send an async CreateTablet() RPC request to the TS.
+           On TS-heartbeat, the Master will receive the notification of "tablet creation".
+     - Commit any changes in state to memory.
+       At this point the tablets marked as "running" are visible to the user.
+
+  2. Cleanup deleted tables & tablets (FIXME: is this implemented?):
+     - Remove the tables/tablets with "deleted" state from "sys.catalog"
+     - Remove the tablets with "deleted" state from the in-memory map
+     - Remove the tables with "deleted" state from the in-memory map
+
+When the TS receives a CreateTablet() RPC, it will attempt to create the tablet
+replica locally. Once it is successful, it will be added to the next tablet
+report. When the tablet is reported, the master-side ProcessTabletReport()
+function is called.
+
+If we find at this point that the reported tablet is in "creating" state, and
+the TS reporting the tablet is the leader selected during the assignment
+process (see CatalogManagerBgTasksThread above), the tablet will be marked as
+running and committed to disk, completing the assignment process.
+
+
+Alter Table
+-----------
+
+When the user sends an alter request, which may contain changes to the schema,
+table name or attributes, the Master will send a set of AlterTable() RPCs to
+each TS handling the set of tablets currently running. The Master will keep
+retrying in case of error.
+
+If a TS is down or goes down during an AlterTable request, on restart it will
+report the schema version that it is using, and if it is out of date, the Master
+will send an AlterTable request to that TS at that time.
+
+When the Master first comes online after being restarted, a full tablet report
+will be requested from each TS, and the tablet schema version sent on the next
+heartbeat will be used to determine if a given TS needs an AlterTable() call.
+
+============================================================
+Heartbeats and TSManager
+============================================================
+
+Heartbeats are sent by the TS to the master. Per master.proto, a
+heartbeat contains:
+
+1. Node instance information: permanent uuid, node sequence number
+(which is incremented each time the node is started).
+
+2. (Optional) registration. Sent either at TS startup or if the master
+responded to a previous heartbeat with "needs register" (see
+'Handling heartbeats' below for an explanation of when this response
+will be sent).
+
+3. (Optional) tablet report. Sent either when tablet information has
+changed, or if the master responded to a previous heartbeat with
+"needs a full tablet report" (see "Handling heartbeats" below for an
+explanation of when this response will be sent).
+
+Handling heartbeats
+-------------------
+
+Upon receiving a heartbeat from a TS, the master will:
+
+1) Check if the heartbeat has registration info. If so, register
+the TS instance with TSManager (see "TSManager" below for more
+details).
+
+2) Retrieve a TSDescriptor from TSManager. If the TSDescriptor
+is not found, reply to the TS with "need re-register" field set to
+true, and return early.
+
+3) Update the heartbeat time (see "TSManager" below) in the
+registration object.
+
+4) If the heartbeat contains a tablet report, the Catalog Manager will
+process the report and update its cache as well as the system tables
+(see "Catalog Manager" above). Otherwise, the master will respond to
+the TS requesting a full tablet report.
+
+5) Send a success respond to the TS.
+
+TSManager
+---------
+
+TSManager provides in-memory storage for information sent by the
+tablet server to the master (tablet servers that have been heard from,
+heartbeats, tablet reports, etc...). The information is stored in a
+map, where the key is the permanent uuid of a tablet server and the
+value is (a pointer to) a TSDescriptor.

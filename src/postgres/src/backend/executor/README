@@ -1,0 +1,444 @@
+src/backend/executor/README
+
+The Postgres Executor
+=====================
+
+The executor processes a tree of "plan nodes".  The plan tree is essentially
+a demand-pull pipeline of tuple processing operations.  Each node, when
+called, will produce the next tuple in its output sequence, or NULL if no
+more tuples are available.  If the node is not a primitive relation-scanning
+node, it will have child node(s) that it calls in turn to obtain input
+tuples.
+
+Refinements on this basic model include:
+
+* Choice of scan direction (forwards or backwards).  Caution: this is not
+currently well-supported.  It works for primitive scan nodes, but not very
+well for joins, aggregates, etc.
+
+* Rescan command to reset a node and make it generate its output sequence
+over again.
+
+* Parameters that can alter a node's results.  After adjusting a parameter,
+the rescan command must be applied to that node and all nodes above it.
+There is a moderately intelligent scheme to avoid rescanning nodes
+unnecessarily (for example, Sort does not rescan its input if no parameters
+of the input have changed, since it can just reread its stored sorted data).
+
+For a SELECT, it is only necessary to deliver the top-level result tuples
+to the client.  For INSERT/UPDATE/DELETE, the actual table modification
+operations happen in a top-level ModifyTable plan node.  If the query
+includes a RETURNING clause, the ModifyTable node delivers the computed
+RETURNING rows as output, otherwise it returns nothing.  Handling INSERT
+is pretty straightforward: the tuples returned from the plan tree below
+ModifyTable are inserted into the correct result relation.  For UPDATE,
+the plan tree returns the new values of the updated columns, plus "junk"
+(hidden) column(s) identifying which table row is to be updated.  The
+ModifyTable node must fetch that row to extract values for the unchanged
+columns, combine the values into a new row, and apply the update.  (For a
+heap table, the row-identity junk column is a CTID, but other things may
+be used for other table types.)  For DELETE, the plan tree need only deliver
+junk row-identity column(s), and the ModifyTable node visits each of those
+rows and marks the row deleted.  MERGE is described below.
+
+XXX a great deal more documentation needs to be written here...
+
+
+Plan Trees and State Trees
+--------------------------
+
+The plan tree delivered by the planner contains a tree of Plan nodes (struct
+types derived from struct Plan).  During executor startup we build a parallel
+tree of identical structure containing executor state nodes --- generally,
+every plan node type has a corresponding executor state node type.  Each node
+in the state tree has a pointer to its corresponding node in the plan tree,
+plus executor state data as needed to implement that node type.  This
+arrangement allows the plan tree to be completely read-only so far as the
+executor is concerned: all data that is modified during execution is in the
+state tree.  Read-only plan trees make life much simpler for plan caching and
+reuse.
+
+A corresponding executor state node may not be created during executor startup
+if the executor determines that an entire subplan is not required due to
+execution time partition pruning determining that no matching records will be
+found there.  This currently only occurs for Append and MergeAppend nodes.  In
+this case the non-required subplans are ignored and the executor state's
+subnode array will become out of sequence to the plan's subplan list.
+
+Each Plan node may have expression trees associated with it, to represent
+its target list, qualification conditions, etc.  These trees are also
+read-only to the executor, but the executor state for expression evaluation
+does not mirror the Plan expression's tree shape, as explained below.
+Rather, there's just one ExprState node per expression tree, although this
+may have sub-nodes for some complex expression node types.
+
+Altogether there are four classes of nodes used in these trees: Plan nodes,
+their corresponding PlanState nodes, Expr nodes, and ExprState nodes.
+(Actually, there are also List nodes, which are used as "glue" in all
+three tree-based representations.)
+
+
+Expression Trees and ExprState nodes
+------------------------------------
+
+Expression trees, in contrast to Plan trees, are not mirrored into a
+corresponding tree of state nodes.  Instead each separately executable
+expression tree (e.g. a Plan's qual or targetlist) is represented by one
+ExprState node.  The ExprState node contains the information needed to
+evaluate the expression in a compact, linear form.  That compact form is
+stored as a flat array in ExprState->steps[] (an array of ExprEvalStep,
+not ExprEvalStep *).
+
+The reasons for choosing such a representation include:
+- commonly the amount of work needed to evaluate one Expr-type node is
+  small enough that the overhead of having to perform a tree-walk
+  during evaluation is significant.
+- the flat representation can be evaluated non-recursively within a single
+  function, reducing stack depth and function call overhead.
+- such a representation is usable both for fast interpreted execution,
+  and for compiling into native code.
+
+The Plan-tree representation of an expression is compiled into an
+ExprState node by ExecInitExpr().  As much complexity as possible should
+be handled by ExecInitExpr() (and helpers), instead of execution time
+where both interpreted and compiled versions would need to deal with the
+complexity.  Besides duplicating effort between execution approaches,
+runtime initialization checks also have a small but noticeable cost every
+time the expression is evaluated.  Therefore, we allow ExecInitExpr() to
+precompute information that we do not expect to vary across execution of a
+single query, for example the set of CHECK constraint expressions to be
+applied to a domain type.  This could not be done at plan time without
+greatly increasing the number of events that require plan invalidation.
+(Previously, some information of this kind was rechecked on each
+expression evaluation, but that seems like unnecessary overhead.)
+
+
+Expression Initialization
+-------------------------
+
+During ExecInitExpr() and similar routines, Expr trees are converted
+into the flat representation.  Each Expr node might be represented by
+zero, one, or more ExprEvalSteps.
+
+Each ExprEvalStep's work is determined by its opcode (of enum ExprEvalOp)
+and it stores the result of its work into the Datum variable and boolean
+null flag variable pointed to by ExprEvalStep->resvalue/resnull.
+Complex expressions are performed by chaining together several steps.
+For example, "a + b" (one OpExpr, with two Var expressions) would be
+represented as two steps to fetch the Var values, and one step for the
+evaluation of the function underlying the + operator.  The steps for the
+Vars would have their resvalue/resnull pointing directly to the appropriate
+args[].value .isnull elements in the FunctionCallInfoBaseData struct that
+is used by the function evaluation step, thus avoiding extra work to copy
+the result values around.
+
+The last entry in a completed ExprState->steps array is always an
+EEOP_DONE step; this removes the need to test for end-of-array while
+iterating.  Also, if the expression contains any variable references (to
+user columns of the ExprContext's INNER, OUTER, or SCAN tuples), the steps
+array begins with EEOP_*_FETCHSOME steps that ensure that the relevant
+tuples have been deconstructed to make the required columns directly
+available (cf. slot_getsomeattrs()).  This allows individual Var-fetching
+steps to be little more than an array lookup.
+
+Most of ExecInitExpr()'s work is done by the recursive function
+ExecInitExprRec() and its subroutines.  ExecInitExprRec() maps one Expr
+node into the steps required for execution, recursing as needed for
+sub-expressions.
+
+Each ExecInitExprRec() call has to specify where that subexpression's
+results are to be stored (via the resv/resnull parameters).  This allows
+the above scenario of evaluating a (sub-)expression directly into
+fcinfo->args[].value/isnull, but also requires some care: target Datum/isnull
+variables may not be shared with another ExecInitExprRec() unless the
+results are only needed by steps executing before further usages of those
+target Datum/isnull variables.  Due to the non-recursiveness of the
+ExprEvalStep representation that's usually easy to guarantee.
+
+ExecInitExprRec() pushes new operations into the ExprState->steps array
+using ExprEvalPushStep().  To keep the steps as a consecutively laid out
+array, ExprEvalPushStep() has to repalloc the entire array when there's
+not enough space.  Because of that it is *not* allowed to point directly
+into any of the steps during expression initialization.  Therefore, the
+resv/resnull for a subexpression usually point to some storage that is
+palloc'd separately from the steps array.  For instance, the
+FunctionCallInfoBaseData for a function call step is separately allocated
+rather than being part of the ExprEvalStep array.  The overall result
+of a complete expression is typically returned into the resvalue/resnull
+fields of the ExprState node itself.
+
+Some steps, e.g. boolean expressions, allow skipping evaluation of
+certain subexpressions.  In the flat representation this amounts to
+jumping to some later step rather than just continuing consecutively
+with the next step.  The target for such a jump is represented by
+the integer index in the ExprState->steps array of the step to execute
+next.  (Compare the EEO_NEXT and EEO_JUMP macros in execExprInterp.c.)
+
+Typically, ExecInitExprRec() has to push a jumping step into the steps
+array, then recursively generate steps for the subexpression that might
+get skipped over, then go back and fix up the jump target index using
+the now-known length of the subexpression's steps.  This is handled by
+adjust_jumps lists in execExpr.c.
+
+The last step in constructing an ExprState is to apply ExecReadyExpr(),
+which readies it for execution using whichever execution method has been
+selected.
+
+
+Expression Evaluation
+---------------------
+
+To allow for different methods of expression evaluation, and for
+better branch/jump target prediction, expressions are evaluated by
+calling ExprState->evalfunc (via ExecEvalExpr() and friends).
+
+ExecReadyExpr() can choose the method of interpretation by setting
+evalfunc to an appropriate function.  The default execution function,
+ExecInterpExpr, is implemented in execExprInterp.c; see its header
+comment for details.  Special-case evalfuncs are used for certain
+especially-simple expressions.
+
+Note that a lot of the more complex expression evaluation steps, which are
+less performance-critical than the simpler ones, are implemented as
+separate functions outside the fast-path of expression execution, allowing
+their implementation to be shared between interpreted and compiled
+expression evaluation.  This means that these helper functions are not
+allowed to perform expression step dispatch themselves, as the method of
+dispatch will vary based on the caller.  The helpers therefore cannot call
+for the execution of subexpressions; all subexpression results they need
+must be computed by earlier steps.  And dispatch to the following
+expression step must be performed after returning from the helper.
+
+
+Targetlist Evaluation
+---------------------
+
+ExecBuildProjectionInfo builds an ExprState that has the effect of
+evaluating a targetlist into ExprState->resultslot.  A generic targetlist
+expression is executed by evaluating it as discussed above (storing the
+result into the ExprState's resvalue/resnull fields) and then using an
+EEOP_ASSIGN_TMP step to move the result into the appropriate tts_values[]
+and tts_isnull[] array elements of the result slot.  There are special
+fast-path step types (EEOP_ASSIGN_*_VAR) to handle targetlist entries that
+are simple Vars using only one step instead of two.
+
+
+MERGE
+-----
+
+MERGE is a multiple-table, multiple-action command: It specifies a target
+table and a source relation, and can contain multiple WHEN MATCHED and
+WHEN NOT MATCHED clauses, each of which specifies one UPDATE, INSERT,
+DELETE, or DO NOTHING actions.  The target table is modified by MERGE,
+and the source relation supplies additional data for the actions.  Each action
+optionally specifies a qualifying expression that is evaluated for each tuple.
+
+In the planner, transform_MERGE_to_join constructs a join between the target
+table and the source relation, with row-identifying junk columns from the target
+table.  This join is an outer join if the MERGE command contains any WHEN NOT
+MATCHED clauses; the ModifyTable node fetches tuples from the plan tree of that
+join.  If the row-identifying columns in the fetched tuple are NULL, then the
+source relation contains a tuple that is not matched by any tuples in the
+target table, so the qualifying expression for each WHEN NOT MATCHED clause is
+evaluated given that tuple as returned by the plan.  If the expression returns
+true, the action indicated by the clause is executed, and no further clauses
+are evaluated.  On the other hand, if the row-identifying columns are not
+NULL, then the matching tuple from the target table can be fetched; qualifying
+expression of each WHEN MATCHED clause is evaluated given both the fetched
+tuple and the tuple returned by the plan.
+
+If no WHEN NOT MATCHED clauses are present, then the join constructed by
+the planner is an inner join, and the row-identifying junk columns are
+always non NULL.
+
+If WHEN MATCHED ends up processing a row that is concurrently updated or deleted,
+EvalPlanQual (see below) is used to find the latest version of the row, and
+that is re-fetched; if it exists, the search for a matching WHEN MATCHED clause
+to use starts at the top.
+
+MERGE does not allow its own type of triggers, but instead fires UPDATE, DELETE,
+and INSERT triggers: row triggers are fired for each row when an action is
+executed for that row.  Statement triggers are fired always, regardless of
+whether any rows match the corresponding clauses.
+
+
+Memory Management
+-----------------
+
+A "per query" memory context is created during CreateExecutorState();
+all storage allocated during an executor invocation is allocated in that
+context or a child context.  This allows easy reclamation of storage
+during executor shutdown --- rather than messing with retail pfree's and
+probable storage leaks, we just destroy the memory context.
+
+In particular, the plan state trees and expression state trees described
+in the previous section are allocated in the per-query memory context.
+
+To avoid intra-query memory leaks, most processing while a query runs
+is done in "per tuple" memory contexts, which are so-called because they
+are typically reset to empty once per tuple.  Per-tuple contexts are usually
+associated with ExprContexts, and commonly each PlanState node has its own
+ExprContext to evaluate its qual and targetlist expressions in.
+
+
+Query Processing Control Flow
+-----------------------------
+
+This is a sketch of control flow for full query processing:
+
+	CreateQueryDesc
+
+	ExecutorStart
+		CreateExecutorState
+			creates per-query context
+		switch to per-query context to run ExecInitNode
+		AfterTriggerBeginQuery
+		ExecInitNode --- recursively scans plan tree
+			ExecInitNode
+				recurse into subsidiary nodes
+			CreateExprContext
+				creates per-tuple context
+			ExecInitExpr
+
+	ExecutorRun
+		ExecProcNode --- recursively called in per-query context
+			ExecEvalExpr --- called in per-tuple context
+			ResetExprContext --- to free memory
+
+	ExecutorFinish
+		ExecPostprocessPlan --- run any unfinished ModifyTable nodes
+		AfterTriggerEndQuery
+
+	ExecutorEnd
+		ExecEndNode --- recursively releases resources
+		FreeExecutorState
+			frees per-query context and child contexts
+
+	FreeQueryDesc
+
+Per above comments, it's not really critical for ExecEndNode to free any
+memory; it'll all go away in FreeExecutorState anyway.  However, we do need to
+be careful to close relations, drop buffer pins, etc, so we do need to scan
+the plan state tree to find these sorts of resources.
+
+
+The executor can also be used to evaluate simple expressions without any Plan
+tree ("simple" meaning "no aggregates and no sub-selects", though such might
+be hidden inside function calls).  This case has a flow of control like
+
+	CreateExecutorState
+		creates per-query context
+
+	CreateExprContext	-- or use GetPerTupleExprContext(estate)
+		creates per-tuple context
+
+	ExecPrepareExpr
+		temporarily switch to per-query context
+		run the expression through expression_planner
+		ExecInitExpr
+
+	Repeatedly do:
+		ExecEvalExprSwitchContext
+			ExecEvalExpr --- called in per-tuple context
+		ResetExprContext --- to free memory
+
+	FreeExecutorState
+		frees per-query context, as well as ExprContext
+		(a separate FreeExprContext call is not necessary)
+
+
+EvalPlanQual (READ COMMITTED Update Checking)
+---------------------------------------------
+
+For simple SELECTs, the executor need only pay attention to tuples that are
+valid according to the snapshot seen by the current transaction (ie, they
+were inserted by a previously committed transaction, and not deleted by any
+previously committed transaction).  However, for UPDATE and DELETE it is not
+cool to modify or delete a tuple that's been modified by an open or
+concurrently-committed transaction.  If we are running in SERIALIZABLE
+isolation level then we just raise an error when this condition is seen to
+occur.  In READ COMMITTED isolation level, we must work a lot harder.
+
+The basic idea in READ COMMITTED mode is to take the modified tuple
+committed by the concurrent transaction (after waiting for it to commit,
+if need be) and re-evaluate the query qualifications to see if it would
+still meet the quals.  If so, we regenerate the updated tuple (if we are
+doing an UPDATE) from the modified tuple, and finally update/delete the
+modified tuple.  SELECT FOR UPDATE/SHARE behaves similarly, except that its
+action is just to lock the modified tuple and return results based on that
+version of the tuple.
+
+To implement this checking, we actually re-run the query from scratch for
+each modified tuple (or set of tuples, for SELECT FOR UPDATE), with the
+relation scan nodes tweaked to return only the current tuples --- either
+the original ones, or the updated (and now locked) versions of the modified
+tuple(s).  If this query returns a tuple, then the modified tuple(s) pass
+the quals (and the query output is the suitably modified update tuple, if
+we're doing UPDATE).  If no tuple is returned, then the modified tuple(s)
+fail the quals, so we ignore the current result tuple and continue the
+original query.
+
+In UPDATE/DELETE, only the target relation needs to be handled this way.
+In SELECT FOR UPDATE, there may be multiple relations flagged FOR UPDATE,
+so we obtain lock on the current tuple version in each such relation before
+executing the recheck.
+
+It is also possible that there are relations in the query that are not
+to be locked (they are neither the UPDATE/DELETE target nor specified to
+be locked in SELECT FOR UPDATE/SHARE).  When re-running the test query
+we want to use the same rows from these relations that were joined to
+the locked rows.  For ordinary relations this can be implemented relatively
+cheaply by including the row TID in the join outputs and re-fetching that
+TID.  (The re-fetch is expensive, but we're trying to optimize the normal
+case where no re-test is needed.)  We have also to consider non-table
+relations, such as a ValuesScan or FunctionScan.  For these, since there
+is no equivalent of TID, the only practical solution seems to be to include
+the entire row value in the join output row.
+
+We disallow set-returning functions in the targetlist of SELECT FOR UPDATE,
+so as to ensure that at most one tuple can be returned for any particular
+set of scan tuples.  Otherwise we'd get duplicates due to the original
+query returning the same set of scan tuples multiple times.  Likewise,
+SRFs are disallowed in an UPDATE's targetlist.  There, they would have the
+effect of the same row being updated multiple times, which is not very
+useful --- and updates after the first would have no effect anyway.
+
+
+Asynchronous Execution
+----------------------
+
+In cases where a node is waiting on an event external to the database system,
+such as a ForeignScan awaiting network I/O, it's desirable for the node to
+indicate that it cannot return any tuple immediately but may be able to do so
+at a later time.  A process which discovers this type of situation can always
+handle it simply by blocking, but this may waste time that could be spent
+executing some other part of the plan tree where progress could be made
+immediately.  This is particularly likely to occur when the plan tree contains
+an Append node.  Asynchronous execution runs multiple parts of an Append node
+concurrently rather than serially to improve performance.
+
+For asynchronous execution, an Append node must first request a tuple from an
+async-capable child node using ExecAsyncRequest.  Next, it must execute the
+asynchronous event loop using ExecAppendAsyncEventWait.  Eventually, when a
+child node to which an asynchronous request has been made produces a tuple,
+the Append node will receive it from the event loop via ExecAsyncResponse.  In
+the current implementation of asynchronous execution, the only node type that
+requests tuples from an async-capable child node is an Append, while the only
+node type that might be async-capable is a ForeignScan.
+
+Typically, the ExecAsyncResponse callback is the only one required for nodes
+that wish to request tuples asynchronously.  On the other hand, async-capable
+nodes generally need to implement three methods:
+
+1. When an asynchronous request is made, the node's ExecAsyncRequest callback
+   will be invoked; it should use ExecAsyncRequestPending to indicate that the
+   request is pending for a callback described below.  Alternatively, it can
+   instead use ExecAsyncRequestDone if a result is available immediately.
+
+2. When the event loop wishes to wait or poll for file descriptor events, the
+   node's ExecAsyncConfigureWait callback will be invoked to configure the
+   file descriptor event for which the node wishes to wait.
+
+3. When the file descriptor becomes ready, the node's ExecAsyncNotify callback
+   will be invoked; like #1, it should use ExecAsyncRequestPending for another
+   callback or ExecAsyncRequestDone to return a result immediately.

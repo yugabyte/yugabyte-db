@@ -1,0 +1,137 @@
+--
+-- AES cipher (aka Rijndael-128, -192, or -256)
+--
+-- some standard Rijndael testvalues
+SELECT encrypt(
+'\x00112233445566778899aabbccddeeff',
+'\x000102030405060708090a0b0c0d0e0f',
+'aes-ecb/pad:none');
+              encrypt               
+------------------------------------
+ \x69c4e0d86a7b0430d8cdb78070b4c55a
+(1 row)
+
+SELECT encrypt(
+'\x00112233445566778899aabbccddeeff',
+'\x000102030405060708090a0b0c0d0e0f1011121314151617',
+'aes-ecb/pad:none');
+              encrypt               
+------------------------------------
+ \xdda97ca4864cdfe06eaf70a0ec0d7191
+(1 row)
+
+SELECT encrypt(
+'\x00112233445566778899aabbccddeeff',
+'\x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+'aes-ecb/pad:none');
+              encrypt               
+------------------------------------
+ \x8ea2b7ca516745bfeafc49904b496089
+(1 row)
+
+-- cbc
+SELECT encrypt(
+'\x00112233445566778899aabbccddeeff',
+'\x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+'aes-cbc/pad:none');
+              encrypt               
+------------------------------------
+ \x8ea2b7ca516745bfeafc49904b496089
+(1 row)
+
+-- without padding, input not multiple of block size
+SELECT encrypt(
+'\x00112233445566778899aabbccddeeff00',
+'\x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+'aes-cbc/pad:none');
+ERROR:  encrypt error: Encryption failed
+-- key padding
+SELECT encrypt(
+'\x0011223344',
+'\x000102030405',
+'aes-cbc');
+              encrypt               
+------------------------------------
+ \x189a28932213f017b246678dbc28655f
+(1 row)
+
+SELECT encrypt(
+'\x0011223344',
+'\x000102030405060708090a0b0c0d0e0f10111213',
+'aes-cbc');
+              encrypt               
+------------------------------------
+ \x3b02279162d15580e069d3a71407a556
+(1 row)
+
+SELECT encrypt(
+'\x0011223344',
+'\x000102030405060708090a0b0c0d0e0f101112131415161718191a1b',
+'aes-cbc');
+              encrypt               
+------------------------------------
+ \x4facb6a041d53e0a5a73289170901fe7
+(1 row)
+
+-- empty data
+select encrypt('', 'foo', 'aes');
+              encrypt               
+------------------------------------
+ \xb48cc3338a2eb293b6007ef72c360d48
+(1 row)
+
+-- 10 bytes key
+select encrypt('foo', '0123456789', 'aes');
+              encrypt               
+------------------------------------
+ \xf397f03d2819b7172b68d0706fda4693
+(1 row)
+
+-- 22 bytes key
+select encrypt('foo', '0123456789012345678901', 'aes');
+              encrypt               
+------------------------------------
+ \x5c9db77af02b4678117bcd8a71ae7f53
+(1 row)
+
+-- decrypt
+select encode(decrypt(encrypt('foo', '0123456', 'aes'), '0123456', 'aes'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- data not multiple of block size
+select encode(decrypt(encrypt('foo', '0123456', 'aes') || '\x00'::bytea, '0123456', 'aes'), 'escape');
+ERROR:  decrypt error: Decryption failed
+-- bad padding
+-- (The input value is the result of encrypt_iv('abcdefghijklmnopqrstuvwxyz', '0123456', 'abcd', 'aes')
+-- with the 16th byte changed (s/db/eb/) to corrupt the padding of the last block.)
+select encode(decrypt_iv('\xa21a9c15231465964e3396d32095e67eb52bab05f556a581621dee1b85385789', '0123456', 'abcd', 'aes'), 'escape');
+ERROR:  decrypt_iv error: Decryption failed
+-- iv
+select encrypt_iv('foo', '0123456', 'abcd', 'aes');
+             encrypt_iv             
+------------------------------------
+ \x2c24cb7da91d6d5699801268b0f5adad
+(1 row)
+
+select encode(decrypt_iv('\x2c24cb7da91d6d5699801268b0f5adad', '0123456', 'abcd', 'aes'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- long message
+select encrypt('Lets try a longer message.', '0123456789', 'aes');
+                              encrypt                               
+--------------------------------------------------------------------
+ \xd9beb785dd5403ed02f66b755bb191b93ed93ca54930153f2c3b9ec7785056ad
+(1 row)
+
+select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'aes'), '0123456789', 'aes'), 'escape');
+           encode           
+----------------------------
+ Lets try a longer message.
+(1 row)
+

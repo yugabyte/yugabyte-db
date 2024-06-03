@@ -1,0 +1,7 @@
+{{- if .Params.techPreview -}}
+  <a class="yb-badge tech-preview" href="{{ .Params.techPreview }}">TECH PREVIEW</a>
+{{- else if .Params.earlyAccess -}}
+  <a class="yb-badge" href="{{ .Params.earlyAccess }}">EARLY ACCESS</a>
+{{- else if .Params.beta -}}
+  <a class="yb-badge" href="{{ .Params.beta }}">BETA</a>
+{{- end -}}

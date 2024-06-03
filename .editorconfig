@@ -1,13 +1,22 @@
+# https://EditorConfig.org
+
 root = true
 
 [*]
-indent_style = space
-indent_size = 4
-end_of_line = lf
 charset = utf-8
-trim_trailing_whitespace = true
+max_line_length = 100
+end_of_line = lf
 insert_final_newline = true
+indent_style = space
+indent_size = 2
+tab_width = 4
+trim_trailing_whitespace = true
 
-[Makefile]
+# Indentation override for all postgres-style code
+[src/{postgres/**.{c,h,mk,in},**/{Makefile,configure}}]
+max_line_length = off
 indent_style = tab
-indent_size = 4
+indent_size = tab
+
+[*.md]
+trim_trailing_whitespace = false

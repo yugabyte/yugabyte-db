@@ -1,0 +1,17 @@
+--
+-- YB_FEATURE Testsuite: CREATE LANGUAGE
+--
+DROP EXTENSION plpgsql CASCADE;
+NOTICE:  drop cascades to function myfunc(integer)
+CREATE LANGUAGE plpgsql;
+CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql;
+SELECT * FROM test();
+ test
+------
+    1
+(1 row)
+  
+DROP LANGUAGE plpgsql CASCADE;
+NOTICE:  drop cascades to function test()
+-- leave the cluster in a clean state
+CREATE EXTENSION plpgsql;

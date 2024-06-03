@@ -1,0 +1,259 @@
+<!--
+doc/src/sgml/ref/cluster.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-cluster">
+ <indexterm zone="sql-cluster">
+  <primary>CLUSTER</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CLUSTER</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CLUSTER</refname>
+  <refpurpose>cluster a table according to an index</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CLUSTER [VERBOSE] <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ]
+CLUSTER ( <replaceable class="parameter">option</replaceable> [, ...] ) <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ]
+CLUSTER [VERBOSE]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CLUSTER</command> instructs <productname>PostgreSQL</productname>
+   to cluster the table specified
+   by <replaceable class="parameter">table_name</replaceable>
+   based on the index specified by
+   <replaceable class="parameter">index_name</replaceable>. The index must
+   already have been defined on
+   <replaceable class="parameter">table_name</replaceable>.
+  </para>
+
+  <para>
+   When a table is clustered, it is physically reordered
+   based on the index information. Clustering is a one-time operation:
+   when the table is subsequently updated, the changes are
+   not clustered.  That is, no attempt is made to store new or
+   updated rows according to their index order.  (If one wishes, one can
+   periodically recluster by issuing the command again.  Also, setting
+   the table's <literal>fillfactor</literal> storage parameter to less than
+   100% can aid in preserving cluster ordering during updates, since updated
+   rows are kept on the same page if enough space is available there.)
+  </para>
+
+  <para>
+   When a table is clustered, <productname>PostgreSQL</productname>
+   remembers which index it was clustered by.  The form
+   <command>CLUSTER <replaceable class="parameter">table_name</replaceable></command>
+   reclusters the table using the same index as before.  You can also
+   use the <literal>CLUSTER</literal> or <literal>SET WITHOUT CLUSTER</literal>
+   forms of <link linkend="sql-altertable"><command>ALTER TABLE</command></link> to set the index to be used for
+   future cluster operations, or to clear any previous setting.
+  </para>
+
+  <para>
+   <command>CLUSTER</command> without any parameter reclusters all the
+   previously-clustered tables in the current database that the calling user
+   owns, or all such tables if called by a superuser.  This
+   form of <command>CLUSTER</command> cannot be executed inside a transaction
+   block.
+  </para>
+
+  <para>
+   When a table is being clustered, an <literal>ACCESS
+   EXCLUSIVE</literal> lock is acquired on it. This prevents any other
+   database operations (both reads and writes) from operating on the
+   table until the <command>CLUSTER</command> is finished.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (possibly schema-qualified) of a table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an index.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VERBOSE</literal></term>
+    <listitem>
+     <para>
+      Prints a progress report as each table is clustered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    In cases where you are accessing single rows randomly
+    within a table, the actual order of the data in the
+    table is unimportant. However, if you tend to access some
+    data more than others, and there is an index that groups
+    them together, you will benefit from using <command>CLUSTER</command>.
+    If you are requesting a range of indexed values from a table, or a
+    single indexed value that has multiple rows that match,
+    <command>CLUSTER</command> will help because once the index identifies the
+    table page for the first row that matches, all other rows
+    that match are probably already on the same table page,
+    and so you save disk accesses and speed up the query.
+   </para>
+
+   <para>
+    <command>CLUSTER</command> can re-sort the table using either an index scan
+    on the specified index, or (if the index is a b-tree) a sequential
+    scan followed by sorting.  It will attempt to choose the method that
+    will be faster, based on planner cost parameters and available statistical
+    information.
+   </para>
+
+   <para>
+    When an index scan is used, a temporary copy of the table is created that
+    contains the table data in the index order.  Temporary copies of each
+    index on the table are created as well.  Therefore, you need free space on
+    disk at least equal to the sum of the table size and the index sizes.
+   </para>
+
+   <para>
+    When a sequential scan and sort is used, a temporary sort file is
+    also created, so that the peak temporary space requirement is as much
+    as double the table size, plus the index sizes.  This method is often
+    faster than the index scan method, but if the disk space requirement is
+    intolerable, you can disable this choice by temporarily setting <xref
+    linkend="guc-enable-sort"/> to <literal>off</literal>.
+   </para>
+
+   <para>
+    It is advisable to set <xref linkend="guc-maintenance-work-mem"/> to
+    a reasonably large value (but not more than the amount of RAM you can
+    dedicate to the <command>CLUSTER</command> operation) before clustering.
+   </para>
+
+   <para>
+    Because the planner records statistics about the ordering of
+    tables, it is advisable to run <link linkend="sql-analyze"><command>ANALYZE</command></link>
+    on the newly clustered table.
+    Otherwise, the planner might make poor choices of query plans.
+   </para>
+
+   <para>
+    Because <command>CLUSTER</command> remembers which indexes are clustered,
+    one can cluster the tables one wants clustered manually the first time,
+    then set up a periodic maintenance script that executes
+    <command>CLUSTER</command> without any parameters, so that the desired tables
+    are periodically reclustered.
+   </para>
+
+  <para>
+    Each backend running <command>CLUSTER</command> will report its progress
+    in the <structname>pg_stat_progress_cluster</structname> view. See
+    <xref linkend="cluster-progress-reporting"/> for details.
+  </para>
+
+   <para>
+    Clustering a partitioned table clusters each of its partitions using the
+    partition of the specified partitioned index.  When clustering a partitioned
+    table, the index may not be omitted.
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Cluster the table <literal>employees</literal> on the basis of
+   its index <literal>employees_ind</literal>:
+<programlisting>
+CLUSTER employees USING employees_ind;
+</programlisting>
+  </para>
+
+  <para>
+   Cluster the <literal>employees</literal> table using the same
+   index that was used before:
+<programlisting>
+CLUSTER employees;
+</programlisting>
+  </para>
+
+  <para>
+   Cluster all tables in the database that have previously been clustered:
+<programlisting>
+CLUSTER;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>CLUSTER</command> statement in the SQL standard.
+  </para>
+
+  <para>
+   The syntax
+<synopsis>
+CLUSTER <replaceable class="parameter">index_name</replaceable> ON <replaceable class="parameter">table_name</replaceable>
+</synopsis>
+  is also supported for compatibility with pre-8.3 <productname>PostgreSQL</productname>
+  versions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-clusterdb"/></member>
+   <member><xref linkend="cluster-progress-reporting"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

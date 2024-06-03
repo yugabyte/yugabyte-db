@@ -1,0 +1,177 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+// Protobufs used by both client-server and server-server traffic
+// for user data transfer. This file should only contain protobufs
+// which are exclusively used on the wire. If a protobuf is persisted on
+// disk and not used as part of the wire protocol, it belongs in another
+// place such as common/common.proto or within server/, etc.
+syntax = "proto2";
+
+package yb;
+
+option java_package = "org.yb";
+
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+
+// Error status returned by any RPC method.
+// Every RPC method which could generate an application-level error
+// should have this (or a more complex error result) as an optional field
+// in its response.
+//
+// This maps to yb::Status in C++.
+message AppStatusPB {
+  enum ErrorCode {
+    UNKNOWN_ERROR = 999;
+    OK = 0;
+    NOT_FOUND = 1;
+    CORRUPTION = 2;
+    NOT_SUPPORTED = 3;
+    INVALID_ARGUMENT = 4;
+    IO_ERROR = 5;
+    ALREADY_PRESENT = 6;
+    RUNTIME_ERROR = 7;
+    NETWORK_ERROR = 8;
+    ILLEGAL_STATE = 9;
+    NOT_AUTHORIZED = 10;
+    ABORTED = 11;
+    REMOTE_ERROR = 12;
+    SERVICE_UNAVAILABLE = 13;
+    TIMED_OUT = 14;
+    UNINITIALIZED = 15;
+    CONFIGURATION_ERROR = 16;
+    INCOMPLETE = 17;
+    END_OF_FILE = 18;
+    INVALID_COMMAND = 19;
+    QL_ERROR = 20;
+    INTERNAL_ERROR = 21;
+    EXPIRED = 22;
+    LEADER_NOT_READY_TO_SERVE = 23;
+    LEADER_HAS_NO_LEASE = 24;
+    TRY_AGAIN_CODE = 25;
+    BUSY = 26;
+    SHUTDOWN_IN_PROGRESS = 27;
+    MERGE_IN_PROGRESS = 28;
+    COMBINED_ERROR = 29;
+    SNAPSHOT_TOO_OLD = 30;
+    DEPRECATED_HOST_UNREACHABLE = 31;
+    CACHE_MISS_ERROR = 32;
+    TABLET_SPLIT = 33;
+    REPLICATION_SLOT_LIMIT_REACHED = 34;
+  }
+
+  required ErrorCode code = 1;
+  optional string message = 2;
+
+  // For backward compatibility error_codes would also be filled.
+  // But errors would have priority if both are set.
+  oneof error_codes {
+    int32 posix_code = 4;
+    int64 ql_error_code = 5;
+  }
+
+  optional string source_file = 6;
+  optional int32 source_line = 7;
+
+  // Stores encoded error codes of Status. See Status for details.
+  optional bytes errors = 9;
+}
+
+// Uniquely identify a particular instance of a particular server in the
+// cluster.
+message NodeInstancePB {
+  // Unique ID which is created when the server is first started
+  // up. This is stored persistently on disk.
+  required bytes permanent_uuid = 1;
+
+  // Sequence number incremented on every start-up of the server.
+  // This makes it easy to detect when an instance has restarted (and
+  // thus can be assumed to have forgotten any soft state it had in
+  // memory).
+  //
+  // On a freshly initialized server, the first sequence number
+  // should be 0.
+  required int64 instance_seqno = 2;
+  // The time point when tserver/master starts up, it is derived from Env::NowMicros()
+  optional uint64 start_time_us = 3;
+}
+
+// RPC and HTTP addresses for each server, as well as cloud related information.
+message ServerRegistrationPB {
+  repeated HostPortPB private_rpc_addresses = 1;
+  repeated HostPortPB broadcast_addresses = 5;
+  repeated HostPortPB http_addresses = 2;
+  optional uint32 pg_port = 6 [default = 5433];
+
+  optional CloudInfoPB cloud_info = 3;
+  // Placement uuid of the tserver's cluster.
+  optional bytes placement_uuid = 4;
+}
+
+message ServerEntryPB {
+  // If there is an error communicating with the server (or retrieving
+  // the server registration on the server itself), this field will be
+  // set to contain the error.
+  //
+  // All subsequent fields are optional, as they may not be set if
+  // an error is encountered communicating with the individual server.
+  optional AppStatusPB error = 1;
+
+  optional NodeInstancePB instance_id = 2;
+  optional ServerRegistrationPB registration = 3;
+
+  // If an error has occurred earlier in the RPC call, the role
+  // may be not be set.
+  optional PeerRole role = 4;
+}
+
+message PromotedFlagInfoPB {
+  required uint32 promoted_version = 1;
+}
+
+message PromotedFlagsPerProcessPB {
+  // Ex: yb-master, yb-tserver.
+  required string process_name = 1;
+  repeated string flags = 2;
+  // flag_infos is only populated after version 2.20.
+  // AutoFlags that were promoted before this version will be backfilled with
+  // default values.
+  repeated PromotedFlagInfoPB flag_infos = 3;
+}
+
+message AutoFlagsConfigPB {
+  required uint32 config_version = 1;
+  repeated PromotedFlagsPerProcessPB promoted_flags = 2;
+
+  // Physical time at which the new config should be applied.
+  optional fixed64 config_apply_time = 3;
+}

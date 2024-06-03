@@ -1,0 +1,79 @@
+pg_hint_plan documentation
+==========================
+
+Introduction
+------------
+
+Markdown format is kept as a main format, relying on python sphinx and
+myst_parser to render an HTML documentation if needed.
+
+Note that while markdown is more readable as raw text, it's a way simpler
+syntax that lacks a lot of features that reStructuredText offers.  Relying on
+sphinx gives us an opportunity to later write parts of the documentation in
+reStructuredText if needed, but also offers other appealing features like
+multilingual documentation.
+
+Readthedocs is the expected target, so use its theme and follow its
+recommendation about pinning various requirement versions.
+
+Building the doc locally
+------------------------
+
+The documentation can be built locally easily using
+
+make -C docs/ html
+
+The rendered documentation will be generated in docs/html/_build/html
+
+Note that you need to have all python prerequirements installed, which can be
+done using:
+
+pip install -r docs/requirements.txt
+
+If you need to update the requirements (which shouldn't be needed frequently),
+update the docs/requirements.in and generate the target docs/requirements.txt
+using pip-compile.  See the link about this tool below for more details on how
+to use it.
+
+Translation
+-----------
+
+Note that each translator has to follow all those steps whenever the
+translation needs to be updated.  Note also that those commands assume that the
+current working directory is docs/.
+
+- Bootstrapping the translation (the .pot files) is simply done using
+
+make gettext
+
+This will generate the various .pot file in _build/gettext.
+
+- The per-language translation files (the .po files) can then be generated.  We
+  currently only support Japanese, the rest of the commands will assume a
+  single Japanese translation.  Those files can be generated using:
+
+sphinx-intl update -p _build/gettext -l ja
+
+The files are generated (or updated) in the docs/locale/ja/LC_MESSAGES/.
+
+- You can then translate the .po file with any editor (poedit, vim...)
+
+- The translated documentation can be built using:
+
+make -e SPHINXOPTS="-D language='ja'" html
+
+- If everything is ok, you can commit the modifications in the .po files.
+
+References
+----------
+
+References if you're interested in the various design choices:
+
+- quickstart for RTD with sphinx: https://docs.readthedocs.io/en/stable/intro/getting-started-with-sphinx.html
+- reproducible builds: https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
+- myst parser: https://myst-parser.readthedocs.io
+- pip-tools / pip-compile: https://pip-tools.readthedocs.io
+- RTD sphinx theme: https://sphinx-rtd-theme.readthedocs.io
+- Internationalization:
+  https://www.sphinx-doc.org/en/master/usage/advanced/intl.html
+  https://docs.readthedocs.io/en/stable/localization.html#projects-with-multiple-translations-sphinx-only

@@ -1,0 +1,19 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../../_style/colors.scss';
+
+.yb-toggle {
+  margin-top: 8px;
+}
+
+.yb-toggle.react-toggle--checked .react-toggle-track {
+  background-color: colors.$YB_ORANGE;
+}
+
+.yb-toggle.react-toggle--checked:hover:not(.react-toggle--disabled) .react-toggle-track {
+  background-color: colors.$YB_ORANGE_HOVER;
+}
+
+.yb-toggle.react-toggle--checked .react-toggle-thumb {
+  border-color: colors.$YB_ORANGE;
+}

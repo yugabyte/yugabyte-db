@@ -1,0 +1,31 @@
+select {
+  &.form-control {
+    padding: 0 36px 0 12px;
+    margin: 4px 4px 4px 0;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, black 50%),
+      linear-gradient(135deg, black 50%, transparent 50%) !important;
+    background-position: calc(100% - 20px) 18px,
+    calc(100% - 15px) 18px,
+    100% 0;
+    background-size:
+      5px 5px,
+      5px 5px,
+      30px 30px;
+    background-repeat: no-repeat;
+
+    &:after {
+      content: '';
+      border: solid black;
+      border-width: 0 2px 2px 0;
+      display: inline-block;
+      padding: 3px;
+    }
+  }
+}
+

@@ -1,0 +1,127 @@
+CREATE TABLE test_trgm2(t text COLLATE "C");
+\copy test_trgm2 from 'data/trgm2.data'
+-- reduce noise
+set extra_float_digits = 0;
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <% t order by sml desc, t;
+                  t                  |   sml
+-------------------------------------+----------
+ Baykal                              |        1
+ Boloto Baykal                       |        1
+ Boloto Malyy Baykal                 |        1
+ Kolkhoz Krasnyy Baykal              |        1
+ Ozero Baykal                        |        1
+ Polevoy Stan Baykal                 |        1
+ Port Baykal                         |        1
+ Prud Novyy Baykal                   |        1
+ Sanatoriy Baykal                    |        1
+ Stantsiya Baykal                    |        1
+ Zaliv Baykal                        |        1
+ Baykalikha                          | 0.857143
+ Baykalo-Amurskaya Zheleznaya Doroga | 0.857143
+ Baykalovo                           | 0.857143
+ Baykalovsk                          | 0.857143
+ Baykalovskiy                        | 0.857143
+ Baykalovskiy Rayon                  | 0.857143
+ Baykalsko                           | 0.857143
+ Maloye Baykalovo                    | 0.857143
+ Zabaykal                            | 0.714286
+(20 rows)
+
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kabankala' <% t order by sml desc, t;
+              t               | sml
+------------------------------+-----
+ Kabankala                    |   1
+ Kabankalan City Public Plaza | 0.9
+ Abankala                     | 0.7
+ Ntombankala School           | 0.6
+(4 rows)
+
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where t %> 'Baykal' order by sml desc, t;
+                  t                  |   sml
+-------------------------------------+----------
+ Baykal                              |        1
+ Boloto Baykal                       |        1
+ Boloto Malyy Baykal                 |        1
+ Kolkhoz Krasnyy Baykal              |        1
+ Ozero Baykal                        |        1
+ Polevoy Stan Baykal                 |        1
+ Port Baykal                         |        1
+ Prud Novyy Baykal                   |        1
+ Sanatoriy Baykal                    |        1
+ Stantsiya Baykal                    |        1
+ Zaliv Baykal                        |        1
+ Baykalikha                          | 0.857143
+ Baykalo-Amurskaya Zheleznaya Doroga | 0.857143
+ Baykalovo                           | 0.857143
+ Baykalovsk                          | 0.857143
+ Baykalovskiy                        | 0.857143
+ Baykalovskiy Rayon                  | 0.857143
+ Baykalsko                           | 0.857143
+ Maloye Baykalovo                    | 0.857143
+ Zabaykal                            | 0.714286
+(20 rows)
+
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where t %> 'Kabankala' order by sml desc, t;
+              t               | sml
+------------------------------+-----
+ Kabankala                    |   1
+ Kabankalan City Public Plaza | 0.9
+ Abankala                     | 0.7
+ Ntombankala School           | 0.6
+(4 rows)
+
+select t <->> 'Kabankala', t from test_trgm2 order by t <->> 'Kabankala' limit 7;
+ ?column? |                t
+----------+----------------------------------
+        0 | Kabankala
+      0.1 | Kabankalan City Public Plaza
+      0.3 | Abankala
+      0.4 | Ntombankala School
+ 0.416667 | Kabakala
+      0.5 | Nehalla Bankalah Reserved Forest
+ 0.538462 | Kabikala
+(7 rows)
+
+create index trgm_idx2 on test_trgm2 using gist (t gist_trgm_ops);
+ERROR:  index method "gist" not supported yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
+create index trgm_idx2 on test_trgm2 using gin (t gin_trgm_ops);
+set enable_seqscan=off;
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kabankala' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 5.
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where t %> 'Baykal' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where t %> 'Kabankala' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 5.
+set "pg_trgm.word_similarity_threshold" to 0.5;
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 4.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kabankala' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 6.
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where t %> 'Baykal' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 4.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where t %> 'Kabankala' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 6.
+set "pg_trgm.word_similarity_threshold" to 0.3;
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 5.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where 'Kabankala' <% t order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 8.
+select t,word_similarity('Baykal',t) as sml from test_trgm2 where t %> 'Baykal' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 5.
+select t,word_similarity('Kabankala',t) as sml from test_trgm2 where t %> 'Kabankala' order by sml desc, t;
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 8.

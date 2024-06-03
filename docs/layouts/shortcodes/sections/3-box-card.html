@@ -1,0 +1,62 @@
+<div {{- if or (not (isset .Params "buttonUrl")) (eq .Params.buttonUrl "") }} class="card-multi-links"{{- end -}}>
+  {{- if .Params.imageUrl -}}
+    <div class="card-img">
+      <img src="{{- .Params.imageUrl -}}" {{- if .Params.imageAlt }} alt="{{- .Params.imageAlt -}}" title="{{- .Params.imageAlt -}}"{{- end -}}>
+    </div>
+  {{- end -}}
+
+  <div class="card-title">
+    {{- .Params.title -}}
+  </div>
+
+  {{- if .Params.description -}}
+    <div class="card-desc">
+      {{- .Params.description -}}
+    </div>
+  {{- end -}}
+
+  {{- if and (.Params.buttonText) (.Params.buttonUrl) -}}
+    <div class="card-link">
+      <a href="{{ .Params.buttonUrl }}" title="{{- .Params.buttonText -}}">
+        {{ .Params.buttonText }}
+      </a>
+    </div>
+  {{- else -}}
+    <div class="card-link">
+      {{- if and (.Params.linkText1) (.Params.linkUrl1) -}}
+        <a class="arrow-btn" href="{{ .Params.linkUrl1 }}" title="{{- .Params.linkText1 -}}" {{- if .Params.linkTarget1 }} target="{{- .Params.linkTarget1 -}}"{{- end -}}>
+          {{ .Params.linkText1 }}
+          <img src="/icons/arrow-btn.svg" width="24" height="24">
+        </a>
+      {{- end -}}
+
+      {{- if and (.Params.linkText2) (.Params.linkUrl2) -}}
+        <a class="arrow-btn" href="{{ .Params.linkUrl2 }}" title="{{- .Params.linkText2 -}}" {{- if .Params.linkTarget2}} target="{{- .Params.linkTarget2 -}}"{{- end -}}>
+          {{ .Params.linkText2 }}
+          <img src="/icons/arrow-btn.svg" width="24" height="24">
+        </a>
+      {{- end -}}
+
+      {{- if and (.Params.linkText3) (.Params.linkUrl3) -}}
+        <a class="arrow-btn" href="{{ .Params.linkUrl3 }}" title="{{- .Params.linkText3 -}}" {{- if .Params.linkTarget3}} target="{{- .Params.linkTarget3 -}}"{{- end -}}>
+          {{ .Params.linkText3 }}
+          <img src="/icons/arrow-btn.svg" width="24" height="24">
+        </a>
+      {{- end -}}
+
+      {{- if and (.Params.linkText4) (.Params.linkUrl4) -}}
+        <a class="arrow-btn" href="{{ .Params.linkUrl4 }}" title="{{- .Params.linkText4 -}}" {{- if .Params.linkTarget4}} target="{{- .Params.linkTarget4 -}}"{{- end -}}>
+          {{ .Params.linkText4 }}
+          <img src="/icons/arrow-btn.svg" width="24" height="24">
+        </a>
+      {{- end -}}
+
+      {{- if and (.Params.linkText5) (.Params.linkUrl5) -}}
+        <a class="arrow-btn" href="{{ .Params.linkUrl5 }}" title="{{- .Params.linkText5 -}}" {{- if .Params.linkTarget5}} target="{{- .Params.linkTarget5 -}}"{{- end -}}>
+          {{ .Params.linkText5 }}
+          <img src="/icons/arrow-btn.svg" width="24" height="24">
+        </a>
+      {{- end -}}
+    </div>
+  {{- end -}}
+</div>

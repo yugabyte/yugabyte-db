@@ -1,0 +1,11 @@
+####################################################################################################
+# LARGE TABLE Testsuite
+# Test for table of 50K rows.
+####################################################################################################
+test: yb_create_large_table
+test: yb_large_copy
+# Ensure copy succeed
+test: yb_select_large
+test: yb_create_index_large_table_backfill_index
+# Ensure backfill succeeded
+test: yb_select_large_index_backfill

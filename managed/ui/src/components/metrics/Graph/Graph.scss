@@ -1,0 +1,66 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.graph-container {
+  overflow: hidden;
+  position: relative;
+
+  &.graph-linear {
+    height: 10px;
+    width: 100%;
+    background-color: colors.$YB_GRAY_HOVER;
+    border-radius: 5px;
+
+    .graph-body {
+      height: 30px;
+      width: 0;
+      background-color: colors.$YB_SUCCESS_COLOR;
+    }
+
+    & > label {
+      position: absolute;
+      top: -2px;
+      left: 10px;
+      line-height: 16px;
+      color: #ffffff;
+      padding: 0 3px;
+      border-radius: 2px;
+      width: auto;
+      background-color: rgba(colors.$YB_DARK_GRAY_2, 0.2);
+    }
+  }
+
+  &.graph-semicircle {
+    text-align: center;
+
+    .graph-body {
+      fill: none;
+      height: 50px;
+      stroke-width: 10px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      margin: 20px 0 10px 0;
+
+      .graph-base {
+        stroke: colors.$YB_GRAY_HOVER;
+      }
+
+      .graph-bar {
+        stroke-dasharray: 100, 200;
+        stroke-dashoffset: 100;
+      }
+
+      & + label {
+        font-size: 32px;
+        line-height: 30px;
+        font-weight: 500;
+        color: colors.$YB_VIOLET_TEXT_NEW;
+        line-height: 16px;
+        padding: 0 3px;
+        text-align: center;
+        display: block;
+      }
+    }
+  }
+}

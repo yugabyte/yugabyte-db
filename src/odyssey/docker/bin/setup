@@ -1,0 +1,176 @@
+#!/bin/bash
+
+set -ex
+
+service postgresql stop || true
+
+export PG_LOG=/var/log/postgresql/postgresql-14-main.log
+export SETUP_LOG=/var/log/setup.log
+
+touch $SETUP_LOG
+
+cat > /etc/postgresql/14/main/pg_hba.conf <<-EOF
+local  scram_db  postgres                  trust
+host   scram_db  postgres    127.0.0.1/32  trust
+local  scram_db  scram_user                scram-sha-256
+host   scram_db  scram_user  127.0.0.1/32  scram-sha-256
+EOF
+
+cat >> /etc/postgresql/14/main/pg_hba.conf <<-EOF
+host   ldap_db         user1                         127.0.0.1/32 trust
+host   ldap_db1        ldap_readonly                 127.0.0.1/32 password
+host   ldap_db2        ldap_rw                       127.0.0.1/32 md5
+host   auth_query_db   auth_query_user_scram_sha_256 127.0.0.1/32 trust
+host   auth_query_db   auth_query_user_md5           127.0.0.1/32 trust
+local  all             postgres                                   trust
+host   postgres        user1                         127.0.0.1/32 trust
+host   db1             user1                         127.0.0.1/32 trust
+host   all             postgres                      127.0.0.1/32 trust
+host   all             user_allow                    127.0.0.1/32 trust
+host   all             user_reject                   127.0.0.1/32 trust
+host   replication     postgres                      127.0.0.1/32 trust
+host   tsa_db          user_ro                       127.0.0.1/32 trust
+host   tsa_db          user_rw                       127.0.0.1/32 trust
+EOF
+
+sed -i 's/max_connections = 100/max_connections = 2000/g' /etc/postgresql/14/main/postgresql.conf
+
+
+rm -fr /var/lib/postgresql/14/main/
+rm -fr /var/lib/postgresql/14/repl
+
+cp -r /etc/postgresql/14/main /etc/postgresql/14/repl
+
+# create primary
+sudo -u postgres /usr/lib/postgresql/14/bin/initdb -D /var/lib/postgresql/14/main/
+sudo -u postgres /usr/lib/postgresql/14/bin/pg_ctl -D /var/lib/postgresql/14/main/ start
+
+# create replica
+sudo -u postgres /usr/bin/pg_basebackup -D /var/lib/postgresql/14/repl -R -h localhost -p 5432
+sudo -u postgres /usr/lib/postgresql/14/bin/pg_ctl -D /var/lib/postgresql/14/repl/ -o '-p 5433' start
+
+# Create databases
+for database_name in db scram_db ldap_db auth_query_db db1 hba_db tsa_db; do
+    sudo -u postgres createdb $database_name >> "$SETUP_LOG" 2>&1 || {
+        echo "ERROR: 'createdb $database_name' failed, examine the log"
+        cat "$SETUP_LOG"
+        cat "$PG_LOG"
+        exit 1
+    }
+done
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "set password_encryption = 'scram-sha-256'; create user scram_user password 'scram_user_password';" -d scram_db >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "create role user1 with login;create role user_ro with login;create role user_rw with login;" -d ldap_db >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "set password_encryption TO 'md5'; create user auth_query_user_md5 with password 'passwd'" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "set password_encryption = 'scram-sha-256'; create user auth_query_user_scram_sha_256 with password 'passwd'" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "GRANT ALL ON DATABASE db1 TO user1" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres -c "alter user user1 with connection limit 1000" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U user1 -d db1 -c "CREATE SCHEMA sh1" >> $SETUP_LOG 2>&1 || {
+	echo "ERROR: users creation failed, examine the log"
+	cat "$SETUP_LOG"
+	cat "$PG_LOG"
+	exit 1
+}
+
+# Create users
+psql -h localhost -p 5432 -U postgres  -c "create user user_allow password 'correct_password'; create user user_reject password 'correct_password'; create user user_unknown password 'correct_password';" >> $SETUP_LOG 2>&1 || {
+  echo "ERROR: users creation failed, examine the log"
+  cat "$SETUP_LOG"
+  cat "$PG_LOG"
+  exit 1
+}
+
+for i in `seq 0 9`
+do
+	# Create tables
+	psql -h localhost -p 5432 -U user1 -d db1 -c "CREATE TABLE sh1.foo$i (i int)" >> $SETUP_LOG 2>&1 || {
+		echo "ERROR: tables creation failed, examine the log"
+		cat "$SETUP_LOG"
+		cat "$PG_LOG"
+		exit 1
+	}
+done
+
+# Create databases for ldap_storage_credentials
+for database_name in ldap_db1 ldap_db2; do
+    sudo -u postgres createdb $database_name >> "$SETUP_LOG" 2>&1 || {
+        echo "ERROR: 'createdb $database_name' failed, examine the log"
+        cat "$SETUP_LOG"
+        cat "$PG_LOG"
+        exit 1
+    }
+done
+
+# Create users for ldap_storage_credentials
+psql -h localhost -p 5432 -U postgres -c "create user ldap_readonly with password 'ldap_pass_readonly'" -d ldap_db1 >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+psql -h localhost -p 5432 -U postgres -c "set password_encryption TO 'md5'; create user ldap_rw with password 'ldap_pass_rw'" -d ldap_db2 >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+# Grant access for ldap_storage_credentials
+
+psql -h localhost -p 5432 -U postgres -c "GRANT ALL ON DATABASE ldap_db1 TO ldap_readonly" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}
+
+psql -h localhost -p 5432 -U postgres -c "GRANT ALL ON DATABASE ldap_db2 TO ldap_rw" -d postgres >> $SETUP_LOG 2>&1 || {
+    echo "ERROR: users creation failed, examine the log"
+    cat "$SETUP_LOG"
+    cat "$PG_LOG"
+    exit 1
+}

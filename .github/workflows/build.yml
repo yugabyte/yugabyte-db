@@ -1,0 +1,117 @@
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
+
+  pull_request:
+    branches:
+      - master
+    # Duplicated list because github does not support YAML anchors.
+    # https://github.com/actions/runner/issues/1182
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    runs-on: ubuntu-20.04
+    name: ${{ matrix.name }}
+
+    # Grab the latest docker images from here:
+    # https://hub.docker.com/r/yugabyteci/
+
+    strategy:
+      fail-fast: false
+      # This should be a sub-set of the build flavors in jenkins_jobs.yml.
+      matrix:
+        include:
+          - name: "GCC 11, fastdebug, Almalinux 8"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 fastdebug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
+
+          - name: "Clang 16, release, Almalinux 8"
+            os: ubuntu-20.04
+            yb_build_args: --clang16 release --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
+
+          - name: "Clang 16, debug, Ubuntu 22.04"
+            os: ubuntu-20.04
+            yb_build_args: --clang16 debug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2023-10-25T03_33_00
+    if: >
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'skip ci') &&
+       !contains(github.event.head_commit.message, 'ci skip')) ||
+      github.event_name == 'pull_request'
+
+    steps:
+      - name: Maximize build space
+        # Use a specific commit for predictability and security.
+        uses: easimon/maximize-build-space@6ae56c86ea8db291ae39f62352a412c36ab8179b
+        with:
+          remove-dotnet: 'true'
+          overprovision-lvm: 'true'
+
+      - uses: actions/checkout@v4
+
+      - name: Build YugabyteDB
+        run: |
+          echo "OSTYPE (outside Docker): $OSTYPE"
+          echo "Build name: ${{ matrix.name }}"
+          echo "Docker image: ${{ matrix.docker_image }}"
+          if [[ $OSTYPE == linux* ]]; then
+            build_dir_in_container=/opt/yb-build/yugabyte-db
+            docker run \
+              --user root \
+              -i \
+              "-w=$build_dir_in_container" \
+              --mount type=bind,source="$PWD",target="$build_dir_in_container" \
+              "${{ matrix.docker_image }}" \
+              bash -c '
+                set -euo pipefail -x
+                echo "OSTYPE (inside Docker): $OSTYPE"
+                echo "PATH: $PATH"
+                export PATH=/usr/local/bin:$PATH
+                ( set -x; ls -l /usr/local/bin )
+                set +e
+                ( set -x; which ninja )
+                ( set -x; which cmake )
+                set -e
+                chown -R yugabyteci .
+                sudo -u yugabyteci bash -c "
+                  set -euo pipefail
+                  export PATH=/usr/local/bin:\$PATH
+                  df -H /
+                  echo ::group::Building YugabyteDB
+                  ./yb_build.sh release \
+                    --download-thirdparty \
+                    --ninja \
+                    --shellcheck \
+                    ${{ matrix.yb_build_args }}
+                  echo ::endgroup::
+                  df -H /
+                "
+              '
+          elif [[ $OSTYPE == darwin* ]]; then
+            system_profiler SPSoftwareDataType
+            sw_vers
+            ./yb_build.sh release --shellcheck
+          fi

@@ -1,0 +1,17 @@
+.storage-config-form-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 30px;
+  padding: 14px 12px;
+  border-top: 1px solid #ececea;
+  background-color: #f6f6f5;
+  margin-bottom: 0 !important;
+
+  .btn {
+    margin: 0 6px;
+    min-width: 120px !important;
+    float: right;
+  }
+}

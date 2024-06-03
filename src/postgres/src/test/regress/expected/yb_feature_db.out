@@ -1,0 +1,74 @@
+--
+-- Test case for CREATE DATABASE unsupported options
+--
+CREATE DATABASE test TEMPLATE = some_template;
+ERROR:  Value other than default, template0 or template1 for template option is not yet supported
+LINE 1: CREATE DATABASE test TEMPLATE = some_template;
+                             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE DATABASE test IS_TEMPLATE = TRUE;
+ERROR:  Value other than default or false for is_template option is not yet supported
+LINE 1: CREATE DATABASE test IS_TEMPLATE = TRUE;
+                             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE DATABASE test LC_COLLATE = "C";
+CREATE DATABASE test LC_CTYPE = "C";
+ERROR:  Value other than 'en_US.UTF-8' for lc_ctype option is not yet supported
+LINE 1: CREATE DATABASE test LC_CTYPE = "C";
+                             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE DATABASE test ENCODING = LATIN5;
+ERROR:  Value other than unicode or utf8 for encoding option is not yet supported
+LINE 1: CREATE DATABASE test ENCODING = LATIN5;
+                             ^
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
+CREATE DATABASE test TABLESPACE = some_space;
+ERROR:  Value other than default for tablespace option is not yet supported
+LINE 1: CREATE DATABASE test TABLESPACE = some_space;
+                             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+--
+-- Test case for CREATE DATABASE supported options
+--
+CREATE DATABASE test_1;
+CREATE DATABASE test_2 TEMPLATE = template0 IS_TEMPLATE = FALSE;
+CREATE DATABASE test_3 TEMPLATE = DEFAULT IS_TEMPLATE = DEFAULT LC_COLLATE = DEFAULT LC_CTYPE = DEFAULT ENCODING = DEFAULT TABLESPACE = DEFAULT ALLOW_CONNECTIONS = FALSE CONNECTION LIMIT = 10;
+CREATE DATABASE test_4 ENCODING = UNICODE;
+CREATE DATABASE test_5 ENCODING = UTF8;
+--
+-- Test case for ALTER DATABASE unsupported options
+--
+ALTER DATABASE test_1 IS_TEMPLATE = true;
+ERROR:  Altering is_template option is not yet supported
+LINE 1: ALTER DATABASE test_1 IS_TEMPLATE = true;
+                              ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ALTER DATABASE test_1 TABLESPACE = some_space;
+ERROR:  Altering tablespace option is not yet supported
+LINE 1: ALTER DATABASE test_1 TABLESPACE = some_space;
+                              ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ALTER DATABASE test_1 SET TABLESPACE some_space;
+ERROR:  ALTER DATABASE SET TABLESPACE not supported yet
+LINE 1: ALTER DATABASE test_1 SET TABLESPACE some_space;
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+--
+-- Test case for ALTER DATABASE supported options
+--
+ALTER DATABASE test_1 ALLOW_CONNECTIONS = FALSE CONNECTION LIMIT = 10;
+--
+-- DROPPING DATABASE cannot be done within a transaction
+--
+BEGIN TRANSACTION;
+DROP DATABASE test_1;
+ERROR:  DROP DATABASE cannot run inside a transaction block
+END TRANSACTION;
+--
+-- DROPPING DATABASE IF EXISTS
+--
+DROP DATABASE test_1;
+DROP DATABASE IF EXISTS test_1;
+NOTICE:  database "test_1" does not exist, skipping
+DROP DATABASE test_1;
+ERROR:  database "test_1" does not exist

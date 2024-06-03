@@ -1,0 +1,428 @@
+--
+-- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
+--
+\h CREATE TABLEGROUP
+Command:     CREATE TABLEGROUP
+Description: define a new tablegroup
+Syntax:
+CREATE TABLEGROUP tablegroup_name
+
+\h ALTER TABLEGROUP
+Command:     ALTER TABLEGROUP
+Description: change the definition of a tablegroup
+Syntax:
+ALTER TABLEGROUP name RENAME TO new_name
+ALTER TABLEGROUP name OWNER TO { new_owner | CURRENT_USER | SESSION_USER }
+
+\h DROP TABLEGROUP
+Command:     DROP TABLEGROUP
+Description: remove a tablegroup
+Syntax:
+DROP TABLEGROUP name
+
+--
+-- pg_catalog alterations. Validate columns of pg_yb_tablegroup and oids.
+--
+\d pg_yb_tablegroup
+            Table "pg_catalog.pg_yb_tablegroup"
+    Column     |   Type    | Collation | Nullable | Default
+---------------+-----------+-----------+----------+---------
+ grpname       | name      |           | not null |
+ grpowner      | oid       |           | not null |
+ grptablespace | oid       |           | not null |
+ grpacl        | aclitem[] |           |          |
+ grpoptions    | text[]    |           |          |
+Indexes:
+    "pg_yb_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
+
+SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
+ oid  |          relname           | reltype | relnatts
+------+----------------------------+---------+----------
+ 8036 | pg_yb_tablegroup           |    8038 |        5
+ 8037 | pg_yb_tablegroup_oid_index |       0 |        1
+(2 rows)
+
+SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_tablegroup';
+ oid  |     typname      | typrelid
+------+------------------+----------
+ 8038 | pg_yb_tablegroup |     8036
+(1 row)
+
+--
+-- CREATE TABLEGROUP
+--
+CREATE TABLEGROUP tgroup1;
+CREATE TABLEGROUP tgroup2;
+CREATE TABLEGROUP tgroup3;
+CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test1(col2);
+CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
+ERROR:  syntax error at or near "NO"
+LINE 1: CREATE TABLE nogroup (col1 int) NO TABLEGROUP;
+                                        ^
+CREATE TABLE nogroup (col1 int);
+-- TODO(alex): Create a table with a primary key
+SELECT grpname FROM pg_yb_tablegroup;
+ grpname
+---------
+ tgroup1
+ tgroup2
+ tgroup3
+(3 rows)
+
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+        relname        | grpname
+-----------------------+---------
+ nogroup               |
+ tgroup_test1          | tgroup1
+ tgroup_test1_col2_idx | tgroup1
+ tgroup_test2          | tgroup1
+(4 rows)
+
+CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
+CREATE INDEX ON tgroup_test3(col1);
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+        relname        | grpname
+-----------------------+---------
+ nogroup               |
+ tgroup_test1          | tgroup1
+ tgroup_test1_col2_idx | tgroup1
+ tgroup_test2          | tgroup1
+ tgroup_test3          | tgroup2
+ tgroup_test3_col1_idx | tgroup2
+(6 rows)
+
+-- These should fail.
+CREATE TABLEGROUP tgroup1;
+ERROR:  tablegroup "tgroup1" already exists
+CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
+ERROR:  tablegroup "bad_tgroupname" does not exist
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP tgroup1;
+ERROR:  cannot use 'colocation=true/false' with tablegroup
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=true) TABLEGROUP tgroup1;
+ERROR:  cannot use 'colocation=true/false' with tablegroup
+CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP bad_tgroupname;
+ERROR:  tablegroup "bad_tgroupname" does not exist
+CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
+ERROR:  cannot use TABLEGROUP with TEMP table
+CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
+ERROR:  syntax error at or near "TABLEGROUP"
+LINE 1: CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
+                                           ^
+CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP; -- fail
+ERROR:  syntax error at or near "NO"
+LINE 1: CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
+                                           ^
+--
+-- Cannot drop dependent objects
+--
+CREATE USER alice;
+CREATE USER bob;
+CREATE TABLEGROUP alice_grp OWNER alice;
+CREATE TABLEGROUP alice_grp_2 OWNER alice;
+CREATE TABLEGROUP alice_grp_3 OWNER alice;
+CREATE TABLE bob_table (a INT) TABLEGROUP alice_grp;
+CREATE TABLE bob_table_2 (a INT) TABLEGROUP alice_grp_2;
+CREATE TABLE bob_table_3 (a INT) TABLEGROUP alice_grp_3;
+CREATE TABLE alice_table (a INT);
+ALTER TABLE bob_table OWNER TO bob;
+ALTER TABLE bob_table_2 OWNER TO bob;
+ALTER TABLE bob_table_3 OWNER TO bob;
+ALTER TABLE alice_table OWNER TO alice;
+-- Fails
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLEGROUP alice_grp;  -- because bob_table depends on alice_grp
+ERROR:  cannot drop tablegroup alice_grp because other objects depend on it
+DROP USER alice;            -- because alice still owns tablegroups
+ERROR:  role "alice" cannot be dropped because some objects depend on it
+DROP OWNED BY alice;        -- because bob's tables depend on alice's tablegroups
+ERROR:  cannot drop desired object(s) because other objects depend on them
+\set VERBOSITY default
+-- Succeeds
+DROP TABLEGROUP alice_grp_3 CASCADE;
+NOTICE:  drop cascades to table bob_table_3
+DROP TABLE bob_table;
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
+   relname
+-------------
+ bob_table_2
+(1 row)
+
+DROP TABLEGROUP alice_grp;    -- bob_table is gone, so alice_grp has no deps
+DROP OWNED BY alice CASCADE;  -- CASCADE means we are allowed to drop bob's tables. We'll notify about any entities that she doesn't own.
+NOTICE:  drop cascades to table bob_table_2
+DROP USER alice;              -- we dropped all of alice's entities, so we can remove her
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
+ relname
+---------
+(0 rows)
+
+--
+-- Usage of WITH tablegroup_oid reloption, this legacy syntax no longer works.
+--
+CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
+WARNING:  storage parameter tablegroup_oid is unsupported, ignoring
+ERROR:  unrecognized parameter "tablegroup_oid"
+CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
+WARNING:  storage parameter tablegroup_oid is unsupported, ignoring
+ERROR:  unrecognized parameter "tablegroup_oid"
+CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
+ERROR:  unrecognized parameter "tablegroup_oid"
+--
+-- Usage of SPLIT clause with TABLEGROUP should fail
+--
+CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
+ERROR:  cannot use TABLEGROUP with SPLIT
+CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
+ERROR:  cannot use TABLEGROUP with SPLIT
+CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
+ERROR:  cannot use TABLEGROUP with SPLIT
+--
+-- Test CREATE INDEX with hash columns
+--
+CREATE TABLEGROUP tgroup_hash_index_test;
+CREATE TABLE tbl (r1 int, r2 int, v1 int, v2 int,
+PRIMARY KEY (r1, r2)) TABLEGROUP tgroup_hash_index_test;
+CREATE INDEX idx_tbl ON tbl (r1 hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX idx2_tbl ON tbl ((r1, r2) hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX idx3_tbl ON tbl (r1 hash, r2 asc);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx_tbl ON tbl (r1 hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx2_tbl ON tbl ((r1, r2) hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx3_tbl ON tbl (r1 hash, r2 asc);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+\d tbl
+                Table "public.tbl"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
+Tablegroup: "tgroup_hash_index_test"
+
+-- Make sure nothing bad happens to UNIQUE constraints after disabling HASH columns
+-- for tablegroup indexes
+CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1))
+TABLEGROUP tgroup_hash_index_test;
+ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
+\d tbl2
+                Table "public.tbl2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           |          |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl2_pkey" PRIMARY KEY, lsm (r1 ASC)
+    "tbl2_v1_key" UNIQUE CONSTRAINT, lsm (v1 ASC), tablegroup "tgroup_hash_index_test"
+    "unique_v2_tbl2" UNIQUE CONSTRAINT, lsm (v2 ASC), tablegroup "tgroup_hash_index_test"
+Tablegroup: "tgroup_hash_index_test"
+
+DROP TABLE tbl, tbl2;
+DROP TABLEGROUP tgroup_hash_index_test;
+--
+-- Test describes
+--
+CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup2;
+CREATE INDEX ON tgroup_test4(col1);
+CREATE INDEX ON tgroup_test4(col2);
+-- Add comments
+COMMENT ON TABLEGROUP tgroup1 IS 'Comment for Tablegroup 1';
+COMMENT ON TABLEGROUP tgroup2 IS 'Comment for Tablegroup 2';
+\dgr
+List of tablegroups
+  Name   |  Owner
+---------+----------
+ tgroup1 | yugabyte
+ tgroup2 | yugabyte
+ tgroup3 | yugabyte
+(3 rows)
+
+\dgr+
+                                   List of tablegroups
+  Name   |  Owner   | Access privileges |       Description        | Tablespace | Options
+---------+----------+-------------------+--------------------------+------------+---------
+ tgroup1 | yugabyte |                   | Comment for Tablegroup 1 |            |
+ tgroup2 | yugabyte |                   | Comment for Tablegroup 2 |            |
+ tgroup3 | yugabyte |                   |                          |            |
+(3 rows)
+
+\dgrt
+                      List of tablegroup tables
+ Group Name | Group Owner |         Name          | Type  |  Owner
+------------+-------------+-----------------------+-------+----------
+ tgroup1    | yugabyte    | tgroup_test1          | table | yugabyte
+ tgroup1    | yugabyte    | tgroup_test1_col2_idx | index | yugabyte
+ tgroup1    | yugabyte    | tgroup_test2          | table | yugabyte
+ tgroup2    | yugabyte    | tgroup_test3          | table | yugabyte
+ tgroup2    | yugabyte    | tgroup_test3_col1_idx | index | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4          | table | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4_col1_idx | index | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4_col2_idx | index | yugabyte
+(8 rows)
+
+\dgrt+
+                                                                           List of tablegroup tables
+ Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |         Name          | Type  |  Owner   | Rel Description | Size
+------------+-------------+-------------------+--------------------------+------------------+---------------+-----------------------+-------+----------+-----------------+------
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1          | table | yugabyte |                 |
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx | index | yugabyte |                 |
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3_col1_idx | index | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx | index | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx | index | yugabyte |                 |
+(8 rows)
+
+COMMENT ON TABLEGROUP tgroup2 IS NULL;
+\dgr+ tgroup2
+                             List of tablegroups
+  Name   |  Owner   | Access privileges | Description | Tablespace | Options
+---------+----------+-------------------+-------------+------------+---------
+ tgroup2 | yugabyte |                   |             |            |
+(1 row)
+
+\dgrt tgroup2
+                      List of tablegroup tables
+ Group Name | Group Owner |         Name          | Type  |  Owner
+------------+-------------+-----------------------+-------+----------
+ tgroup2    | yugabyte    | tgroup_test3          | table | yugabyte
+ tgroup2    | yugabyte    | tgroup_test3_col1_idx | index | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4          | table | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4_col1_idx | index | yugabyte
+ tgroup2    | yugabyte    | tgroup_test4_col2_idx | index | yugabyte
+(5 rows)
+
+-- Describe table
+\d tgroup_test2
+            Table "public.tgroup_test2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ col1   | integer |           |          |
+ col2   | integer |           |          |
+Tablegroup: "tgroup1"
+
+\d tgroup_test4
+            Table "public.tgroup_test4"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ col1   | integer |           |          |
+ col2   | integer |           |          |
+Indexes:
+    "tgroup_test4_col1_idx" lsm (col1 ASC), tablegroup "tgroup2"
+    "tgroup_test4_col2_idx" lsm (col2 ASC), tablegroup "tgroup2"
+Tablegroup: "tgroup2"
+
+\d tgroup_test4_col1_idx
+ Index "public.tgroup_test4_col1_idx"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ col1   | integer | yes  | col1
+lsm, for table "public.tgroup_test4"
+Tablegroup: "tgroup2"
+
+CREATE TABLEGROUP tgroup_describe1;
+CREATE TABLEGROUP tgroup_describe2;
+CREATE TABLE tgroup_describe (col1 int) TABLEGROUP tgroup_describe1;
+CREATE INDEX ON tgroup_describe(col1);
+\d tgroup_describe
+          Table "public.tgroup_describe"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ col1   | integer |           |          |
+Indexes:
+    "tgroup_describe_col1_idx" lsm (col1 ASC), tablegroup "tgroup_describe1"
+Tablegroup: "tgroup_describe1"
+
+--
+-- DROP TABLEGROUP
+--
+DROP TABLEGROUP tgroup3;
+-- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_yb_tablegroup.
+CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
+ERROR:  tablegroup "tgroup3" does not exist
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLEGROUP tgroup1;
+ERROR:  cannot drop tablegroup tgroup1 because other objects depend on it
+DROP TABLEGROUP IF EXISTS tgroup1;
+ERROR:  cannot drop tablegroup tgroup1 because other objects depend on it
+\set VERBOSITY default
+DROP TABLEGROUP bad_tgroupname;
+ERROR:  tablegroup "bad_tgroupname" does not exist
+-- This drop should work now.
+DROP TABLE tgroup_test1;
+DROP TABLE tgroup_test2;
+DROP TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
+NOTICE:  tablegroup "tgroup1" does not exist, skipping
+-- Create a tablegroup with the name of a dropped tablegroup.
+CREATE TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
+CREATE TABLEGROUP tgroup1;
+--
+-- Assigning a tablespace to a tablegroup
+--
+CREATE TABLESPACE tblspc WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+-- These should fail
+CREATE TABLEGROUP grp1 TABLESPACE nonexistentspc;
+ERROR:  tablespace "nonexistentspc" does not exist
+CREATE TABLEGROUP grp2 TABLESPACE pg_global;
+ERROR:  tablegroups cannot be placed in pg_global tablespace
+-- These should succeeed
+CREATE TABLEGROUP grp3 TABLESPACE tblspc;
+SET default_tablespace = "tblspc";
+CREATE TABLEGROUP grp4;
+SET default_tablespace = '';
+CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
+\dgr+
+                                 List of tablegroups
+       Name       |  Owner   | Access privileges | Description | Tablespace | Options
+------------------+----------+-------------------+-------------+------------+---------
+ grp3             | yugabyte |                   |             | tblspc     |
+ grp4             | yugabyte |                   |             | tblspc     |
+ tgroup1          | yugabyte |                   |             |            |
+ tgroup2          | yugabyte |                   |             |            |
+ tgroup_describe1 | yugabyte |                   |             |            |
+ tgroup_describe2 | yugabyte |                   |             |            |
+(6 rows)
+
+\dgrt+
+                                                                            List of tablegroup tables
+    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size
+------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+------
+ grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
+(8 rows)
+
+--
+-- Interactions with colocated database.
+--
+CREATE DATABASE db_colocated colocation=true;
+\c db_colocated
+-- This should fail.
+CREATE TABLEGROUP tgroup1;
+ERROR:  cannot use tablegroups in a colocated database

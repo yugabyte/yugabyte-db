@@ -1,0 +1,360 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/opid.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
+import "yb/rpc/rpc_header.proto";
+import "yb/tablet/metadata.proto";
+
+// RaftConfig remote bootstrap RPC calls.
+service RemoteBootstrapService {
+  // Establish a remote bootstrap session.
+  rpc BeginRemoteBootstrapSession(BeginRemoteBootstrapSessionRequestPB)
+      returns (BeginRemoteBootstrapSessionResponsePB);
+
+  // Establish a remote snapshot transfer session.
+  rpc BeginRemoteSnapshotTransferSession(
+      BeginRemoteSnapshotTransferSessionRequestPB)
+      returns (BeginRemoteSnapshotTransferSessionResponsePB);
+
+  // Check whether the specified session is active.
+  rpc CheckRemoteBootstrapSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
+      returns (CheckRemoteBootstrapSessionActiveResponsePB);
+
+  // Fetch data (blocks, logs) from the server.
+  rpc FetchData(FetchDataRequestPB)
+      returns (FetchDataResponsePB);
+
+  // End a remote bootstrap session, allow server to release resources.
+  rpc EndRemoteBootstrapSession(EndRemoteBootstrapSessionRequestPB)
+      returns (EndRemoteBootstrapSessionResponsePB);
+
+  rpc RemoveRemoteBootstrapSession(RemoveRemoteBootstrapSessionRequestPB)
+      returns (RemoveRemoteBootstrapSessionResponsePB);
+
+  // Register Log Anchor on the leader. RBS source calls this function on the
+  // tablet leader while beginning the RemoteBootstrapSession
+  rpc RegisterLogAnchor(RegisterLogAnchorRequestPB)
+      returns (RegisterLogAnchorResponsePB);
+
+  // Updates the Log Anchor on the tablet leader. RBS source calls the function
+  // whenever the LogAnchor is being updated locally.
+  rpc UpdateLogAnchor(UpdateLogAnchorRequestPB)
+      returns (UpdateLogAnchorResponsePB);
+
+  // Unregisters the Log Anchor on the leader, called by RBS source.
+  rpc UnregisterLogAnchor(UnregisterLogAnchorRequestPB)
+      returns (UnregisterLogAnchorResponsePB);
+
+  // Request to refresh the Log Anchor Session, called by RBS source.
+  rpc KeepLogAnchorAlive(KeepLogAnchorAliveRequestPB)
+      returns (KeepLogAnchorAliveResponsePB);
+
+  // RBS source asks the leader to change the role of the new peer post
+  // bootstrap.
+  rpc ChangePeerRole(ChangePeerRoleRequestPB)
+      returns (ChangePeerRoleResponsePB);
+}
+
+// Remote bootstrap-specific errors use this protobuf.
+message RemoteBootstrapErrorPB {
+  extend yb.rpc.ErrorStatusPB {
+    optional RemoteBootstrapErrorPB remote_bootstrap_error_ext = 102;
+  }
+
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+
+    // The specified remote bootstrap session either never existed or has expired.
+    NO_SESSION = 2;
+
+    // Unknown tablet.
+    TABLET_NOT_FOUND = 3;
+
+    // Unknown data block.
+    BLOCK_NOT_FOUND = 4;
+
+    // Unknown WAL segment.
+    WAL_SEGMENT_NOT_FOUND = 5;
+
+    // Invalid request. Possibly missing parameters.
+    INVALID_REMOTE_BOOTSTRAP_REQUEST = 6;
+
+    // Error reading or transferring data.
+    IO_ERROR = 7;
+
+    // Unknown RocksDB file.
+    ROCKSDB_FILE_NOT_FOUND = 8;
+
+    // Unable to register/update LogAnchor on the tablet leader peer
+    REMOTE_LOG_ANCHOR_FAILURE = 9;
+
+    // Cannot ChangeRole for the new peer on the tablet-leader
+    REMOTE_CHANGE_PEER_ROLE_FAILURE = 10;
+  }
+
+  // The error code.
+  required Code code = 1 [ default = UNKNOWN_ERROR ];
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  required AppStatusPB status = 2;
+}
+
+message BeginRemoteBootstrapSessionRequestPB {
+  // permanent_uuid of the requesting peer.
+  required bytes requestor_uuid = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+
+  // connection info of the tablet leader peer for the corresponding tablet_id
+  optional ServerRegistrationPB tablet_leader_conn_info = 3;
+}
+
+message BeginRemoteBootstrapSessionResponsePB {
+  // Opaque session id assigned by the server.
+  // No guarantees are made as to the format of the session id.
+  required bytes session_id = 1;
+
+  // Maximum session idle timeout between requests.
+  // Learners will have to start over again if they reach this timeout.
+  // A value of 0 means there is no timeout.
+  required uint64 session_idle_timeout_millis = 2;
+
+  // Active superblock at the time of the request.
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
+
+  // Identifiers for the WAL segments available for download.
+  // Each WAL segment is keyed by its sequence number.
+  repeated uint64 DEPRECATED_wal_segment_seqnos = 4;
+
+  // Sequence number of first WAL segment available for download.
+  optional uint64 first_wal_segment_seqno = 6;
+
+  // A snapshot of the committed Consensus state at the time that the
+  // remote bootstrap session was started.
+  required consensus.ConsensusStatePB initial_committed_cstate = 5;
+
+  // If the tablet has a retryable requests file flushed to disk.
+  optional bool retryable_requests_file_flushed = 7 [default = false];
+}
+
+message BeginRemoteSnapshotTransferSessionRequestPB {
+  // permanent_uuid of the requesting peer.
+  required bytes requestor_uuid = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+}
+
+message BeginRemoteSnapshotTransferSessionResponsePB {
+  // Opaque session id assigned by the server.
+  // No guarantees are made as to the format of the session id.
+  required bytes session_id = 1;
+
+  // Maximum session idle timeout between requests.
+  // Learners will have to start over again if they reach this timeout.
+  // A value of 0 means there is no timeout.
+  required uint64 session_idle_timeout_millis = 2;
+
+  // Active superblock at the time of the request.
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
+}
+
+message CheckRemoteBootstrapSessionActiveRequestPB {
+  // Valid Session ID returned by a BeginRemoteBootstrapSession() RPC call.
+  required bytes session_id = 1;
+
+  // Set keepalive to true to reset the session timeout timer.
+  optional bool keepalive = 2 [default = false];
+}
+
+message CheckRemoteBootstrapSessionActiveResponsePB {
+  // Whether the given session id represents an active remote bootstrap session.
+  required bool session_is_active = 1;
+}
+
+// A "union" type that allows the same RPC call to fetch different types of
+// data (data blocks or log files).
+message DataIdPB {
+  enum IdType {
+    UNKNOWN = 0;
+    LOG_SEGMENT = 2;
+    ROCKSDB_FILE = 3;
+    SNAPSHOT_FILE = 4;
+    RETRYABLE_REQUESTS = 5;
+  }
+
+  // Indicator whether it's a block or log segment id.
+  required IdType type = 1;
+
+  // Exactly one of these must be set.
+  reserved 2; // Deprecated block_id
+  optional uint64 wal_segment_seqno = 3;    // To fetch a log segment.
+  optional string file_name = 4;            // To fetch a RocksDB file.
+  optional bytes snapshot_id = 5;           // To fetch a Snapshot file.
+}
+
+message FetchDataRequestPB {
+  // Valid Session ID returned by a BeginRemoteBootstrapSession() RPC call.
+  required bytes session_id = 1;
+
+  // The server will use this ID to determine the key and type of data
+  // that was requested.
+  required DataIdPB data_id = 2;
+
+  // Offset into data to start reading from.
+  // If not specified, the server will send the data from offset 0.
+  optional uint64 offset = 3 [default = 0];
+
+  // Maximum length of the chunk of data to return.
+  // If max_length is not specified, or if the server's max is less than the
+  // requested max, the server will use its own max.
+  optional int64 max_length = 4 [default = 0];
+}
+
+// A chunk of data (a slice of a block, file, etc).
+message DataChunkPB {
+  // Offset into the complete data block or file that 'data' starts at.
+  required uint64 offset = 1;
+
+  // Actual bytes of data from the data block, starting at 'offset'.
+  required bytes data = 2;
+
+  // CRC32C of the bytes contained in 'data'.
+  required fixed32 crc32 = 3;
+
+  // Full length, in bytes, of the complete data block or file on the server.
+  // The number of bytes returned in 'data' can certainly be less than this.
+  required int64 total_data_length = 4;
+}
+
+message FetchDataResponsePB {
+  // The server will automatically release the resources (i.e. close file, free
+  // read buffers) for a given data resource after the last byte is read.
+  // So, per-resource, chunks are optimized to be fetched in-order.
+  required DataChunkPB chunk = 1;
+}
+
+message EndRemoteBootstrapSessionRequestPB {
+  required bytes session_id = 1;
+
+  // Set to true if bootstrap is successful.
+  required bool is_success = 2;
+
+  // Client-provided error message. The server will log this error so that an
+  // admin can identify when bad things are happening with remote bootstrap.
+  optional AppStatusPB error = 3;
+
+  // True if we should not remove session on this request, and it will be removed by upcoming
+  // RemoveRemoteBootstrapSession.
+  optional bool keep_session = 4 [default = false];
+}
+
+message EndRemoteBootstrapSessionResponsePB {
+  optional bool session_kept = 1 [default = false];
+}
+
+message RemoveRemoteBootstrapSessionRequestPB {
+  optional bytes session_id = 1;
+}
+
+message RemoveRemoteBootstrapSessionResponsePB {
+}
+
+message RegisterLogAnchorRequestPB {
+  // information on the owner requesting this anchor. can be something suffixed
+  // with the session id of the ongoing RemoteBootstrapSession. Used to map the
+  // incoming requests with the LogAnchors maintained.
+  required bytes owner_info = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // registered at. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 3;
+}
+
+message RegisterLogAnchorResponsePB {}
+
+message UpdateLogAnchorRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // updated to. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 2;
+}
+
+message UpdateLogAnchorResponsePB {}
+
+message UnregisterLogAnchorRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+}
+
+message UnregisterLogAnchorResponsePB {}
+
+message KeepLogAnchorAliveRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+}
+
+message KeepLogAnchorAliveResponsePB {}
+
+message ChangePeerRoleRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+
+  // peer uuid of the new peer being bootstrapped.
+  required bytes requestor_uuid = 2;
+}
+
+message ChangePeerRoleResponsePB {}

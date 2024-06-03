@@ -1,0 +1,317 @@
+--
+-- YB_FEATURE Testsuite
+--   An introduction on whether or not a feature is supported in YugaByte.
+--   This test suite does not go in depth for each command.
+--
+-- SET / RESET / SHOW configuration
+--   Implementation-wise, Postgres groups configuration variables by their datatypes.
+--   There are five groups listed in file "guc.c".
+--   * In this test, we use one variable from each group in our tests.
+--   * In the future, each variable and its affect should be tested properly because each variable
+--     is associated with a different set of operators (function oid).
+--
+--   Steps in this test
+--   * First show the existing values.
+--   * Change them in a transaction.
+--   * Show the new values.
+--   * Reset to default.
+--
+-------------------------------------------------------------------------------
+-- Show default values
+-------------------------------------------------------------------------------
+-- Variables of Type Boolean
+SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ on
+(1 row)
+
+SHOW ssl;
+ ssl
+-----
+ off
+(1 row)
+
+-- Variables of Type Int
+SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 1s
+(1 row)
+
+SHOW ssl_renegotiation_limit;
+ ssl_renegotiation_limit
+-------------------------
+ 0
+(1 row)
+
+-- Variables of Type Real
+SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 1
+(1 row)
+
+-- Variables of Type String
+SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ $libdir
+(1 row)
+
+SHOW ssl_ciphers;
+       ssl_ciphers
+--------------------------
+ HIGH:MEDIUM:+3DES:!aNULL
+(1 row)
+
+-- Variables of Type Enum
+SHOW bytea_output;
+ bytea_output
+--------------
+ hex
+(1 row)
+
+-------------------------------------------------------------------------------
+-- Some variables can only be set at the startup time.
+-------------------------------------------------------------------------------
+BEGIN;
+		SET ssl = false;
+ERROR:  parameter "ssl" cannot be changed now
+		SET ssl_renegotiation_limit = 7;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+		SET ssl_ciphers = "HIGH:MEDIUM";
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+END;
+-------------------------------------------------------------------------------
+-- SET LOCAL (Value lifetime: Transaction)
+-------------------------------------------------------------------------------
+BEGIN;
+		SET LOCAL enable_seqscan = FALSE;
+		SET LOCAL deadlock_timeout = 10000;
+		SET LOCAL seq_page_cost = 7.7;
+		SET LOCAL dynamic_library_path = "/tmp/data";
+		SET LOCAL bytea_output = "escape";
+-- SET LOCAL: Show values while inside the transaction.
+		SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ off
+(1 row)
+
+		SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 10s
+(1 row)
+
+		SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 7.7
+(1 row)
+
+		SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ /tmp/data
+(1 row)
+
+		SHOW bytea_output;
+ bytea_output
+--------------
+ escape
+(1 row)
+
+END;
+-------------------------------------------------------------------------------
+-- SET LOCAL: Show values after the transaction ended.
+-- All set values should go back to DEFAULT
+-------------------------------------------------------------------------------
+SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ on
+(1 row)
+
+SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 1s
+(1 row)
+
+SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 1
+(1 row)
+
+SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ $libdir
+(1 row)
+
+SHOW bytea_output;
+ bytea_output
+--------------
+ hex
+(1 row)
+
+-------------------------------------------------------------------------------
+-- SET SESSION (Value lifetime: Session)
+-------------------------------------------------------------------------------
+BEGIN;
+		SET enable_seqscan = FALSE;
+		SET deadlock_timeout = 10000;
+		SET seq_page_cost = 7.7;
+		SET dynamic_library_path = "/tmp/data";
+		SET bytea_output = "escape";
+-- SET SESSION: Show values while inside the transaction.
+		SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ off
+(1 row)
+
+		SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 10s
+(1 row)
+
+		SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 7.7
+(1 row)
+
+		SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ /tmp/data
+(1 row)
+
+		SHOW bytea_output;
+ bytea_output
+--------------
+ escape
+(1 row)
+
+END;
+-------------------------------------------------------------------------------
+-- SET SESSION: Show values after the transaction ended.
+-- All set values should stay till end of session.
+-------------------------------------------------------------------------------
+SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ off
+(1 row)
+
+SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 10s
+(1 row)
+
+SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 7.7
+(1 row)
+
+SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ /tmp/data
+(1 row)
+
+SHOW bytea_output;
+ bytea_output
+--------------
+ escape
+(1 row)
+
+-------------------------------------------------------------------------------
+-- RESET all variables to default valuse.
+-------------------------------------------------------------------------------
+BEGIN;
+		RESET ALL;
+END;
+SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ on
+(1 row)
+
+SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 1s
+(1 row)
+
+SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 1
+(1 row)
+
+SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ $libdir
+(1 row)
+
+SHOW bytea_output;
+ bytea_output
+--------------
+ hex
+(1 row)
+
+-------------------------------------------------------------------------------
+-- Check ROLLBACK affect due to errors.
+-------------------------------------------------------------------------------
+BEGIN;
+		SET enable_seqscan = FALSE;
+		SET deadlock_timeout = 10000;
+		SET seq_page_cost = 7.7;
+		SET dynamic_library_path = "/tmp/data";
+		SET bytea_output = "escape";
+		ROLLBACK;
+END;
+WARNING:  there is no transaction in progress
+SHOW enable_seqscan;
+ enable_seqscan
+----------------
+ on
+(1 row)
+
+SHOW deadlock_timeout;
+ deadlock_timeout
+------------------
+ 1s
+(1 row)
+
+SHOW seq_page_cost;
+ seq_page_cost
+---------------
+ 1
+(1 row)
+
+SHOW dynamic_library_path;
+ dynamic_library_path
+----------------------
+ $libdir
+(1 row)
+
+SHOW bytea_output;
+ bytea_output
+--------------
+ hex
+(1 row)
+
+-------------------------------------------------------------------------------
+-- To be safe, RESET variables before exit test.
+-------------------------------------------------------------------------------
+RESET ALL;

@@ -1,0 +1,21 @@
+# Copyright (c) Yugabyte, Inc.
+#
+# To analyze (without uploading to Fossa) -- for local debugging:
+# fossa analyze --debug --output
+#
+# To analyze and upload dependencies:
+# fossa analyze --debug
+
+version: 3
+
+project:
+  id: yugabyte-db-platform
+
+revision:
+  branch: master
+
+paths:
+  only:
+    - ./managed
+  exclude:
+    - ./managed/src/test

@@ -1,0 +1,365 @@
+<!--
+doc/src/sgml/ref/alter_domain.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterdomain">
+ <indexterm zone="sql-alterdomain">
+  <primary>ALTER DOMAIN</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER DOMAIN</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER DOMAIN</refname>
+  <refpurpose>
+   change the definition of a domain
+  </refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    { SET DEFAULT <replaceable class="parameter">expression</replaceable> | DROP DEFAULT }
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    { SET | DROP } NOT NULL
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    ADD <replaceable class="parameter">domain_constraint</replaceable> [ NOT VALID ]
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    DROP CONSTRAINT [ IF EXISTS ] <replaceable class="parameter">constraint_name</replaceable> [ RESTRICT | CASCADE ]
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+     RENAME CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> TO <replaceable class="parameter">new_constraint_name</replaceable>
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    VALIDATE CONSTRAINT <replaceable class="parameter">constraint_name</replaceable>
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER DOMAIN <replaceable class="parameter">name</replaceable>
+    SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER DOMAIN</command> changes the definition of an existing domain.
+   There are several sub-forms:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SET</literal>/<literal>DROP DEFAULT</literal></term>
+    <listitem>
+     <para>
+      These forms set or remove the default value for a domain. Note
+      that defaults only apply to subsequent <command>INSERT</command>
+      commands; they do not affect rows already in a table using the domain.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET</literal>/<literal>DROP NOT NULL</literal></term>
+    <listitem>
+     <para>
+      These forms change whether a domain is marked to allow NULL
+      values or to reject NULL values.  You can only <literal>SET NOT NULL</literal>
+      when the columns using the domain contain no null values.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD <replaceable class="parameter">domain_constraint</replaceable> [ NOT VALID ]</literal></term>
+    <listitem>
+     <para>
+      This form adds a new constraint to a domain using the same syntax as
+      <link linkend="sql-createdomain"><command>CREATE DOMAIN</command></link>.
+      When a new constraint is added to a domain, all columns using that
+      domain will be checked against the newly added constraint.  These
+      checks can be suppressed by adding the new constraint using the
+      <literal>NOT VALID</literal> option; the constraint can later be made
+      valid using <command>ALTER DOMAIN ... VALIDATE CONSTRAINT</command>.
+      Newly inserted or updated rows are always checked against all
+      constraints, even those marked <literal>NOT VALID</literal>.
+      <literal>NOT VALID</literal> is only accepted for <literal>CHECK</literal> constraints.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP CONSTRAINT [ IF EXISTS ]</literal></term>
+    <listitem>
+     <para>
+      This form drops constraints on a domain.
+      If <literal>IF EXISTS</literal> is specified and the constraint
+      does not exist, no error is thrown. In this case a notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RENAME CONSTRAINT</literal></term>
+    <listitem>
+     <para>
+      This form changes the name of a constraint on a domain.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VALIDATE CONSTRAINT</literal></term>
+    <listitem>
+     <para>
+      This form validates a constraint previously added as
+      <literal>NOT VALID</literal>, that is, it verifies that all values in
+      table columns of the domain type satisfy the specified constraint.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OWNER</literal></term>
+    <listitem>
+     <para>
+      This form changes the owner of the domain to the specified user.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RENAME</literal></term>
+    <listitem>
+     <para>
+      This form changes the name of the domain.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET SCHEMA</literal></term>
+    <listitem>
+     <para>
+      This form changes the schema of the domain.  Any constraints
+      associated with the domain are moved into the new schema as well.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   You must own the domain to use <command>ALTER DOMAIN</command>.
+   To change the schema of a domain, you must also have
+   <literal>CREATE</literal> privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the domain's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the domain.
+   However, a superuser can alter ownership of any domain anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (possibly schema-qualified) of an existing domain to
+        alter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">domain_constraint</replaceable></term>
+      <listitem>
+       <para>
+        New domain constraint for the domain.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">constraint_name</replaceable></term>
+      <listitem>
+       <para>
+        Name of an existing constraint to drop or rename.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>NOT VALID</literal></term>
+      <listitem>
+       <para>
+        Do not verify existing stored data for constraint validity.
+       </para>
+      </listitem>
+     </varlistentry>
+
+
+     <varlistentry>
+      <term><literal>CASCADE</literal></term>
+      <listitem>
+       <para>
+        Automatically drop objects that depend on the constraint,
+        and in turn all objects that depend on those objects
+        (see <xref linkend="ddl-depend"/>).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>RESTRICT</literal></term>
+      <listitem>
+       <para>
+        Refuse to drop the constraint if there are any dependent
+        objects. This is the default behavior.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name for the domain.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_constraint_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name for the constraint.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_owner</replaceable></term>
+      <listitem>
+       <para>
+        The user name of the new owner of the domain.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_schema</replaceable></term>
+      <listitem>
+       <para>
+        The new schema for the domain.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+  </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Although <command>ALTER DOMAIN ADD CONSTRAINT</command> attempts to verify
+   that existing stored data satisfies the new constraint, this check is not
+   bulletproof, because the command cannot <quote>see</quote> table rows that
+   are newly inserted or updated and not yet committed.  If there is a hazard
+   that concurrent operations might insert bad data, the way to proceed is to
+   add the constraint using the <literal>NOT VALID</literal> option, commit
+   that command, wait until all transactions started before that commit have
+   finished, and then issue <command>ALTER DOMAIN VALIDATE
+   CONSTRAINT</command> to search for data violating the constraint.  This
+   method is reliable because once the constraint is committed, all new
+   transactions are guaranteed to enforce it against new values of the domain
+   type.
+  </para>
+
+  <para>
+   Currently, <command>ALTER DOMAIN ADD CONSTRAINT</command>, <command>ALTER
+   DOMAIN VALIDATE CONSTRAINT</command>, and <command>ALTER DOMAIN SET NOT
+   NULL</command> will fail if the named domain or any derived domain is used
+   within a container-type column (a composite, array, or range column) in
+   any table in the database.  They should eventually be improved to be able
+   to verify the new constraint for such nested values.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To add a <literal>NOT NULL</literal> constraint to a domain:
+<programlisting>
+ALTER DOMAIN zipcode SET NOT NULL;
+</programlisting>
+   To remove a <literal>NOT NULL</literal> constraint from a domain:
+<programlisting>
+ALTER DOMAIN zipcode DROP NOT NULL;
+</programlisting>
+  </para>
+
+  <para>
+   To add a check constraint to a domain:
+<programlisting>
+ALTER DOMAIN zipcode ADD CONSTRAINT zipchk CHECK (char_length(VALUE) = 5);
+</programlisting>
+  </para>
+
+  <para>
+   To remove a check constraint from a domain:
+<programlisting>
+ALTER DOMAIN zipcode DROP CONSTRAINT zipchk;
+</programlisting>
+  </para>
+
+  <para>
+   To rename a check constraint on a domain:
+<programlisting>
+ALTER DOMAIN zipcode RENAME CONSTRAINT zipchk TO zip_check;
+</programlisting>
+  </para>
+
+  <para>
+   To move the domain into a different schema:
+<programlisting>
+ALTER DOMAIN zipcode SET SCHEMA customers;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-alterdomain-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER DOMAIN</command> conforms to the <acronym>SQL</acronym>
+   standard, except for the <literal>OWNER</literal>, <literal>RENAME</literal>, <literal>SET SCHEMA</literal>, and
+   <literal>VALIDATE CONSTRAINT</literal> variants, which are
+   <productname>PostgreSQL</productname> extensions.  The <literal>NOT VALID</literal>
+   clause of the <literal>ADD CONSTRAINT</literal> variant is also a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-alterdomain-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createdomain"/></member>
+   <member><xref linkend="sql-dropdomain"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,6 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.progress-bar {
+  background-color: #cd6500 !important;
+  color: grey;
+}

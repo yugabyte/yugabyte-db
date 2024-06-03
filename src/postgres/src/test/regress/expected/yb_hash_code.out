@@ -1,0 +1,977 @@
+-- test yb_hash_code as a function
+SELECT yb_hash_code(1,2,3);
+ yb_hash_code
+--------------
+        57262
+(1 row)
+
+SELECT yb_hash_code(1,2,'abc'::text);
+ yb_hash_code
+--------------
+        33808
+(1 row)
+
+-- test on unsupported primary key types
+SELECT yb_hash_code('asdf');
+ERROR:  undefined datatype given to yb_hash_code
+SELECT yb_hash_code('{"a": {"b":{"c": "foo"}}}'::jsonb);
+ERROR:  Unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed
+HINT:  Use explicit casts to ensure input types are as desired
+SELECT yb_hash_code(ARRAY[1,2,3]);
+ERROR:  Unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed
+HINT:  Use explicit casts to ensure input types are as desired
+-- test basic filtering on different datatypes with yb_hash_code
+CREATE TABLE test_table_int (x INT PRIMARY KEY);
+INSERT INTO test_table_int SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_int;
+ yb_hash_code | x
+--------------+----
+         2675 |  5
+         4624 |  1
+         7321 | 11
+        14321 | 13
+        15839 | 16
+        16842 | 12
+        18581 | 15
+        20056 |  6
+        21199 |  7
+        23904 |  9
+        28919 | 17
+        29135 | 10
+        31730 | 19
+        40623 |  4
+        41074 | 18
+        49348 |  2
+        50082 |  8
+        52593 | 14
+        64672 |  3
+        65252 | 20
+(20 rows)
+
+DROP TABLE test_table_int;
+CREATE TABLE test_table_real (x REAL PRIMARY KEY);
+INSERT INTO test_table_real SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_real;
+ yb_hash_code | x
+--------------+----
+         1379 | 17
+         1395 | 14
+         1462 |  1
+         2447 |  4
+        10957 | 13
+        12852 |  8
+        13407 | 16
+        15589 |  7
+        15765 | 18
+        17903 | 12
+        20736 |  6
+        24476 | 19
+        31190 |  5
+        36591 | 20
+        38027 |  3
+        40495 |  2
+        54629 | 10
+        60807 | 15
+        60956 |  9
+        62813 | 11
+(20 rows)
+
+DROP TABLE test_table_real;
+CREATE TABLE test_table_double (x DOUBLE PRECISION PRIMARY KEY);
+INSERT INTO test_table_double SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_double;
+ yb_hash_code | x
+--------------+----
+         1454 | 19
+         4391 |  1
+         7352 |  4
+        13543 |  6
+        14302 | 20
+        16387 | 13
+        20278 | 12
+        22260 |  9
+        23819 |  5
+        27150 |  3
+        28532 | 11
+        31074 | 18
+        34735 | 15
+        35915 | 10
+        36000 | 17
+        37981 |  8
+        42560 |  7
+        47639 | 16
+        50080 | 14
+        57660 |  2
+(20 rows)
+
+DROP TABLE test_table_double;
+CREATE TABLE test_table_small (x SMALLINT PRIMARY KEY);
+INSERT INTO test_table_small SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_small;
+ yb_hash_code | x
+--------------+----
+         1049 |  4
+         2923 | 14
+        13059 |  1
+        16740 | 13
+        18377 | 20
+        26637 |  2
+        26727 |  7
+        27386 | 11
+        27610 | 15
+        29352 |  3
+        30717 |  8
+        35517 |  5
+        35577 | 16
+        48580 |  6
+        49544 | 19
+        50772 |  9
+        51191 | 12
+        51845 | 18
+        53991 | 10
+        63800 | 17
+(20 rows)
+
+DROP TABLE test_table_small;
+CREATE TABLE test_table_text (x TEXT PRIMARY KEY);
+INSERT INTO test_table_text SELECT generate_series(800001, 800020);
+SELECT yb_hash_code(x), x FROM test_table_text;
+ yb_hash_code |   x
+--------------+--------
+          887 | 800018
+         3842 | 800012
+         4509 | 800015
+         8102 | 800005
+        13531 | 800013
+        16739 | 800014
+        18864 | 800008
+        20355 | 800010
+        23039 | 800016
+        23917 | 800007
+        29019 | 800002
+        39633 | 800001
+        41202 | 800020
+        42996 | 800003
+        52091 | 800009
+        58508 | 800004
+        59776 | 800019
+        59778 | 800006
+        61648 | 800017
+        64428 | 800011
+(20 rows)
+
+DROP TABLE test_table_text;
+CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');
+SELECT yb_hash_code('sad'::mood);
+ yb_hash_code
+--------------
+         6308
+(1 row)
+
+SELECT yb_hash_code('happy'::mood);
+ yb_hash_code
+--------------
+         1243
+(1 row)
+
+CREATE TABLE test_table_mood (x mood, y INT, PRIMARY KEY((x,y) HASH));
+INSERT INTO test_table_mood VALUES ('sad'::mood, 1), ('happy'::mood, 4),
+('ok'::mood, 4), ('sad'::mood, 34), ('ok'::mood, 23);
+SELECT yb_hash_code(x,y), * FROM test_table_mood;
+ yb_hash_code |   x   | y
+--------------+-------+----
+         7098 | ok    |  4
+        19471 | ok    | 23
+        43113 | happy |  4
+        46345 | sad   |  1
+        60656 | sad   | 34
+(5 rows)
+
+DROP TABLE test_table_mood;
+DROP TYPE mood;
+-- test basic pushdown on a table with one primary hash key column
+CREATE TABLE test_table_one_primary (x INT PRIMARY KEY, y INT);
+INSERT INTO test_table_one_primary SELECT i,i FROM generate_series(1, 10000) i;
+SET yb_explain_hide_non_deterministic_fields = true;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(x) = 10427)
+(2 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
+  x   |  y
+------+------
+ 3381 | 3381
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512;
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=85 loops=1)
+   Index Cond: (yb_hash_code(x) < 512)
+(2 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 LIMIT 5;
+  x   |  y
+------+------
+  854 |  854
+ 9643 | 9643
+ 1862 | 1862
+ 8965 | 8965
+ 7947 | 7947
+(5 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: x
+   Sort Method: quicksort
+   ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=3 loops=1)
+         Index Cond: ((x = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(x) < 50000))
+         Rows Removed by Index Recheck: 1
+(6 rows)
+
+SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
+ x | yb_hash_code
+---+--------------
+ 1 |         4624
+ 2 |        49348
+ 4 |        40623
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) < 9))
+(2 rows)
+
+SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
+ yb_hash_code
+--------------
+            3
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=0 loops=1)
+   Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) > 90))
+(2 rows)
+
+SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
+ yb_hash_code
+--------------
+(0 rows)
+
+-- this should not be pushed down as (x,y) is not a hash primary key yet
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on test_table_one_primary (actual rows=76 loops=1)
+   Filter: (yb_hash_code(x, y) < 512)
+   Rows Removed by Filter: 9924
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512 LIMIT 5;
+  x   |  y
+------+------
+ 1862 | 1862
+ 5530 | 5530
+ 5796 | 5796
+  243 |  243
+ 9891 | 9891
+(5 rows)
+
+-- pushdown on yb_hash_code(x,y) should work after this index
+-- on (x,y) hash is created
+CREATE INDEX test_secondary ON test_table_one_primary ((x, y) HASH);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=76 loops=1)
+   Index Cond: (yb_hash_code(x, y) < 512)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512 LIMIT 5;
+  x   |  y
+------+------
+ 2430 | 2430
+ 8867 | 8867
+ 7400 | 7400
+ 3129 | 3129
+ 8546 | 8546
+(5 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=2 loops=1)
+   Index Cond: (yb_hash_code(x, y) = 10)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;
+  x   |  y
+------+------
+ 2430 | 2430
+ 8867 | 8867
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=2 loops=1)
+   Index Cond: ((yb_hash_code(x, y) <= 20) AND (yb_hash_code(x, y) < 11))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
+ yb_hash_code
+--------------
+           10
+           10
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=0 loops=1)
+   Index Cond: ((yb_hash_code(x, y) <= 20) AND (yb_hash_code(x, y) > 110))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
+ yb_hash_code
+--------------
+(0 rows)
+
+-- testing with a qualification on yb_hash_code(x) and x
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(x) < 512)
+   Storage Filter: (x < 90)
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
+ x  | y
+----+----
+ 81 | 81
+(1 row)
+
+-- should not be pushed down as the selectivity of this filter is too high
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 60000;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Seq Scan on test_table_one_primary (actual rows=9122 loops=1)
+   Filter: (yb_hash_code(x, y) < 60000)
+   Rows Removed by Filter: 878
+(3 rows)
+
+-- should select the more selective index on x
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 60000 AND yb_hash_code(x) > 60000;
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=723 loops=1)
+   Index Cond: (yb_hash_code(x) > 60000)
+   Filter: (yb_hash_code(x, y) < 60000)
+   Rows Removed by Filter: 78
+(4 rows)
+
+-- this should not be pushed down as the order of (x,y) is not correct
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(y,x) < 512;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on test_table_one_primary (actual rows=76 loops=1)
+   Filter: (yb_hash_code(y, x) < 512)
+   Rows Removed by Filter: 9924
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(y,x) < 512 LIMIT 7;
+  x   |  y
+------+------
+ 1862 | 1862
+ 5530 | 5530
+ 5796 | 5796
+  243 |  243
+ 9891 | 9891
+  629 |  629
+ 3129 | 3129
+(7 rows)
+
+-- should not be pushed down as we don't support pushdown on IN filters yet
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326);
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Seq Scan on test_table_one_primary (actual rows=1 loops=1)
+   Filter: (yb_hash_code(x, y) = ANY ('{1,200,326}'::integer[]))
+   Rows Removed by Filter: 9999
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326);
+  x   |  y
+------+------
+ 1862 | 1862
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=76 loops=1)
+   Index Cond: ((yb_hash_code(x, y) >= 4) AND (yb_hash_code(x, y) <= 512))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512 LIMIT 5;
+  x   |  y
+------+------
+ 2430 | 2430
+ 8867 | 8867
+ 7400 | 7400
+ 3129 | 3129
+ 8546 | 8546
+(5 rows)
+
+DROP TABLE test_table_one_primary;
+-- testing pushdown where the hash column is of type text
+CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
+INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_series(1,10000) i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(hr) = 30)
+(2 rows)
+
+SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
+  hr  |  ti  |  tj  |  i   |  j
+------+------+------+------+------
+ 8646 | 8646 | 8646 | 8646 | 8646
+(1 row)
+
+-- testing pushdown on a secondary index with a text hash column
+CREATE INDEX textidx ON text_table (tj);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Index Scan using textidx on text_table (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(tj) = 63)
+(2 rows)
+
+SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
+  hr  |  ti  |  tj  |  i   |  j
+------+------+------+------+------
+ 1363 | 1363 | 1363 | 1363 | 1363
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Index Scan using textidx on text_table (actual rows=10 loops=1)
+   Index Cond: (yb_hash_code(tj) <= 63)
+(2 rows)
+
+SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;
+  hr  |  ti  |  tj  |  i   |  j
+------+------+------+------+------
+ 4999 | 4999 | 4999 | 4999 | 4999
+ 8300 | 8300 | 8300 | 8300 | 8300
+ 6918 | 6918 | 6918 | 6918 | 6918
+ 912  | 912  | 912  |  912 |  912
+ 8646 | 8646 | 8646 | 8646 | 8646
+ 4946 | 4946 | 4946 | 4946 | 4946
+ 6920 | 6920 | 6920 | 6920 | 6920
+ 6785 | 6785 | 6785 | 6785 | 6785
+ 5659 | 5659 | 5659 | 5659 | 5659
+ 1363 | 1363 | 1363 | 1363 | 1363
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Only Scan using textidx on text_table (actual rows=10 loops=1)
+   Index Cond: (yb_hash_code(tj) <= 63)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
+  tj
+------
+ 4999
+ 8300
+ 6918
+ 912
+ 8646
+ 4946
+ 6920
+ 6785
+ 5659
+ 1363
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Index Scan using textidx on text_table (actual rows=9 loops=1)
+   Index Cond: (yb_hash_code(tj) < 63)
+(2 rows)
+
+SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
+  hr
+------
+ 4999
+ 8300
+ 6918
+ 912
+ 8646
+ 4946
+ 6920
+ 6785
+ 5659
+(9 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Only Scan using textidx on text_table (actual rows=10 loops=1)
+   Index Cond: (yb_hash_code(tj) <= 63)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+  tj
+------
+ 4999
+ 8300
+ 6918
+ 912
+ 8646
+ 4946
+ 6920
+ 6785
+ 5659
+ 1363
+(10 rows)
+
+DROP TABLE text_table;
+-- testing on a table with multiple hash key columns on
+-- multiple types
+CREATE TABLE test_table_multi_col_key(h1 BIGINT, h2 FLOAT, h3 TEXT, r1 TIMESTAMPTZ, r2 DOUBLE PRECISION, v1 INT, v2  DATE, v3 BOOLEAN, PRIMARY KEY ((h1, h2, h3) HASH, r1, r2));
+INSERT INTO test_table_multi_col_key SELECT i::BIGINT, i::FLOAT, i::TEXT, '2018-12-18 04:59:54-08'::TIMESTAMPTZ, i::DOUBLE PRECISION, i::INT, '2016-06-02'::DATE,(i%2)::BOOLEAN FROM generate_series(1, 10000) i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+(2 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+ 4204 | 4204 | 4204 | Tue Dec 18 04:59:54 2018 PST | 4204 | 4204 | 06-02-2016 | f
+ 2215 | 2215 | 2215 | Tue Dec 18 04:59:54 2018 PST | 2215 | 2215 | 06-02-2016 | t
+(8 rows)
+
+-- limit and order by
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3;
+                                                QUERY PLAN
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=3 loops=1)
+         Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1;
+                                                QUERY PLAN
+----------------------------------------------------------------------------------------------------------
+ Sort (actual rows=8 loops=1)
+   Sort Key: h1
+   Sort Method: quicksort
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
+         Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+(5 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+ 2215 | 2215 | 2215 | Tue Dec 18 04:59:54 2018 PST | 2215 | 2215 | 06-02-2016 | t
+ 4204 | 4204 | 4204 | Tue Dec 18 04:59:54 2018 PST | 4204 | 4204 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(8 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Sort (actual rows=3 loops=1)
+         Sort Key: h1
+         Sort Method: top-N heapsort
+         ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
+               Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+(6 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+(3 rows)
+
+-- create an index with the same set of primary keys as
+-- the primary index
+CREATE INDEX multi_key_index_1 ON test_table_multi_col_key((h1,h2,h3) HASH, r1 ASC, r2 ASC);
+-- create other indexes on other columsn that are not
+-- hashed in the primary index
+CREATE INDEX multi_key_index_2 ON test_table_multi_col_key((r1, r2, v1) HASH, v3, v2);
+CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH, v1);
+-- index only scan on multi_key_index
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Only Scan using multi_key_index_1 on test_table_multi_col_key (actual rows=8 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+   Heap Fetches: 0
+(3 rows)
+
+SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+  h1
+------
+ 5258
+ 5214
+ 8274
+  651
+  314
+ 1261
+ 4204
+ 2215
+(8 rows)
+
+-- index scan on primary key index
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) < 60)
+(2 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+ 4204 | 4204 | 4204 | Tue Dec 18 04:59:54 2018 PST | 4204 | 4204 | 06-02-2016 | f
+ 2215 | 2215 | 2215 | Tue Dec 18 04:59:54 2018 PST | 2215 | 2215 | 06-02-2016 | t
+(8 rows)
+
+-- sequential scan as the selectivity of this filter is
+-- high
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
+         Filter: (yb_hash_code(h1, h2, h3) < 60000)
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+ 4204 | 4204 | 4204 | Tue Dec 18 04:59:54 2018 PST | 4204 | 4204 | 06-02-2016 | f
+ 2215 | 2215 | 2215 | Tue Dec 18 04:59:54 2018 PST | 2215 | 2215 | 06-02-2016 | t
+ 5783 | 5783 | 5783 | Tue Dec 18 04:59:54 2018 PST | 5783 | 5783 | 06-02-2016 | t
+ 6291 | 6291 | 6291 | Tue Dec 18 04:59:54 2018 PST | 6291 | 6291 | 06-02-2016 | t
+(10 rows)
+
+-- testing pushdown where the input to the yb_hash_code
+-- does not match any index hash key
+-- sequential scan as no index has (h1,h2,h3,v1) as the
+-- hash key
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
+         Filter: (yb_hash_code(h1, h2, h3, v1) < 60)
+         Rows Removed by Filter: 6445
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 6966 | 6966 | 6966 | Tue Dec 18 04:59:54 2018 PST | 6966 | 6966 | 06-02-2016 | f
+ 9179 | 9179 | 9179 | Tue Dec 18 04:59:54 2018 PST | 9179 | 9179 | 06-02-2016 | t
+ 2727 | 2727 | 2727 | Tue Dec 18 04:59:54 2018 PST | 2727 | 2727 | 06-02-2016 | t
+ 1338 | 1338 | 1338 | Tue Dec 18 04:59:54 2018 PST | 1338 | 1338 | 06-02-2016 | f
+ 6686 | 6686 | 6686 | Tue Dec 18 04:59:54 2018 PST | 6686 | 6686 | 06-02-2016 | f
+ 4448 | 4448 | 4448 | Tue Dec 18 04:59:54 2018 PST | 4448 | 4448 | 06-02-2016 | f
+ 7669 | 7669 | 7669 | Tue Dec 18 04:59:54 2018 PST | 7669 | 7669 | 06-02-2016 | t
+ 7275 | 7275 | 7275 | Tue Dec 18 04:59:54 2018 PST | 7275 | 7275 | 06-02-2016 | t
+ 9145 | 9145 | 9145 | Tue Dec 18 04:59:54 2018 PST | 9145 | 9145 | 06-02-2016 | t
+ 6927 | 6927 | 6927 | Tue Dec 18 04:59:54 2018 PST | 6927 | 6927 | 06-02-2016 | t
+(10 rows)
+
+-- sequential scan as no index has (h1,h3,h2) as the
+-- hash key
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
+         Filter: (yb_hash_code(h1, h3, h2) < 60)
+         Rows Removed by Filter: 8628
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 1076 | 1076 | 1076 | Tue Dec 18 04:59:54 2018 PST | 1076 | 1076 | 06-02-2016 | f
+ 5545 | 5545 | 5545 | Tue Dec 18 04:59:54 2018 PST | 5545 | 5545 | 06-02-2016 | t
+ 6373 | 6373 | 6373 | Tue Dec 18 04:59:54 2018 PST | 6373 | 6373 | 06-02-2016 | t
+ 3834 | 3834 | 3834 | Tue Dec 18 04:59:54 2018 PST | 3834 | 3834 | 06-02-2016 | f
+  288 |  288 | 288  | Tue Dec 18 04:59:54 2018 PST |  288 |  288 | 06-02-2016 | f
+ 7820 | 7820 | 7820 | Tue Dec 18 04:59:54 2018 PST | 7820 | 7820 | 06-02-2016 | f
+ 4065 | 4065 | 4065 | Tue Dec 18 04:59:54 2018 PST | 4065 | 4065 | 06-02-2016 | t
+  385 |  385 | 385  | Tue Dec 18 04:59:54 2018 PST |  385 |  385 | 06-02-2016 | t
+ 9903 | 9903 | 9903 | Tue Dec 18 04:59:54 2018 PST | 9903 | 9903 | 06-02-2016 | t
+  563 |  563 | 563  | Tue Dec 18 04:59:54 2018 PST |  563 |  563 | 06-02-2016 | t
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
+         Filter: (yb_hash_code(r1, v3, v2, r2) < 60)
+         Rows Removed by Filter: 8001
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 4847 | 4847 | 4847 | Tue Dec 18 04:59:54 2018 PST | 4847 | 4847 | 06-02-2016 | t
+ 7474 | 7474 | 7474 | Tue Dec 18 04:59:54 2018 PST | 7474 | 7474 | 06-02-2016 | f
+ 1627 | 1627 | 1627 | Tue Dec 18 04:59:54 2018 PST | 1627 | 1627 | 06-02-2016 | t
+ 6694 | 6694 | 6694 | Tue Dec 18 04:59:54 2018 PST | 6694 | 6694 | 06-02-2016 | f
+ 5413 | 5413 | 5413 | Tue Dec 18 04:59:54 2018 PST | 5413 | 5413 | 06-02-2016 | t
+  923 |  923 | 923  | Tue Dec 18 04:59:54 2018 PST |  923 |  923 | 06-02-2016 | t
+ 7416 | 7416 | 7416 | Tue Dec 18 04:59:54 2018 PST | 7416 | 7416 | 06-02-2016 | f
+ 4545 | 4545 | 4545 | Tue Dec 18 04:59:54 2018 PST | 4545 | 4545 | 06-02-2016 | t
+ 3851 | 3851 | 3851 | Tue Dec 18 04:59:54 2018 PST | 3851 | 3851 | 06-02-2016 | t
+ 9463 | 9463 | 9463 | Tue Dec 18 04:59:54 2018 PST | 9463 | 9463 | 06-02-2016 | t
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on test_table_multi_col_key (actual rows=10 loops=1)
+         Filter: (yb_hash_code(r2, r1, v1) < 60)
+         Rows Removed by Filter: 8034
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 8830 | 8830 | 8830 | Tue Dec 18 04:59:54 2018 PST | 8830 | 8830 | 06-02-2016 | f
+ 4254 | 4254 | 4254 | Tue Dec 18 04:59:54 2018 PST | 4254 | 4254 | 06-02-2016 | f
+ 1269 | 1269 | 1269 | Tue Dec 18 04:59:54 2018 PST | 1269 | 1269 | 06-02-2016 | t
+ 4669 | 4669 | 4669 | Tue Dec 18 04:59:54 2018 PST | 4669 | 4669 | 06-02-2016 | t
+ 5325 | 5325 | 5325 | Tue Dec 18 04:59:54 2018 PST | 5325 | 5325 | 06-02-2016 | t
+ 2041 | 2041 | 2041 | Tue Dec 18 04:59:54 2018 PST | 2041 | 2041 | 06-02-2016 | t
+ 6305 | 6305 | 6305 | Tue Dec 18 04:59:54 2018 PST | 6305 | 6305 | 06-02-2016 | t
+ 8750 | 8750 | 8750 | Tue Dec 18 04:59:54 2018 PST | 8750 | 8750 | 06-02-2016 | f
+ 1372 | 1372 | 1372 | Tue Dec 18 04:59:54 2018 PST | 1372 | 1372 | 06-02-2016 | f
+ 8633 | 8633 | 8633 | Tue Dec 18 04:59:54 2018 PST | 8633 | 8633 | 06-02-2016 | t
+(10 rows)
+
+-- pushdown for multi_key_index_2 and multi_key_index_3
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Index Scan using multi_key_index_2 on test_table_multi_col_key (actual rows=10 loops=1)
+         Index Cond: (yb_hash_code(r1, r2, v1) < 60)
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
+ 2756 | 2756 | 2756 | Tue Dec 18 04:59:54 2018 PST | 2756 | 2756 | 06-02-2016 | f
+ 3550 | 3550 | 3550 | Tue Dec 18 04:59:54 2018 PST | 3550 | 3550 | 06-02-2016 | f
+ 3102 | 3102 | 3102 | Tue Dec 18 04:59:54 2018 PST | 3102 | 3102 | 06-02-2016 | f
+ 5083 | 5083 | 5083 | Tue Dec 18 04:59:54 2018 PST | 5083 | 5083 | 06-02-2016 | t
+ 1540 | 1540 | 1540 | Tue Dec 18 04:59:54 2018 PST | 1540 | 1540 | 06-02-2016 | f
+ 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
+ 8479 | 8479 | 8479 | Tue Dec 18 04:59:54 2018 PST | 8479 | 8479 | 06-02-2016 | t
+ 5021 | 5021 | 5021 | Tue Dec 18 04:59:54 2018 PST | 5021 | 5021 | 06-02-2016 | t
+ 6968 | 6968 | 6968 | Tue Dec 18 04:59:54 2018 PST | 6968 | 6968 | 06-02-2016 | f
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Index Scan using multi_key_index_3 on test_table_multi_col_key (actual rows=10 loops=1)
+         Index Cond: (yb_hash_code(r1, r2, v2, v3) < 60)
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
+ 9030 | 9030 | 9030 | Tue Dec 18 04:59:54 2018 PST | 9030 | 9030 | 06-02-2016 | f
+ 4104 | 4104 | 4104 | Tue Dec 18 04:59:54 2018 PST | 4104 | 4104 | 06-02-2016 | f
+ 3315 | 3315 | 3315 | Tue Dec 18 04:59:54 2018 PST | 3315 | 3315 | 06-02-2016 | t
+  925 |  925 | 925  | Tue Dec 18 04:59:54 2018 PST |  925 |  925 | 06-02-2016 | t
+ 6018 | 6018 | 6018 | Tue Dec 18 04:59:54 2018 PST | 6018 | 6018 | 06-02-2016 | f
+    1 |    1 | 1    | Tue Dec 18 04:59:54 2018 PST |    1 |    1 | 06-02-2016 | t
+ 5975 | 5975 | 5975 | Tue Dec 18 04:59:54 2018 PST | 5975 | 5975 | 06-02-2016 | t
+ 6158 | 6158 | 6158 | Tue Dec 18 04:59:54 2018 PST | 6158 | 6158 | 06-02-2016 | f
+ 9834 | 9834 | 9834 | Tue Dec 18 04:59:54 2018 PST | 9834 | 9834 | 06-02-2016 | f
+(10 rows)
+
+-- cost model tests to make sure that pushdown occurs on the
+-- most selective yb_hash_code filter
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Index Scan using multi_key_index_3 on test_table_multi_col_key (actual rows=88 loops=1)
+   Index Cond: (yb_hash_code(r1, r2, v2, v3) < 600)
+   Filter: ((yb_hash_code(h1, h2, h3) < 65500) AND (yb_hash_code(r1, r2, v1) > 5500))
+   Rows Removed by Filter: 5
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
+ 1736 | 1736 | 1736 | Tue Dec 18 04:59:54 2018 PST | 1736 | 1736 | 06-02-2016 | f
+ 7154 | 7154 | 7154 | Tue Dec 18 04:59:54 2018 PST | 7154 | 7154 | 06-02-2016 | f
+ 9802 | 9802 | 9802 | Tue Dec 18 04:59:54 2018 PST | 9802 | 9802 | 06-02-2016 | f
+ 1092 | 1092 | 1092 | Tue Dec 18 04:59:54 2018 PST | 1092 | 1092 | 06-02-2016 | f
+ 4550 | 4550 | 4550 | Tue Dec 18 04:59:54 2018 PST | 4550 | 4550 | 06-02-2016 | f
+ 5287 | 5287 | 5287 | Tue Dec 18 04:59:54 2018 PST | 5287 | 5287 | 06-02-2016 | t
+ 5709 | 5709 | 5709 | Tue Dec 18 04:59:54 2018 PST | 5709 | 5709 | 06-02-2016 | t
+ 9468 | 9468 | 9468 | Tue Dec 18 04:59:54 2018 PST | 9468 | 9468 | 06-02-2016 | f
+ 2938 | 2938 | 2938 | Tue Dec 18 04:59:54 2018 PST | 2938 | 2938 | 06-02-2016 | f
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) > 65500)
+   Filter: ((yb_hash_code(r1, r2, v2, v3) < 600) AND (yb_hash_code(r1, r2, v1) > 5500))
+   Rows Removed by Filter: 4
+(4 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 6351 | 6351 | 6351 | Tue Dec 18 04:59:54 2018 PST | 6351 | 6351 | 06-02-2016 | t
+(1 row)
+
+-- all given filters here have very high selectivity so this
+-- should be a sequential scan
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500;
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on test_table_multi_col_key (actual rows=9044 loops=1)
+   Filter: ((yb_hash_code(r1, r2, v2, v3) > 600) AND (yb_hash_code(h1, h2, h3) < 65500) AND (yb_hash_code(r1, r2, v1) > 5500))
+   Rows Removed by Filter: 956
+(3 rows)
+
+SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500 LIMIT 10;
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3
+------+------+------+------------------------------+------+------+------------+----
+ 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+  651 |  651 | 651  | Tue Dec 18 04:59:54 2018 PST |  651 |  651 | 06-02-2016 | t
+  314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
+ 1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
+ 4204 | 4204 | 4204 | Tue Dec 18 04:59:54 2018 PST | 4204 | 4204 | 06-02-2016 | f
+ 2215 | 2215 | 2215 | Tue Dec 18 04:59:54 2018 PST | 2215 | 2215 | 06-02-2016 | t
+ 5783 | 5783 | 5783 | Tue Dec 18 04:59:54 2018 PST | 5783 | 5783 | 06-02-2016 | t
+ 6291 | 6291 | 6291 | Tue Dec 18 04:59:54 2018 PST | 6291 | 6291 | 06-02-2016 | t
+(10 rows)
+
+DROP TABLE test_table_multi_col_key;
+-- test recheck of index only scan with yb_hash_code
+CREATE TABLE test_index_only_scan_recheck(k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE INDEX ON test_index_only_scan_recheck(v4) INCLUDE (v1);
+INSERT INTO test_index_only_scan_recheck SELECT s, s, s, s, s FROM generate_series(1, 100) AS s;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using test_index_only_scan_recheck_v4_v1_idx on test_index_only_scan_recheck (actual rows=2 loops=1)
+   Index Cond: ((v4 = ANY ('{1,2,3}'::integer[])) AND (yb_hash_code(v4) < 50000))
+   Rows Removed by Index Recheck: 1
+   Heap Fetches: 0
+(4 rows)
+
+SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
+ v1 | yb_hash_code
+----+--------------
+  1 |         4624
+  2 |        49348
+(2 rows)
+
+DROP TABLE test_index_only_scan_recheck;
+-- Issue #17043
+CREATE TABLE t as select x, x as y from generate_series(1, 10) x;
+CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Index Only Scan using t_x_hash_y_asc_idx on t (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(x) = 2675) AND (y = ANY ('{5,6}'::integer[])))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+ yb_hash_code | y
+--------------+---
+         2675 | 5
+(1 row)
+
+DROP TABLE t;

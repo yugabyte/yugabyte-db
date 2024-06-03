@@ -1,0 +1,83 @@
+{
+  ".": [
+    "ansible.cfg",
+    "ansible_python_requirements.txt",
+    "ansible_requirements_prod.yml",
+    "configure-cluster-server.yml",
+    "destroy-instance.yml",
+    "python3_requirements_frozen.txt",
+    "python*_modules.tar.gz",
+    "preprovision.yml",
+    "use_custom_ssh_port.yml",
+    "yb-otel-collector.yml",
+    "yb-server-ctl.yml",
+    "yb-server-provision.yml",
+    "send_sudo_pass.yml",
+    "yb_custom_ami_builder.yml",
+    "remote_role.yml",
+    "setup-cgroup.yml",
+    "edit_authorized_keys.yml",
+    "configure_ssh2.yml",
+    "install-third-party.yml",
+    "Dockerfile",
+    "sudo_whitelist.txt"
+  ],
+  "bin": [
+    "bin/ansible-playbook.sh",
+    "bin/build_ansible_pex.sh",
+    "bin/common.sh",
+    "bin/install_ansible_requirements.sh",
+    "bin/install_python_requirements.sh",
+    "bin/install_ybops.sh",
+    "bin/node_client_utils.py",
+    "bin/py_wrapper",
+    "bin/run_node_action.py",
+    "bin/run_playbook_locally.sh",
+    "bin/run_role_locally.sh",
+    "bin/ssh_wrapper_with_sudo.sh",
+    "bin/yb_bulk_load.py",
+    "bin/yb_backup.py",
+    "bin/yb_platform_backup.sh",
+    "bin/ybcloud.sh",
+    "bin/edit_universe_details.py",
+    "bin/filtered_logs.sh",
+    "bin/node_utils.sh",
+    "bin/yb_attach_detach.py"
+  ],
+  "filter_plugins": [
+    "filter_plugins/*"
+  ],
+  "group_vars": [
+    "group_vars/*"
+  ],
+  "inventory": [
+    "inventory/*"
+  ],
+  "opscli": [
+    "opscli/*"
+  ],
+  "pex": [
+    "pex/*"
+  ],
+  "plugins": [
+    "plugins/*"
+  ],
+  "roles": [
+    "roles/*"
+  ],
+  "third-party/roles": [
+    "third-party/roles/*"
+  ],
+  "vars": [
+    "vars/placeholder.yml"
+  ],
+  "vars/cloud": [
+    "vars/cloud/aws.yml",
+    "vars/cloud/azu.yml",
+    "vars/cloud/gcp.yml",
+    "vars/cloud/onprem.yml"
+  ],
+  "connection_plugins": [
+    "connection_plugins/node_agent_rpc.py"
+  ]
+}

@@ -1,0 +1,97 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tablet;
+
+option java_package = "org.yb.tablet";
+
+import "yb/common/common.proto";
+import "yb/common/common_types.proto";
+import "yb/tablet/tablet_types.proto";
+
+message TabletStatusPB {
+  required string tablet_id = 1;
+  optional string namespace_name = 15;
+  required string table_name = 2;
+  required string table_id = 10;
+  optional RaftGroupStatePB state = 3 [ default = UNKNOWN ];
+  optional TabletDataState tablet_data_state = 8 [ default = TABLET_DATA_UNKNOWN ];
+  required string last_status = 4;
+  // DEPRECATED.
+  optional bytes start_key = 5;
+  // DEPRECATED.
+  optional bytes end_key = 6;
+  optional int64 estimated_on_disk_size = 7;
+  optional int64 consensus_metadata_disk_size = 11;
+  optional int64 wal_files_disk_size = 12;
+  optional int64 sst_files_disk_size = 13;
+  optional int64 uncompressed_sst_files_disk_size = 14;
+  optional PartitionPB partition = 9;
+  optional TableType table_type = 16;
+  // Is the tablet hidden.
+  optional bool is_hidden = 17;
+  optional bool parent_data_compacted = 18; // See KvStoreInfoPB.
+  // A list of all tables that are colocated on this tablet.
+  repeated bytes colocated_table_ids = 19;
+  optional string pgschema_name = 20;
+}
+
+// Used to present the maintenance manager's internal state.
+message MaintenanceManagerStatusPB {
+  message MaintenanceOpPB {
+    required string name = 1;
+    // Number of times this operation is currently running.
+    required uint32 running = 2;
+    required bool runnable = 3;
+    required uint64 ram_anchored_bytes = 4;
+    required int64 logs_retained_bytes = 5;
+    required double perf_improvement = 6;
+  }
+
+  message CompletedOpPB {
+    required string name = 1;
+    required int32 duration_millis = 2;
+    // Number of seconds since this operation started.
+    required int32 secs_since_start = 3;
+  }
+
+  // The next operation that would run.
+  optional MaintenanceOpPB best_op = 1;
+
+  // List of all the operations.
+  repeated MaintenanceOpPB registered_operations = 2;
+
+  // This list is not guaranteed to be in any particular order. Can contain the same operation
+  // multiple times.
+  repeated CompletedOpPB completed_operations = 3;
+}

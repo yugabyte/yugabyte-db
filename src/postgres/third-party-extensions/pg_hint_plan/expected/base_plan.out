@@ -1,0 +1,58 @@
+SET search_path TO public;
+-- query type 1
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
+(5 rows)
+
+-- query type 2
+EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
+             QUERY PLAN
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Storage Filter: (val < 10)
+   ->  Materialize
+         ->  Seq Scan on t4
+(5 rows)
+
+-- YB_COMMENT
+-- CTID based scans and searches not supported in Yugabyte
+-- query type 3
+-- EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+-- query type 4
+-- EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+-- query type 5
+EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+           QUERY PLAN
+--------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t3
+(5 rows)
+
+-- query type 6
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.id = t3.id)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t1.id = t4.id)
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = ANY (ARRAY[t4.id, $1, $2, ..., $1023]))
+         ->  Index Scan using t3_pkey on t3
+               Index Cond: (id = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = ANY (ARRAY[t1.id, $2049, $2050, ..., $3071]))
+(13 rows)

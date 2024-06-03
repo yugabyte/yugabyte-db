@@ -1,0 +1,19 @@
+Source: odyssey
+Section: database
+Priority: extra
+Maintainer: mdb <mdb-admin@yandex-team.ru>
+Standards-Version: 3.9.4
+Build-Depends: debhelper (>= 9), make, cmake, libssl-dev (>= 1.0.1), libpq-dev, libpam-dev, postgresql-server-dev-all, libzstd-dev, zlib1g-dev
+Homepage: https://github.com/yandex/odyssey
+
+Package: odyssey
+Architecture: any
+Conflicts: pgbouncer
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Scalable PostgreSQL connection pooler.
+
+Package: odyssey-dbg
+Architecture: any
+Section: debug
+Depends: ${shlibs:Depends}, ${misc:Depends}, odyssey
+Description: Debug symbols for odyssey

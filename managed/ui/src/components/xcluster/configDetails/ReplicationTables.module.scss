@@ -1,0 +1,78 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
+
+.rootContainer {
+}
+
+.headerSection {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+
+  .infoText {
+    margin-top: auto;
+  }
+
+  .actionBar {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.replicationTable {
+  padding: 20px;
+
+  .react-bs-table {
+    overflow: inherit !important;
+    background-color: red;
+  }
+  .table {
+    th {
+      padding-right: 32px;
+    }
+    td {
+      vertical-align: middle;
+      padding-right: 32px;
+    }
+
+    .tableActionColumn {
+      display: flex;
+      justify-content: flex-end;
+      // Overwrite the overflow styling to layer dropdown over
+      // other rows
+      overflow: inherit !important;
+      * {
+        overflow: inherit !important;
+      }
+
+      padding: 6px 0 !important;
+
+      .actionButton {
+        border: none;
+      }
+
+      .dropdownMenuItem {
+        i {
+          // Align font awesome icon with text
+          margin: 0 0 3px 0;
+        }
+      }
+
+      & > *:not(:last-child) {
+        margin-right: 5px;
+      }
+    }
+    tbody {
+      a {
+        color: colors.$YB_VIOLET_TEXT;
+        @include mixins.transition(0.125s);
+      }
+      a:hover {
+        color: colors.$YB_ORANGE;
+        @include mixins.transition(0.125s);
+      }
+    }
+  }
+}

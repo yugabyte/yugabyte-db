@@ -1,0 +1,63 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb;
+
+// Dependency chain:
+//
+// this file --> proto_container_test.proto
+
+import "yb/util/proto_container_test.proto";
+
+// Arbitrary protobuf that has one PB dependency.
+message ProtoContainerTest2PB {
+  required yb.ProtoContainerTestPB record = 1;
+}
+
+message TestObjectRequiredPB {
+  required string string1 = 1;
+  required TestStringRequiredPB record = 2;
+  required string string2 = 3;
+}
+
+message TestObjectRepeatedPB {
+  repeated string string1 = 1;
+  repeated TestStringRepeatedPB record = 2;
+  repeated string string2 = 3;
+}
+
+message TestObjectOptionalPB {
+  optional string string1 = 1;
+  optional TestStringOptionalPB record = 2;
+  optional string string2 = 3;
+}

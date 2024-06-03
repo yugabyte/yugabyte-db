@@ -1,0 +1,154 @@
+syntax = "proto3";
+package nodeagent.server;
+
+option go_package = "./service";
+option java_package = "com.yugabyte.yw.nodeagent";
+
+service NodeAgent {
+    rpc Ping(PingRequest) returns (PingResponse);
+    rpc ExecuteCommand(ExecuteCommandRequest) returns (stream ExecuteCommandResponse);
+    rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+    rpc DescribeTask(DescribeTaskRequest) returns (stream DescribeTaskResponse);
+    rpc AbortTask(AbortTaskRequest) returns (AbortTaskResponse);
+    rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+    rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+    rpc Update(UpdateRequest) returns (UpdateResponse);
+}
+
+message ServerInfo {
+    string version = 1;
+    bool restartNeeded = 2;
+    bool offloadable = 3;
+}
+
+message PingRequest {
+}
+
+message PingResponse {
+    ServerInfo serverInfo = 1;
+}
+
+message ExecuteCommandRequest {
+    repeated string command = 1;
+    string user = 2;
+}
+
+message ExecuteCommandResponse {
+    oneof data {
+        string output = 1;
+        Error error = 2;
+    }
+}
+
+message CommandInput {
+    repeated string command = 1;
+}
+
+message SubmitTaskRequest {
+    string user = 1;
+    string taskId = 2;
+    oneof data {
+        CommandInput commandInput = 3;
+        PreflightCheckInput preflightCheckInput = 4;
+    }
+}
+
+message SubmitTaskResponse {
+    string taskId = 1;
+}
+
+message DescribeTaskRequest {
+    string taskId = 1;
+}
+
+message DescribeTaskResponse {
+    string state = 1;
+    oneof data {
+        string output = 2;
+        Error error = 3;
+        PreflightCheckOutput preflightCheckOutput = 4;
+    }
+}
+
+message AbortTaskRequest {
+    string taskId = 1;
+}
+
+message AbortTaskResponse {
+    string taskId = 1;
+}
+
+message Error {
+    int32 code = 1;
+    string message = 2;
+}
+
+message UploadFileRequest {
+    oneof data {
+        FileInfo fileInfo = 1;
+        bytes chunkData = 2;
+    };
+    string user = 3;
+    uint32 chmod = 4;
+}
+
+message FileInfo {
+    string filename = 1;
+}
+
+message UploadFileResponse {
+}
+
+message DownloadFileRequest {
+    string filename = 1;
+    string user = 2;
+}
+
+message DownloadFileResponse {
+    bytes chunkData = 1;
+}
+
+message UpgradeInfo {
+    string packagePath = 1;
+    string certDir = 2;
+}
+
+message UpdateRequest {
+    string state = 1;
+    UpgradeInfo upgradeInfo = 2;
+}
+
+message UpdateResponse {
+    string home = 1;
+}
+
+message PreflightCheckInput {
+    string ybHomeDir = 1;
+    bool skipProvisioning = 2;
+    bool airGapInstall = 3;
+    bool installNodeExporter = 4;
+    uint32 sshPort = 5;
+    repeated string mountPaths = 6;
+    uint32 masterHttpPort = 7;
+    uint32 masterRpcPort = 8;
+    uint32 tserverHttpPort = 9;
+    uint32 tserverRpcPort = 10;
+    uint32 redisServerHttpPort = 11;
+    uint32 redisServerRpcPort = 12;
+    uint32 nodeExporterPort = 13;
+    uint32 ycqlServerHttpPort = 14;
+    uint32 ycqlServerRpcPort = 15;
+    uint32 ysqlServerHttpPort = 16;
+    uint32 ysqlServerRpcPort = 17;
+    uint32 ybControllerHttpPort = 18;
+    uint32 ybControllerRpcPort = 19;
+}
+
+message PreflightCheckOutput {
+    repeated NodeConfig nodeConfigs = 1;
+}
+
+message NodeConfig {
+    string type = 1;
+    string value = 2;
+}

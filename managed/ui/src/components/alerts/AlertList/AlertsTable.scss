@@ -1,0 +1,30 @@
+@use '../../../_style/colors.scss';
+
+.errCodeLink {
+  text-decoration: underline;
+  cursor: pointer;
+}
+.alerts-table {
+  .react-bs-container-body {
+    overflow: auto !important;
+    height: 500px;
+  }
+  .react-bs-table-pagination {
+    margin-top: 30px !important;
+  }
+  .acknowledge-link-button {
+    padding: 0;
+    color: colors.$YB_ORANGE;
+    border: 0;
+    background: transparent;
+  }
+  .configurationTypeLabel {
+    margin-left: 4px;
+    background: #e5e5e5;
+    color: #67666c;
+    font-weight: 500;
+    font-size: 8px;
+    padding: 3px 5px;
+    border-radius: 3px;
+  }
+}

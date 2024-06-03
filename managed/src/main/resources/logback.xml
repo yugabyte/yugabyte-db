@@ -1,0 +1,224 @@
+<!-- https://www.playframework.com/documentation/latest/SettingsLogger -->
+<configuration>
+
+  <property name="cloud" value="${yb.cloud.enabled}"/>
+  <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
+
+  <if condition='property("cloud").equals("true")'>
+    <then>
+      <appender name="SIFT_FILE" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+        <!-- if mdc has "logType" key then it uses that, otherwise defaults to value "application" -->
+        <discriminator>
+          <key>logType</key>
+          <defaultValue>application</defaultValue>
+        </discriminator>
+
+        <sift>
+          <appender name="FILE-${logType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+              <!-- Daily rollover with compression -->
+              <fileNamePattern>
+                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
+              </fileNamePattern>
+              <!-- keep 30 days worth of history -->
+              <maxHistory>${${logType}LogMaxHistory:-30}</maxHistory>
+            </rollingPolicy>
+
+            <encoder>
+              <!-- Limit log message to 20MB. Truncate from front if longer -->
+              <pattern>YW %d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} [%level] %X{correlation-id} from %logger{0} in %thread - %.2000000message%n%xException</pattern>
+            </encoder>
+
+            <!--
+              this is to conditionally log to a specific appender using markers
+              a similar block is used for the console appender below
+              for a usage example see ShellProcessHandler
+            -->
+            <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+              <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+                <marker>consoleOnly</marker>
+              </evaluator>
+              <onMatch>DENY</onMatch>
+            </filter>
+
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>${${logType}LogLevel:-DEBUG}</level>
+            </filter>
+
+            <!-- for audit logs do not write to file if auditLogOutputToFile is false -->
+            <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+              <evaluator>
+                <expression>
+                  (((String) mdc.get("logType")) == "audit") &amp;&amp;
+                  (${auditLogOutputToFile:-true} == false)
+                </expression>
+              </evaluator>
+              <OnMatch>DENY</OnMatch>
+            </filter>
+
+          </appender>
+        </sift>
+      </appender>
+    </then>
+    <else>
+      <appender name="SIFT_FILE" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+        <!-- if mdc has "logType" key then it uses that, otherwise defaults to value "application" -->
+        <discriminator>
+          <key>logType</key>
+          <defaultValue>application</defaultValue>
+        </discriminator>
+
+        <sift>
+          <appender name="FILE-${logType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+              <!-- Daily rollover with compression -->
+              <fileNamePattern>
+                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
+              </fileNamePattern>
+              <!-- keep 30 days worth of history -->
+              <maxHistory>${${logType}LogMaxHistory:-30}</maxHistory>
+            </rollingPolicy>
+
+            <encoder>
+              <!-- Limit log message to 20MB. Truncate from front if longer -->
+              <pattern>YW %d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} [%level] %X{correlation-id} from %logger{0} in %thread - %.2000000message%n%xException</pattern>
+            </encoder>
+
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>${${logType}LogLevel:-DEBUG}</level>
+            </filter>
+
+            <!-- for audit logs do not write to file if auditLogOutputToFile is false -->
+            <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+              <evaluator>
+                <expression>
+                  (((String) mdc.get("logType")) == "audit") &amp;&amp;
+                  (${auditLogOutputToFile:-true} == false)
+                </expression>
+              </evaluator>
+              <OnMatch>DENY</OnMatch>
+            </filter>
+
+          </appender>
+        </sift>
+      </appender>
+    </else>
+  </if>
+
+  <if condition='property("cloud").equals("true")'>
+    <then>
+      <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+          <providers>
+            <timestamp/>
+            <version/>
+            <logLevel/>
+            <mdc/>
+            <pattern>
+              <pattern>
+                {
+                "message": "%message%n%xException",
+                "logger":
+                {
+                "thread": "%thread",
+                "name": "%logger",
+                "file": "%file",
+                "line": "#asLong{%line}"
+                }
+                }
+              </pattern>
+            </pattern>
+          </providers>
+        </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+            <marker>fileOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
+
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+          <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
+        </filter>
+
+        <!-- for audit logs do not write to console if auditLogOutputToStdout is false  -->
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator>
+            <expression>
+              (((String) mdc.get("logType")) == "audit") &amp;&amp;
+              (${auditLogOutputToStdout:-false} == false)
+            </expression>
+          </evaluator>
+          <OnMatch>DENY</OnMatch>
+        </filter>
+      </appender>
+    </then>
+    <else>
+      <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+          <pattern>%d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} %X{logType} %-5coloredLevel %X{correlation-id} %F:%L [%thread] %logger %msg%n</pattern>
+        </encoder>
+
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+          <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
+        </filter>
+
+        <!-- for audit logs do not write to console if auditLogOutputToStdout is false  -->
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator>
+            <expression>
+              (((String) mdc.get("logType")) == "audit") &amp;&amp;
+              (${auditLogOutputToStdout:-false} == false)
+            </expression>
+          </evaluator>
+          <OnMatch>DENY</OnMatch>
+        </filter>
+      </appender>
+    </else>
+  </if>
+
+  <appender name="ASYNCSTDOUT" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="STDOUT" />
+    <includeCallerData>true</includeCallerData>
+  </appender>
+
+  <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="SIFT_FILE" />
+    <includeCallerData>true</includeCallerData>
+  </appender>
+
+  <logger name="play" level="INFO" />
+  <logger name="org.yb" level="INFO" />
+  <logger name="db.migration" level="DEBUG" />
+  <if condition='property("cloud").equals("true")'>
+    <then>
+      <logger name="application" level="INFO" />
+      <logger name="com.yugabyte.yw" level="DEBUG" />
+      <logger name="api" level="DEBUG" />
+      <logger name="org.flywaydb.core" level="INFO" />
+    </then>
+    <else>
+      <logger name="application" level="DEBUG" />
+      <logger name="com.yugabyte.yw" level="DEBUG" />
+      <logger name="api" level="DEBUG" />
+      <logger name="org.flywaydb.core" level="TRACE" />
+    </else>
+  </if>
+
+  <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
+  <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />
+
+  <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
+  <logger name="kamon.module.ModuleRegistry" level="ERROR"/>
+
+  <root level="WARN">
+    <appender-ref ref="ASYNCSTDOUT" />
+    <appender-ref ref="ASYNCFILE" />
+  </root>
+
+</configuration>
