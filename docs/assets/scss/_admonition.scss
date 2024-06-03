@@ -210,5 +210,43 @@ main {
         background-image: url(/icons/admonition-tip.svg);
       }
     }
+    .admonition.lead {
+      background: rgba(205, 239, 225, 0.4);
+      border: 1px solid #cdefe1;
+
+      &::before {
+        opacity:0;
+      }
+
+      i[class*="fa-"] {
+        position: absolute;
+        left: 17px;
+        top: 17px;
+        font-size: 20px;
+        color: #000;
+        z-index: 0;
+      }
+
+      img{
+        &.icon {
+          position: absolute;
+          width: 23px;
+          height: 24px;
+          top: 17px;
+          left: 17px;
+        }
+      }
+
+      .clickable {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        font-size: 0;
+        transition: all 250ms ease;
+        &:hover {
+          background:rgba(0, 0, 0, 0.02);
+        }
+      }
+    }
   }
 }
