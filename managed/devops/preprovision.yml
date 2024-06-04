@@ -93,6 +93,7 @@
         apt:
           name: python-minimal
           state: present
+          lock_timeout: 600
         when: ansible_distribution_major_version == "18"
       when: ansible_distribution == "Ubuntu"
       tags: yb-prebuilt-ami
@@ -185,6 +186,7 @@
             - glibc-locale-source
             - glibc-langpack-en
           state: present
+          lock_timeout: 600
 
       - name: Generate UTF-8 locales
         become: yes
