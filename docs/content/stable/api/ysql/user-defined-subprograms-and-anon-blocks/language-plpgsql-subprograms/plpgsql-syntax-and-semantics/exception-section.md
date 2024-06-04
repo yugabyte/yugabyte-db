@@ -574,7 +574,6 @@ This is the result:
 
 Notice that _t_c2_nn_, which _is_ listed, is defined as a _table_ constraint rather than as a _column_ constraint.
 
-
 **4. Next, cause another error:**
 
 ```plpgsql

@@ -23,6 +23,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`ALTER DOMAIN`](ddl_alter_domain) | Change domain definition |
 | [`ALTER FOREIGN DATA WRAPPER`](ddl_alter_foreign_data_wrapper) | Change foreign data wrapper definition |
 | [`ALTER FOREIGN TABLE`](ddl_alter_foreign_table) | Change foreign table definition |
+| [`ALTER INDEX`](ddl_alter_index) | Change index definition |
+| [`ALTER MATERIALIZED VIEW`](ddl_alter_matview) | Change materialized view definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
 | [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
 | [`ALTER SCHEMA`](ddl_alter_schema) | Change schema definition |
@@ -47,6 +49,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE SERVER`](ddl_create_server) | Create a foreign server |
 | [`CREATE TABLE`](ddl_create_table) | Create an empty table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a table from the results of a executing a `SELECT` |
+| [`CREATE TABLESPACE`](ddl_create_tablespace)                     | Create a tablespace                                       |
 | [`CREATE TRIGGER`](ddl_create_trigger) | Create a trigger |
 | [`CREATE TYPE`](ddl_create_type) | Create a type |
 | [`CREATE USER MAPPING`](ddl_create_user_mapping) | Create a user mapping |
@@ -69,6 +72,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP SERVER`](ddl_drop_server) | Drop a foreign server |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
+| [`DROP TABLESPACE`](ddl_drop_tablespace) | Delete a tablespace from the cluster |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
 | [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) | Import a foreign schema |

@@ -36,7 +36,7 @@ For more information on authentication in YugabyteDB, see [Enable authentication
 
 Roles can be assigned to grant users only the essential privileges based on the operations they need to perform in YugabyteDB Anywhere, and in YugabyteDB universes.
 
-To manage access to your YugabyteDB Anywhere instance, typically you create a [Super Admin role first](../../configure-yugabyte-platform/create-admin-user/). The Super Admin can create additional admins and other users with fewer privileges. For information on how to manage YugabyteDB Anywhere users and roles, see [Manage YugabyteDB Anywhere users](../../administer-yugabyte-platform/anywhere-rbac/).
+To manage access to your YugabyteDB Anywhere instance, typically you create a [Super Admin role first](../../install-yugabyte-platform/create-admin-user/). The Super Admin can create additional admins and other users with fewer privileges. For information on how to manage YugabyteDB Anywhere users and roles, see [Manage YugabyteDB Anywhere users](../../administer-yugabyte-platform/anywhere-rbac/).
 
 For information on how to manage database roles and users, see [Database authorization](../authorization-platform).
 

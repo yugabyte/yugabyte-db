@@ -61,7 +61,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../concepts/yb-master/) and [YB-TServer](../../concepts/yb-tserver/) services as follows:
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../yb-master/) and [YB-TServer](../../yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true

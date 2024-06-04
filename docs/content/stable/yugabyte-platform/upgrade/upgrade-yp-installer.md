@@ -32,11 +32,13 @@ type: docs
 
 If your YugabyteDB Anywhere installation was installed using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), use YBA Installer to upgrade to a newer version. Note that you can only upgrade to a newer version; downgrades are not supported.
 
+For more information, refer to [Compatibility with YugabyteDB](/preview/releases/yba-releases/#compatibility-with-yugabytedb).
+
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
 {{< note title="Upgrading YBA on deprecated operating systems" >}}
 
-If you are running YBA v2.20 on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YBA to the next major release.
+If you are running YBA on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
 

@@ -7,19 +7,13 @@ menu:
   stable:
     identifier: docdb-performance
     parent: docdb
-    weight: 1148
+    weight: 400
 type: docs
 ---
 
-DocDB uses a customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store.
+DocDB is built on a customized version of [RocksDB](http://rocksdb.org/), a [log-structured merge tree (LSM)](../lsm-sst)-based key-value store. A tremendous number of optimizations have been implemented to make RocksDB work as a critical component of a scalable distributed database. Let's go over some of the most significant changes.
 
-![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
-
-## Enhancements to RocksDB
-
-The customizations done to RocksDB enhance scalability and improve performance.
-
-### Efficient modelling of documents
+## Efficient modeling of documents
 
 The goal of one of the enhancements is to implement a flexible data model on top of a key-value store, as well as to implement efficient operations on this data model such as the following:
 
@@ -29,23 +23,27 @@ The goal of one of the enhancements is to implement a flexible data model on top
 
 A tighter coupling into the read and compaction layers of the underlying RocksDB key-value store was needed. RocksDB is used as an append-only store, and operations (such as row or collection delete) are modeled as an insert of a special delete marker. This allows deleting an entire subdocument efficiently by adding one key-value pair to RocksDB. Read hooks automatically recognize these markers and suppress expired data. Expired values within the subdocument are cleaned up and garbage-collected by customized compaction hooks.
 
-### Raft vs. RocksDB WAL logs
+## Raft vs. RocksDB WAL logs
 
-DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional write-ahead logging (WAL) mechanism in RocksDB (under DocDB) was unnecessary and would add overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft sequence ID up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that the Raft WAL logs can be correctly garbage-collected. It also allows to replay the minimal number of records from Raft WAL logs on a server crash or restart.
+DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional write-ahead logging (WAL) mechanism in RocksDB was unnecessary and would add overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft sequence ID up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that the Raft WAL logs can be correctly garbage-collected. It also allows to replay the minimal number of records from Raft WAL logs on a server crash or restart.
 
-### MVCC at a higher layer
+## MVCC at a higher layer
 
 Multi-version concurrency control (MVCC) in DocDB is done at a higher layer and does not use the MVCC mechanism of RocksDB.
 
 The mutations to records in the system are versioned using hybrid timestamps maintained at the YBase layer. As a result, the notion of MVCC as implemented in RocksDB using sequence IDs was not necessary and would only add overhead. YugabyteDB does not use RocksDB’s sequence IDs; instead, it uses hybrid timestamps that are part of the encoded key to implement MVCC.
 
-### Backups and snapshots
+## Load balancing across disks
+
+When multiple disks are available for storage, DocDB will distribute the SST and WAL files of various tablets of tables  evenly across the attached disks on a per-table basis. This load distribution (also known as striping) ensures that each disk handles an even amount of load for each table.
+
+## Backups and snapshots
 
 Backups and snapshots needed to be higher-level operations that take into consideration data in DocDB, as well as in the Raft logs to obtain a consistent cut of the state of the system.
 
 ## Data model-aware bloom filters
 
-The keys stored by DocDB in RocksDB consist of a number of components, where the first component is a document key, followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
+The keys stored by DocDB consist of a number of components, where the first component is a document key, followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
 
 The bloom filter needs to be aware of what components of the key should be added to the bloom, so that only the relevant SSTable files in the LSM store are being searched during a read operation.
 
@@ -75,18 +73,14 @@ WHERE metric_name = ’system.cpu’
   AND metric_timestamp > ?
 ```
 
-## Efficient memory usage
+## Server-global block cache
 
-There are two instances where memory usage across components in a manner that is global to the server yields benefits.
+DocDB uses a shared block cache across all the RocksDB instances of the tablets hosted by a YB-TServer. This maximizes the use of memory resources and avoids creating silos of cache that each need to be sized accurately for different user tables. This reduces the memory usage per tablet and can be allocated at a server level
 
-### Server-global block cache
-
-A shared block cache is used across the DocDB and RocksDB instances of all the tablets hosted by a YB-TServer. This maximizes the use of memory resources and avoids creating silos of cache that each need to be sized accurately for different user tables.
-
-### Server-global memstore limits
+## Server-global memstore limits
 
 While per-memstore flush sizes can be configured, in practice, because the number of memstores may change over time as users create new tables or tablets of a table move between servers, a storage engine was enhanced to enforce a global memstore threshold. When such a threshold is reached, selection of which memstore to flush takes into account which memstores carry the oldest records (determined by hybrid timestamps) and, therefore, are holding up Raft logs and preventing them from being garbage-collected.
 
 ## Scan-resistant block cache
 
-DocDB enhances RocksDB’s block cache to be scan-resistant. The motivation was to prevent operations such as long-running scans (for example, due to an occasional large query or background Spark jobs) from polluting the entire cache with poor quality data and wiping out useful data.
+DocDB enhances the default block cache implementation to be scan-resistant. The motivation was to prevent operations such as long-running scans (for example, due to an occasional large query or background Spark jobs) from polluting the entire cache with poor quality data and wiping out useful data.

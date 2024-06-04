@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can create a multi-cloud YugabyteDB universe spanning multiple geographic regions and cloud providers. The following sections describe how to set up a multi-cloud universe using the `yugabyted` utility and also with the on-prem provider in [YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
+You can create a multi-cloud YugabyteDB universe spanning multiple geographic regions and cloud providers. The following sections describe how to set up a multi-cloud universe using [yugabyted](../../../reference/configuration/yugabyted/) or an on-prem provider in [YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
 
 ## Topology
 
