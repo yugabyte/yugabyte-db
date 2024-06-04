@@ -15,15 +15,24 @@
 
 
 /**
- *
+ * count for automatic and manual refactoring
  * @export
- * @interface RestoreDetails
+ * @interface RefactoringCount
  */
-export interface RestoreDetails  {
+export interface RefactoringCount  {
   /**
-   *
-   * @type {RestoreDetails[]}
-   * @memberof RestoreDetails
+   * 
+   * @type {number}
+   * @memberof RefactoringCount
    */
-  restore: RestoreDetails[];
+  manual?: number;
+  /**
+   * 
+   * @type {number}
+   * @memberof RefactoringCount
+   */
+  automatic?: number;
 }
+
+
+

@@ -20,19 +20,19 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  InlineResponse2001,
+  BackupDetails,
 } from '../models';
 
 
 /**
- * Retrieve the list of databases on which backup is enabled in the YugabyteDB cluster.
+ * Retrieve the list of databases on which backup is enabled.
  * Get Backup Details
  */
 
 export const getBackupDetailsAxiosRequest = (
   customAxiosInstance?: AxiosInstance
 ) => {
-  return Axios<InlineResponse2001>(
+  return Axios<BackupDetails>(
     {
       url: '/backup',
       method: 'GET',
@@ -52,9 +52,9 @@ export const getBackupDetailsQueryKey = (
 ];
 
 
-export const useGetBackupDetailsInfiniteQuery = <T = InlineResponse2001, Error = ApiError>(
+export const useGetBackupDetailsInfiniteQuery = <T = BackupDetails, Error = ApiError>(
   options?: {
-    query?: UseInfiniteQueryOptions<InlineResponse2001, Error, T>;
+    query?: UseInfiniteQueryOptions<BackupDetails, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   pageParam = -1,
@@ -63,7 +63,7 @@ export const useGetBackupDetailsInfiniteQuery = <T = InlineResponse2001, Error =
   const queryKey = getBackupDetailsQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useInfiniteQuery<InlineResponse2001, Error, T>(
+  const query = useInfiniteQuery<BackupDetails, Error, T>(
     queryKey,
     () => getBackupDetailsAxiosRequest(customAxiosInstance),
     queryOptions
@@ -75,9 +75,9 @@ export const useGetBackupDetailsInfiniteQuery = <T = InlineResponse2001, Error =
   };
 };
 
-export const useGetBackupDetailsQuery = <T = InlineResponse2001, Error = ApiError>(
+export const useGetBackupDetailsQuery = <T = BackupDetails, Error = ApiError>(
   options?: {
-    query?: UseQueryOptions<InlineResponse2001, Error, T>;
+    query?: UseQueryOptions<BackupDetails, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
@@ -85,7 +85,7 @@ export const useGetBackupDetailsQuery = <T = InlineResponse2001, Error = ApiErro
   const queryKey = getBackupDetailsQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useQuery<InlineResponse2001, Error, T>(
+  const query = useQuery<BackupDetails, Error, T>(
     queryKey,
     () => getBackupDetailsAxiosRequest(customAxiosInstance),
     queryOptions
@@ -96,9 +96,3 @@ export const useGetBackupDetailsQuery = <T = InlineResponse2001, Error = ApiErro
     ...query
   };
 };
-
-
-
-
-
-

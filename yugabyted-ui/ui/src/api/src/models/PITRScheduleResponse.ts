@@ -12,18 +12,23 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { PITRSchedule } from './PITRSchedule';
 
 
 /**
- *
+ * 
  * @export
- * @interface RestoreDetails
+ * @interface PITRScheduleResponse
  */
-export interface RestoreDetails  {
+export interface PITRScheduleResponse  {
   /**
-   *
-   * @type {RestoreDetails[]}
-   * @memberof RestoreDetails
+   * 
+   * @type {PITRSchedule[]}
+   * @memberof PITRScheduleResponse
    */
-  restore: RestoreDetails[];
+  schedules: PITRSchedule[];
 }
+
+
+

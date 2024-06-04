@@ -20,7 +20,7 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  InlineResponse2002,
+  RestoreDetails,
 } from '../models';
 
 
@@ -32,7 +32,7 @@ import type {
 export const getRestoreDetailsAxiosRequest = (
   customAxiosInstance?: AxiosInstance
 ) => {
-  return Axios<InlineResponse2002>(
+  return Axios<RestoreDetails>(
     {
       url: '/restore',
       method: 'GET',
@@ -52,9 +52,9 @@ export const getRestoreDetailsQueryKey = (
 ];
 
 
-export const useGetRestoreDetailsInfiniteQuery = <T = InlineResponse2002, Error = ApiError>(
+export const useGetRestoreDetailsInfiniteQuery = <T = RestoreDetails, Error = ApiError>(
   options?: {
-    query?: UseInfiniteQueryOptions<InlineResponse2002, Error, T>;
+    query?: UseInfiniteQueryOptions<RestoreDetails, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   pageParam = -1,
@@ -63,7 +63,7 @@ export const useGetRestoreDetailsInfiniteQuery = <T = InlineResponse2002, Error 
   const queryKey = getRestoreDetailsQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useInfiniteQuery<InlineResponse2002, Error, T>(
+  const query = useInfiniteQuery<RestoreDetails, Error, T>(
     queryKey,
     () => getRestoreDetailsAxiosRequest(customAxiosInstance),
     queryOptions
@@ -75,9 +75,9 @@ export const useGetRestoreDetailsInfiniteQuery = <T = InlineResponse2002, Error 
   };
 };
 
-export const useGetRestoreDetailsQuery = <T = InlineResponse2002, Error = ApiError>(
+export const useGetRestoreDetailsQuery = <T = RestoreDetails, Error = ApiError>(
   options?: {
-    query?: UseQueryOptions<InlineResponse2002, Error, T>;
+    query?: UseQueryOptions<RestoreDetails, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
@@ -85,7 +85,7 @@ export const useGetRestoreDetailsQuery = <T = InlineResponse2002, Error = ApiErr
   const queryKey = getRestoreDetailsQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useQuery<InlineResponse2002, Error, T>(
+  const query = useQuery<RestoreDetails, Error, T>(
     queryKey,
     () => getRestoreDetailsAxiosRequest(customAxiosInstance),
     queryOptions
@@ -96,9 +96,3 @@ export const useGetRestoreDetailsQuery = <T = InlineResponse2002, Error = ApiErr
     ...query
   };
 };
-
-
-
-
-
-

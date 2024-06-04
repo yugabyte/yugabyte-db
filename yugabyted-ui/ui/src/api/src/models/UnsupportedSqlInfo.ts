@@ -15,15 +15,24 @@
 
 
 /**
- *
+ * Unsupported SQL Info
  * @export
- * @interface RestoreDetails
+ * @interface UnsupportedSqlInfo
  */
-export interface RestoreDetails  {
+export interface UnsupportedSqlInfo  {
   /**
-   *
-   * @type {RestoreDetails[]}
-   * @memberof RestoreDetails
+   * 
+   * @type {string}
+   * @memberof UnsupportedSqlInfo
    */
-  restore: RestoreDetails[];
+  unsupported_type?: string;
+  /**
+   * 
+   * @type {number}
+   * @memberof UnsupportedSqlInfo
+   */
+  count?: number;
 }
+
+
+
