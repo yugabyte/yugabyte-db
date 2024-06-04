@@ -598,6 +598,12 @@ detect_os() {
   fi
 }
 
+cleanup_pexlock() {
+  if [ -f "$pex_lock" ]; then
+    rm -f $pex_lock
+  fi
+}
+
 # Function that is needed to activate the PEX environment. Note that using the PEX requires that
 # the PEX exists at the provided PEX_PATH location (which should happen automatically as part of
 # the Devops release generation process). Exports PEX_EXTRA_SYS_PATH when the PEX is used during the
@@ -613,7 +619,7 @@ activate_pex() {
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
-  trap "set +e rm -f $pex_lock" EXIT
+  trap "set +e cleanup_pexlock" EXIT INT TERM
   # Create and activate virtualenv
   (
     flock 9 || log "Waiting for pex lock";
@@ -629,7 +635,9 @@ activate_pex() {
       PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv $pex_venv_dir
     fi
   ) 9>>"$pex_lock"
-
+  set +e
+  cleanup_pexlock
+  set -e
   if [[ ! -f "$pex_venv_dir/bin/activate" ]]; then
     log "File '$pex_venv_dir/bin/activate' does not exist."
     exit 0
