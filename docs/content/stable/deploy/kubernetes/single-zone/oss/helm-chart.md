@@ -22,7 +22,7 @@ type: docs
   <li >
     <a href="../yugabyte-operator/" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      Kubernetes Operator (legacy)
+      Kubernetes Operator
     </a>
   </li>
 </ul>
@@ -338,7 +338,6 @@ serviceEndpoints:
     type: "LoadBalancer"
     ports:
       tcp-yql-port: "9042"
-      tcp-yedis-port: "6379"
       tcp-ysql-port: "5433"
 ```
 

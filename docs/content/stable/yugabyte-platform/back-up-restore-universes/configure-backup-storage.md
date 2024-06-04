@@ -10,8 +10,6 @@ menu:
     identifier: configure-backup-storage
     weight: 10
 type: docs
-rightNav:
-  hideH4: true
 ---
 
 Before you can back up universes, you need to configure a storage location for your backups.

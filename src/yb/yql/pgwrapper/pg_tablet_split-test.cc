@@ -245,6 +245,56 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// The below test asserts that the intent iterator created during conflict resolution rightly checks
+// conflicts for the empty doc key and that it doesn't get iniaited with the tablet's key bounds.
+//
+// Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
+#ifndef NDEBUG
+TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1,10000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  const auto& parent_peer = peers[0];
+
+  ASSERT_OK(WaitForAnySstFiles(parent_peer));
+  const auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
+  const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  // Find a key belonging to the second child which has key bounds [encoded_split_key, )
+  auto key = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      Format("SELECT k FROM t WHERE yb_hash_code(k) > $0 LIMIT 1", doc_key_hash)));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<int64>("SELECT COUNT(*) FROM t WHERE v=1")));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"ConflictResolver::Resolve", "TestConflictResolutionChecksConflictsAgainstEmptyKey"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    // This update should be blocked until the above serializable transaction commits.
+    return conn.ExecuteFormat("UPDATE t SET v=v+1 WHERE k=$0", key);
+  });
+  // Wait for the async transaction to detect conflicts.
+  DEBUG_ONLY_TEST_SYNC_POINT("TestConflictResolutionChecksConflictsAgainstEmptyKey");
+  // Serializable isolation guarantees that the count will remain 0.
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<int64>("SELECT COUNT(*) FROM t WHERE v=1")));
+  ASSERT_NE(status_future.wait_for(0ms), std::future_status::ready);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(status_future.get());
+}
+#endif // NDEBUG
+
 // Trigger a tablet split when a transaction has an outstanding statement in progress.
 // The split will cause ops to be retried at the YBSession level.
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {

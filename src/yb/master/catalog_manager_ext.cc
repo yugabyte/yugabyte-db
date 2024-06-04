@@ -1361,11 +1361,12 @@ Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapsho
 }
 
 Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-    CatalogManager::GenerateSnapshotInfoFromSchedule(
+CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
     const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
     CoarseTimePoint deadline) {
   LOG(INFO) << Format(
-      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and read_time: $1",
+      "Servicing GenerateSnapshotInfoFromScheduleForClone for snapshot_schedule_id: $0 and "
+      "read_time: $1",
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
@@ -1393,6 +1394,11 @@ Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
     }
   }
   snapshot_info.clear_backup_entries();
+  // Clear the schedule related fields from snapshot_info, this is required so that the restore is
+  // not considered a PITR restore. This mainly implies overwriting any current schema packings with
+  // the old schema packings from the snapshot at the restore side.
+  snapshot_info.mutable_entry()->clear_schedule_id();
+  snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
 
   // Set backup_entries based on what entries were running in the sys catalog as of read_time.
   *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
@@ -2450,10 +2456,31 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the schema version to the version of the snapshot if it is less.
-    if (meta.version() > table->LockForRead()->pb.version()) {
+    // Bump up the current schema version of the target table as follows:
+    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
+    // current schema version is greater than all schema versions that might exist in the snapshot
+    // used for clone.
+    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
+    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
+    // schema version found in snapshotInfo is the maximum schema version that can be found in the
+    // snapshot at backup creation time.
+    std::optional<int> schema_version;
+    if (is_clone) {
+      // The Source table should be found as we are cloning from it.
+      TRACE("Looking up source table");
+      scoped_refptr<TableInfo> source_table =
+          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      auto source_table_lock = source_table->LockForRead();
+      schema_version = source_table_lock->pb.version() + 1;
+    } else if (meta.version() > table->LockForRead()->pb.version()) {
+      schema_version = meta.version();
+    }
+
+    if (schema_version) {
+      VLOG_WITH_FUNC(1) << Format(
+          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
       auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(meta.version());
+      l.mutable_data()->pb.set_version(schema_version.value());
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;

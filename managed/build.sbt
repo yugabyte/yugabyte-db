@@ -158,7 +158,7 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject"            % "guice"                % "5.1.0",
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
-  "org.postgresql" % "postgresql" % "42.3.3",
+  "org.postgresql" % "postgresql" % "42.3.9",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -904,7 +904,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.86-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.87-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 

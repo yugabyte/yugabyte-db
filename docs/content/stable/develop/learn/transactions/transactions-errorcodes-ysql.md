@@ -83,9 +83,9 @@ This error occurs when a transaction cannot be applied or progress further becau
 ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a conflict
 ```
 
-{{<tip>}}
+{{<lead link="../transactions-retries-ysql/#client-side-retry">}}
 Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
-{{</tip>}}
+{{</lead>}}
 
 ## 2D000: Invalid transaction termination
 

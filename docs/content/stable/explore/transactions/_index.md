@@ -12,7 +12,7 @@ menu:
     weight: 240
 type: indexpage
 ---
-YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties: Atomicity, Consistency, Isolation, Durability (ACID).
+YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](../../architecture/key-concepts/#acid) guarantees for all transactions.
 
 The following table summarizes the support for transactions across the YSQL and YCQL APIs.
 
@@ -21,6 +21,12 @@ The following table summarizes the support for transactions across the YSQL and 
 | Distributed transactions | Yes | Yes | Perform multi-row or multi-table transactions.<br/>An application can connect to any node of the cluster. |
 | Isolation levels | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
 | `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
+
+<!--
+| [Explicit locking] | Yes | No | Ability to perform row- and table-level locking |
+| [DDL statements] | Transaction per DDL statement  | Transaction per DDL statement | Each DDL statement is a transaction in both YSQL and YCQL, even if other DDL statements are in a transaction block in YSQL. |
+| [Non-transactional tables] | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
+-->
 
 <div class="row">
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">

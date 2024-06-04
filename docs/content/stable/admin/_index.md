@@ -13,7 +13,7 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB ships with a variety of tools to interact with, manage and configure your cluster. Each tool has been designed for a specific purpose. The following illustration shows which tools operate on which parts of the cluster.
+YugabyteDB ships with a variety of tools to interact with, manage, and configure your cluster. Each tool has been designed for a specific purpose. The following illustration shows which tools operate on which parts of the cluster.
 
 ![Tools and their purpose](/images/admin/tools_functionalities.png)
 

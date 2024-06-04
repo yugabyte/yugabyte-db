@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopped;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -81,6 +82,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -3961,6 +3963,53 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             assertEquals(ApiUtils.UTIL_INST_TYPE, node.cloudInfo.instance_type);
           }
         });
+  }
+
+  @Test
+  public void testEditWithStopped() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+
+    AtomicReference<UUID> azUUID = new AtomicReference<>();
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              NodeDetails node = details.nodeDetailsSet.iterator().next();
+              node.state = Stopped;
+              azUUID.set(node.azUuid);
+              u.setUniverseDetails(details);
+            });
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.userAZSelected = false;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    assertEquals(Collections.emptySet(), params.updateOptions);
+
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(azUUID.get()))
+        .forEach(az -> az.numNodesInAZ++);
+    params.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
+    assertEquals(2, azUuidToNumNodes.get(azUUID.get()).intValue());
   }
 
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {

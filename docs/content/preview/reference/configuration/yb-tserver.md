@@ -1398,6 +1398,8 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
+The catalog flags are in [Early Access](/preview/releases/versioning/#feature-maturity).
+
 ##### ysql_catalog_preload_additional_table_list
 
 Specifies the names of catalog tables (such as `pg_operator`, `pg_proc`, and `pg_amop`) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first query execution of a particular statement on a connection.
@@ -1442,7 +1444,7 @@ Default: -1 (disabled). Minimum: 128 bytes.
 
 ##### ysql_enable_db_catalog_version_mode
 
-Enable the per database catalog version mode. A DDL statement that
+{{<badge/ea>}} Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
 that database.
 
@@ -1488,7 +1490,7 @@ To re-enable the per database catalog version mode using the following steps:
 
 ##### enable_heartbeat_pg_catalog_versions_cache
 
-Whether to enable the use of heartbeat catalog versions cache for the
+{{<badge/ea>}} Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
 from the table. This is beneficial when there are many databases and/or
 many yb-tservers in the cluster.

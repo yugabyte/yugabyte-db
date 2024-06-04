@@ -23,6 +23,7 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
 | [YugabyteDB JDBC Driver for Java](https://github.com/yugabyte/pgjdbc) | PostgreSQL JDBC Driver | [Documentation](../java/yugabyte-jdbc/) |
+| [YugabyteDB R2DBC Driver for Java](https://github.com/yugabyte/r2dbc-postgresql) | [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql) | [Documentation](../java/yb-r2dbc/) |
 | [YugabyteDB PGX Driver for Go](https://github.com/yugabyte/pgx) | jackc/pgx | [Documentation](../go/yb-pgx/) |
 | [YugabyteDB Psycopg2 Driver for Python](https://github.com/yugabyte/psycopg2) | PostgreSQL psycopg2 | [Documentation](../python/yugabyte-psycopg2/) |
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
@@ -208,11 +209,11 @@ YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load b
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 
 - YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
-- [Smart driver FAQ](/preview/faq/smart-drivers-faq/)
+- [Smart driver FAQ](../../faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

@@ -17,6 +17,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/integration-tests/external_daemon.h"
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 
@@ -75,5 +76,7 @@ class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
   const uint16_t yb_master_webserver_port_;
   const uint16_t yb_tserver_webserver_port_;
   const std::vector<std::string> extra_flags_;
+
+  std::unique_ptr<ExternalDaemon::LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;
 };
 }  // namespace yb

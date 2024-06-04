@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-3-hashicorp-kms
+    identifier: create-kms-config-4-hashicorp-kms
     weight: 50
 type: docs
 ---

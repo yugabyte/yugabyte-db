@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
-    weight: 20
+    weight: 500
 type: docs
 ---
 
@@ -15,18 +15,18 @@ Transaction isolation is foundational to handling concurrent transactions in dat
 
 YugabyteDB supports the following three strictest transaction isolation levels:
 
-1. Read Committed<sup>$</sup>, which maps to the SQL isolation level of the same name. This isolation level guarantees that each statement sees all data that has been committed before it is issued (this implicitly also means that the statement sees a consistent snapshot). In addition, this isolation level internally handles read restart and conflict errors. In other words, the client does not see read restart and conflict errors (barring an exception).
+1. Read Committed {{<badge/ea>}}, which maps to the SQL isolation level of the same name. This isolation level guarantees that each statement sees all data that has been committed before it is issued (this implicitly also means that the statement sees a consistent snapshot). In addition, this isolation level internally handles read restart and conflict errors. In other words, the client does not see read restart and conflict errors (barring an exception).
 2. Serializable, which maps to the SQL isolation level of the same name. This isolation level guarantees that transactions run in a way equivalent to a serial (sequential) schedule.
 3. Snapshot, which maps to the SQL Repeatable Read isolation level. This isolation level guarantees that all reads made in a transaction see a consistent snapshot of the database, and the transaction itself can successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed after that snapshot.
 
 Transaction isolation level support differs between the YSQL and YCQL APIs:
 
-- [YSQL](../../../api/ysql/) supports Serializable, Snapshot, and Read Committed<sup>$</sup> isolation levels.
+- [YSQL](../../../api/ysql/) supports Serializable, Snapshot, and Read Committed {{<badge/ea>}} isolation levels.
 - [YCQL](../../../api/ycql/dml_transaction/) supports only Snapshot isolation using the `BEGIN TRANSACTION` syntax.
 
 Similarly to PostgreSQL, you can specify Read Uncommitted for YSQL, but it behaves the same as Read Committed.
 
-<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). This level is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
+Read Committed is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 ## Internal locking in DocDB
 

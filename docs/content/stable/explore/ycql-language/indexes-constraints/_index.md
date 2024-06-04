@@ -30,7 +30,7 @@ The following table lists different types of indexes and their support in YCQL.
 | {{<icon/yes>}} | [Covering index](covering-index-ycql/) | Store other columns in the index for faster retrieval |
 | {{<icon/no>}}  | Expression index | Index based on a functional operation on columns |
 | {{<icon/no>}}  | GIN index | Generalized inverted index for fast text search |
-| {{<icon/no>}}  | GIST Index | For spatial search. |
+| {{<icon/no>}}  | GIST Index | For spatial search. Tracked - {{<issue 1337>}} |
 
 ## Learn more
 
