@@ -524,7 +524,8 @@ static void CreateInheritance(Relation child_rel, Relation parent_rel);
 static void RemoveInheritance(Relation child_rel, Relation parent_rel);
 static ObjectAddress ATExecAttachPartition(List **wqueue, Relation rel,
 					  PartitionCmd *cmd);
-static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel);
+static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel,
+										 List **yb_wqueue);
 static void QueuePartitionConstraintValidation(List **wqueue, Relation scanrel,
 								   List *partConstraint,
 								   bool validate_default);
@@ -15809,7 +15810,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
 	StorePartitionBound(attachrel, rel, cmd->bound);
 
 	/* Ensure there exists a correct set of indexes in the partition. */
-	AttachPartitionEnsureIndexes(rel, attachrel);
+	AttachPartitionEnsureIndexes(rel, attachrel, wqueue);
 
 	/* and triggers */
 	CloneRowTriggersToPartition(rel, attachrel);
@@ -15941,7 +15942,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
  * partitioned table.
  */
 static void
-AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
+AttachPartitionEnsureIndexes(Relation rel, Relation attachrel, List **yb_wqueue)
 {
 	List	   *idxes;
 	List	   *attachRelIdxs;
@@ -16065,6 +16066,27 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 										   idxRel, attmap,
 										   RelationGetDescr(rel)->natts,
 										   &constraintOid);
+			/*
+			 * YB Note: If a matching pk index is not found for the child
+			 * partition, then we must rewrite the child partition (and all
+			 * of its children).
+			 */
+			if (IsYBRelation(idxRel) && idxRel->rd_index->indisprimary)
+			{
+				MemoryContextSwitchTo(oldcxt);
+				AlteredTableInfo *tab;
+				tab = ATGetQueueEntry(yb_wqueue, attachrel);
+				tab->rewrite = YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+				YbGetTableProperties(attachrel);
+				/* Don't copy split options if we are creating a range key. */
+				bool skip_copy_split_options = YbATIsRangePk(stmt,
+					attachrel->yb_table_properties->is_colocated,
+					OidIsValid(
+						attachrel->yb_table_properties->tablegroup_oid));
+				YbATSetPKRewriteChildPartitions(yb_wqueue, tab,
+					skip_copy_split_options);
+				MemoryContextSwitchTo(cxt);
+			}
 			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						constraintOid,
