@@ -1,111 +1,77 @@
 ---
-title: Benchmark YSQL performance using TPC-C
-headerTitle: TPC-C
-linkTitle: TPC-C
-description: Benchmark YSQL performance using TPC-C
-headcontent: Benchmark YSQL performance using TPC-C
-aliases:
-  - /benchmark/tpcc
-  - /benchmark/tpcc-ysql
+title: Running the TPC-C performance benchmark
+headerTitle: Running the TPC-C performance benchmark
+linkTitle: Benchmarking
+headcontent: Detailed steps to run the TPCC benchmark
 menu:
   preview:
     identifier: tpcc-ysql
-    parent: benchmark
+    parent: tpcc
     weight: 4
 type: docs
 rightNav:
   hideH3: true
 ---
 
-[TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity, and which are either executed online or queued for deferred execution.
+Run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB by following the instructions below.
 
-## Results overview
+## Get TPC-C binaries
 
-All the nodes in the cluster were located in AWS-west in the same zone. The benchmark VM was the same type as the cluster nodes and was deployed in the same zone. Each test was run for 30 minutes after loading the data.
-
-All benchmarks were run using YugabyteDB v2.18.1, except 150K warehouses, which was run on v2.11.
-
-### Horizontal scaling
-
-The following table shows how YugabyteDB scales horizontally, providing increased throughput with the same efficiency when the number of nodes in the cluster is increased.
-
-| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------- |
-|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8) |
-|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge&nbsp;(8) |
-|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge&nbsp;(8) |
-|       4000 | 51296.9  |     99.72     |   6   | 400         |     62.09 ms      | m6i.2xlarge&nbsp;(8) |
-
-### Vertical scaling
-
-The following table shows how YugabyteDB scales vertically, providing increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
-
-| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs)  |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :-------------------- |
-|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large&nbsp;(2)    |
-|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge&nbsp;(4)   |
-|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)  |
-|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge&nbsp;(16) |
-
-### 100K warehouses
-
-| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs)  |
-| ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :-------------------- |
-|    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge&nbsp;(36) |
-
-### 150K warehouses
-
-| Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
-| ---------: | :--- | :-----------: | :---: | ----------- | :---------------: | :--------------------- |
-|    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | c5d.12xlarge&nbsp;(96) |
-
-## Benchmark setup
-
-Run a [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL using the following steps.
-
-### Get TPC-C binaries
-
-To download the TPC-C binaries, run the following commands.
+First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands.
 
 ```sh
-$ wget https://github.com/yugabyte/tpcc/releases/download/2.0/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/latest/download/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
 
-### Start YugabyteDB
+## Cluster setup
 
-Start your YugabyteDB cluster by following the steps for a [manual deployment](../../deploy/manual-deployment/).
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,cloud" active="local"/>}}
 
-{{< tip title="Tip" >}}
-You will need the IP addresses of the nodes in the cluster for the next step.
-{{< /tip>}}
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+<details> <summary>Set up a local cluster</summary>
+{{<setup/local collapse="no">}}
 
-### Configure DB connection parameters (optional)
+{{<note title="Remember">}}
+Pre-compact tables using the [yb-admin](../../../admin/yb-admin/) utility's `compact_table` command.
+{{</note>}}
+</details>
 
-You can configure the workload, including the IP addresses of the nodes, number of warehouses, and number of loader threads, using command line arguments.
+```bash
+# Store the IP addresses of the nodes in a shell variable to be in the further commands.
+IPS=127.0.0.1,127.0.0.2,127.0.0.3
+```
 
-Other options like username, password, port, and so on, can be changed using the configuration file at `config/workload_all.xml`, if needed.
+{{</nav/panel>}}
+
+{{<nav/panel name="cloud">}}
+{{<setup/cloud>}}
+
+Store the IP addresses of the nodes in a shell variable to be in the further commands.
+
+```bash
+IPS=<ip-node-1>,<ip-node-2>,<ip-node-3>
+```
+
+{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+## Configure connection parameters
+
+If needed,  options like username, password, port etc can be set up using the configuration file at `config/workload_all.xml`.
 
 ```xml
 <port>5433</port>
 <username>yugabyte</username>
-<password></password>
+<password>***</password>
 ```
 
-### Other considerations
-
-When running tests, be sure to do the following:
-
-- Run the latest TPCC code. Use the latest enhancements to the Yugabyte TPCC application by downloading the latest [released](https://github.com/yugabyte/tpcc/releases) version, or clone the repository and build from the source to get the very latest changes.
-
-- Pre-compact tables using the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
-
-- Warm the database using the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
-
-## Run TPC-C
-
-### Load phase
+## Initialize the data
 
 {{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
@@ -113,11 +79,11 @@ When running tests, be sure to do the following:
 Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
-$ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+$ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
 ```sh
-$ ./tpccbenchmark --load=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+$ ./tpccbenchmark --load=true --nodes=${IPS}
 ```
 
 | Cluster | Loader threads | Loading time | Data set size |
@@ -129,17 +95,14 @@ The loading time for ten warehouses on a cluster with 3 nodes of type `c5d.4xlar
 {{% /tab %}}
 {{% tab header="100 warehouses" lang="100-wh" %}}
 
-Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader threads value of 48 was optimal.
+Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader-threads value of 48 was optimal.
 
 ```sh
-$ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+$ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
 ```sh
-$ ./tpccbenchmark --load=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100 \
-  --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=100 --loaderthreads 48
 ```
 
 | Cluster | Loader threads | Loading time | Data set size |
@@ -154,14 +117,11 @@ Tune the `--loaderthreads` parameter for higher parallelism during the load, bas
 Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node `c5d.4xlarge` cluster, loader threads value of 48 was optimal.
 
 ```sh
-$ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+$ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
 ```sh
-$ ./tpccbenchmark --load=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=1000 \
-  --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000 --loaderthreads 48
 ```
 
 | Cluster | Loader threads | Loading time | Data set size |
@@ -213,7 +173,7 @@ When the loading is completed, execute the following command to enable the forei
 {{% /tab %}}
 {{< /tabpane >}}
 
-### TPC-C Execute Phase
+## Run the benchmark
 
 {{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
@@ -221,8 +181,7 @@ When the loading is completed, execute the following command to enable the forei
 You can run the workload against the database as follows:
 
 ```sh
-$ ./tpccbenchmark --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS}
 ```
 
 {{% /tab %}}
@@ -231,9 +190,7 @@ $ ./tpccbenchmark --execute=true \
 You can run the workload against the database as follows:
 
 ```sh
-$ ./tpccbenchmark --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=100
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=100
 ```
 
 {{% /tab %}}
@@ -242,9 +199,7 @@ $ ./tpccbenchmark --execute=true \
 You can run the workload against the database as follows:
 
 ```sh
-$ ./tpccbenchmark --execute=true \
-  --nodes=127.0.0.1,127.0.0.2,127.0.0.3 \
-  --warehouses=1000
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=1000
 ```
 
 {{% /tab %}}
@@ -275,7 +230,7 @@ You can then run the workload against the database from each client:
 {{% /tab %}}
 {{< /tabpane >}}
 
-### TPC-C Benchmark Results
+## Benchmark Results
 
 {{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
