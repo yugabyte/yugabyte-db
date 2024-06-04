@@ -1,0 +1,17 @@
+# src/test/regress/yb_pg_types_geometry_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This suite includes all tests on geometry datatypes that are enabled for YugaByte.
+####################################################################################################
+# Dependency for yb_pg_point.
+test: yb_pg_test_setup
+
+test: yb_pg_point
+test: yb_pg_lseg
+test: yb_pg_line
+test: yb_pg_box
+test: yb_pg_path
+test: yb_pg_polygon
+test: yb_pg_circle
+test: yb_pg_geometry

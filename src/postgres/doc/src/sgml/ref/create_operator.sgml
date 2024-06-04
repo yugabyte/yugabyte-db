@@ -1,0 +1,299 @@
+<!--
+doc/src/sgml/ref/create_operator.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createoperator">
+ <indexterm zone="sql-createoperator">
+  <primary>CREATE OPERATOR</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE OPERATOR</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE OPERATOR</refname>
+  <refpurpose>define a new operator</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE OPERATOR <replaceable>name</replaceable> (
+    {FUNCTION|PROCEDURE} = <replaceable class="parameter">function_name</replaceable>
+    [, LEFTARG = <replaceable class="parameter">left_type</replaceable> ] [, RIGHTARG = <replaceable class="parameter">right_type</replaceable> ]
+    [, COMMUTATOR = <replaceable class="parameter">com_op</replaceable> ] [, NEGATOR = <replaceable class="parameter">neg_op</replaceable> ]
+    [, RESTRICT = <replaceable class="parameter">res_proc</replaceable> ] [, JOIN = <replaceable class="parameter">join_proc</replaceable> ]
+    [, HASHES ] [, MERGES ]
+)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE OPERATOR</command> defines a new operator,
+   <replaceable class="parameter">name</replaceable>.  The user who
+   defines an operator becomes its owner.  If a schema name is given
+   then the operator is created in the specified schema.  Otherwise it
+   is created in the current schema.
+  </para>
+
+  <para>
+   The operator name is a sequence of up to <symbol>NAMEDATALEN</symbol>-1
+   (63 by default) characters from the following list:
+<literallayout>
++ - * / &lt; &gt; = ~ ! @ # % ^ &amp; | ` ?
+</literallayout>
+
+   There are a few restrictions on your choice of name:
+   <itemizedlist>
+    <listitem>
+     <para><literal>--</literal> and <literal>/*</literal> cannot appear anywhere in an operator name,
+     since they will be taken as the start of a comment.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+     A multicharacter operator name cannot end in <literal>+</literal> or
+     <literal>-</literal>,
+     unless the name also contains at least one of these characters:
+<literallayout>
+~ ! @ # % ^ &amp; | ` ?
+</literallayout>
+     For example, <literal>@-</literal> is an allowed operator name,
+     but <literal>*-</literal> is not.
+     This restriction allows <productname>PostgreSQL</productname> to
+     parse SQL-compliant commands without requiring spaces between tokens.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+     The use of <literal>=&gt;</literal> as an operator name is deprecated.  It may
+     be disallowed altogether in a future release.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   The operator <literal>!=</literal> is mapped to
+   <literal>&lt;&gt;</literal> on input, so these two names are always
+   equivalent.
+  </para>
+
+  <para>
+   For binary operators, both <literal>LEFTARG</literal> and
+   <literal>RIGHTARG</literal> must be defined.  For prefix operators only
+   <literal>RIGHTARG</literal> should be defined.
+   The <replaceable class="parameter">function_name</replaceable>
+   function must have been previously defined using <command>CREATE
+   FUNCTION</command> and must be defined to accept the correct number
+   of arguments (either one or two) of the indicated types.
+  </para>
+
+  <para>
+   In the syntax of <literal>CREATE OPERATOR</literal>, the keywords
+   <literal>FUNCTION</literal> and <literal>PROCEDURE</literal> are
+   equivalent, but the referenced function must in any case be a function, not
+   a procedure.  The use of the keyword <literal>PROCEDURE</literal> here is
+   historical and deprecated.
+  </para>
+
+  <para>
+   The other clauses specify optional operator optimization clauses.
+   Their meaning is detailed in <xref linkend="xoper-optimization"/>.
+  </para>
+
+  <para>
+   To be able to create an operator, you must have <literal>USAGE</literal>
+   privilege on the argument types and the return type, as well
+   as <literal>EXECUTE</literal> privilege on the underlying function.  If a
+   commutator or negator operator is specified, you must own these operators.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the operator to be defined. See above for allowable
+        characters.  The name can be schema-qualified, for example
+        <literal>CREATE OPERATOR myschema.+ (...)</literal>.  If not, then
+        the operator is created in the current schema.  Two operators
+        in the same schema can have the same name if they operate on
+        different data types.  This is called
+        <firstterm>overloading</firstterm>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">function_name</replaceable></term>
+      <listitem>
+       <para>
+        The function used to implement this operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">left_type</replaceable></term>
+      <listitem>
+       <para>
+        The data type of the operator's left operand, if any.
+        This option would be omitted for a prefix operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">right_type</replaceable></term>
+      <listitem>
+       <para>
+        The data type of the operator's right operand.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">com_op</replaceable></term>
+      <listitem>
+       <para>
+        The commutator of this operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">neg_op</replaceable></term>
+      <listitem>
+       <para>
+        The negator of this operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">res_proc</replaceable></term>
+      <listitem>
+       <para>
+        The restriction selectivity estimator function for this operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">join_proc</replaceable></term>
+      <listitem>
+       <para>
+        The join selectivity estimator function for this operator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>HASHES</literal></term>
+      <listitem>
+       <para>
+       Indicates this operator can support a hash join.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>MERGES</literal></term>
+      <listitem>
+       <para>
+       Indicates this operator can support a merge join.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+
+  <para>
+   To give a schema-qualified operator name in <replaceable
+   class="parameter">com_op</replaceable> or the other optional
+   arguments, use the <literal>OPERATOR()</literal> syntax, for example:
+<programlisting>
+COMMUTATOR = OPERATOR(myschema.===) ,
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Refer to <xref linkend="xoper"/> for further information.
+  </para>
+
+  <para>
+   It is not possible to specify an operator's lexical precedence in
+   <command>CREATE OPERATOR</command>, because the parser's precedence behavior
+   is hard-wired.  See <xref linkend="sql-precedence"/> for precedence details.
+  </para>
+
+  <para>
+   The obsolete options <literal>SORT1</literal>, <literal>SORT2</literal>,
+   <literal>LTCMP</literal>, and <literal>GTCMP</literal> were formerly used to
+   specify the names of sort operators associated with a merge-joinable
+   operator.  This is no longer necessary, since information about
+   associated operators is found by looking at B-tree operator families
+   instead.  If one of these options is given, it is ignored except
+   for implicitly setting <literal>MERGES</literal> true.
+  </para>
+
+  <para>
+   Use <link linkend="sql-dropoperator"><command>DROP OPERATOR</command></link> to delete user-defined operators
+   from a database.  Use <link linkend="sql-alteroperator"><command>ALTER OPERATOR</command></link> to modify operators in a
+   database.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   The following command defines a new operator, area-equality, for
+   the data type <type>box</type>:
+<programlisting>
+CREATE OPERATOR === (
+    LEFTARG = box,
+    RIGHTARG = box,
+    FUNCTION = area_equal_function,
+    COMMUTATOR = ===,
+    NEGATOR = !==,
+    RESTRICT = area_restriction_function,
+    JOIN = area_join_function,
+    HASHES, MERGES
+);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE OPERATOR</command> is a
+   <productname>PostgreSQL</productname> extension.  There are no
+   provisions for user-defined operators in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alteroperator"/></member>
+   <member><xref linkend="sql-createopclass"/></member>
+   <member><xref linkend="sql-dropoperator"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

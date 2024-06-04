@@ -1,0 +1,138 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: releases.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: releases
+    singular: release
+    kind: Release
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Version
+          type: string
+          description: The state of the universe
+          jsonPath: .spec.config.version
+        - name: Status
+          type: string
+          description: The state of the universe
+          jsonPath: .status.message
+        - name: Downloaded
+          type: string
+          description: The Software version of the Universe
+          jsonPath: .status.success
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >
+            Custom resource definition for YugabyteDB release, describes a release.
+          properties:
+            status:
+              description: Release status on the cluster.
+              type: object
+              properties:
+                message:
+                  description: String log message from release controller
+                  type: string
+                success:
+                  description: >
+                    Boolean indicating if the release was successfully
+                    downloaded and usable
+                  type: boolean
+                resourceUUID:
+                  description: Internal UUID of the release resource.
+                  type: string
+            spec:
+              type: object
+              description: Release object specification.
+              properties:
+                config:
+                  description: Release download configration, we support GCS, S3 and HTTP.
+                  type: object
+                  properties:
+                    version:
+                      description: >
+                        Version of the release chart to use.
+                        Refer to the release charts at charts.yugabyte.com
+                      type: string
+                    downloadConfig:
+                      description: >
+                        Download configugration,
+                        we support GCS, S3 and HTTP as download sources for now.
+                      type: object
+                      properties:
+                        s3:
+                          description: S3 download configuration
+                          type: object
+                          properties:
+                            accessKeyId:
+                              description: S3 access key
+                              type: string
+                            secretAccessKey:
+                              description: S3 secret key
+                              type: string
+                            paths:
+                              description: S3 paths to download the release from
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Optional Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Required Path to the Helm chart package
+                                helmChartChecksum:
+                                  description: Optional checksum for Helm chart package
+                                  type: string
+                        gcs:
+                          type: object
+                          properties:
+                            paths:
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Optional Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Optional Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Path to the Helm chart package
+                                helmChartChecksum:
+                                  type: string
+                                  description: Optional checksum for Helm chart package
+                            credentialsJson:
+                              type: string
+                              description: GCS service key JSON
+                        http:
+                          type: object
+                          properties:
+                            paths:
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Optional Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Optional Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Path to the Helm chart package
+                                helmChartChecksum:
+                                  type: string
+                                  description: Optional checksum for Helm chart package

@@ -1,0 +1,90 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.react-bs-table {
+  margin: 0 !important;
+  border: none !important;
+
+  .universe-item-cell {
+    white-space: normal;
+  }
+
+  table {
+    th,
+    td {
+      border: none !important;
+      padding-bottom: 11px !important;
+      padding-left: 0 !important;
+      &:nth-child(2),
+      &:last-child(2) {
+        padding-left: 0;
+      }
+      * {
+        overflow: hidden;
+        white-space: nowrap;
+        -o-text-overflow: ellipsis;
+        text-overflow: ellipsis;
+      }
+    }
+    th {
+      padding-top: 0 !important;
+    }
+    td {
+      padding-top: 11px !important;
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    tr:last-child td {
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+    }
+  }
+}
+
+// TODO: Does this class name only appear inside .react-bs-table elements?
+.data-table-row {
+  background-color: #f8f8f8 !important;
+  border: 10px solid white !important;
+  border-top: 20px solid white !important;
+}
+
+.react-bs-table-container {
+  .react-bs-table-tool-bar {
+    margin-bottom: 0;
+    span,
+    div {
+      height: 0;
+    }
+    .react-bs-table-search-form {
+      margin-right: -25px;
+      margin-top: -87px;
+      input {
+        height: 42px;
+        line-height: 42px;
+        font-size: 14px;
+      }
+    }
+  }
+  .react-bs-container-header {
+    th {
+      text-transform: uppercase;
+      font-size: 11px;
+      font-weight: 500;
+      .order {
+        .caret {
+          position: relative;
+          top: -1px;
+        }
+        > .caret {
+          border-right: 6px solid transparent;
+          border-left: 6px solid transparent;
+          border-top-color: colors.$YB_ORANGE;
+          border-bottom-color: colors.$YB_ORANGE;
+          border-top-width: 9px;
+          border-bottom-width: 9px;
+          margin: 6px 5px !important;
+        }
+      }
+    }
+  }
+}

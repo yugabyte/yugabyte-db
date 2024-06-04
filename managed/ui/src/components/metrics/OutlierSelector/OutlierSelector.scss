@@ -1,0 +1,52 @@
+.outlier-container {
+  display: flex;
+  align-items: center;
+  margin: 8px 8px 0px 5px;
+
+  .outlier-content {
+    border: 1px solid #E5E5E9;
+    border-radius: 8px 8px 8px 8px;
+    margin-right: 8px;
+  }
+
+  .btn {
+    border: 1px solid #E5E5E9;
+    padding: 8px 12px;
+  }
+
+  .outlier-button {
+    &__top {
+      border-radius: 0px;
+      margin-right: 1px;
+    }
+
+    &__bottom {
+      border-radius: 0 8px 8px 0;
+    }
+  }
+
+  .outlier-num-nodes,
+  .outlier-display-label,
+  .outlier-button-title {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 16px;
+  }
+
+  .btn-group>.btn.active {
+    background: linear-gradient(0deg, rgba(43, 89, 195, 0.1), rgba(43, 89, 195, 0.1)), #FFFFFF;
+    color: #2B59C3;
+  }
+
+  .outlier-display-label {
+    color: #67666C;
+    padding: 12px 43px 12px 12px;
+  }
+
+  .outlier-num-nodes {
+    width: 104px;
+    color: #4C4C4C;
+  }
+}

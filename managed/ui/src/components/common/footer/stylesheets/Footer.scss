@@ -1,0 +1,77 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/variables.scss';
+
+/* From gentelella.css need to cleanup */
+
+footer {
+  height: variables.$YB_FOOTER_HEIGHT;
+  margin-left: variables.$YB_SIDEBAR_WIDTH;
+  background-color: colors.$YB_FOOTER_BACKGROUND;
+  line-height: 46px;
+  display: flex;
+  flex-direction: row;
+  padding: 0 30px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-weight: 300;
+  z-index: 1;
+  justify-content: space-between;
+
+  object {
+    margin-right: 20px;
+    margin-top: -1px;
+    margin-left: -5px;
+    height: 26px;
+    vertical-align: middle;
+    display: inline-block;
+  }
+
+  .footer-social-container {
+    text-align: center;
+  }
+
+  @media screen and (max-width: 960px) {
+    .footer-logo-container {
+      display: none;
+    }
+    .footer-social-container {
+      text-align: left;
+    }
+  }
+
+  .social-media-logo {
+    margin-bottom: 4px;
+    margin-left: 4px;
+  }
+
+  span.social-media-cta {
+    border: 1px solid #cbcdd0;
+    color: #202951;
+    text-decoration: none;
+    padding: 6px 12px 6px 15px;
+    border-radius: 7px;
+    margin-right: 15px;
+    font-size: 13px;
+  }
+
+  span.social-media-cta:hover {
+    background-color: #cbcbcb78;
+    color: #000;
+  }
+
+  a {
+    color: inherit;
+    cursor: pointer;
+  }
+  a:hover {
+    color: inherit;
+  }
+}
+
+.sidebar-hidden footer {
+  margin-left: 0;
+}

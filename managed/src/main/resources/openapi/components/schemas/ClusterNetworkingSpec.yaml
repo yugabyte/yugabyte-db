@@ -1,0 +1,27 @@
+title: Networking specification that is used for nodes in this cluster
+type: object
+properties:
+  assign_public_ip:
+    description: Whether to assign a public IP for nodes in this cluster. Defaults to true.
+    type: boolean
+    example: true
+  assign_static_public_ip:
+    description: Whether to assign a static public IP for nodes in this cluster. Defaults to false.
+    type: boolean
+    example: false
+  enable_exposing_service:
+    description: Whether to create a load balancer service for this cluster. Defaults to NONE.
+    type: string
+    enum:
+      - NONE
+      - EXPOSED
+      - UNEXPOSED
+  enable_ipv6:
+    description: Whether to enable IPv6 on nodes in this cluster. Defaults to false.
+    type: boolean
+    example: false
+  enable_lb:
+    description: Create target groups if enabled. Used by YBM.
+    type: boolean
+    example: false
+    x-yba-api-visibility: internal

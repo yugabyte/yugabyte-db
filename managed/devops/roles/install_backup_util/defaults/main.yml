@@ -1,0 +1,24 @@
+# Copyright 2020 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# common variables
+bin_path: "/usr/local/bin"
+
+# azcopy variables
+azcopy_version: "10.20.1"
+azcopy_package: "azcopy_linux_amd64_{{ azcopy_version }}.tar.gz"
+
+# gsutil variables
+gsutil_version: "4.60"
+gsutil_package_name: "gsutil"
+gsutil_package: "{{ gsutil_package_name }}_{{ gsutil_version }}.tar.gz"
+
+# s3cmd variables
+s3cmd_version: "2.3.0"
+s3cmd_package_name: "s3cmd-{{ s3cmd_version }}"
+s3cmd_package: "{{ s3cmd_package_name }}.tar.gz"

@@ -1,0 +1,150 @@
+<!-- doc/src/sgml/pgrowlocks.sgml -->
+
+<sect1 id="pgrowlocks" xreflabel="pgrowlocks">
+ <title>pgrowlocks</title>
+
+ <indexterm zone="pgrowlocks">
+  <primary>pgrowlocks</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pgrowlocks</filename> module provides a function to show row
+  locking information for a specified table.
+ </para>
+
+ <para>
+  By default use is restricted to superusers, roles with privileges of the
+  <literal>pg_stat_scan_tables</literal> role, and users with
+  <literal>SELECT</literal> permissions on the table.
+ </para>
+
+
+ <sect2>
+  <title>Overview</title>
+
+  <indexterm>
+   <primary>pgrowlocks</primary>
+  </indexterm>
+
+<synopsis>
+pgrowlocks(text) returns setof record
+</synopsis>
+
+  <para>
+   The parameter is the name of a table.  The result is a set of records,
+   with one row for each locked row within the table.  The output columns
+   are shown in <xref linkend="pgrowlocks-columns"/>.
+  </para>
+
+  <table id="pgrowlocks-columns">
+   <title><function>pgrowlocks</function> Output Columns</title>
+
+   <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+    <tbody>
+
+     <row>
+      <entry><structfield>locked_row</structfield></entry>
+      <entry><type>tid</type></entry>
+      <entry>Tuple ID (TID) of locked row</entry>
+     </row>
+     <row>
+      <entry><structfield>locker</structfield></entry>
+      <entry><type>xid</type></entry>
+      <entry>Transaction ID of locker, or multixact ID if multitransaction</entry>
+     </row>
+     <row>
+      <entry><structfield>multi</structfield></entry>
+      <entry><type>boolean</type></entry>
+      <entry>True if locker is a multitransaction</entry>
+     </row>
+     <row>
+      <entry><structfield>xids</structfield></entry>
+      <entry><type>xid[]</type></entry>
+      <entry>Transaction IDs of lockers (more than one if multitransaction)</entry>
+     </row>
+     <row>
+      <entry><structfield>modes</structfield></entry>
+      <entry><type>text[]</type></entry>
+      <entry>Lock mode of lockers (more than one if multitransaction),
+       an array of <literal>Key Share</literal>, <literal>Share</literal>,
+       <literal>For No Key Update</literal>, <literal>No Key Update</literal>,
+       <literal>For Update</literal>, <literal>Update</literal>.</entry>
+     </row>
+
+     <row>
+      <entry><structfield>pids</structfield></entry>
+      <entry><type>integer[]</type></entry>
+      <entry>Process IDs of locking backends (more than one if multitransaction)</entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   <function>pgrowlocks</function> takes <literal>AccessShareLock</literal> for the
+   target table and reads each row one by one to collect the row locking
+   information.  This is not very speedy for a large table.  Note that:
+  </para>
+
+  <orderedlist>
+   <listitem>
+    <para>
+     If an <literal>ACCESS EXCLUSIVE</literal> lock is taken on the table,
+     <function>pgrowlocks</function> will be blocked.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     <function>pgrowlocks</function> is not guaranteed to produce a
+     self-consistent snapshot.  It is possible that a new row lock is taken,
+     or an old lock is freed, during its execution.
+    </para>
+   </listitem>
+  </orderedlist>
+
+  <para>
+   <function>pgrowlocks</function> does not show the contents of locked
+   rows. If you want to take a look at the row contents at the same time, you
+   could do something like this:
+
+<programlisting>
+SELECT * FROM accounts AS a, pgrowlocks('accounts') AS p
+  WHERE p.locked_row = a.ctid;
+</programlisting>
+
+   Be aware however that such a query will be very inefficient.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Sample Output</title>
+
+  <screen>
+=# SELECT * FROM pgrowlocks('t1');
+ locked_row | locker | multi | xids  |     modes      |  pids
+------------+--------+-------+-------+----------------+--------
+ (0,1)      |    609 | f     | {609} | {"For Share"}  | {3161}
+ (0,2)      |    609 | f     | {609} | {"For Share"}  | {3161}
+ (0,3)      |    607 | f     | {607} | {"For Update"} | {3107}
+ (0,4)      |    607 | f     | {607} | {"For Update"} | {3107}
+(4 rows)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Tatsuo Ishii
+  </para>
+ </sect2>
+
+</sect1>

@@ -1,0 +1,56 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This is the input of bin/freeze_python_requirements.sh that is used to generate the
+# python3_requirements_frozen.txt file. In the most common workflow, you actually don't need to use
+# or modify this file (i.e. python3_requirements.txt). Just run bin/install_python_requirements.sh to
+# install specific module versions according to python3_requirements_frozen.txt.
+#
+# This file should be modified only when you need to add or remove Python dependencies or update
+# version constraints.
+#
+# A Ruby analogy would be that python3_requirements_frozen.txt is Gemfile.lock and this is Gemfile.
+#
+# TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
+
+ansible==2.9.27
+ansible-vault==2.1.0
+azure-common==1.1.28
+azure-identity==1.6.1
+azure-mgmt-compute==23.1.0
+azure-mgmt-privatedns==1.0.0
+azure-mgmt-network==19.3.0
+azure-mgmt-resource==19.0.0
+boto==2.49.0
+boto3==1.34.23
+botocore==1.34.23
+deepdiff==5.5.0
+distro==1.5.0
+fabric==2.2.1
+google-api-python-client==1.10.0
+google-api-core==1.22.0
+google-auth==1.19.2
+grpcio==1.57.0
+grpcio-tools==1.57.0
+Jinja2==3.0.3
+MarkupSafe==2.0.1
+mitogen==0.2.9
+msrestazure
+oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
+paramiko==3.4.0
+protobuf==4.23.4
+psycopg2
+python-dateutil==2.8.2
+python-ldap
+PyYAML
+requests-oauthlib==1.3.0
+requests==2.25.1
+scp==0.14.5
+setuptools>=11.333
+six
+yb-cassandra-driver

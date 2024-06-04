@@ -1,0 +1,53 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.marker-cluster-small {
+  border-radius: 50%;
+  width: 26px !important;
+  height: 26px !important;
+  line-height: 26px;
+  background-color: colors.$YB_ORANGE;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+
+  &.leaflet-marker-icon {
+    margin-top: -16px !important;
+    margin-left: -16px !important;
+  }
+
+  &.marker-cluster-outline {
+    border: 4px solid colors.$YB_ORANGE;
+    background: rgba(255, 255, 255, 0.7);
+  }
+}
+
+.provider-marker-cluster {
+  background-color: #344d98;
+}
+
+.marker-detail {
+  .marker-universe-names a {
+    display: block;
+    font-size: 16px;
+    cursor: pointer;
+    color: colors.$YB_ORANGE !important;
+    text-decoration: none;
+    font-weight: 700;
+  }
+
+  .marker-provider-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #999;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .marker-region-name {
+    font-size: 13px;
+    font-weight: 500;
+  }
+}

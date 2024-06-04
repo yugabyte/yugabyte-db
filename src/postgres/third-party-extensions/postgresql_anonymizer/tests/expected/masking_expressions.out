@@ -1,0 +1,125 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+SELECT anon.masking_expressions_for_table(NULL, 'anon') IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_expressions_for_table('pg_roles'::REGCLASS,NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_expressions_for_table('pg_roles'::REGCLASS,'does_not_exists') IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TABLE employees (
+  "NAME" TEXT DEFAULT '<unkown>',
+  job TEXT,
+  salary int
+);
+INSERT INTO employees
+VALUES ('john', NULL, 100000);
+SELECT anon.masking_expressions_for_table('employees'::REGCLASS,'anon')
+     = ' "NAME" AS "NAME",job AS job,salary AS salary';
+ ?column? 
+----------
+ t
+(1 row)
+
+;--     = '"NAME" AS "NAME",job AS job,salary AS salary';
+SELECT anon.masking_value_for_column('employees'::REGCLASS,1,'anon')
+     = '"NAME"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SET anon.privacy_by_default TO FALSE;
+SECURITY LABEL FOR anon ON COLUMN employees.salary IS 'MASKED WITH VALUE 0';
+SECURITY LABEL FOR anon ON COLUMN employees.job
+IS 'MASKED WITH FUNCTION pg_catalog.md5($$ t e s t $$)';
+SELECT anon.masking_expressions_for_table('employees'::REGCLASS,'anon') IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,1,'anon')
+     = '"NAME"';
+ ?column? 
+----------
+ t
+(1 row)
+
+;
+SELECT anon.masking_value_for_column('employees'::REGCLASS,2,'anon')
+     = 'CAST(pg_catalog.md5($$ t e s t $$) AS text)';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,3,'anon')
+    = 'CAST(0 AS integer)';
+ ?column? 
+----------
+ t
+(1 row)
+
+SET anon.strict_mode TO FALSE;
+SELECT anon.masking_value_for_column('employees'::REGCLASS,1,'anon')
+     = '"NAME"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,2,'anon')
+     = 'pg_catalog.md5($$ t e s t $$)';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,3,'anon')
+     = '0';
+ ?column? 
+----------
+ t
+(1 row)
+
+SET anon.privacy_by_default TO TRUE;
+SELECT anon.masking_value_for_column('employees'::REGCLASS,1,'anon')
+     =  $$'<unkown>'::text$$;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,2,'anon')
+     = 'pg_catalog.md5($$ t e s t $$)';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_value_for_column('employees'::REGCLASS,3,'anon')
+    = '0';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.masking_expressions_for_table('employees'::REGCLASS,'anon') IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK;

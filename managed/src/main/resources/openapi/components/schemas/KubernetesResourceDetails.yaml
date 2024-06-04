@@ -1,0 +1,17 @@
+title: Kubernetes Resource Details
+description: Identifies the K8S Resource to operate upon
+type: object
+x-yba-api-visibility: internal
+properties:
+  resource_type:
+    description: abcd
+    type: string
+    enum:
+      - UNIVERSE
+      - blah
+  name:
+    description: Name of this Kubernetes resource
+    type: string
+  namespace:
+    description: Kubernetes namespace in which the resource is found
+    type: string

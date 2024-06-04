@@ -1,0 +1,27 @@
+{
+  "default": true,
+  "code-block-style": {
+    "style": "fenced"
+  },
+  "code-fence-style": {
+    "style": "backtick"
+  },
+  "commands-show-output": false,
+  "line-length": false,
+  "no-duplicate-heading": {
+    "siblings_only": true
+  },
+  "first-line-heading": {
+    "front_matter_title": "^\\s*title\\s*[:=]"
+  },
+  "link-fragments": false,
+  "no-emphasis-as-heading": false,
+  "no-inline-html": false,
+  "no-trailing-spaces": {
+    "list_item_empty_lines": false,
+    "strict": true
+  },
+  "ul-indent": {
+    "indent": 2
+  }
+}

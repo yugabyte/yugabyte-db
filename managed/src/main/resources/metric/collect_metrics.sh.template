@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# Copyright 2021 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -euo pipefail
+
+print_help() {
+  cat <<EOT
+Usage: ${0##*/} [<options>]
+Options:
+  -o, --output <file/console>
+    output type (default: file).
+  -f, --file <filename>
+    output file path - mandatory for 'file' output type
+  -h, --help
+    Show usage
+EOT
+}
+
+output="console"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output)
+      if [[ "$2" =~ ^(file|console)$ ]]; then
+        output=$2
+      else
+        echo "Invalid output: $1" >&2
+        print_help
+        exit 1
+      fi
+      shift
+    ;;
+    -f|--file)
+      filename=$2
+      shift
+    ;;
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    *)
+      echo "Invalid option: $1" >&2
+      print_help
+      exit 1
+  esac
+  shift
+done
+
+YB_HOME_DIR="{{YB_HOME_DIR}}"
+
+PIDFILE=${YB_HOME_DIR}/collect_metrics.pid
+if [ -f $PIDFILE ]
+then
+  PID=$(cat "$PIDFILE")
+  PID_CHECK_STATUS=$(ps -p $PID > /dev/null 2>&1; echo $?)
+  if [ "$PID_CHECK_STATUS" -eq 0 ]
+  then
+    echo "Process $PID already running"
+    exit 1
+  fi
+fi
+
+PID_CREATE_STATUS=$(echo $$ > $PIDFILE; echo $?)
+if [ "$PID_CREATE_STATUS" -ne 0 ]
+then
+  echo "Could not create $PIDFILE"
+  exit 1
+fi
+
+if [ "$output" = "file" ]; then
+  mkdir -p "$(dirname "$filename")"
+  ${YB_HOME_DIR}/bin/node_health.py --metrics_only True --metrics_file "$filename"
+  chmod o+r "$filename" || true
+else
+  ${YB_HOME_DIR}/bin/node_health.py --metrics_only True
+fi

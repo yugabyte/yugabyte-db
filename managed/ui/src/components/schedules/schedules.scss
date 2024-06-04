@@ -1,0 +1,60 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+
+.schedules-panel {
+  .header {
+    height: 0;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+}
+
+.schedule-display-item-container {
+  .status-icon {
+    position: absolute;
+    top: 10px;
+    right: 7px;
+    z-index: 10;
+
+    .dropdown {
+      margin-left: 3px;
+
+      .dropdown-toggle {
+        height: 32px;
+        width: 32px;
+        border-radius: 20px;
+        font-size: 18px;
+        line-height: 16px;
+        padding: 4px 12px;
+        color: colors.$YB_GRAY_BORDER;
+
+        &,
+        &:hover,
+        &:active,
+        &:focus {
+          border: none;
+          background: none;
+        }
+
+        .fa {
+          margin-right: 0;
+          vertical-align: middle;
+        }
+      }
+      .dropdown-menu {
+        .fa {
+          font-size: 20px;
+          vertical-align: middle;
+          margin-right: 10px;
+        }
+
+        .menu-item-delete {
+          .fa {
+            color: colors.$YB_FAIL_COLOR;
+          }
+        }
+      }
+    }
+  }
+}

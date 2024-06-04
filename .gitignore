@@ -1,8 +1,128 @@
-*.o
-*.a
-*.so
-*.pc
+# Most common in-tree build directory.
+#
+# Note: build output files are not explicitly listed here because they are
+# expected to fall within in the build directory (and indeed, if they're
+# outside for some reason, we want to know as it's likely an error).
+build/
+
+perf.data
+perf.data.old
+oprofile_data
+.ycm_extra_conf.pyc
+*.kdev4
+.kdev4/
+.metadata/
+*.iml
+
+# spark testing
+extracted_from_archive.sha256
+
+# VIM/emacs stuff
+*.sw?
 *~
-.*.sw?
-hypopg-*.zip
-results/
+# These files could be used to auto-save vim sessions.
+.session.vim
+.session.vim.lock
+
+# IDE cruft
+.settings/
+.idea/
+nbproject/
+.project
+.cproject
+.csettings/
+
+# WWW dependencies which are not checked in directly
+www/tracing.*
+
+# Python
+*.py[ocd]
+python_virtual_env/
+venv/
+
+# Backup files
+*.bak
+
+# Core dumps
+core.*
+
+# CLion directories
+/cmake-build-debug
+
+# screen sometimes makes these, I think
+/hardcopy.*
+
+# Temporary files
+.DS_Store
+.DS_Store.out
+.\#*.proto
+
+# C# Object files
+*.userprefs
+
+# These files might appear when applying patches.
+*.orig
+*.rej
+
+.tags
+.tags_sorted_by_file
+cscope.out
+
+build/python_virtual_env
+build/venv
+*.versionsBackup
+
+# We can use this for marking the thirdparty directory inside a working directory as "unusable" so
+# that a shared thirdparty directory would be picked automatically instead.
+.yb_thirdparty_do_not_use
+
+.vscode
+
+hs_err_pid*.log
+
+compile_commands.json
+
+test_results.json
+test_failures.json
+*_test_report.json
+
+# Eclipse and Eclipse-compatible tools
+.classpath
+.metadata/
+
+# Diagram generator for docs
+rrdiagram*.jar*
+
+.clangd
+
+# Indexes built with clangd-indexer
+*.dex
+# Allows us to generate YAML-format clangd indexes.
+clangd_*.yml
+
+.cache
+
+target/
+
+thirdparty/
+
+# We don't use any submodules anymore.
+submodules/
+
+# Local Netlify folder
+.netlify/
+
+*.log
+!python/yugabyte/test_data/org_yb_pgsql_TestDropTableWithConcurrentTxn_testDmlTxnDrop_1pct_sample.log
+
+managed/yba-installer/bin/yba-ctl
+managed/.devspace
+managed/yba-installer/yba-ctl
+managed/devops/pex/pexEnv/
+managed/src/main/java/com/yugabyte/yw/common/operator/io/*
+
+*.bad_clang_tidy_output.*
+*.compiler_errors.txt
+
+# jenv local version
+**/.java-version

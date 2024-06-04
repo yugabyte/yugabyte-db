@@ -1,0 +1,118 @@
+# Copyright 2022 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+- name: Ensure we have the proper vars
+  assert:
+    that:
+      - user_name is defined
+      - systemd_option is defined
+
+
+# Setup cgroups for systemd installations. We will use a custom service that runs BEFORE the tserver
+# to create and setup the cgroup. If we created the cgroup in ansible, it would be deleted when the
+# vm reboots. This instead ensures that the cgroup always exists before the tserver gets started
+- block:
+  - block:
+    - set_fact:
+        systemd_dir: "/etc/systemd/system"
+    - set_fact:
+        systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
+      when: systemd_user.stat.exists
+    when: systemd_dir is undefined
+
+  - name: check for cgconfig service
+    ansible.builtin.shell:
+      "if systemctl list-units | grep -q cgconfig; then echo 'true'; else echo 'false'; fi"
+    register: cgconfig_exists
+  - name: Stop cgconfig service
+    ansible.builtin.service:
+      name: cgconfig
+      state: stopped
+      enabled: false
+    when: cgconfig_exists.stdout == "true"
+  - name: Cleanup cgconfig
+    ansible.builtin.file:
+      path: "/etc/cgconfig.conf"
+      state: "absent"
+  - name: Check cgroup version
+    ansible.builtin.shell:
+      cmd: "stat -fc %T /sys/fs/cgroup/"
+    register: cgroup_output
+    when: cgroup_output is not defined
+
+  - name: Set cgroup v1 facts
+    ansible.builtin.set_fact:
+      cgroup_path: memory/ysql
+      mem_max: memory.limit_in_bytes
+      mem_swap_map: memory.memsw.limit_in_bytes
+    when: cgroup_output.stdout != 'cgroup2fs'
+
+  - block:
+    - name: Get yugabyte user id
+      ansible.builtin.shell:
+        cmd: "id -u {{ user_name }}"
+      register: id
+
+    - name: Set Cgroup V2 facts
+      ansible.builtin.set_fact:
+        cgroup_path: "user.slice/user-{{ id.stdout }}.slice/user@{{ id.stdout }}.service/ysql"
+        mem_max: memory.max
+        mem_swap_max: memory.swap.max
+    when: cgroup_output.stdout == 'cgroup2fs'
+
+  - name: Create Cgroup oneshot service
+    ansible.builtin.template:
+      src: yb-ysql-cgroup.service
+      dest: "{{ systemd_dir }}/yb-ysql-cgroup.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+  - name: Run Cgroup oneshot service
+    become: true
+    become_user: "{{ user_name }}"
+    ansible.builtin.systemd:
+      daemon_reload: yes
+      scope: user
+      name: yb-ysql-cgroup
+      state: started
+      enabled: true
+
+  when: systemd_option and pg_max_mem_mb > 0 and ansible_distribution_major_version == "9"
+
+- block:
+  - name: Install cgconfig service on CentOS
+    package:
+      name:
+        - libcgroup
+        - libcgroup-tools
+      state: present
+    register: result
+    until: result is succeeded
+    retries: "{{ install_retry_count }}"
+    tags: yb-prebuilt-ami
+
+  - name: Add ysql cgroup info to cgconfig.conf
+    template:
+      src: cgconfig.conf.j2
+      dest: "/etc/cgconfig.conf"
+      mode: 0755
+
+  - name: Start cgconfig service
+    ansible.builtin.service:
+      name: cgconfig
+      state: restarted
+    register: result
+    until: result is succeeded
+    retries: "{{ install_retry_count }}"
+
+
+  - name: Enable cgconfig service
+    ansible.builtin.service:
+      name: cgconfig
+      enabled: yes
+  when: ansible_os_family == 'RedHat' and not air_gap and pg_max_mem_mb > 0 and
+        ansible_distribution_major_version != "9"

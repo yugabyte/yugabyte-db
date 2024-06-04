@@ -1,0 +1,33 @@
+/* Copyright (c) YugaByte, Inc. */
+.universe-apps-modal {
+  text-align: center;
+  * {
+    text-align: left;
+  }
+  @media (min-width: 992px) {
+    text-align: right;
+  }
+  .modal-content {
+    width: 100%;
+  }
+  .modal-dialog {
+    padding: 0;
+    margin-left: 20%;
+    width: 60%;
+  }
+  .tab-content {
+    min-height: 0px;
+  }
+  .yb-code-block {
+    p {
+      margin-bottom: 5px;
+    }
+  }
+  .tab-pane {
+    .app-description {
+      margin: 10px 0;
+      font-weight: normal;
+      font-style: italic;
+    }
+  }
+}

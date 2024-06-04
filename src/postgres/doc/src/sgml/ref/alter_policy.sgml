@@ -1,0 +1,143 @@
+<!--
+doc/src/sgml/ref/alter_policy.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterpolicy">
+ <indexterm zone="sql-alterpolicy">
+  <primary>ALTER POLICY</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER POLICY</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER POLICY</refname>
+  <refpurpose>change the definition of a row-level security policy</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER POLICY <replaceable class="parameter">name</replaceable> ON <replaceable class="parameter">table_name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
+
+ALTER POLICY <replaceable class="parameter">name</replaceable> ON <replaceable class="parameter">table_name</replaceable>
+    [ TO { <replaceable class="parameter">role_name</replaceable> | PUBLIC | CURRENT_ROLE | CURRENT_USER | SESSION_USER } [, ...] ]
+    [ USING ( <replaceable class="parameter">using_expression</replaceable> ) ]
+    [ WITH CHECK ( <replaceable class="parameter">check_expression</replaceable> ) ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER POLICY</command> changes the definition of an existing
+   row-level security policy.  Note that <command>ALTER POLICY</command>
+   only allows the set of roles to which the policy applies and the
+   <literal>USING</literal> and <literal>WITH CHECK</literal> expressions to
+   be modified.  To change other properties of a policy, such as the command
+   to which it applies or whether it is permissive or restrictive, the policy
+   must be dropped and recreated.
+  </para>
+
+  <para>
+   To use <command>ALTER POLICY</command>, you must own the table that
+   the policy applies to.
+  </para>
+
+  <para>
+   In the second form of <command>ALTER POLICY</command>, the role list,
+   <replaceable class="parameter">using_expression</replaceable>, and
+   <replaceable class="parameter">check_expression</replaceable> are replaced
+   independently if specified.  When one of those clauses is omitted, the
+   corresponding part of the policy is unchanged.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing policy to alter.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table that the
+      policy is on.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the policy.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">role_name</replaceable></term>
+    <listitem>
+     <para>
+      The role(s) to which the policy applies.  Multiple roles can be
+      specified at one time.  To apply the policy to all roles,
+      use <literal>PUBLIC</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">using_expression</replaceable></term>
+    <listitem>
+     <para>
+      The <literal>USING</literal> expression for the policy.
+      See <xref linkend="sql-createpolicy"/> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">check_expression</replaceable></term>
+    <listitem>
+     <para>
+      The <literal>WITH CHECK</literal> expression for the policy.
+      See <xref linkend="sql-createpolicy"/> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER POLICY</command> is a <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpolicy"/></member>
+   <member><xref linkend="sql-droppolicy"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

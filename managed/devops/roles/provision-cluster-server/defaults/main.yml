@@ -1,0 +1,16 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+use_chrony: true
+air_gap: false
+systemd_option: false
+yb_home_dir: "/home/{{ user_name }}"
+pg_max_mem_mb: 0
+install_retry_count: 5
+vm_max_map_count: 262144
+yb_metrics_dir: "{{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"

@@ -1,0 +1,148 @@
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+YugaByte Consensus Implementation
+=============================
+
+YugaByte implements the RAFT consensus protocol, with minor modifications as
+described in this document. For the details of the write-ahead-log (WAL) message
+format, see the README file in this directory. YugaByte maintains one RAFT config
+per tablet.
+
+RAFT describes how to ensure that additions to the leader's WAL get replicated
+to the rest of the config, and when it's safe to apply (commit) those changes to
+the "state machine" (the database).
+
+Overview of the RAFT protocol
+-----------------------------
+
+While the RAFT paper [1] remains the primary specification of the protocol, a
+brief outline of important points follows here, for quick reference:
+
+- RAFT has a strong leader for each config.
+- A majority of nodes in the config must agree for a write to occur or a leader
+  to be elected. Every time a leader election takes place, the monotonic term
+  number is incremented (see currentTerm below).
+- There are three roles a RAFT node can assume: leader, follower, or candidate.
+  YugaByte explicitly specifies an additional learner roles,
+  which is a non-voting role.
+- The WAL index is an absolute index into the log. If two logs contain an entry
+  with the same index and term, then the logs are identical in all entries
+  up through the given index. This is called the Log Matching property
+  (abbreviated "LMP" in some parts of the code).
+
+The following pieces of state are durable (updated before responding to RPCs):
+
+- The write-ahead log (WAL).
+- currentTerm: latest term the server has seen, initialized to 0.
+- votedFor: candidate that received this replica's vote for the current term,
+  or null if none.
+
+The WAL is implemented by log.cc. currentTerm and votedFor are part of the
+ConsensusMetadataPB which is implemented in consensus_meta.cc.
+
+
+Appending to the log:
+------------------------------
+
+Replicas implement an RPC method called UpdateConsensus which allows a
+leader to replicate a batch of log entries to the follower. Only a
+leader may call this RPC method, and a follower will only accept an
+UpdateConsensus call with a term equal to or higher than its
+currentTerm.
+[Raft calls this RPC AppendEntries(). See Raft figure 2 for details.]
+
+
+Leader election:
+------------------------------
+
+Replicas also implement an RPC method called RequestConsensusVote, which is
+invoked by candidates to gather votes (RAFT sec 5.2). See RAFT figure 2 for
+details.
+
+RaftConfig membership changes:
+------------------------------
+A two-phase joint consensus protocol is used for making cluster membership
+changes, including changing members of the config. Currently we do not allow changes to
+the size of the majority for a given tablet quorm.
+
+See RAFT section 6 and figure 11 for details.
+
+
+Leader election modifications (future work)
+---------------------------------------------
+
+The YugaByte leader election protocol proceeds exactly as specified in the extended
+version of the RAFT paper [1], sections 5.2 - 5.3, with the following
+exceptions:
+
+- Timestamps issued by config leaders must be disjoint, as specified in the
+  Google Spanner paper [2] in section 4.1.1 and Appendix A. Therefore, when a
+  new leader is elected, the leader must do a "commit-wait" style pause before
+  replicating new writes.
+
+  NOTE: this is not yet implemented. See KUDU-430.
+
+- To force acceptance of a particular node as leader (for load-balancing
+  purposes by the Master), the tablet may be quiesced until the specified node
+  has an up to date WAL, at which time that node becomes a candidate and starts
+  an election. Since other nodes are prohibited from becoming candidates during
+  this time, either this target node will win the election or the attempt to
+  force this configuration will time out and fail.
+
+  NOTE: this is not implemented!
+
+- To prevent "flapping" in the case of a flaky connection, an additional step is
+  added to the leader election protocol. If a node detects that the config
+  leader failed, instead of immediately starting an election, it will
+  periodically query the existing nodes in the config to determine whether they
+  see that the leader has failed as well. If a majority of the config (including
+  the node itself) responds that the leader appears to have failed, the node
+  becomes a candidate and starts an election. If not, the node backs off and
+  retries again later, without updating its currentTerm field.
+
+  NOTE: not yet implemented (KUDU-562)
+
+
+Corner cases and other notes
+----------------------------
+
+Various parts of RAFT are subtle and worth mentioning explicitly:
+
+- Terms are monotonic and the only way a term may appear in a log is if a leader
+  won an election and then wrote it there.
+
+- The current term is passed with every RPC request and response, and if any
+  replica sees a request or response higher than its currentTerm, it steps down
+  (if the leader) and updates its own currentTerm to match. This is the reason
+  for our planned addition of the anti-flapping modification to the leader election
+  protocol noted above.
+
+- As mentioned in the RAFT paper (sec 5.4.2), as well as the CSAIL DSRG blog [3]
+  there are restrictions on when one can consider a log entry from a previous
+  term committed. Because of the Log Matching property, the last entry written
+  by the previous leader may be overwritten even after it reaches a majority. To
+  work around this issue, replicas may only commit uncommitted log entries from
+  a previous leader's term once the current leader has successfully replicated a
+  round of log entries for its own current term.
+
+References
+----------
+
+[1] RAFT: In Search of an Understandable Consensus Algorithm (Extended Version).
+    Ongaro & Ousterhout. http://ramcloud.stanford.edu/raft.pdf
+
+[2] Spanner: Google's globally distributed database. Corbett, et al. OSDI '12.
+    http://research.google.com/archive/spanner-osdi2012.pdf
+
+[3] http://pdos.csail.mit.edu/dsrg/blog/2013/05/23/raft/

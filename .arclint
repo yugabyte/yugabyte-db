@@ -1,0 +1,129 @@
+{
+  "exclude": [
+     "([.]l$)",
+     "(Makefile$)",
+     "(src/yb/common/ql_type[.]cc$)",
+     "(src/yb/gutil/valgrind[.]h$)",
+     "([.]ipynb$)",
+     "([.]sql$)",
+     "([.]txt$)",
+     "(^src/odyssey/.*$)",
+     "(^src/postgres/.*$)",
+     "(^[.]gitmodules$)",
+     "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
+     "(^managed/src/main/resources/alert/.*[.]template$)",
+     "(^managed/src/main/resources/v1[.]routes$)",
+     "(^managed/src/main/public/swagger-ui/)",
+     "(^managed/src/main/resources/swagger[.]json$)",
+     "(^managed/src/main/resources/swagger-strict[.]json$)",
+     "(^managed/src/main/resources/logback.*[.]xml$)",
+     "(^managed/src/test/resources/alert/test_alert_definition[.]yml$)",
+     "(^managed/src/test/resources/audit/.*[.]yml$)",
+     "(^managed/src/test/resources/metric/targets_.*[.]json$)",
+     "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
+     "(^managed/src/test/resources/logback.*[.]xml$)",
+     "(^managed/build[.]sbt$)",
+     "(^managed/src/main/resources/aws_pricing/.*$)",
+     "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
+     "(^managed/src/main/resources/metric/Dashboard[.]json$)",
+     "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
+     "(^managed/devops/replicated[.]yml$)",
+     "(^managed/devops/roles/.*$)",
+     "(^python/yb/py[.]typed$)",
+     "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^managed/yba-cli/docs/.*)",
+     "(^managed/yba-cli/.*/LICENSE$)",
+     "(^managed/yba-cli/NOTICE$)",
+     "(^managed/yba-cli/internal/formatter/tabwriter/*)",
+     "(^managed/yba-cli/internal/formatter/templates/*)",
+     "(^[.]clang-tidy)",
+     "(.*/py.typed)",
+     "(^troubleshoot/backend/gradlew)",
+     "(^troubleshoot/backend/gradlew[.]bat)",
+     "(^troubleshoot/backend/build.gradle.kts)",
+     "(^troubleshoot/backend/.*/application[.]properties)",
+     "(^troubleshoot/backend/src/main/resources/.*)",
+     "(^troubleshoot/backend/src/test/resources/.*)",
+     "(^managed/src/main/resources/openapi/)",
+     "(^managed/src/main/resources/openapi_templates/)",
+     "(^yb_release_manifest.json$)",
+     "(^managed/client/java/.*/pom.xml)"
+  ],
+  "linters": {
+    "script-and-regex.script": {
+      "type": "script-and-regex",
+      "include": "(^managed/.*[.]java$)",
+      "script-and-regex.script":
+      "managed/lint/lint-java.sh",
+      "script-and-regex.regex":
+        "/(?P<message>.*)/is"
+    },
+    "text": {
+      "type": "text",
+      "text.max-line-length": 100,
+      "exclude": [
+        "(^pg15_tests/.*[.](sh|tsv)$)",
+        "(^managed/.*[.]go$)",
+        "(^managed/.*/go[.]mod)",
+        "(^managed/.*/go[.]sum)",
+        "(^managed/yba-cli/GNUmakefile)",
+        "(^managed/ui/)",
+        "(^troubleshoot/troubleshooting-framework-ui/)",
+        "(^yugabyted-ui/.*/go[.]mod)",
+        "(^yugabyted-ui/.*/go[.]sum)",
+        "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/translations/)",
+        "(^thirdparty/thirdparty_src_checksums[.]txt$)",
+        "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
+        "(^cmake_modules/cotire[.]cmake$)",
+        "(^cmake_modules/FindBoost[.]cmake$)",
+        "(^README[.]md$)",
+        "(^java/pom[.]xml$)",
+        "(^.*[.]patch$)",
+        "(java/yb-cdc/pom.xml)",
+        "(java/yb-cdc/README.md)",
+        "(^docs/.*[.]md$)",
+        "(^[.]fossa[.]yml$)",
+        "(^managed/.*[.]conf)",
+        "(^[.]gitignore$)"
+      ]
+    },
+    "pycodestyle": {
+      "type": "pep8",
+      "include": "([.]py$)",
+      "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
+      "bin": "pycodestyle",
+      "flags": ["--max-line-length=100"]
+    },
+    "googlecpplint": {
+      "type": "googlecpplint",
+      "exclude": [
+        "(^src/yb/yql/cql/ql/kwlist[.]h$)",
+        "(^src/yb/gutil/linux_syscall_support[.]h$)",
+        "(^src/yb/gutil/cycleclock-inl[.]h$)",
+        "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
+        "(^src/yb/gutil/port[.]h$)",
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
+      ],
+      "include": [
+        "([.]cpp$)",
+        "([.]cc$)",
+        "([.]c$)",
+        "([.]hpp$)",
+        "([.]h$)"
+      ],
+      "cpplint.header_guard_root_dir": "src",
+      "cpplint.max_line_length": 100,
+      "severity.rules": {
+        "(^readability/inheritance$)": "disabled",
+        "(^readability/todo$)": "disabled",
+        "(^runtime/string$)": "disabled",
+        "(^whitespace/parens$)": "disabled",
+        "(^whitespace/blank_line$)": "disabled",
+        "(^build/include_what_you_use$)": "disabled",
+        "(^build/c[+][+]11$)": "disabled",
+        "(.*)": "error"
+      }
+    }
+  }
+}

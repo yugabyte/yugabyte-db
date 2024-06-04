@@ -1,0 +1,236 @@
+ApiError:
+  description: API Error
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/ApiError'
+LiveQueryResponse:
+  description: Live Queries of a Cluster
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/LiveQueryResponseSchema'
+SlowQueryResponse:
+  description: Slow Queries of a Cluster
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/SlowQueryResponseSchema'
+ClusterNodeListResponse:
+  description: Cluster nodes response
+  content:
+    application/json:
+      schema:
+        title: Cluster Nodes Response
+        type: object
+        properties:
+          data:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/NodeData'
+        required:
+          - data
+MetricResponse:
+  description: Metric response
+  content:
+    application/json:
+      schema:
+        title: Metric Response
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/MetricData'
+          start_timestamp:
+            description: Start of range of results
+            type: integer
+            format: int64
+          end_timestamp:
+            description: End of range of results
+            type: integer
+            format: int64
+        required:
+          - data
+          - start_timestamp
+          - end_timestamp
+ActivityResponse:
+  description: Activities Response
+  content:
+    application/json:
+      schema:
+        title: Activities Response
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/ActivityData'
+        required:
+          - data
+ClusterTableListResponse:
+  description: List of cluster tables
+  content:
+    application/json:
+      schema:
+        title: Cluster table list response
+        type: object
+        properties:
+          tables:
+            $ref: '../schemas/_index.yaml#/ClusterTableData'
+          indexes:
+            $ref: '../schemas/_index.yaml#/ClusterTableData'
+        required:
+          - tables
+          - indexes
+ClusterResponse:
+  description: Cluster response
+  content:
+    application/json:
+      schema:
+        title: Cluster Response
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/ClusterData'
+HealthCheckResponse:
+      description: Successful health check response
+      content:
+        application/json:
+          schema:
+            title: Health Check Response
+            type: object
+            properties:
+              data:
+                $ref: '../schemas/_index.yaml#/HealthCheckInfo'
+ClusterTabletListResponse:
+  description: List of cluster tablets
+  content:
+    application/json:
+      schema:
+        title: Cluster tablet list response
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/ClusterTabletData'
+        required:
+          - data
+VersionInfo:
+  description: Version info for YugabyteDB
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VersionInfo'
+GflagsResponse:
+  description: Gflags information
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/GflagsInfo'
+AlertsResponse:
+  description: Alerts information
+  content:
+    application/json:
+      schema:
+        title: Alerts Response
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/AlertsInfo'
+        required:
+          - data
+TableInfoResponse:
+  description: Information for a single table
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/TableInfo'
+VoyagerMigrationsResponse:
+  description: List of the Voyager migrations
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VoyagerMigrationsInfo'
+VoyagerDataMigrationMetricsResponse:
+  description: Voyager data migration metrics response
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VoyagerMigrateDataMetrics'
+MigrateSchemaResponse:
+  description: Response for individual migration task
+  content:
+    application/json:
+      schema:
+        title: Individual Migration Task Info
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrateSchemaTaskInfo'
+VoyagerAssesmentResponse:
+  description: Response for Plan and Asses page
+  content:
+    application/json:
+      schema:
+        title: API for Plan and Asses page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+ConnectionsResponse:
+  description: YSQL connection manager stats
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/ConnectionsStats'
+NodeAddressResponse:
+  description: Node address
+  content:
+    text/plain:
+      schema:
+        type: string
+PITRScheduleListResponse:
+  description: List of PITR Schedules in the cluster
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          schedules:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/PITRSchedule'
+        required:
+          - schedules
+BackupDetailsListResponse:
+  description: Retrieve the list of databases on which backup is enabled in the YugabyteDB cluster.
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          schedules:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/BackupDetails'
+        required:
+          - backup
+RestoreDetailsListResponse:
+  description: Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          schedules:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/RestoreDetails'
+        required:
+          - restore

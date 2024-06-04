@@ -1,0 +1,2063 @@
+<appendix id="glossary">
+ <title>Glossary</title>
+ <para>
+  This is a list of terms and their meaning in the context of
+  <productname>PostgreSQL</productname> and relational database
+  systems in general.
+ </para>
+
+ <glosslist>
+  <glossentry id="glossary-acid">
+   <glossterm>ACID</glossterm>
+   <glossdef>
+    <para>
+     <glossterm linkend="glossary-atomicity">Atomicity</glossterm>,
+     <glossterm linkend="glossary-consistency">Consistency</glossterm>,
+     <glossterm linkend="glossary-isolation">Isolation</glossterm>, and
+     <glossterm linkend="glossary-durability">Durability</glossterm>.
+     This set of properties of database transactions is intended to
+     guarantee validity in concurrent operation and even in event of
+     errors, power failures, etc.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-aggregate">
+   <glossterm>Aggregate function (routine)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-function">function</glossterm> that
+     combines (<firstterm>aggregates</firstterm>) multiple input values,
+     for example by counting, averaging or adding,
+     yielding a single output value.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="functions-aggregate"/>.
+    </para>
+    <glossseealso otherterm="glossary-window-function" />
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Analytic function</glossterm>
+   <glosssee otherterm="glossary-window-function" />
+  </glossentry>
+
+  <glossentry id="glossary-analyze">
+   <glossterm>Analyze (operation)</glossterm>
+   <glossdef>
+    <para>
+     The act of collecting statistics from data in
+     <glossterm linkend="glossary-table">tables</glossterm>
+     and other <glossterm linkend="glossary-relation">relations</glossterm>
+     to help the <glossterm linkend="glossary-planner">query planner</glossterm>
+     to make decisions about how to execute
+     <glossterm linkend="glossary-query">queries</glossterm>.
+    </para>
+    <para>
+     (Don't confuse this term with the <literal>ANALYZE</literal> option
+     to the <xref linkend="sql-explain"/> command.)
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-analyze"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-atomic">
+   <glossterm>Atomic</glossterm>
+   <glossdef>
+    <para>
+     In reference to a <glossterm linkend="glossary-datum">datum</glossterm>:
+     the fact that its value cannot be broken down into smaller
+     components.
+    </para>
+   </glossdef>
+   <glossdef>
+    <para>
+     In reference to a
+     <glossterm linkend="glossary-transaction">database transaction</glossterm>:
+     see <glossterm linkend="glossary-atomicity">atomicity</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-atomicity">
+   <glossterm>Atomicity</glossterm>
+   <glossdef>
+    <para>
+     The property of a <glossterm linkend="glossary-transaction">transaction</glossterm>
+     that either all its operations complete as a single unit or none do.
+     In addition, if a system failure occurs during the execution of a
+     transaction, no partial results are visible after recovery.
+     This is one of the <acronym>ACID</acronym> properties.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-attribute">
+   <glossterm>Attribute</glossterm>
+   <glossdef>
+    <para>
+     An element with a certain name and data type found within a
+     <glossterm linkend="glossary-tuple">tuple</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-autovacuum">
+   <glossterm>Autovacuum (process)</glossterm>
+   <glossdef>
+    <para>
+     A set of background processes that routinely perform
+     <glossterm linkend="glossary-vacuum">vacuum</glossterm>
+     and <glossterm linkend="glossary-analyze">analyze</glossterm> operations.
+     The <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that coordinates the work and is always present (unless autovacuum
+     is disabled) is known as the <firstterm>autovacuum launcher</firstterm>,
+     and the processes that carry out the tasks are known as the
+     <firstterm>autovacuum workers</firstterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="autovacuum"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-auxiliary-proc">
+   <glossterm>Auxiliary process</glossterm>
+   <glossdef>
+    <para>
+     A process within an <glossterm linkend="glossary-instance">instance</glossterm>
+     that is in charge of some specific background task for the instance.
+     The auxiliary processes consist of <!-- in alphabetical order -->
+     <!-- NB: In the code, the autovac launcher doesn't use the auxiliary
+          process scaffolding; however it does behave as one so we list it
+          here anyway. In addition, logger isn't connected to shared memory so
+          most code outside postmaster.c doesn't even consider it a "proc" in
+          the first place.
+          -->
+     the <glossterm linkend="glossary-autovacuum">autovacuum launcher</glossterm>
+     (but not the autovacuum workers),
+     the <glossterm linkend="glossary-background-writer">background writer</glossterm>,
+     the <glossterm linkend="glossary-checkpointer">checkpointer</glossterm>,
+     the <glossterm linkend="glossary-logger">logger</glossterm>,
+     the <glossterm linkend="glossary-startup-process">startup process</glossterm>,
+     the <glossterm linkend="glossary-wal-archiver">WAL archiver</glossterm>,
+     the <glossterm linkend="glossary-wal-receiver">WAL receiver</glossterm>
+     (but not the <glossterm linkend="glossary-wal-sender">WAL senders</glossterm>),
+     and the <glossterm linkend="glossary-wal-writer">WAL writer</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-backend">
+   <glossterm>Backend (process)</glossterm>
+   <glossdef>
+    <para>
+     Process of an <glossterm linkend="glossary-instance">instance</glossterm>
+     which acts on behalf of a <glossterm linkend="glossary-session">client session</glossterm>
+     and handles its requests.
+    </para>
+    <para>
+     (Don't confuse this term with the similar terms
+     <glossterm linkend="glossary-background-worker">Background Worker</glossterm> or
+     <glossterm linkend="glossary-background-writer">Background Writer</glossterm>).
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-background-worker">
+   <glossterm>Background worker (process)</glossterm>
+   <glossdef>
+    <para>
+     Process within an <glossterm linkend="glossary-instance">instance</glossterm>,
+     which runs system- or user-supplied code.
+     Serves as infrastructure for several features in
+     <productname>PostgreSQL</productname>, such as
+     <glossterm linkend="glossary-replication">logical replication</glossterm>
+     and <glossterm linkend="glossary-parallel-query">parallel queries</glossterm>.
+     In addition, <glossterm linkend="glossary-extension">Extensions</glossterm> can add
+     custom background worker processes.
+   </para>
+   <para>
+    For more information, see
+    <xref linkend="bgworker"/>.
+   </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-background-writer">
+   <glossterm>Background writer (process)</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that writes dirty
+     <glossterm linkend="glossary-data-page">data pages</glossterm> from
+     <glossterm linkend="glossary-shared-memory">shared memory</glossterm> to
+     the file system.  It wakes up periodically, but works only for a short
+     period in order to distribute its expensive <acronym>I/O</acronym>
+     activity over time to avoid generating larger
+     <acronym>I/O</acronym> peaks which could block other processes.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="runtime-config-resource-background-writer"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-basebackup">
+   <glossterm>Base Backup</glossterm>
+   <glossdef>
+    <para>
+     A binary copy of all
+     <glossterm linkend="glossary-db-cluster">database cluster</glossterm>
+     files. It is generated by the tool <xref linkend="app-pgbasebackup"/>.
+     In combination with WAL files it can be used as the starting point
+     for recovery, log shipping, or streaming replication.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-bloat">
+   <glossterm>Bloat</glossterm>
+   <glossdef>
+    <para>
+     Space in data pages which does not contain current row versions,
+     such as unused (free) space or outdated row versions.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-cast">
+   <glossterm>Cast</glossterm>
+   <glossdef>
+    <para>
+     A conversion of a <glossterm linkend="glossary-datum">datum</glossterm>
+     from its current data type to another data type.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createcast"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-catalog">
+   <glossterm>Catalog</glossterm>
+   <glossdef>
+    <para>
+     The <acronym>SQL</acronym> standard uses this term to
+     indicate what is called a
+     <glossterm linkend="glossary-database">database</glossterm> in
+     <productname>PostgreSQL</productname>'s terminology.
+    </para>
+    <para>
+     (Don't confuse this term with
+     <glossterm linkend="glossary-system-catalog">system catalog</glossterm>).
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="manage-ag-overview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-check-constraint">
+   <glossterm>Check constraint</glossterm>
+   <glossdef>
+    <para>
+     A type of <glossterm linkend="glossary-constraint">constraint</glossterm>
+     defined on a <glossterm linkend="glossary-relation">relation</glossterm>
+     which restricts the values allowed in one or more
+     <glossterm linkend="glossary-attribute">attributes</glossterm>. The
+     check constraint can make reference to any attribute of the same row in
+     the relation, but cannot reference other rows of the same relation or
+     other relations.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="ddl-constraints"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-checkpoint">
+   <glossterm>Checkpoint</glossterm>
+   <glossdef>
+    <para>
+     A point in the <glossterm linkend="glossary-wal">WAL</glossterm> sequence
+     at which it is guaranteed that the heap and index data files have been
+     updated with all information from
+     <glossterm linkend="glossary-shared-memory">shared memory</glossterm>
+     modified before that checkpoint;
+     a <firstterm>checkpoint record</firstterm> is written and flushed to WAL
+     to mark that point.
+    </para>
+    <para>
+     A checkpoint is also the act of carrying out all the actions that
+     are necessary to reach a checkpoint as defined above.
+     This process is initiated when predefined conditions are met,
+     such as a specified amount of time has passed, or a certain volume
+     of records has been written; or it can be invoked by the user
+     with the command <command>CHECKPOINT</command>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="wal-configuration"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-checkpointer">
+   <glossterm>Checkpointer (process)</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that is responsible for executing
+     <glossterm linkend="glossary-checkpoint">checkpoints</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Class (archaic)</glossterm>
+   <glosssee otherterm="glossary-relation" />
+  </glossentry>
+
+  <glossentry id="glossary-client">
+   <glossterm>Client (process)</glossterm>
+   <glossdef>
+    <para>
+     Any process, possibly remote, that establishes a
+     <glossterm linkend="glossary-session">session</glossterm>
+     by <glossterm linkend="glossary-connection">connecting</glossterm> to an
+     <glossterm linkend="glossary-instance">instance</glossterm>
+     to interact with a <glossterm linkend="glossary-database">database</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-column">
+   <glossterm>Column</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-attribute">attribute</glossterm> found in
+     a <glossterm linkend="glossary-table">table</glossterm> or
+     <glossterm linkend="glossary-view">view</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-commit">
+   <glossterm>Commit</glossterm>
+   <glossdef>
+    <para>
+     The act of finalizing a
+     <glossterm linkend="glossary-transaction">transaction</glossterm> within
+     the <glossterm linkend="glossary-database">database</glossterm>, which
+     makes it visible to other transactions and assures its
+     <glossterm linkend="glossary-durability">durability</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-commit"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-concurrency">
+   <glossterm>Concurrency</glossterm>
+   <glossdef>
+    <para>
+     The concept that multiple independent operations happen within the
+     <glossterm linkend="glossary-database">database</glossterm> at the same time.
+     In <productname>PostgreSQL</productname>, concurrency is controlled by
+     the <glossterm linkend="glossary-mvcc">multiversion concurrency control</glossterm>
+     mechanism.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-connection">
+   <glossterm>Connection</glossterm>
+   <glossdef>
+    <para>
+     An established line of communication between a client process and a
+     <glossterm linkend="glossary-backend">backend</glossterm> process,
+     usually over a network, supporting a
+     <glossterm linkend="glossary-session">session</glossterm>.  This term is
+     sometimes used as a synonym for session.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="runtime-config-connection"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-consistency">
+   <glossterm>Consistency</glossterm>
+   <glossdef>
+    <para>
+     The property that the data in the
+     <glossterm linkend="glossary-database">database</glossterm>
+     is always in compliance with
+     <glossterm linkend="glossary-constraint">integrity constraints</glossterm>.
+     Transactions may be allowed to violate some of the constraints
+     transiently before it commits, but if such violations are not resolved
+     by the time it commits, such a transaction is automatically
+     <glossterm linkend="glossary-rollback">rolled back</glossterm>.
+     This is one of the <acronym>ACID</acronym> properties.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-constraint">
+   <glossterm>Constraint</glossterm>
+   <glossdef>
+    <para>
+     A restriction on the values of data allowed within a
+     <glossterm linkend="glossary-table">table</glossterm>,
+     or in attributes of a
+     <glossterm linkend="glossary-domain">domain</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="ddl-constraints"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-cumulative-statistics">
+   <glossterm>Cumulative Statistics System</glossterm>
+   <glossdef>
+    <para>
+     A system which, if enabled, accumulates statistical information
+     about the <glossterm linkend="glossary-instance">instance</glossterm>'s
+     activities.
+    </para>
+    <para>
+      For more information, see
+      <xref linkend="monitoring-stats"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Data area</glossterm>
+   <glosssee otherterm="glossary-data-directory" />
+  </glossentry>
+
+  <glossentry id="glossary-database">
+   <glossterm>Database</glossterm>
+   <glossdef>
+    <para>
+     A named collection of
+     <glossterm linkend="glossary-sql-object">local SQL objects</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="manage-ag-overview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-db-cluster">
+   <glossterm>Database cluster</glossterm>
+   <glossdef>
+    <para>
+     A collection of databases and global SQL objects,
+     and their common static and dynamic metadata.
+     Sometimes referred to as a
+     <firstterm>cluster</firstterm>.
+    </para>
+    <para>
+     In <productname>PostgreSQL</productname>, the term
+     <firstterm>cluster</firstterm> is also sometimes used to refer to an instance.
+     (Don't confuse this term with the SQL command <command>CLUSTER</command>.)
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Database server</glossterm>
+   <glosssee otherterm="glossary-instance" />
+  </glossentry>
+
+  <glossentry id="glossary-data-directory">
+   <glossterm>Data directory</glossterm>
+   <glossdef>
+    <para>
+     The base directory on the file system of a
+     <glossterm linkend="glossary-server">server</glossterm> that contains all
+     data files and subdirectories associated with a
+     <glossterm linkend="glossary-db-cluster">database cluster</glossterm>
+     (with the exception of
+     <glossterm linkend="glossary-tablespace">tablespaces</glossterm>,
+     and optionally <glossterm linkend="glossary-wal">WAL</glossterm>).
+     The environment variable <literal>PGDATA</literal> is commonly used to
+     refer to the data directory.
+    </para>
+    <para>
+     A <glossterm linkend="glossary-db-cluster">cluster</glossterm>'s storage
+     space comprises the data directory plus any additional tablespaces.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="storage-file-layout"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-data-page">
+   <glossterm>Data page</glossterm>
+   <glossdef>
+    <para>
+     The basic structure used to store relation data.
+     All pages are of the same size.
+     Data pages are typically stored on disk, each in a specific file,
+     and can be read to <glossterm linkend="glossary-shared-memory">shared buffers</glossterm>
+     where they can be modified, becoming
+     <firstterm>dirty</firstterm>.  They become clean when written
+     to disk.  New pages, which initially exist in memory only, are also
+     dirty until written.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-datum">
+   <glossterm>Datum</glossterm>
+   <glossdef>
+    <para>
+     The internal representation of one value of an <acronym>SQL</acronym>
+     data type.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-delete">
+   <glossterm>Delete</glossterm>
+   <glossdef>
+    <para>
+     An <acronym>SQL</acronym> command which removes
+     <glossterm linkend="glossary-tuple">rows</glossterm> from a given
+     <glossterm linkend="glossary-table">table</glossterm>
+     or <glossterm linkend="glossary-relation">relation</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-delete"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-domain">
+   <glossterm>Domain</glossterm>
+   <glossdef>
+    <para>
+     A user-defined data type that is based on another underlying data type.
+     It acts the same as the underlying type except for possibly restricting
+     the set of allowed values.
+    </para>
+    <para>
+     For more information, see <xref linkend="domains"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-durability">
+   <glossterm>Durability</glossterm>
+   <glossdef>
+    <para>
+     The assurance that once a
+     <glossterm linkend="glossary-transaction">transaction</glossterm> has
+     been <glossterm linkend="glossary-commit">committed</glossterm>, the
+     changes remain even after a system failure or crash.
+     This is one of the <acronym>ACID</acronym> properties.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Epoch</glossterm>
+   <glosssee otherterm="glossary-xid" />
+  </glossentry>
+
+  <glossentry id="glossary-extension">
+   <glossterm>Extension</glossterm>
+   <glossdef>
+    <para>
+     A software add-on package that can be installed on an
+     <glossterm linkend="glossary-instance">instance</glossterm> to
+     get extra features.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="extend-extensions" />.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-file-segment">
+   <glossterm>File segment</glossterm>
+   <glossdef>
+    <para>
+     A physical file which stores data for a given
+     <glossterm linkend="glossary-relation">relation</glossterm>.
+     File segments are limited in size by a configuration value
+     (typically 1 gigabyte),
+     so if a relation exceeds that size, it is split into multiple segments.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="storage-file-layout"/>.
+    </para>
+    <para>
+     (Don't confuse this term with the similar term
+     <glossterm linkend="glossary-wal-file">WAL segment</glossterm>).
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-foreign-data-wrapper">
+   <glossterm>Foreign data wrapper</glossterm>
+   <glossdef>
+    <para>
+     A means of representing data that is not contained in the local
+     <glossterm linkend="glossary-database">database</glossterm> so that it appears as if were in local
+     <glossterm linkend="glossary-table">table(s)</glossterm>. With a foreign data wrapper it is
+     possible to define a <glossterm linkend="glossary-foreign-server">foreign server</glossterm> and
+     <glossterm linkend="glossary-foreign-table">foreign tables</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createforeigndatawrapper"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-foreign-key">
+   <glossterm>Foreign key</glossterm>
+   <glossdef>
+    <para>
+     A type of <glossterm linkend="glossary-constraint">constraint</glossterm>
+     defined on one or more <glossterm linkend="glossary-column">columns</glossterm>
+     in a <glossterm linkend="glossary-table">table</glossterm> which
+     requires the value(s) in those <glossterm linkend="glossary-column">columns</glossterm> to
+     identify zero or one <glossterm linkend="glossary-tuple">row</glossterm>
+     in another (or, infrequently, the same)
+     <glossterm linkend="glossary-table">table</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-foreign-server">
+   <glossterm>Foreign server</glossterm>
+   <glossdef>
+    <para>
+     A named collection of
+     <glossterm linkend="glossary-foreign-table">foreign tables</glossterm> which
+     all use the same
+     <glossterm linkend="glossary-foreign-data-wrapper">foreign data wrapper</glossterm>
+     and have other configuration values in common.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createserver"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-foreign-table">
+   <glossterm>Foreign table (relation)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> which appears to have
+     <glossterm linkend="glossary-tuple">rows</glossterm> and
+     <glossterm linkend="glossary-column">columns</glossterm> similar to a
+     regular <glossterm linkend="glossary-table">table</glossterm>, but will forward
+     requests for data through its
+     <glossterm linkend="glossary-foreign-data-wrapper">foreign data wrapper</glossterm>,
+     which will return <glossterm linkend="glossary-result-set">result sets</glossterm>
+     structured according to the definition of the
+     <glossterm linkend="glossary-foreign-table">foreign table</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createforeigntable"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-fork">
+   <glossterm>Fork</glossterm>
+   <glossdef>
+    <para>
+     Each of the separate segmented file sets in which a relation is stored.
+     The <firstterm>main fork</firstterm> is where the actual data resides.
+     There also exist two secondary forks for metadata:
+     the <glossterm linkend="glossary-fsm">free space map</glossterm>
+     and the <glossterm linkend="glossary-vm">visibility map</glossterm>.
+     <glossterm linkend="glossary-unlogged">Unlogged relations</glossterm>
+     also have an <firstterm>init fork</firstterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-fsm">
+   <glossterm>Free space map (fork)</glossterm>
+   <glossdef>
+    <para>
+     A storage structure that keeps metadata about each data page of a table's
+     main fork.  The free space map entry for each page stores the
+     amount of free space that's available for future tuples, and is structured
+     to be efficiently searched for available space for a new tuple of a given
+     size.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="storage-fsm"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-function">
+   <glossterm>Function (routine)</glossterm>
+   <glossdef>
+    <para>
+     A type of routine that receives zero or more arguments, returns zero or more
+     output values, and is constrained to run within one transaction.
+     Functions are invoked as part of a query, for example via
+     <command>SELECT</command>.
+     Certain functions can return
+     <glossterm linkend="glossary-result-set">sets</glossterm>; those are
+     called <firstterm>set-returning functions</firstterm>.
+    </para>
+    <para>
+     Functions can also be used for
+     <glossterm linkend="glossary-trigger">triggers</glossterm> to invoke.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createfunction"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-grant">
+   <glossterm>Grant</glossterm>
+   <glossdef>
+    <para>
+     An <acronym>SQL</acronym> command that is used to allow a
+     <glossterm linkend="glossary-user">user</glossterm> or
+     <glossterm linkend="glossary-role">role</glossterm> to access
+     specific objects within the <glossterm linkend="glossary-database">database</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-grant"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-heap">
+   <glossterm>Heap</glossterm>
+   <glossdef>
+    <para>
+     Contains the values of <glossterm linkend="glossary-tuple">row</glossterm>
+     attributes (i.e., the data) for a
+     <glossterm linkend="glossary-relation">relation</glossterm>.
+     The heap is realized within one or more
+     <glossterm linkend="glossary-file-segment">file segments</glossterm>
+     in the relation's <glossterm linkend="glossary-fork">main fork</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-host">
+   <glossterm>Host</glossterm>
+   <glossdef>
+    <para>
+     A computer that communicates with other computers over a network.
+     This is sometimes used as a synonym for
+     <glossterm linkend="glossary-server">server</glossterm>.
+     It is also used to refer to a computer where
+     <glossterm linkend="glossary-client">client processes</glossterm> run.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-index">
+   <glossterm>Index (relation)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> that contains
+     data derived from a <glossterm linkend="glossary-table">table</glossterm>
+     or <glossterm linkend="glossary-materialized-view">materialized view</glossterm>.
+     Its internal structure supports fast retrieval of and access to the original
+     data.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createindex"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-insert">
+   <glossterm>Insert</glossterm>
+   <glossdef>
+    <para>
+     An <acronym>SQL</acronym> command used to add new data into a
+     <glossterm linkend="glossary-table">table</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-insert"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-instance">
+   <glossterm>Instance</glossterm>
+   <glossdef>
+    <para>
+     A group of <glossterm linkend="glossary-backend">backend</glossterm> and
+     <glossterm linkend="glossary-auxiliary-proc">auxiliary processes</glossterm>
+     that communicate using a common shared memory area.  One
+     <glossterm linkend="glossary-postmaster">postmaster process</glossterm>
+     manages the instance; one instance manages exactly one
+     <glossterm linkend="glossary-db-cluster">database cluster</glossterm>
+     with all its databases.  Many instances can run on the same
+     <glossterm linkend="glossary-server">server</glossterm>
+     as long as their <acronym>TCP</acronym> ports do not conflict.
+    </para>
+    <para>
+     The instance handles all key features of a <acronym>DBMS</acronym>:
+     read and write access to files and shared memory,
+     assurance of the <acronym>ACID</acronym> properties,
+     <glossterm linkend="glossary-connection">connections</glossterm> to
+     <glossterm linkend="glossary-client">client processes</glossterm>,
+     privilege verification, crash recovery, replication, etc.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-isolation">
+   <glossterm>Isolation</glossterm>
+   <glossdef>
+    <para>
+     The property that the effects of a transaction are not visible to
+     <glossterm linkend="glossary-concurrency">concurrent transactions</glossterm>
+     before it commits.
+     This is one of the <acronym>ACID</acronym> properties.
+    </para>
+    <para>
+     For more information, see <xref linkend="transaction-iso" />.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-join">
+   <glossterm>Join</glossterm>
+   <glossdef>
+    <para>
+     An operation and <acronym>SQL</acronym> keyword used in
+     <glossterm linkend="glossary-query">queries</glossterm>
+     for combining data from multiple
+     <glossterm linkend="glossary-relation">relations</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-key">
+   <glossterm>Key</glossterm>
+   <glossdef>
+    <para>
+     A means of identifying a <glossterm linkend="glossary-tuple">row</glossterm> within a
+     <glossterm linkend="glossary-table">table</glossterm> or
+     other <glossterm linkend="glossary-relation">relation</glossterm> by
+     values contained within one or more
+     <glossterm linkend="glossary-attribute">attributes</glossterm>
+     in that relation.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-lock">
+   <glossterm>Lock</glossterm>
+   <glossdef>
+    <para>
+     A mechanism that allows a process to limit or prevent simultaneous
+     access to a resource.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-log-file">
+   <glossterm>Log file</glossterm>
+   <glossdef>
+    <para>
+     Log files contain human-readable text lines about events.
+     Examples include login failures, long-running queries, etc.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="logfile-maintenance"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-logged">
+   <glossterm>Logged</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-table">table</glossterm> is considered
+     <glossterm linkend="glossary-logged">logged</glossterm> if changes to it are sent to the
+     <glossterm linkend="glossary-wal">WAL</glossterm>. By default, all regular
+     tables are logged. A table can be specified as
+     <glossterm linkend="glossary-unlogged">unlogged</glossterm> either at
+     creation time or via the <command>ALTER TABLE</command> command.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-logger">
+   <glossterm>Logger (process)</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     which, if enabled, writes information about database events into the current
+     <glossterm linkend="glossary-log-file">log file</glossterm>.
+     When reaching certain time- or
+     volume-dependent criteria, a new log file is created.
+     Also called <firstterm>syslogger</firstterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="runtime-config-logging"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-log-record">
+   <glossterm>Log record</glossterm>
+    <glossdef>
+     <para>
+      Archaic term for a <glossterm linkend="glossary-wal-record">WAL record</glossterm>.
+     </para>
+    </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Master (server)</glossterm>
+   <glosssee otherterm="glossary-primary-server" />
+  </glossentry>
+
+  <glossentry id="glossary-materialized">
+   <glossterm>Materialized</glossterm>
+   <glossdef>
+    <para>
+     The property that some information has been pre-computed and stored
+     for later use, rather than computing it on-the-fly.
+    </para>
+    <para>
+     This term is used in
+     <glossterm linkend="glossary-materialized-view">materialized view</glossterm>,
+     to mean that the data derived from the view's query is stored on
+     disk separately from the sources of that data.
+    </para>
+    <para>
+     This term is also used to refer to some multi-step queries to mean that
+     the data resulting from executing a given step is stored in memory
+     (with the possibility of spilling to disk), so that it can be read multiple
+     times by another step.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-materialized-view">
+   <glossterm>Materialized view (relation)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> that is
+     defined by a <command>SELECT</command> statement
+     (just like a <glossterm linkend="glossary-view">view</glossterm>),
+     but stores data in the same way that a
+     <glossterm linkend="glossary-table">table</glossterm> does. It cannot be
+     modified via <command>INSERT</command>, <command>UPDATE</command>, or
+     <command>DELETE</command> operations.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-creatematerializedview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-mvcc">
+   <glossterm>Multi-version concurrency control (MVCC)</glossterm>
+   <glossdef>
+    <para>
+     A mechanism designed to allow several
+     <glossterm linkend="glossary-transaction">transactions</glossterm> to be
+     reading and writing the same rows without one process causing other
+     processes to stall.
+     In <productname>PostgreSQL</productname>, MVCC is implemented by
+     creating copies (<firstterm>versions</firstterm>) of
+     <glossterm linkend="glossary-tuple">tuples</glossterm> as they are
+     modified; after transactions that can see the old versions terminate,
+     those old versions need to be removed.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-null">
+   <glossterm>Null</glossterm>
+   <glossdef>
+    <para>
+     A concept of non-existence that is a central tenet of relational
+     database theory. It represents the absence of a definite value.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Optimizer</glossterm>
+   <glosssee otherterm="glossary-planner" />
+  </glossentry>
+
+  <glossentry id="glossary-parallel-query">
+   <glossterm>Parallel query</glossterm>
+   <glossdef>
+    <para>
+     The ability to handle parts of executing a
+     <glossterm linkend="glossary-query">query</glossterm> to take advantage
+     of parallel processes on servers with multiple <acronym>CPU</acronym>s.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-partition">
+   <glossterm>Partition</glossterm>
+   <glossdef>
+    <para>
+     One of several disjoint (not overlapping) subsets of a larger set.
+    </para>
+   </glossdef>
+   <glossdef>
+    <para>
+     In reference to a
+     <glossterm linkend="glossary-partitioned-table">partitioned table</glossterm>:
+     One of the tables that each contain part of the data of the partitioned table,
+     which is said to be the <firstterm>parent</firstterm>.
+     The partition is itself a table, so it can also be queried directly;
+     at the same time, a partition can sometimes be a partitioned table,
+     allowing hierarchies to be created.
+    </para>
+   </glossdef>
+   <glossdef>
+    <para>
+     In reference to a <glossterm linkend="glossary-window-function">window function</glossterm>
+     in a <glossterm linkend="glossary-query">query</glossterm>,
+     a partition is a user-defined criterion that identifies which neighboring
+     <glossterm linkend="glossary-tuple">rows</glossterm>
+     of the <glossterm linkend="glossary-result-set">query's result set</glossterm>
+     can be considered by the function.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-partitioned-table">
+   <glossterm>Partitioned table (relation)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> that is
+     in semantic terms the same as a <glossterm linkend="glossary-table">table</glossterm>,
+     but whose storage is distributed across several
+     <glossterm linkend="glossary-partition">partitions</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-postmaster">
+   <glossterm>Postmaster (process)</glossterm>
+   <glossdef>
+    <para>
+      The very first process of an <glossterm linkend="glossary-instance">instance</glossterm>.
+      It starts and manages the
+      <glossterm linkend="glossary-auxiliary-proc">auxiliary processes</glossterm>
+      and creates <glossterm linkend="glossary-backend">backend processes</glossterm>
+      on demand.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="server-start"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-primary-key">
+   <glossterm>Primary key</glossterm>
+   <glossdef>
+    <para>
+     A special case of a
+     <glossterm linkend="glossary-unique-constraint">unique constraint</glossterm>
+     defined on a
+     <glossterm linkend="glossary-table">table</glossterm> or other
+     <glossterm linkend="glossary-relation">relation</glossterm> that also
+     guarantees that all of the
+     <glossterm linkend="glossary-attribute">attributes</glossterm>
+     within the <glossterm linkend="glossary-primary-key">primary key</glossterm>
+     do not have <glossterm linkend="glossary-null">null</glossterm> values.
+     As the name implies, there can be only one
+     primary key per table, though it is possible to have multiple unique
+     constraints that also have no null-capable attributes.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-primary-server">
+   <glossterm>Primary (server)</glossterm>
+   <glossdef>
+    <para>
+     When two or more <glossterm linkend="glossary-database">databases</glossterm>
+     are linked via <glossterm linkend="glossary-replication">replication</glossterm>,
+     the <glossterm linkend="glossary-server">server</glossterm>
+     that is considered the authoritative source of information is called
+     the <firstterm>primary</firstterm>,
+     also known as a <firstterm>master</firstterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-procedure">
+   <glossterm>Procedure (routine)</glossterm>
+   <glossdef>
+    <para>
+     A type of routine.
+     Their distinctive qualities are that they do not return values,
+     and that they are allowed to make transactional statements such
+     as <command>COMMIT</command> and <command>ROLLBACK</command>.
+     They are invoked via the <command>CALL</command> command.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createprocedure"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-query">
+   <glossterm>Query</glossterm>
+   <glossdef>
+    <para>
+     A request sent by a client to a <glossterm linkend="glossary-backend">backend</glossterm>,
+     usually to return results or to modify data on the database.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-planner">
+   <glossterm>Query planner</glossterm>
+   <glossdef>
+    <para>
+     The part of <productname>PostgreSQL</productname> that is devoted to
+     determining (<firstterm>planning</firstterm>) the most efficient way to
+     execute <glossterm linkend="glossary-query">queries</glossterm>.
+     Also known as <firstterm>query optimizer</firstterm>,
+     <firstterm>optimizer</firstterm>, or simply <firstterm>planner</firstterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Record</glossterm>
+   <glosssee otherterm="glossary-tuple" />
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Recycling</glossterm>
+   <glosssee otherterm="glossary-wal-file" />
+  </glossentry>
+
+  <glossentry id="glossary-referential-integrity">
+   <glossterm>Referential integrity</glossterm>
+   <glossdef>
+    <para>
+     A means of restricting data in one <glossterm linkend="glossary-relation">relation</glossterm>
+     by a <glossterm linkend="glossary-foreign-key">foreign key</glossterm>
+     so that it must have matching data in another
+     <glossterm linkend="glossary-relation">relation</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-relation">
+   <glossterm>Relation</glossterm>
+   <glossdef>
+    <para>
+     The generic term for all objects in a
+     <glossterm linkend="glossary-database">database</glossterm>
+     that have a name and a list of
+     <glossterm linkend="glossary-attribute">attributes</glossterm>
+     defined in a specific order.
+     <glossterm linkend="glossary-table">Tables</glossterm>,
+     <glossterm linkend="glossary-sequence">sequences</glossterm>,
+     <glossterm linkend="glossary-view">views</glossterm>,
+     <glossterm linkend="glossary-foreign-table">foreign tables</glossterm>,
+     <glossterm linkend="glossary-materialized-view">materialized views</glossterm>,
+     composite types, and
+     <glossterm linkend="glossary-index">indexes</glossterm> are all relations.
+    </para>
+    <para>
+     More generically, a relation is a set of tuples; for example,
+     the result of a query is also a relation.
+    </para>
+    <para>
+     In <productname>PostgreSQL</productname>,
+     <firstterm>Class</firstterm> is an archaic synonym for
+     <firstterm>relation</firstterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-replica">
+   <glossterm>Replica (server)</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-database">database</glossterm> that is paired
+     with a <glossterm linkend="glossary-primary-server">primary</glossterm>
+     database and is maintaining a copy of some or all of the primary database's
+     data. The foremost reasons for doing this are to allow for greater access
+     to that data, and to maintain availability of the data in the event that
+     the <glossterm linkend="glossary-primary-server">primary</glossterm>
+     becomes unavailable.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-replication">
+   <glossterm>Replication</glossterm>
+   <glossdef>
+    <para>
+     The act of reproducing data on one
+     <glossterm linkend="glossary-server">server</glossterm> onto another
+     server called a <glossterm linkend="glossary-replica">replica</glossterm>.
+     This can take the form of <firstterm>physical replication</firstterm>,
+     where all file changes from one server are copied verbatim,
+     or <firstterm>logical replication</firstterm> where a defined subset
+     of data changes are conveyed using a higher-level representation.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-result-set">
+   <glossterm>Result set</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> transmitted
+     from a <glossterm linkend="glossary-backend">backend process</glossterm>
+     to a <glossterm linkend="glossary-client">client</glossterm> upon the
+     completion of an <acronym>SQL</acronym> command, usually a
+     <command>SELECT</command> but it can be an
+     <command>INSERT</command>, <command>UPDATE</command>, or
+     <command>DELETE</command> command if the <literal>RETURNING</literal>
+     clause is specified.
+    </para>
+    <para>
+     The fact that a result set is a relation means that a query can be used
+     in the definition of another query, becoming a
+     <firstterm>subquery</firstterm>.
+    </para>
+   </glossdef>
+   <glossdef>
+    <para>
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-revoke">
+   <glossterm>Revoke</glossterm>
+   <glossdef>
+    <para>
+     A command to prevent access to a named set of
+     <glossterm linkend="glossary-database">database</glossterm> objects for a
+     named list of <glossterm linkend="glossary-role">roles</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-revoke"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-role">
+   <glossterm>Role</glossterm>
+   <glossdef>
+    <para>
+     A collection of access privileges to the
+     <glossterm linkend="glossary-database">instance</glossterm>.
+     Roles are themselves a privilege that can be granted to other roles.
+     This is often done for convenience or to ensure completeness
+     when multiple <glossterm linkend="glossary-user">users</glossterm> need
+     the same privileges.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createrole"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-rollback">
+   <glossterm>Rollback</glossterm>
+   <glossdef>
+    <para>
+     A command to undo all of the operations performed since the beginning
+     of a <glossterm linkend="glossary-transaction">transaction</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-rollback"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-routine">
+   <glossterm>Routine</glossterm>
+   <glossdef>
+    <para>
+     A defined set of instructions stored in the database system
+     that can be invoked for execution.
+     A routine can be written in a variety of programming
+     languages.  Routines can be
+     <glossterm linkend="glossary-function">functions</glossterm>
+     (including set-returning functions and
+     <glossterm linkend="glossary-trigger">trigger functions</glossterm>),
+     <glossterm linkend="glossary-aggregate">aggregate functions</glossterm>,
+     and <glossterm linkend="glossary-procedure">procedures</glossterm>.
+    </para>
+    <para>
+     Many routines are already defined within <productname>PostgreSQL</productname>
+     itself, but user-defined ones can also be added.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Row</glossterm>
+   <glosssee otherterm="glossary-tuple" />
+  </glossentry>
+
+  <glossentry id="glossary-savepoint">
+   <glossterm>Savepoint</glossterm>
+   <glossdef>
+    <para>
+     A special mark in the sequence of steps in a
+     <glossterm linkend="glossary-transaction">transaction</glossterm>.
+     Data modifications after this point in time may be reverted
+     to the time of the savepoint.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-savepoint"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-schema">
+   <glossterm>Schema</glossterm>
+   <glossdef>
+    <para>
+     A schema is a namespace for
+     <glossterm linkend="glossary-sql-object">SQL objects</glossterm>,
+     which all reside in the same
+     <glossterm linkend="glossary-database">database</glossterm>.
+     Each SQL object must reside in exactly one schema.
+    </para>
+    <para>
+     All system-defined SQL objects reside in schema <literal>pg_catalog</literal>.
+    </para>
+   </glossdef>
+   <glossdef>
+    <para>
+     More generically, the term <firstterm>schema</firstterm> is used to mean
+     all data descriptions (<glossterm linkend="glossary-table">table</glossterm> definitions,
+     <glossterm linkend="glossary-constraint">constraints</glossterm>, comments, etc.)
+     for a given <glossterm linkend="glossary-database">database</glossterm> or
+     subset thereof.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="ddl-schemas"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Segment</glossterm>
+   <glosssee otherterm="glossary-file-segment" />
+  </glossentry>
+
+  <glossentry id="glossary-select">
+   <glossterm>Select</glossterm>
+   <glossdef>
+    <para>
+     The <acronym>SQL</acronym> command used to request data from a
+     <glossterm linkend="glossary-database">database</glossterm>.
+     Normally, <command>SELECT</command> commands are not expected to modify the
+     <glossterm linkend="glossary-database">database</glossterm> in any way,
+     but it is possible that
+     <glossterm linkend="glossary-function">functions</glossterm> invoked within
+     the query could have side effects that do modify data.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-select"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-sequence">
+   <glossterm>Sequence (relation)</glossterm>
+   <glossdef>
+    <para>
+     A type of relation that is used to generate values.
+     Typically the generated values are sequential non-repeating numbers.
+     They are commonly used to generate surrogate
+     <glossterm linkend="glossary-primary-key">primary key</glossterm>
+     values.
+    </para>
+   </glossdef>
+  </glossentry>
+
+<!--  XXX should define all other isolation levels (and improve this definition)
+  <glossentry id="glossary-serializable">
+   <glossterm>Serializable (isolation level)</glossterm>
+   <glossdef>
+    <para>
+     Transactions defined as <literal>SERIALIZABLE</literal> are unable to
+     see changes made within other transactions. In effect, for the
+     initializing session the entire <glossterm linkend="glossary-database">database</glossterm>
+     appears to be frozen for the duration of the
+     <glossterm linkend="glossary-transaction">Transaction</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+-->
+
+  <glossentry id="glossary-server">
+   <glossterm>Server</glossterm>
+   <glossdef>
+    <para>
+     A computer on which <productname>PostgreSQL</productname>
+     <glossterm linkend="glossary-instance">instances</glossterm> run.
+     The term <firstterm>server</firstterm> denotes real hardware, a
+     container, or a <firstterm>virtual machine</firstterm>.
+    </para>
+    <para>
+     This term is sometimes used to refer to an instance or to a host.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-session">
+   <glossterm>Session</glossterm>
+   <glossdef>
+    <para>
+     A state that allows a client and a backend to interact,
+     communicating over a <glossterm linkend="glossary-connection">connection</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-shared-memory">
+   <glossterm>Shared memory</glossterm>
+   <glossdef>
+    <para>
+     <acronym>RAM</acronym> which is used by the processes common to an
+     <glossterm linkend="glossary-instance">instance</glossterm>.
+     It mirrors parts of <glossterm linkend="glossary-database">database</glossterm>
+     files, provides a transient area for
+     <glossterm linkend="glossary-wal-record">WAL records</glossterm>,
+     and stores additional common information.
+     Note that shared memory belongs to the complete instance, not to a single
+     database.
+    </para>
+    <para>
+     The largest part of shared memory is known as <firstterm>shared buffers</firstterm>
+     and is used to mirror part of data files, organized into pages.
+     When a page is modified, it is called a dirty page until it is
+     written back to the file system.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="runtime-config-resource-memory"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-sql-object">
+   <glossterm>SQL object</glossterm>
+    <glossdef>
+     <para>
+      Any object that can be created with a <command>CREATE</command>
+      command.  Most objects are specific to one database, and are commonly
+      known as <firstterm>local objects</firstterm>.
+     </para>
+     <para>
+      Most local objects reside in a specific
+      <glossterm linkend="glossary-schema">schema</glossterm> in their
+      containing database, such as
+      <glossterm linkend="glossary-relation">relations</glossterm> (all types),
+      <glossterm linkend="glossary-function">routines</glossterm> (all types),
+      data types, etc.
+      The names of such objects of the same type in the same schema
+      are enforced to be unique.
+     </para>
+     <para>
+      There also exist local objects that do not reside in schemas; some examples are
+      <glossterm linkend="glossary-extension">extensions</glossterm>,
+      <glossterm linkend="glossary-cast">data type casts</glossterm>, and
+      <glossterm linkend="glossary-foreign-data-wrapper">foreign data wrappers</glossterm>.
+      The names of such objects of the same type are enforced to be unique
+      within the database.
+     </para>
+     <para>
+      Other object types, such as
+      <glossterm linkend="glossary-role">roles</glossterm>,
+      <glossterm linkend="glossary-tablespace">tablespaces</glossterm>,
+      replication origins, subscriptions for logical replication, and
+      databases themselves are not local SQL objects since they exist
+      entirely outside of any specific database;
+      they are called <firstterm>global objects</firstterm>.
+      The names of such objects are enforced to be unique within the whole
+      database cluster.
+     </para>
+    <para>
+      For more information, see
+      <xref linkend="manage-ag-overview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-sql-standard">
+   <glossterm>SQL standard</glossterm>
+   <glossdef>
+    <para>
+     A series of documents that define the <acronym>SQL</acronym> language.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>Standby (server)</glossterm>
+   <glosssee otherterm="glossary-replica" />
+  </glossentry>
+
+  <glossentry id="glossary-startup-process">
+   <glossterm>Startup process</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that replays WAL during crash recovery and in a
+     <glossterm linkend="glossary-replication">physical replica</glossterm>.
+    </para>
+    <para>
+     (The name is historical: the startup process was named before
+     replication was implemented; the name refers to its task as it
+     relates to the server startup following a crash.)
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-system-catalog">
+   <glossterm>System catalog</glossterm>
+   <glossdef>
+    <para>
+     A collection of <glossterm linkend="glossary-table">tables</glossterm>
+     which describe the structure of all
+     <glossterm linkend="glossary-sql-object">SQL objects</glossterm>
+     of the instance.
+     The system catalog resides in the schema <literal>pg_catalog</literal>.
+     These tables contain data in internal representation and are
+     not typically considered useful for user examination;
+     a number of user-friendlier <glossterm linkend="glossary-view">views</glossterm>,
+     also in schema <literal>pg_catalog</literal>, offer more convenient access to
+     some of that information, while additional tables and views
+     exist in schema <literal>information_schema</literal>
+     (see <xref linkend="information-schema" />) that expose some
+     of the same and additional information as mandated by the
+     <glossterm linkend="glossary-sql-standard">SQL standard</glossterm>.
+    </para>
+    <para>
+      For more information, see
+      <xref linkend="ddl-schemas"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-table">
+   <glossterm>Table</glossterm>
+   <glossdef>
+    <para>
+     A collection of <glossterm linkend="glossary-tuple">tuples</glossterm> having
+     a common data structure (the same number of
+     <glossterm linkend="glossary-attribute">attributes</glossterm>, in the same
+     order, having the same name and type per position).
+     A table is the most common form of
+     <glossterm linkend="glossary-relation">relation</glossterm> in
+     <productname>PostgreSQL</productname>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createtable"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-tablespace">
+   <glossterm>Tablespace</glossterm>
+   <glossdef>
+    <para>
+     A named location on the server file system.
+     All <glossterm linkend="glossary-sql-object">SQL objects</glossterm>
+     which require storage beyond their definition in the
+     <glossterm linkend="glossary-system-catalog">system catalog</glossterm>
+     must belong to a single tablespace.
+     Initially, a database cluster contains a single usable tablespace which is
+     used as the default for all SQL objects, called <literal>pg_default</literal>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="manage-ag-tablespaces"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-temporary-table">
+   <glossterm>Temporary table</glossterm>
+   <glossdef>
+    <para>
+     <glossterm linkend="glossary-table">Tables</glossterm> that exist either
+     for the lifetime of a
+     <glossterm linkend="glossary-session">session</glossterm> or a
+     <glossterm linkend="glossary-transaction">transaction</glossterm>, as
+     specified at the time of creation.
+     The data in them is not visible to other sessions, and is not
+     <glossterm linkend="glossary-logged">logged</glossterm>.
+     Temporary tables are often used to store intermediate data for a
+     multi-step operation.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createtable"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-toast">
+   <glossterm>TOAST</glossterm>
+   <glossdef>
+    <para>
+     A mechanism by which large attributes of table rows are split and
+     stored in a secondary table, called the <firstterm>TOAST table</firstterm>.
+     Each relation with large attributes has its own TOAST table.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="storage-toast" />.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-transaction">
+   <glossterm>Transaction</glossterm>
+   <glossdef>
+    <para>
+     A combination of commands that must act as a single
+     <glossterm linkend="glossary-atomic">atomic</glossterm> command: they all
+     succeed or all fail as a single unit, and their effects are not visible to
+     other <glossterm linkend="glossary-session">sessions</glossterm> until
+     the transaction is complete, and possibly even later, depending on the
+     isolation level.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="transaction-iso"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-xid">
+   <glossterm>Transaction ID</glossterm>
+   <glossdef>
+    <para>
+     The numerical, unique, sequentially-assigned identifier that each
+     transaction receives when it first causes a database modification.
+     Frequently abbreviated as <firstterm>xid</firstterm>.
+     When stored on disk, xids are only 32-bits wide, so only
+     approximately four billion write transaction IDs can be generated;
+     to permit the system to run for longer than that,
+     <firstterm>epochs</firstterm> are used, also 32 bits wide.
+     When the counter reaches the maximum xid value, it starts over at
+     <literal>3</literal> (values under that are reserved) and the
+     epoch value is incremented by one.
+     In some contexts, the epoch and xid values are
+     considered together as a single 64-bit value.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="datatype-oid"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-tps">
+   <glossterm>Transactions per second (TPS)</glossterm>
+   <glossdef>
+    <para>
+     Average number of transactions that are executed per second,
+     totaled across all sessions active for a measured run.
+     This is used as a measure of the performance characteristics of
+     an instance.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-trigger">
+   <glossterm>Trigger</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-function">function</glossterm> which can
+     be defined to execute whenever a certain operation (<command>INSERT</command>,
+     <command>UPDATE</command>, <command>DELETE</command>,
+     <command>TRUNCATE</command>) is applied to a
+     <glossterm linkend="glossary-relation">relation</glossterm>.
+     A trigger executes within the same
+     <glossterm linkend="glossary-transaction">transaction</glossterm> as the
+     statement which invoked it, and if the function fails, then the invoking
+     statement also fails.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createtrigger"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-tuple">
+   <glossterm>Tuple</glossterm>
+   <glossdef>
+    <para>
+     A collection of <glossterm linkend="glossary-attribute">attributes</glossterm>
+     in a fixed order.
+     That order may be defined by the <glossterm linkend="glossary-table">table</glossterm>
+     (or other <glossterm linkend="glossary-relation">relation</glossterm>)
+     where the tuple is contained, in which case the tuple is often called a
+     <firstterm>row</firstterm>.  It may also be defined by the structure of a
+     result set, in which case it is sometimes called a <firstterm>record</firstterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-unique-constraint">
+   <glossterm>Unique constraint</glossterm>
+   <glossdef>
+    <para>
+     A type of <glossterm linkend="glossary-constraint">constraint</glossterm>
+     defined on a <glossterm linkend="glossary-relation">relation</glossterm>
+     which restricts the values allowed in one or a combination of columns
+     so that each value or combination of values can only appear once in the
+     relation &mdash; that is, no other row in the relation contains values
+     that are equal to those.
+    </para>
+    <para>
+     Because <glossterm linkend="glossary-null">null values</glossterm> are
+     not considered equal to each other, multiple rows with null values are
+     allowed to exist without violating the unique constraint.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-unlogged">
+   <glossterm>Unlogged</glossterm>
+   <glossdef>
+    <para>
+     The property of certain <glossterm linkend="glossary-relation">relations</glossterm>
+     that the changes to them are not reflected in the
+     <glossterm linkend="glossary-wal">WAL</glossterm>.
+     This disables replication and crash recovery for these relations.
+    </para>
+    <para>
+     The primary use of unlogged tables is for storing
+     transient work data that must be shared across processes.
+    </para>
+    <para>
+     <glossterm linkend="glossary-temporary-table">Temporary tables</glossterm>
+     are always unlogged.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-update">
+   <glossterm>Update</glossterm>
+   <glossdef>
+    <para>
+     An <acronym>SQL</acronym> command used to modify
+     <glossterm linkend="glossary-tuple">rows</glossterm>
+     that may already exist in a specified <glossterm linkend="glossary-table">table</glossterm>.
+     It cannot create or remove rows.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-update"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-user">
+   <glossterm>User</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-role">role</glossterm> that has the
+     <literal>LOGIN</literal> privilege.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-user-mapping">
+   <glossterm>User mapping</glossterm>
+   <glossdef>
+    <para>
+     The translation of login credentials in the local
+     <glossterm linkend="glossary-database">database</glossterm> to credentials
+     in a remote data system defined by a
+     <glossterm linkend="glossary-foreign-data-wrapper">foreign data wrapper</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createusermapping"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-vacuum">
+   <glossterm>Vacuum</glossterm>
+   <glossdef>
+    <para>
+     The process of removing outdated
+     <glossterm linkend="glossary-tuple">tuple versions</glossterm>
+     from tables or materialized views, and other closely related
+     processing required by <productname>PostgreSQL</productname>'s
+     implementation of <glossterm linkend="glossary-mvcc">MVCC</glossterm>.
+     This can be initiated through the use of
+     the <command>VACUUM</command> command, but can also be handled automatically
+     via <glossterm linkend="glossary-autovacuum">autovacuum</glossterm> processes.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="routine-vacuuming"/> .
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-view">
+   <glossterm>View</glossterm>
+   <glossdef>
+    <para>
+     A <glossterm linkend="glossary-relation">relation</glossterm> that is defined by a
+     <command>SELECT</command> statement, but has no storage of its own.
+     Any time a query references a view, the definition of the view is
+     substituted into the query as if the user had typed it as a subquery
+     instead of the name of the view.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-createview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-vm">
+   <glossterm>Visibility map (fork)</glossterm>
+   <glossdef>
+    <para>
+     A storage structure that keeps metadata about each data page
+     of a table's main fork.  The visibility map entry for
+     each page stores two bits: the first one
+     (<literal>all-visible</literal>) indicates that all tuples
+     in the page are visible to all transactions.  The second one
+     (<literal>all-frozen</literal>) indicates that all tuples
+     in the page are marked frozen.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>WAL</glossterm>
+   <glosssee otherterm="glossary-wal" />
+  </glossentry>
+
+  <glossentry id="glossary-wal-archiver">
+   <glossterm>WAL archiver (process)</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     which, if enabled, saves copies of
+     <glossterm linkend="glossary-wal-file">WAL files</glossterm>
+     for the purpose of creating backups or keeping
+     <glossterm linkend="glossary-replica">replicas</glossterm> current.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="continuous-archiving"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-wal-file">
+   <glossterm>WAL file</glossterm>
+   <glossdef>
+    <para>
+     Also known as <firstterm>WAL segment</firstterm> or
+     <firstterm>WAL segment file</firstterm>.
+     Each of the sequentially-numbered files that provide storage space for
+     <glossterm linkend="glossary-wal">WAL</glossterm>.
+     The files are all of the same predefined size
+     and are written in sequential order, interspersing changes
+     as they occur in multiple simultaneous sessions.
+     If the system crashes, the files are read in order, and each of the
+     changes is replayed to restore the system to the state it was in
+     before the crash.
+    </para>
+    <para>
+     Each WAL file can be released after a
+     <glossterm linkend="glossary-checkpoint">checkpoint</glossterm>
+     writes all the changes in it to the corresponding data files.
+     Releasing the file can be done either by deleting it, or by changing its
+     name so that it will be used in the future, which is called
+     <firstterm>recycling</firstterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="wal-internals"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-wal-record">
+   <glossterm>WAL record</glossterm>
+   <glossdef>
+    <para>
+     A low-level description of an individual data change.
+     It contains sufficient information for the data change to be
+     re-executed (<firstterm>replayed</firstterm>) in case a system failure
+     causes the change to be lost.
+     WAL records use a non-printable binary format.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="wal-internals"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-wal-receiver">
+   <glossterm>WAL receiver (process)</glossterm>
+   <glossdef>
+    <para>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that runs on a <glossterm linkend="glossary-replica">replica</glossterm>
+     to receive WAL from the
+     <glossterm linkend="glossary-primary-server">primary server</glossterm>
+     for replay by the
+     <glossterm linkend="glossary-startup-process">startup process</glossterm>.
+    </para>
+
+    <para>
+     For more information, see
+     <xref linkend="warm-standby"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry>
+   <glossterm>WAL segment</glossterm>
+   <glosssee otherterm="glossary-wal-file" />
+  </glossentry>
+
+  <glossentry id="glossary-wal-sender">
+   <glossterm>WAL sender (process)</glossterm>
+   <glossdef>
+    <para>
+     A special <glossterm linkend="glossary-backend">backend process</glossterm>
+     that streams WAL over a network.  The receiving end can be a
+     <glossterm linkend="glossary-wal-receiver">WAL receiver</glossterm>
+     in a <glossterm linkend="glossary-replica">replica</glossterm>,
+     <xref linkend="app-pgreceivewal"/>, or any other client program
+     that speaks the replication protocol.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-wal-writer">
+   <glossterm>WAL writer (process)</glossterm>
+   <glossdef>
+    <para>
+     A process that writes <glossterm linkend="glossary-wal-record">WAL records</glossterm>
+     from <glossterm linkend="glossary-shared-memory">shared memory</glossterm> to
+     <glossterm linkend="glossary-wal-file">WAL files</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="runtime-config-wal"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-window-function">
+   <glossterm>Window function (routine)</glossterm>
+   <glossdef>
+    <para>
+     A type of <glossterm linkend="glossary-function">function</glossterm>
+     used in a <glossterm linkend="glossary-query">query</glossterm>
+     that applies to a <glossterm linkend="glossary-partition">partition</glossterm>
+     of the query's <glossterm linkend="glossary-result-set">result set</glossterm>;
+     the function's result is based on values found in
+     <glossterm linkend="glossary-tuple">rows</glossterm> of the same partition or frame.
+    </para>
+    <para>
+     All <glossterm linkend="glossary-aggregate">aggregate functions</glossterm>
+     can be used as window functions, but window functions can also be
+     used to, for example, give ranks to each of the rows in the partition.
+     Also known as <firstterm>analytic functions</firstterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="tutorial-window"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-wal">
+   <glossterm>Write-ahead log</glossterm>
+   <glossdef>
+    <para>
+     The journal that keeps track of the changes in the
+     <glossterm linkend="glossary-db-cluster">database cluster</glossterm>
+     as user- and system-invoked operations take place.
+     It comprises many individual
+     <glossterm linkend="glossary-wal-record">WAL records</glossterm> written
+     sequentially to <glossterm linkend="glossary-wal-file">WAL files</glossterm>.
+    </para>
+   </glossdef>
+  </glossentry>
+ </glosslist>
+</appendix>

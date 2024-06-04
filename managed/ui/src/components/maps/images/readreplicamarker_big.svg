@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 22.1.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 33 34" style="enable-background:new 0 0 33 34;" xml:space="preserve">
+<style type="text/css">
+	.st0{fill:#60A763;stroke:#202951;stroke-width:1.25;stroke-linejoin:round;}
+	.st1{fill:none;stroke:#202951;stroke-width:1.25;}
+	.st2{fill:none;stroke:#202951;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;}
+	.st3{fill:#202951;}
+	.st4{fill:#FFFFFF;}
+</style>
+<title>map/read-replica/count</title>
+<desc>Created with Sketch.</desc>
+<g id="Universes-Overview">
+	<g id="Universes-Overview-Copy" transform="translate(-312.000000, -333.000000)">
+		<g id="Group" transform="translate(312.000000, 333.000000)">
+			<g id="map_x2F_read-replica_x2F_count" transform="translate(0.000000, 0.000000)">
+				<g id="ico-prim" transform="translate(1.000000, 1.000000)">
+					<path id="Fill-1" class="st0" d="M24,25c0,0-0.7,3.5-12,3.5S0,25,0,25V3.5C0,3.5,1.1,0,12,0c10.9,0,12,3.5,12,3.5V25z"/>
+					<path id="Path" class="st1" d="M0,3.6c0,2,5.4,3.6,12,3.6l0,0c6.6,0,12-1.6,12-3.6"/>
+					<path id="Path_1_" class="st2" d="M0,10.8c0,2,5.4,3.6,12,3.6l0,0c6.6,0,12-1.6,12-3.6"/>
+					<path id="Path-Copy" class="st2" d="M0,17.9c0,2,5.4,3.6,12,3.6l0,0c6.6,0,12-1.6,12-3.6"/>
+					<path id="Path-Copy-2" class="st2" d="M0,25.1c0,2,5.4,3.6,12,3.6l0,0c6.6,0,12-1.6,12-3.6"/>
+					<path id="Fill-16" class="st3" d="M23.9,32.7c-4.4,0-8-3.6-8-7.9s3.6-7.9,8-7.9s8,3.6,8,7.9S28.3,32.7,23.9,32.7"/>
+					<g>
+						<path class="st4" d="M19.4,24.7c0.4,0,0.7-0.3,0.7-0.7v-1.2c0-0.3,0.2-0.5,0.5-0.5h3.5V24l4.3-2.3l-4.3-2.3V21h-3.5
+							c-1,0-1.9,0.8-1.9,1.9V24C18.7,24.4,19,24.7,19.4,24.7z"/>
+						<path class="st4" d="M27.7,24.7c-0.4,0-0.7,0.3-0.7,0.7v1.2c0,0.3-0.2,0.5-0.5,0.5H23v-1.6l-4.3,2.3l4.3,2.3v-1.6h3.5
+							c1,0,1.9-0.8,1.9-1.9v-1.2C28.4,25.1,28.1,24.7,27.7,24.7z"/>
+					</g>
+				</g>
+			</g>
+		</g>
+	</g>
+</g>
+</svg>

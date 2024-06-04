@@ -1,0 +1,561 @@
+'/migrations':
+  get:
+    summary: Get the list of Voyager migrations
+    description: Get the list of Voyager migrations
+    operationId: GetVoyagerMigrationTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: migration_phase
+        in: query
+        description: specify the migration phase for which details are required
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerMigrationsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_assesment':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrationAssesmentDetails
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerAssesmentResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migrate_schema':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrateSchemaTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/MigrateSchemaResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_metrics':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerDataMigrationMetrics
+    tags:
+      - voyager-metrics
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerDataMigrationMetricsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/cluster':
+  get:
+    summary: Get a cluster
+    description: Get a Yugabyte Cluster
+    operationId: getCluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+  delete:
+    summary: Submit task to delete a cluster
+    description: Submit task to delete a Yugabyte Cluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        description: Successfully submitted delete cluster request
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+    operationId: deleteCluster
+  put:
+    summary: Submit task to edit a cluster
+    description: Submit task to edit a Yugabyte Cluster
+    operationId: editCluster
+    tags:
+      - cluster
+    requestBody:
+      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/live_queries':
+  get:
+    summary: Get the live queries in a cluster
+    description: Get the Live Queries in a Yugabyte Cluster
+    operationId: getLiveQueries
+    tags:
+      - cluster-info
+    parameters:
+      - name: api
+        in: query
+        description: type of queries for which to retrieve Live Queries (YSQL or YCQL)
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          enum: [YSQL, YCQL]
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/LiveQueryResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/slow_queries':
+  get:
+    summary: Get the slow queries in a cluster
+    description: Get the Slow Queries in a Yugabyte Cluster
+    operationId: getSlowQueries
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/SlowQueryResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/nodes':
+  parameters:
+    - name: get_all_masters
+      in: query
+      description: Whether to get master-only nodes that have no tserver
+      required: false
+      style: form
+      schema:
+        type: boolean
+      allowEmptyValue: true
+  get:
+    summary: Get the nodes for a cluster
+    description: Get nodes for a Yugabyte cluster
+    operationId: getClusterNodes
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterNodeListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/metrics':
+  parameters:
+    - name: metrics
+      in: query
+      description: Which metrics to retrieve results for
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: node_name
+      in: query
+      description: Node name within the cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: region
+      in: query
+      description: Region name to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: zone
+      in: query
+      description: Zone to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: start_time
+      in: query
+      description: Start of range of time series data (in epoch seconds)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    - name: end_time
+      in: query
+      description: End of range of time series data (in epoch seconds)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    - name: cluster_type
+      in: query
+      description: Cluster type (primary or read replica)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a metric for a cluster
+    description: Get metrics for a Yugabyte cluster
+    operationId: getClusterMetric
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/MetricResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/activities':
+  parameters:
+    - name: activities
+      in: query
+      description: Which activities data to retrieve
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a activities data for a cluster
+    description: Get activities data for a Yugabyte cluster
+    operationId: getClusterActivities
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ActivityResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/tables:
+  get:
+    description: Get list of tables per YB API (YCQL/YSQL)
+    operationId: getClusterTables
+    summary: Get list of DB tables per YB API (YCQL/YSQL)
+    tags:
+      - cluster-info
+    parameters:
+      - name: api
+        in: query
+        description: Which DB API to get tables for (YCQL/YSQL)
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          enum: [YCQL, YSQL]
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTableListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/table:
+  get:
+    description: Get info on a single table, given table uuid
+    operationId: getTableInfo
+    summary: Get info on a single table, given table uuid
+    tags:
+      - cluster-info
+    parameters:
+      - name: id
+        in: query
+        description: UUID of the table
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where the table info is retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/TableInfoResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/health-check:
+  get:
+    description: Get health information about the cluster
+    operationId: getClusterHealthCheck
+    summary: Get health information about the cluster
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/HealthCheckResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/tablets:
+  get:
+    description: Get list of tablets
+    operationId: getClusterTablets
+    summary: Get list of tablets
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTabletListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/version:
+  get:
+    summary: Get YugabyteDB version
+    description: Get YugabyteDB version
+    tags:
+      - cluster-info
+    operationId: getVersion
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VersionInfo'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/is_load_balancer_idle:
+  get:
+    summary: Check if cluster load balancer is idle
+    description: Check if cluster load balancer is idle
+    tags:
+      - cluster-info
+    operationId: getIsLoadBalancerIdle
+    responses:
+      '200':
+        description: Is load balancer idle
+        content:
+          application/json:
+            schema:
+              title: Is load balancer idle
+              description: Is load balancer idle
+              type: object
+              properties:
+                is_idle:
+                  type: boolean
+              required:
+                - is_idle
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/gflags:
+  get:
+    summary: Get gflags of master and tserver process
+    description: Retrieve gflags of master and tserver process
+    operationId: getGflags
+    tags:
+      - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where alerts are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/GflagsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
+    tags:
+      - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where gflags are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AlertsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/connections:
+  get:
+    summary: Get YSQL connection manager stats for every node of the cluster
+    description: Get YSQL connection manager stats for every node of the cluster
+    operationId: getClusterConnections
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ConnectionsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/node_address:
+  get:
+    summary: Get the node address for the current node
+    description: Get the node address for the current node
+    operationId: getNodeAddress
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/NodeAddressResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/pitr':
+  get:
+    summary: Get PITR Schedules
+    description: Retrieve the list of PITR schedules in the YugabyteDB cluster.
+    operationId: getPITRSchedules
+    tags:
+      - pitr-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/PITRScheduleListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/backup':
+  get:
+    summary: Get Backup Details
+    description: Retrieve the list of databases on which backup is enabled.
+    operationId: getBackupDetails
+    tags:
+      - backup-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/BackupDetailsListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/restore':
+  get:
+    summary: Get Restore Details
+    description: Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
+    operationId: getRestoreDetails
+    tags:
+      - restore-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/RestoreDetailsListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

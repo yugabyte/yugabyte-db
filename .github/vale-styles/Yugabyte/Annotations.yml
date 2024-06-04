@@ -1,0 +1,14 @@
+# Warning: Yugabyte.Annotations
+#
+# Warns you about annotations (such as "FIXME") in the text.
+# In general, it's better not to have these in any published files.
+
+message: "'%s' left in text"
+extends: existence
+ignorecase: false
+level: warning
+tokens:
+  - XXX
+  - FIXME
+  - TODO
+  - NOTE

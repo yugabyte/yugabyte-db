@@ -1,0 +1,89 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+@use '../../../_style/icons.scss';
+
+.task-list-container {
+  margin-top: 8px;
+
+  .list-group {
+    margin-bottom: 10px;
+  }
+
+  .list-group-item {
+    padding: 2px 0px 2px 10px;
+    margin: 0px 4px -2px 4px;
+    background-color: rgba(211, 211, 211, 0.2);
+    border-radius: 2px;
+    text-align: left;
+  }
+
+  .task-status {
+    font-size: 12px;
+    color: #888;
+
+    .task-status-verb {
+      font-weight: bold;
+      padding-right: 4px;
+    }
+  }
+}
+
+.task-list-heading {
+  padding: 0 10px 12px 44px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+
+  .icon-hang-left {
+    top: -6px;
+    text-indent: 2px;
+
+    i {
+      font-size: 14px !important;
+    }
+  }
+}
+
+.task-universe-name {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.task-cell {
+  display: block;
+  padding: 8px 10px 8px 44px;
+  border-top: 1px solid #e6e4e2;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.3s;
+
+  &:hover {
+    background-color: colors.$YB_HOVER_BACKGROUND_COLOR;
+    text-decoration: none;
+  }
+  .task-name {
+    line-height: 15px;
+    padding: 7px 0;
+  }
+  .icon-hang-left {
+    top: 7px;
+
+    i {
+      font-size: 20px !important;
+    }
+  }
+  &a {
+    color: colors.$YB_ORANGE;
+  }
+}
+
+.task-show-more {
+  padding: 2px 0px 2px 10px;
+  margin: 0px 4px 2px 4px;
+  text-align: left;
+  font-weight: 500;
+  font-size: 14px;
+}

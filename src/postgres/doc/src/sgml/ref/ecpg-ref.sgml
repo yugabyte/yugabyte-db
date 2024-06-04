@@ -1,0 +1,278 @@
+<!--
+doc/src/sgml/ref/ecpg-ref.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-ecpg">
+ <indexterm zone="app-ecpg">
+  <primary>ecpg</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>ecpg</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname><application>ecpg</application></refname>
+  <refpurpose>embedded SQL C preprocessor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>ecpg</command>
+   <arg choice="opt" rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="plain" rep="repeat"><replaceable>file</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+
+ <refsect1 id="app-ecpg-description">
+  <title>Description</title>
+
+  <para>
+   <command>ecpg</command> is the embedded SQL preprocessor for C
+   programs.  It converts C programs with embedded SQL statements to
+   normal C code by replacing the SQL invocations with special
+   function calls.  The output files can then be processed with any C
+   compiler tool chain.
+  </para>
+
+  <para>
+   <command>ecpg</command> will convert each input file given on the
+   command line to the corresponding C output file.  If an input file
+   name does not have any extension, <filename>.pgc</filename> is
+   assumed.  The file's extension will be replaced
+   by <filename>.c</filename> to construct the output file name.
+   But the output file name can be overridden using the
+   <option>-o</option> option.
+  </para>
+
+  <para>
+   If an input file name is just <literal>-</literal>,
+   <command>ecpg</command> reads the program from standard input
+   (and writes to standard output, unless that is overridden
+   with <option>-o</option>).
+  </para>
+
+  <para>
+   This reference page does not describe the embedded SQL language.
+   See <xref linkend="ecpg"/> for more information on that topic.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <command>ecpg</command> accepts the following command-line
+   arguments:
+
+   <variablelist>
+    <varlistentry>
+     <term><option>-c</option></term>
+     <listitem>
+      <para>
+       Automatically generate certain C code from SQL code.  Currently, this
+       works for <literal>EXEC SQL TYPE</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-C <replaceable>mode</replaceable></option></term>
+     <listitem>
+      <para>
+       Set a compatibility mode.  <replaceable>mode</replaceable> can
+       be <literal>INFORMIX</literal>,
+       <literal>INFORMIX_SE</literal>, or <literal>ORACLE</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-D <replaceable>symbol</replaceable></option></term>
+     <listitem>
+      <para>
+       Define a C preprocessor symbol.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-h</option></term>
+     <listitem>
+      <para>
+       Process header files.  When this option is specified, the output file
+       extension becomes <literal>.h</literal> not <literal>.c</literal>,
+       and the default input file extension is <literal>.pgh</literal>
+       not <literal>.pgc</literal>.  Also, the <option>-c</option> option is
+       forced on.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-i</option></term>
+     <listitem>
+      <para>
+       Parse system include files as well.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-I <replaceable class="parameter">directory</replaceable></option></term>
+     <listitem>
+      <para>
+       Specify an additional include path, used to find files included
+       via <literal>EXEC SQL INCLUDE</literal>.  Defaults are
+       <filename>.</filename> (current directory),
+       <filename>/usr/local/include</filename>, the
+       <productname>PostgreSQL</productname> include directory which
+       is defined at compile time (default:
+       <filename>/usr/local/pgsql/include</filename>), and
+       <filename>/usr/include</filename>, in that order.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-o <replaceable>filename</replaceable></option></term>
+     <listitem>
+      <para>
+       Specifies that <command>ecpg</command> should write all
+       its output to the given <replaceable>filename</replaceable>.
+       Write <literal>-o -</literal> to send all output to standard output.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-r <replaceable>option</replaceable></option></term>
+     <listitem>
+      <para>
+       Selects run-time behavior.  <replaceable>Option</replaceable> can be
+       one of the following:
+       <variablelist>
+        <varlistentry>
+         <term><option>no_indicator</option></term>
+         <listitem>
+         <para>
+         Do not use indicators but instead use special values to represent
+         null values. Historically there have been databases using this approach.
+         </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><option>prepare</option></term>
+         <listitem>
+         <para>
+         Prepare all statements before using them. Libecpg will keep a cache of
+         prepared statements and reuse a statement if it gets executed again. If the
+         cache runs full, libecpg will free the least used statement.
+         </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><option>questionmarks</option></term>
+         <listitem>
+         <para>
+         Allow question mark as placeholder for compatibility reasons.
+         This used to be the default long ago.
+         </para>
+         </listitem>
+        </varlistentry>
+       </variablelist></para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-t</option></term>
+     <listitem>
+      <para>
+       Turn on autocommit of transactions. In this mode, each SQL command is
+       automatically committed unless it is inside an explicit
+       transaction block. In the default mode, commands are committed
+       only when <command>EXEC SQL COMMIT</command> is issued.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-v</option></term>
+     <listitem>
+      <para>
+       Print additional information including the version and the
+       "include" path.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--version</option></term>
+     <listitem>
+      <para>
+       Print the <application>ecpg</application> version and exit.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-?</option></term>
+     <term><option>--help</option></term>
+     <listitem>
+      <para>
+       Show help about <application>ecpg</application> command line
+       arguments, and exit.
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   When compiling the preprocessed C code files, the compiler needs to
+   be able to find the <application>ECPG</application> header files in the
+   <productname>PostgreSQL</productname> include directory.  Therefore, you might
+   have to use the <option>-I</option> option when invoking the compiler
+   (e.g., <literal>-I/usr/local/pgsql/include</literal>).
+  </para>
+
+  <para>
+   Programs using C code with embedded SQL have to be linked against
+   the <filename>libecpg</filename> library, for example using the
+   linker options <literal>-L/usr/local/pgsql/lib -lecpg</literal>.
+  </para>
+
+  <para>
+   The value of either of these directories that is appropriate for
+   the installation can be found out using <xref
+   linkend="app-pgconfig"/>.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   If you have an embedded SQL C source file named
+   <filename>prog1.pgc</filename>, you can create an executable
+   program using the following sequence of commands:
+<programlisting>
+ecpg prog1.pgc
+cc -I/usr/local/pgsql/include -c prog1.c
+cc -o prog1 prog1.o -L/usr/local/pgsql/lib -lecpg
+</programlisting></para>
+ </refsect1>
+
+</refentry>

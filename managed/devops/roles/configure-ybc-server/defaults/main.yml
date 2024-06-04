@@ -1,0 +1,17 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+yb_home_dir: "/home/{{ user_name }}"
+yb_bin_dir: "{{ yb_home_dir }}/bin"
+yb_software_dir: "{{ yb_home_dir }}/yb-software"
+ybc_conf_dir: "{{ yb_home_dir }}/controller/conf"
+ybc_conf_file: "{{ ybc_conf_dir }}/server.conf"
+ybc_logs_dir: "{{ yb_home_dir }}/controller/logs"
+configure_ybc: false
+systemd_option: false
+systemd_unit_dir: "/lib/systemd/system"

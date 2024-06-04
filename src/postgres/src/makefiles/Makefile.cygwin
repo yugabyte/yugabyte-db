@@ -1,0 +1,52 @@
+# src/makefiles/Makefile.cygwin
+
+ifdef PGXS
+BE_DLLLIBS= -L$(libdir) -lpostgres
+else
+BE_DLLLIBS= -L$(top_builddir)/src/backend -lpostgres
+endif
+
+# linking with -lm or -lc causes program to crash
+# (see http://sources.redhat.com/cygwin/faq/faq.html#SEC110)
+LIBS:=$(filter-out -lm -lc, $(LIBS))
+
+AROPT = crs
+
+override CPPFLAGS += -DWIN32_STACK_RLIMIT=$(WIN32_STACK_RLIMIT)
+
+ifneq (,$(findstring backend,$(subdir)))
+ifeq (,$(findstring conversion_procs,$(subdir)))
+ifeq (,$(findstring libpqwalreceiver,$(subdir)))
+ifeq (,$(findstring replication/pgoutput,$(subdir)))
+ifeq (,$(findstring snowball,$(subdir)))
+override CPPFLAGS+= -DBUILDING_DLL
+endif
+endif
+endif
+endif
+endif
+
+ifneq (,$(findstring src/common,$(subdir)))
+override CPPFLAGS+= -DBUILDING_DLL
+endif
+
+ifneq (,$(findstring src/port,$(subdir)))
+override CPPFLAGS+= -DBUILDING_DLL
+endif
+
+ifneq (,$(findstring timezone,$(subdir)))
+override CPPFLAGS+= -DBUILDING_DLL
+endif
+
+ifneq (,$(findstring ecpg/ecpglib,$(subdir)))
+override CPPFLAGS+= -DBUILDING_DLL
+endif
+
+# required by Python headers
+ifneq (,$(findstring src/pl/plpython,$(subdir)))
+override CPPFLAGS+= -DUSE_DL_IMPORT
+endif
+
+# Rule for building a shared library from a single .o file
+%.dll: %.o
+	$(CC) $(CFLAGS)  -shared -o $@ $<  $(LDFLAGS) $(LDFLAGS_SL) $(BE_DLLLIBS)

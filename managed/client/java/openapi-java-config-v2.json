@@ -1,0 +1,18 @@
+    {
+        "hideGenerationTimestamp": "true",
+        "groupId": "com.yugabyte",
+        "artifactId": "yba-client-v2",
+        "artifactVersion": "2.0.0",
+        "artifactDescription": "Java client for Yugayte Anywhere",
+        "parentGroupId": "com.yugabyte",
+        "parentArtifactId": "yba",
+        "parentVersion": "2.0.0",
+        "apiPackage": "com.yugabyte.yba.v2.client.api",
+        "modelPackage": "com.yugabyte.yba.v2.client.models",
+        "developerOrganizationUrl": "https://www.yugabyte.com",
+        "developerOrganization": "Yugabyte",
+        "developerName": "Yugabyte",
+        "developerEmail": "oss-maintainers@yugabyte.com",
+        "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0",
+        "library": "jersey2"
+    }

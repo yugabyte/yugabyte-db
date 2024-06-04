@@ -1,0 +1,16 @@
+Parsed test spec with 2 sessions
+
+starting permutation: ins com upd
+step ins: INSERT INTO bar VALUES (42);
+step com: COMMIT;
+step upd: UPDATE foo SET b = 'Hello World';
+
+starting permutation: ins upd com
+step ins: INSERT INTO bar VALUES (42);
+step upd: UPDATE foo SET b = 'Hello World';
+step com: COMMIT;
+
+starting permutation: upd ins com
+step upd: UPDATE foo SET b = 'Hello World';
+step ins: INSERT INTO bar VALUES (42);
+step com: COMMIT;

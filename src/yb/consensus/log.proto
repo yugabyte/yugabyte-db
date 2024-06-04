@@ -1,0 +1,137 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.log;
+
+option java_package = "org.yb.log";
+
+import "yb/common/common.proto";
+import "yb/common/opid.proto";
+import "yb/consensus/consensus.proto";
+import "yb/rpc/lightweight_message.proto";
+
+// ===========================================================================
+//  Log Entries - Log specific messages + single node messages
+// ===========================================================================
+
+// Types of log entries.
+enum LogEntryTypePB {
+  UNKNOWN = 0;
+  REPLICATE = 1;
+
+  // Marker entries are for dummy log messages. These will never end up in the log.
+
+  // Roll over active log segment before writing the next entry if active segment is not empty.
+  SYNC_ROLLOVER_MARKER = 998;
+  // Serve the purpose of making sure that all entries up to the FLUSH_MARKER entry are flushed.
+  FLUSH_MARKER = 999;
+  // Async roll over active log segment, and halve the cur_max_segment_size of the next segment
+  // if it's greater than initial_max_segment_size.
+  ASYNC_ROLLOVER_AT_FLUSH_MARKER = 1000;
+};
+
+// An entry in the WAL/state machine log.
+message LogEntryPB {
+  required LogEntryTypePB type = 1;
+  optional consensus.ReplicateMsg replicate = 2 [(yb.rpc.lightweight_field).pointer = true];
+}
+
+// A batch of entries in the WAL.
+message LogEntryBatchPB {
+  repeated LogEntryPB entry = 1;
+  optional OpIdPB committed_op_id = 2;
+  // Time when this batch was appended, this time is monotonically increase,
+  // and restart safe. I.e. first batch after restart will have time greater than or equal to
+  // time of last batch added before restart.
+  optional uint64 mono_time = 3;
+}
+
+// A header for a log segment.
+message LogSegmentHeaderPB {
+  // Log format major version.
+  required uint32 major_version = 1;
+
+  // Log format minor version.
+  required uint32 minor_version = 2;
+
+  // The ID of the tablet this WAL segment stores entries for.
+  required bytes unused_tablet_id = 5;
+
+  // The tablet-specific sequence number of this WAL segment.
+  required int64 sequence_number = 6;
+
+  // Schema used when appending entries to this log, and its version.
+  required SchemaPB DEPRECATED_schema = 7;
+  optional uint32 DEPRECATED_schema_version = 8;
+}
+
+// A header for a log index block that are stored inside WAL segment file.
+message LogIndexBlockHeaderPB {
+  required int64 start_op_index = 1;
+  required int32 num_entries = 2;
+  required int64 size = 3;
+  required bool is_last_block = 4;
+  // CRC32C over log index block of size `size` that follows the serialized header.
+  required fixed32 crc32c = 5;
+}
+
+// A footer for a log segment.
+//
+// Log segment footers might not be present (e.g. if the server crashed) so they should contain no
+// information that cannot be obtained by actually reading the entries in the log.
+//
+// We use the footer to keep sparse index entries mapping op_id->offset (right now we just keep the
+// first entry with an id in the log).
+message LogSegmentFooterPB {
+  // The total number of operations inside this segment.
+  required int64 num_entries = 1;
+
+  // The minimum and maximum index of a REPLICATE message in this segment.
+  // NOTE: because of log truncation, the min/max are not necessarily the first/last!  For example,
+  // a log segment may contain entries "1.5, 1.6, 2.3, 3.3" due to multiple term changes.
+  //
+  // Because it's possible for a segment to have no REPLICATE messages in it, we set the default
+  // to -1 for these fields to avoid accidentally reading 0, which might look like a real log index.
+  optional int64 min_replicate_index = 2 [ default = -1 ];
+  optional int64 max_replicate_index = 3 [ default = -1 ];
+
+  // The time (microseconds since epoch) when this segment was closed.
+  // NOTE: in configurations where --skip_wal_rewrite=false is specified, log segments are rewritten
+  // during bootstrap, so this field will be reset to the time of the bootstrap in each log segment
+  // on a newly-restarted server, rather than copied over from the old log segments.
+  optional int64 close_timestamp_micros = 4;
+
+  // Offset of the first index block. Absence means there is no log index stored in this log
+  // segment.
+  optional int64 index_start_offset = 5;
+}

@@ -1,0 +1,388 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
+import "yb/master/catalog_entity_info.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+
+message ListTabletServersRequestPB {
+  // If set to true, return only the tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
+  // If replication_info is not provided, tablespace ID will be
+  // used to fetch the replication config on user tables that
+  // are geo-partitioned within a tablespace.
+  optional bytes tablespace_id = 2;
+  // Replication config will be used on user tables that are located
+  // in geo-partitioned tablepsace to filter TServers based
+  // on their placement ID and cloud config.
+  optional ReplicationInfoPB replication_info = 3;
+}
+
+message ListTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional int32 millis_since_heartbeat = 3;
+    optional bool alive = 4;
+    optional TServerMetricsPB metrics = 5;
+  }
+  repeated Entry servers = 2;
+}
+
+message ListLiveTabletServersRequestPB {
+  // If set to true, return only the live tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
+}
+
+message ListLiveTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional bool isFromReadReplica = 3;
+  }
+  repeated Entry servers = 2;
+}
+
+// ListMastersRequest/Response: get information about all of the known
+// master servers, including this node from the in-memory options.
+message ListMastersRequestPB {
+}
+
+message ListMastersResponsePB {
+  // An entry for each individual master server.
+  repeated ServerEntryPB masters = 1;
+
+  // Set only if there's an error in retrieving the list of servers or
+  // in getting this server's own local registration information.
+  optional MasterErrorPB error = 2;
+}
+
+// ListMasterRaftPeersRequest/Response: get information about all of the known servers
+// which are part of this master's version of the currently active Raft quorum. This also
+// captures any inflight change config operations which are not yet tracked by in-memory options
+// and hence can give a more current picture of peers compared with ListMastersResponse.
+message ListMasterRaftPeersRequestPB {
+}
+
+message ListMasterRaftPeersResponsePB {
+  // An entry for each individual master server.
+  repeated consensus.RaftPeerPB masters = 1;
+
+  // Set only if there's an error in retrieving the list of servers or
+  // in getting this server's own local registration information.
+  optional MasterErrorPB error = 2;
+}
+
+// GetMasterRegistrationRequest/Response: get the instance id and
+// HTTP/RPC addresses for this Master server.
+message GetMasterRegistrationRequestPB {
+}
+
+// TODO: Just use ServerRegistration here.
+message GetMasterRegistrationResponsePB {
+  // Node instance information is always set.
+  required NodeInstancePB instance_id = 1;
+
+  // These fields are optional, as they won't be set if there's an
+  // error retrieving the host/port information.
+  optional ServerRegistrationPB registration = 2;
+
+  // This server's role in the consensus configuration.
+  optional PeerRole role = 3;
+
+  // Set if there an error retrieving the registration information.
+  optional MasterErrorPB error = 4;
+}
+
+// Get a master's notion being ready as the leader.
+// NOTE: Should be used only for unit testing purposes.
+message IsMasterLeaderReadyRequestPB {
+}
+
+// When no errors, the master will be deemed ready as per its catalog manager layer.
+message IsMasterLeaderReadyResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// Make the masters dump all their in-memory and on-disk state to their respective log files.
+// Sent to the master leader first, and then propogated to its peers if peers_also is set to true.
+message DumpMasterStateRequestPB {
+  // Dump on-disk state known to this master - including sys.catalog and raft config related info
+  optional bool on_disk = 1 [default = true];
+
+  // If set to true, the leader sends request to all current peers to dump their state too.
+  // The on_disk is sent along to peers too.
+  optional bool peers_also = 2 [default = false];
+
+  // If set to true, the dump will be returned back as a string in the response.
+  // Else the dump will be saved into the master respective log files.
+  optional bool return_dump_as_string = 3 [default = false];
+}
+
+message DumpMasterStateResponsePB {
+  optional MasterErrorPB error = 1;
+  optional string dump = 2;
+}
+
+message ChangeLoadBalancerStateRequestPB {
+  optional bool is_enabled = 1;
+}
+
+message ChangeLoadBalancerStateResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetLoadBalancerStateRequestPB {
+}
+
+message GetLoadBalancerStateResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_enabled = 2;
+}
+
+// Update an ex-peer about its removal from the cluster.
+message RemovedMasterUpdateRequestPB {
+}
+
+message RemovedMasterUpdateResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message SetPreferredZonesRequestPB {
+  repeated CloudInfoPB preferred_zones = 1;
+  repeated CloudInfoListPB multi_preferred_zones = 2;
+}
+
+message SetPreferredZonesResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetMasterClusterConfigRequestPB {
+}
+
+message GetMasterClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysClusterConfigEntryPB cluster_config = 2;
+}
+
+message GetMasterXClusterConfigRequestPB {
+}
+
+message GetMasterXClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysXClusterConfigEntryPB xcluster_config = 2;
+}
+
+message ChangeMasterClusterConfigRequestPB {
+  optional SysClusterConfigEntryPB cluster_config = 1;
+}
+
+message ChangeMasterClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// Get the percentage of tablet data that got moved as part of a blacklist config change.
+// Handled by the master leader and picked up by new leader on failover.
+message GetLoadMovePercentRequestPB {
+}
+
+// When no errors, the percent reflects the progress of load removal from the blacklisted tservers.
+message GetLoadMovePercentResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // To be deprecated. Replaced by "100 * (total - remaining) / total".
+  optional double percent = 2;
+
+  optional uint64 remaining = 3;
+  optional uint64 total = 4;
+}
+
+// Get the percentage of tablet leadership that got moved as part of a leader blacklist config
+// change. Handled by the master leader and picked up by new leader on failover.
+message GetLeaderBlacklistPercentRequestPB {
+}
+
+// When no errors, the master leader will have balanced all the load across the live tservers.
+// The client can send in an optional value for the expected number of servers. If the master
+// finds fewer alive in its snapshot than these, it will consider the load imbalanced.
+message IsLoadBalancedRequestPB {
+  optional int32 expected_num_servers = 1;
+}
+
+message IsLoadBalancedResponsePB {
+  // Any error being set implies that the load is not balanced across the servers.
+  optional MasterErrorPB error = 1;
+}
+
+// Is load balancer idle.
+message IsLoadBalancerIdleRequestPB {
+}
+
+// When no errors, load balancer is idle.
+message IsLoadBalancerIdleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message AreLeadersOnPreferredOnlyRequestPB {
+}
+
+message AreLeadersOnPreferredOnlyResponsePB {
+  // Any error being set implies that the leader load is not balanced across the servers.
+  optional MasterErrorPB error = 1;
+}
+
+message GetAutoFlagsConfigRequestPB {
+}
+
+message GetAutoFlagsConfigResponsePB {
+  required AutoFlagsConfigPB config = 1;
+  optional MasterErrorPB error = 3;
+}
+
+message ValidateAutoFlagsConfigRequestPB {
+  required AutoFlagsConfigPB config = 1;
+  optional uint32 min_flag_class = 2;
+}
+
+message ValidateAutoFlagsConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool valid = 2;
+  optional uint32 config_version = 3;
+}
+
+message PromoteAutoFlagsRequestPB {
+  required string max_flag_class = 1;
+  required bool promote_non_runtime_flags = 2;
+  // When force is set, the config version is bumped up even if no new flags are
+  // eligible for promote.
+  required bool force = 3;
+}
+
+message PromoteAutoFlagsResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool non_runtime_flags_promoted = 2;
+  optional MasterErrorPB error = 3;
+  optional bool flags_promoted = 4;
+}
+
+message RollbackAutoFlagsRequestPB {
+  required uint32 rollback_version = 1;
+}
+
+message RollbackAutoFlagsResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flags_rolledback = 2;
+  optional MasterErrorPB error = 3;
+}
+
+message PromoteSingleAutoFlagRequestPB {
+  required string process_name = 1;
+  required string auto_flag_name = 2;
+}
+
+message PromoteSingleAutoFlagResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flag_promoted = 2;
+  optional bool non_runtime_flag_promoted = 3;
+  optional MasterErrorPB error = 4;
+}
+
+message DemoteSingleAutoFlagRequestPB {
+  required string process_name = 1;
+  required string auto_flag_name = 2;
+}
+
+message DemoteSingleAutoFlagResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool flag_demoted = 2;
+  optional MasterErrorPB error = 3;
+}
+
+message CheckMasterTabletHealthRequestPB {
+}
+
+message CheckMasterTabletHealthResponsePB {
+  optional MasterErrorPB error = 1;
+  optional PeerRole role = 2;
+  // Only valid if role is not LEADER.
+  optional int64 follower_lag_ms = 3;
+}
+
+service MasterCluster {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  // Administrative/monitoring RPCs
+  rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
+  rpc ListLiveTabletServers(ListLiveTabletServersRequestPB)
+      returns (ListLiveTabletServersResponsePB);
+  rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
+  rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
+  rpc GetMasterRegistration(GetMasterRegistrationRequestPB)
+      returns (GetMasterRegistrationResponsePB);
+  rpc GetAutoFlagsConfig(GetAutoFlagsConfigRequestPB) returns (GetAutoFlagsConfigResponsePB);
+  rpc PromoteAutoFlags(PromoteAutoFlagsRequestPB) returns (PromoteAutoFlagsResponsePB);
+  rpc RollbackAutoFlags(RollbackAutoFlagsRequestPB) returns (RollbackAutoFlagsResponsePB);
+  rpc PromoteSingleAutoFlag(PromoteSingleAutoFlagRequestPB)
+      returns (PromoteSingleAutoFlagResponsePB);
+  rpc DemoteSingleAutoFlag(DemoteSingleAutoFlagRequestPB)
+      returns (DemoteSingleAutoFlagResponsePB);
+  rpc ValidateAutoFlagsConfig(ValidateAutoFlagsConfigRequestPB)
+      returns (ValidateAutoFlagsConfigResponsePB);
+
+  // Get the ready status from the catalog manager for this master.
+  // NOTE: Should be used only for unit testing purposes.
+  rpc IsMasterLeaderServiceReady(IsMasterLeaderReadyRequestPB)
+      returns (IsMasterLeaderReadyResponsePB);
+
+  // Dump master state from all the peers in the current master's quorum
+  rpc DumpState(DumpMasterStateRequestPB) returns (DumpMasterStateResponsePB);
+
+  rpc ChangeLoadBalancerState(ChangeLoadBalancerStateRequestPB)
+      returns (ChangeLoadBalancerStateResponsePB);
+  rpc GetLoadBalancerState(GetLoadBalancerStateRequestPB) returns (GetLoadBalancerStateResponsePB);
+
+  rpc RemovedMasterUpdate(RemovedMasterUpdateRequestPB) returns (RemovedMasterUpdateResponsePB);
+
+  rpc SetPreferredZones(SetPreferredZonesRequestPB) returns (SetPreferredZonesResponsePB);
+  rpc GetMasterClusterConfig(GetMasterClusterConfigRequestPB)
+      returns (GetMasterClusterConfigResponsePB);
+  rpc GetMasterXClusterConfig(GetMasterXClusterConfigRequestPB)
+      returns (GetMasterXClusterConfigResponsePB);
+  rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
+      returns (ChangeMasterClusterConfigResponsePB);
+  rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
+      returns (GetLoadMovePercentResponsePB);
+  rpc GetLeaderBlacklistCompletion(GetLeaderBlacklistPercentRequestPB)
+      returns (GetLoadMovePercentResponsePB);
+  rpc IsLoadBalanced(IsLoadBalancedRequestPB)
+      returns (IsLoadBalancedResponsePB);
+  rpc IsLoadBalancerIdle(IsLoadBalancerIdleRequestPB)
+      returns (IsLoadBalancerIdleResponsePB);
+  rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
+      returns (AreLeadersOnPreferredOnlyResponsePB);
+  rpc CheckMasterTabletHealth(CheckMasterTabletHealthRequestPB)
+      returns (CheckMasterTabletHealthResponsePB);
+}

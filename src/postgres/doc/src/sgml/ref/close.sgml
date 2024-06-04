@@ -1,0 +1,132 @@
+<!--
+doc/src/sgml/ref/close.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-close">
+ <indexterm zone="sql-close">
+  <primary>CLOSE</primary>
+ </indexterm>
+
+ <indexterm zone="sql-close">
+  <primary>cursor</primary>
+  <secondary>CLOSE</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CLOSE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CLOSE</refname>
+  <refpurpose>close a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CLOSE { <replaceable class="parameter">name</replaceable> | ALL }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CLOSE</command> frees the resources associated with an open cursor.
+   After the cursor is closed, no subsequent operations
+   are allowed on it. A cursor should be closed when it is
+   no longer needed.
+  </para>
+
+  <para>
+   Every non-holdable open cursor is implicitly closed when a
+   transaction is terminated by <command>COMMIT</command> or
+   <command>ROLLBACK</command>.  A holdable cursor is implicitly
+   closed if the transaction that created it aborts via
+   <command>ROLLBACK</command>.  If the creating transaction
+   successfully commits, the holdable cursor remains open until an
+   explicit <command>CLOSE</command> is executed, or the client
+   disconnects.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an open cursor to close.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALL</literal></term>
+    <listitem>
+     <para>
+      Close all open cursors.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <productname>PostgreSQL</productname> does not have an explicit
+   <command>OPEN</command> cursor statement; a cursor is considered
+   open when it is declared.  Use the
+   <link linkend="sql-declare"><command>DECLARE</command></link>
+   statement to declare a cursor.
+  </para>
+
+  <para>
+   You can see all available cursors by querying the <link
+   linkend="view-pg-cursors"><structname>pg_cursors</structname></link> system view.
+  </para>
+
+  <para>
+   If a cursor is closed after a savepoint which is later rolled back,
+   the <command>CLOSE</command> is not rolled back; that is, the cursor
+   remains closed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Close the cursor <literal>liahona</literal>:
+<programlisting>
+CLOSE liahona;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CLOSE</command> is fully conforming with the SQL
+   standard. <command>CLOSE ALL</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-declare"/></member>
+   <member><xref linkend="sql-fetch"/></member>
+   <member><xref linkend="sql-move"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

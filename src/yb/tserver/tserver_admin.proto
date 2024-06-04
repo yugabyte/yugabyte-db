@@ -1,0 +1,404 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
+import "yb/consensus/metadata.proto";
+import "yb/tablet/metadata.proto";
+import "yb/tablet/operations.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver_types.proto";
+
+// This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
+// startup to avoid running initdb.
+message ExportedTabletMetadataChanges {
+  repeated tablet.ChangeMetadataRequestPB metadata_changes = 1;
+}
+
+message ChangeMetadataResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  // CDC SDK Create Stream context
+  optional OpIdPB cdc_sdk_snapshot_safe_op_id = 3;
+}
+
+message GetSafeTimeRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  optional uint32 schema_version = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 min_hybrid_time_for_backfill = 5;
+}
+
+message GetSafeTimeResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 safe_time = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message BackfillIndexRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  // Indexes on the _same table_ to backfill.
+  repeated IndexInfoPB indexes = 3;
+
+  optional uint32 schema_version = 4;
+
+  optional fixed64 read_at_hybrid_time = 5;
+
+  optional bytes start_key = 6;
+  optional bytes end_key = 7;
+
+  optional fixed64 propagated_hybrid_time = 8;
+
+  // Currently only used for YSQL.
+  optional string namespace_name = 9;
+
+  // Indexed table ID so we can properly address a colocated table.
+  optional bytes indexed_table_id = 10;
+}
+
+message BackfillIndexResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  // If non-empty, this is used to keep track of how far along
+  // the backfill has completed, so that it can be resumed.
+  // Encoded as the DocKey for the next row to be backfilled.
+  optional bytes backfilled_until = 3;
+
+  // In case of a partial error, list of indexes that failed.
+  repeated bytes failed_index_ids = 4;
+
+  // Returns the number of rows backfilled in the request.
+  optional uint64 number_rows_processed = 5;
+}
+
+// A create tablet request.
+message CreateTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 8;
+
+  required bytes table_id = 1;
+  required bytes tablet_id = 2;
+  // DEPRECATED.
+  optional bytes start_key = 3;
+  // DEPRECATED.
+  optional bytes end_key = 4;
+  // The partition of the tablet.
+  optional PartitionPB partition = 9;
+
+  optional bytes namespace_id = 14;
+  optional bytes namespace_name = 15;
+  required string table_name = 5;
+  optional TableType table_type = 11;
+  required SchemaPB schema = 6;
+  // The partition schema of the table which the tablet belongs to.
+  optional PartitionSchemaPB partition_schema = 10;
+
+  // Initial consensus configuration for the tablet.
+  required consensus.RaftConfigPB config = 7;
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 12;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 13 [ default = false ];
+
+  repeated bytes snapshot_schedules = 16;
+
+  repeated StatefulServiceKind hosted_stateful_services = 17;
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 18;
+
+  optional uint32 wal_retention_secs = 19;
+}
+
+message CreateTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message PrepareDeleteTransactionTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 2;
+
+  required bytes tablet_id = 1;
+}
+
+message PrepareDeleteTransactionTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+// A delete tablet request.
+message DeleteTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 4;
+
+  required bytes tablet_id = 1;
+
+  // Reason the tablet is being deleted (for logging purposes)
+  optional string reason = 2;
+
+  // Must be one of TABLET_DATA_DELETED (for table deletes) or
+  // TABLET_DATA_TOMBSTONED (for replica retirement).
+  optional tablet.TabletDataState delete_type = 3 [ default = TABLET_DATA_TOMBSTONED ];
+
+  // The highest allowed OpId index of the latest known committed config.
+  // This optional parameter is here to provide an atomic (compare-and-swap)
+  // DeleteTablet operation. If this parameter is specified, the DeleteTablet()
+  // operation will succeed only if the committed config has an opid_index that
+  // is less than or equal to this value.
+  // See also the definition of RaftConfigPB.
+  // Note: At the time of this writing, there is a small race between checking
+  // the value of the committed config opid index and shutting down the tablet
+  // for deletion. See comments in ts_tablet_manager.cc
+  optional int64 cas_config_opid_index_less_or_equal = 5;
+
+  // Hide tablet instead of deleting it.
+  optional bool hide_only = 6;
+
+  // Tablet server should trigger abort of all transactions it participates in upon shutting down
+  // this tablet. Should generally be set to true in the case of a dropped table.
+  optional bool should_abort_active_txns = 7;
+
+  // Do not delete tablet data.
+  optional bool keep_data = 8;
+}
+
+message DeleteTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+// TODO: rename this to FlushOrCompactTabletsRequestPB
+message FlushTabletsRequestPB {
+  enum Operation {
+    FLUSH = 0;
+    COMPACT = 1;
+    LOG_GC = 2;
+  }
+
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  // Tablets to flush.
+  repeated bytes tablet_ids = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // Actual operation that we plan to perform.
+  optional Operation operation = 4;
+
+  // Whether we want to flush or compact all tablets in the server.
+  optional bool all_tablets = 5;
+
+  // Only flush/compact regular RocksDB, not intents RocksDB.
+  optional bool regular_only = 6;
+}
+
+message FlushTabletsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional bytes failed_tablet_id = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message CountIntentsRequestPB {
+}
+
+message CountIntentsResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional int64 num_intents = 2;
+}
+
+message AddTableToTabletRequestPB {
+  required bytes tablet_id = 1;
+  required tablet.TableInfoPB add_table = 2;
+}
+
+message AddTableToTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message RemoveTableFromTabletRequestPB {
+  required bytes tablet_id = 1;
+  required bytes remove_table_id = 2;
+}
+
+message RemoveTableFromTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message SplitTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message UpgradeYsqlRequestPB {
+  // Perform an upgrade unsing just one connection.
+  // This is much slower but does not incur overhead for each database.
+  optional bool use_single_connection = 1 [ default = false ];
+}
+
+message UpgradeYsqlResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message WaitForYsqlBackendsCatalogVersionRequestPB {
+  optional uint32 database_oid = 1; // required
+  optional uint64 catalog_version = 2; // required
+  // Previously known number of YSQL backends that have not reached the requested catalog version.
+  // -1 means unknown.
+  optional int32 prev_num_lagging_backends = 3; // required
+}
+
+message WaitForYsqlBackendsCatalogVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  // Number of YSQL backends that have not reached the requested catalog version.
+  optional int32 num_lagging_backends = 2;
+}
+
+message TestRetryRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // See TestRetry RPC method description below.
+  required int32 num_retries = 4;
+}
+
+message TestRetryResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message UpdateTransactionTablesVersionRequestPB {
+  required uint64 version = 1;
+}
+
+message UpdateTransactionTablesVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message CloneTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message ClonePgSchemaRequestPB {
+  optional bytes source_db_name = 1;
+  optional bytes target_db_name = 2;
+  optional fixed64 restore_ht = 3;
+}
+
+message ClonePgSchemaResponsePB{
+  optional TabletServerErrorPB error = 1;
+}
+
+service TabletServerAdminService {
+  // Create a new, empty tablet with the specified parameters. Only used for
+  // brand-new tablets, not for "moves".
+  rpc CreateTablet(CreateTabletRequestPB) returns (CreateTabletResponsePB);
+
+  // Prepare a transasction tablet for deletion. This waits for all relevant intents
+  // to be applied and cleaned up.
+  rpc PrepareDeleteTransactionTablet(PrepareDeleteTransactionTabletRequestPB)
+      returns (PrepareDeleteTransactionTabletResponsePB);
+
+  // Delete a tablet replica.
+  rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+
+  // Alter a tablet's schema.
+  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+
+  // GetSafeTime API to get the current safe time.
+  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB);
+
+  // Backfill the index for the specified index tables. Addressed to the indexed
+  // table.
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+
+  // Marks an index table as having completed backfilling.
+  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+
+  rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
+
+  rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
+
+  rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
+      returns (RemoveTableFromTabletResponsePB);
+
+  rpc SplitTablet(tablet.SplitTabletRequestPB) returns (SplitTabletResponsePB);
+
+  rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
+
+  rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+
+  rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
+      returns (UpdateTransactionTablesVersionResponsePB);
+
+  rpc CloneTablet(tablet.CloneTabletRequestPB) returns (CloneTabletResponsePB);
+
+  // Create PG objects (database, tables and indexes) of the clone database.
+  rpc ClonePgSchema(ClonePgSchemaRequestPB) returns (ClonePgSchemaResponsePB);
+
+  // For test purposes: returns TryAgain error until specified number of calls is done.
+  rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
+}

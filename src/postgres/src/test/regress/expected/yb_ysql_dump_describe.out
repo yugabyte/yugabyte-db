@@ -1,0 +1,121 @@
+                                     List of relations
+ Schema |                      Name                      |   Type   |        Owner
+--------+------------------------------------------------+----------+----------------------
+ public | chat_user                                      | table    | yugabyte_test
+ public | hash_tbl_pk_with_include_clause                | table    | yugabyte_test
+ public | hash_tbl_pk_with_multiple_included_columns     | table    | yugabyte_test
+ public | p1                                             | table    | yugabyte_test
+ public | p2                                             | table    | yugabyte_test
+ public | pre_split_range                                | table    | yugabyte_test
+ public | range_tbl_pk_with_include_clause               | table    | yugabyte_test
+ public | range_tbl_pk_with_multiple_included_columns    | table    | yugabyte_test
+ public | rls_private                                    | table    | yugabyte_test
+ public | rls_public                                     | table    | yugabyte_test
+ public | tbl1                                           | table    | yugabyte_test
+ public | tbl10                                          | table    | yugabyte_test
+ public | tbl11                                          | table    | yugabyte_test
+ public | tbl12                                          | table    | yugabyte_test
+ public | tbl13                                          | table    | yugabyte_test
+ public | tbl1_a_seq                                     | sequence | yugabyte_test
+ public | tbl2                                           | table    | yugabyte_test
+ public | tbl2_a_seq                                     | sequence | yugabyte_test
+ public | tbl3                                           | table    | yugabyte_test
+ public | tbl4                                           | table    | yugabyte_test
+ public | tbl5                                           | table    | yugabyte_test
+ public | tbl6                                           | table    | yugabyte_test
+ public | tbl7                                           | table    | yugabyte_test
+ public | tbl8                                           | table    | yugabyte_test
+ public | tbl9                                           | table    | yugabyte_test
+ public | tgroup_after_options                           | table    | tablegroup_test_user
+ public | tgroup_empty_options                           | table    | tablegroup_test_user
+ public | tgroup_in_between_options                      | table    | tablegroup_test_user
+ public | tgroup_no_options_and_tgroup                   | table    | tablegroup_test_user
+ public | tgroup_one_option                              | table    | tablegroup_test_user
+ public | tgroup_one_option_and_tgroup                   | table    | tablegroup_test_user
+ public | tgroup_options                                 | table    | tablegroup_test_user
+ public | tgroup_options_and_tgroup                      | table    | tablegroup_test_user
+ public | tgroup_options_tgroup_and_custom_colocation_id | table    | tablegroup_test_user
+ public | tgroup_with_spc                                | table    | tablegroup_test_user
+ public | th1                                            | table    | yugabyte_test
+ public | th2                                            | table    | yugabyte_test
+ public | th3                                            | table    | yugabyte_test
+ public | tr1                                            | table    | yugabyte_test
+ public | tr2                                            | table    | yugabyte_test
+ public | uaccount                                       | table    | regress_rls_alice
+(41 rows)
+
+          List of tablespaces
+    Name    |     Owner     | Location
+------------+---------------+----------
+ pg_default | postgres      |
+ pg_global  | postgres      |
+ tsp1       | yugabyte_test |
+(3 rows)
+
+                                         List of roles
+      Role name       |                         Attributes                         | Member of
+----------------------+------------------------------------------------------------+-----------
+ postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ regress_rls_alice    | Cannot login                                               | {}
+ rls_user             | Cannot login                                               | {}
+ tablegroup_test_user | Superuser                                                  | {}
+ yb_db_admin          | No inheritance, Cannot login                               | {}
+ yb_extension         | Cannot login                                               | {}
+ yb_fdw               | Cannot login                                               | {}
+ yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
+
+      List of schemas
+   Name    |     Owner
+-----------+---------------
+ hint_plan | yugabyte_test
+ public    | postgres
+(2 rows)
+
+                                     List of tablegroups
+     Name     |        Owner         | Access privileges | Description | Tablespace | Options
+--------------+----------------------+-------------------+-------------+------------+---------
+ grp1         | tablegroup_test_user |                   |             |            |
+ grp2         | tablegroup_test_user |                   |             |            |
+ grp_with_spc | tablegroup_test_user |                   |             | tsp1       |
+(3 rows)
+
+                                                                                                List of tablegroup tables
+  Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size
+--------------+----------------------+-------------------+-------------------+------------------+---------------+------------------------------------------------+-------+----------------------+-----------------+------
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 |
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 |
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 |
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 |
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 |
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 |
+ grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 |
+(7 rows)
+
+                 Table "public.p1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
+Indexes:
+    "p1_pkey" PRIMARY KEY, lsm (k HASH)
+    "c1" UNIQUE CONSTRAINT, lsm (v ASC)
+
+                 Table "public.p2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
+Indexes:
+    "p2_pkey" PRIMARY KEY, lsm (k HASH)
+    "c2" UNIQUE CONSTRAINT, lsm (v HASH)
+
+     yb_get_range_split_clause
+------------------------------------
+ SPLIT AT VALUES (('foo'), ('qux'))
+(1 row)
+
+ num_tablets
+-------------
+          10
+(1 row)

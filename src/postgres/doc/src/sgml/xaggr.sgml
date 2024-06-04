@@ -1,0 +1,670 @@
+<!-- doc/src/sgml/xaggr.sgml -->
+
+ <sect1 id="xaggr">
+  <title>User-Defined Aggregates</title>
+
+  <indexterm zone="xaggr">
+   <primary>aggregate function</primary>
+   <secondary>user-defined</secondary>
+  </indexterm>
+
+  <para>
+   Aggregate functions in <productname>PostgreSQL</productname>
+   are defined in terms of <firstterm>state values</firstterm>
+   and <firstterm>state transition functions</firstterm>.
+   That is, an aggregate operates using a state value that is updated
+   as each successive input row is processed.
+   To define a new aggregate
+   function, one selects a data type for the state value,
+   an initial value for the state, and a state transition
+   function.  The state transition function takes the previous state
+   value and the aggregate's input value(s) for the current row, and
+   returns a new state value.
+   A <firstterm>final function</firstterm>
+   can also be specified, in case the desired result of the aggregate
+   is different from the data that needs to be kept in the running
+   state value.  The final function takes the ending state value
+   and returns whatever is wanted as the aggregate result.
+   In principle, the transition and final functions are just ordinary
+   functions that could also be used outside the context of the
+   aggregate.  (In practice, it's often helpful for performance reasons
+   to create specialized transition functions that can only work when
+   called as part of an aggregate.)
+  </para>
+
+  <para>
+   Thus, in addition to the argument and result data types seen by a user
+   of the aggregate, there is an internal state-value data type that
+   might be different from both the argument and result types.
+  </para>
+
+  <para>
+   If we define an aggregate that does not use a final function,
+   we have an aggregate that computes a running function of
+   the column values from each row.  <function>sum</function>  is  an
+   example  of  this  kind  of aggregate.  <function>sum</function> starts at
+   zero and always adds the current  row's  value  to
+   its  running  total.  For example, if we want to make a <function>sum</function>
+   aggregate to work on a data type for complex numbers,
+   we only need the addition function for that data type.
+   The aggregate definition would be:
+
+<programlisting>
+CREATE AGGREGATE sum (complex)
+(
+    sfunc = complex_add,
+    stype = complex,
+    initcond = '(0,0)'
+);
+</programlisting>
+
+   which we might use like this:
+
+<programlisting>
+SELECT sum(a) FROM test_complex;
+
+   sum
+-----------
+ (34,53.9)
+</programlisting>
+
+   (Notice that we are relying on function overloading: there is more than
+    one aggregate named <function>sum</function>, but
+   <productname>PostgreSQL</productname> can figure out which kind
+   of sum applies to a column of type <type>complex</type>.)
+  </para>
+
+  <para>
+   The above definition of <function>sum</function> will return zero
+   (the initial state value) if there are no nonnull input values.
+   Perhaps we want to return null in that case instead &mdash; the SQL standard
+   expects <function>sum</function> to behave that way.  We can do this simply by
+   omitting the <literal>initcond</literal> phrase, so that the initial state
+   value is null.  Ordinarily this would mean that the <literal>sfunc</literal>
+   would need to check for a null state-value input.  But for
+   <function>sum</function> and some other simple aggregates like
+   <function>max</function> and <function>min</function>,
+   it is sufficient to insert the first nonnull input value into
+   the state variable and then start applying the transition function
+   at the second nonnull input value.  <productname>PostgreSQL</productname>
+   will do that automatically if the initial state value is null and
+   the transition function is marked <quote>strict</quote> (i.e., not to be called
+   for null inputs).
+  </para>
+
+  <para>
+   Another bit of default behavior for a <quote>strict</quote> transition function
+   is that the previous state value is retained unchanged whenever a
+   null input value is encountered.  Thus, null values are ignored.  If you
+   need some other behavior for null inputs, do not declare your
+   transition function as strict; instead code it to test for null inputs and
+   do whatever is needed.
+  </para>
+
+  <para>
+   <function>avg</function> (average) is a more complex example of an aggregate.
+   It requires
+   two pieces of running state: the sum of the inputs and the count
+   of the number of inputs.  The final result is obtained by dividing
+   these quantities.  Average is typically implemented by using an
+   array as the state value.  For example,
+   the built-in implementation of <function>avg(float8)</function>
+   looks like:
+
+<programlisting>
+CREATE AGGREGATE avg (float8)
+(
+    sfunc = float8_accum,
+    stype = float8[],
+    finalfunc = float8_avg,
+    initcond = '{0,0,0}'
+);
+</programlisting>
+  </para>
+
+  <note>
+   <para>
+   <function>float8_accum</function> requires a three-element array, not just
+   two elements, because it accumulates the sum of squares as well as
+   the sum and count of the inputs.  This is so that it can be used for
+   some other aggregates as well as <function>avg</function>.
+   </para>
+  </note>
+
+  <para>
+   Aggregate function calls in SQL allow <literal>DISTINCT</literal>
+   and <literal>ORDER BY</literal> options that control which rows are fed
+   to the aggregate's transition function and in what order.  These
+   options are implemented behind the scenes and are not the concern
+   of the aggregate's support functions.
+  </para>
+
+  <para>
+   For further details see the
+   <xref linkend="sql-createaggregate"/>
+   command.
+  </para>
+
+ <sect2 id="xaggr-moving-aggregates">
+  <title>Moving-Aggregate Mode</title>
+
+  <indexterm>
+   <primary>moving-aggregate mode</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>moving aggregate</secondary>
+  </indexterm>
+
+  <para>
+   Aggregate functions can optionally support <firstterm>moving-aggregate
+   mode</firstterm>, which allows substantially faster execution of aggregate
+   functions within windows with moving frame starting points.
+   (See <xref linkend="tutorial-window"/>
+   and <xref linkend="syntax-window-functions"/> for information about use of
+   aggregate functions as window functions.)
+   The basic idea is that in addition to a normal <quote>forward</quote>
+   transition function, the aggregate provides an <firstterm>inverse
+   transition function</firstterm>, which allows rows to be removed from the
+   aggregate's running state value when they exit the window frame.
+   For example a <function>sum</function> aggregate, which uses addition as the
+   forward transition function, would use subtraction as the inverse
+   transition function.  Without an inverse transition function, the window
+   function mechanism must recalculate the aggregate from scratch each time
+   the frame starting point moves, resulting in run time proportional to the
+   number of input rows times the average frame length.  With an inverse
+   transition function, the run time is only proportional to the number of
+   input rows.
+  </para>
+
+  <para>
+   The inverse transition function is passed the current state value and the
+   aggregate input value(s) for the earliest row included in the current
+   state.  It must reconstruct what the state value would have been if the
+   given input row had never been aggregated, but only the rows following
+   it.  This sometimes requires that the forward transition function keep
+   more state than is needed for plain aggregation mode.  Therefore, the
+   moving-aggregate mode uses a completely separate implementation from the
+   plain mode: it has its own state data type, its own forward transition
+   function, and its own final function if needed.  These can be the same as
+   the plain mode's data type and functions, if there is no need for extra
+   state.
+  </para>
+
+  <para>
+   As an example, we could extend the <function>sum</function> aggregate given above
+   to support moving-aggregate mode like this:
+
+<programlisting>
+CREATE AGGREGATE sum (complex)
+(
+    sfunc = complex_add,
+    stype = complex,
+    initcond = '(0,0)',
+    msfunc = complex_add,
+    minvfunc = complex_sub,
+    mstype = complex,
+    minitcond = '(0,0)'
+);
+</programlisting>
+
+   The parameters whose names begin with <literal>m</literal> define the
+   moving-aggregate implementation.  Except for the inverse transition
+   function <literal>minvfunc</literal>, they correspond to the plain-aggregate
+   parameters without <literal>m</literal>.
+  </para>
+
+  <para>
+   The forward transition function for moving-aggregate mode is not allowed
+   to return null as the new state value.  If the inverse transition
+   function returns null, this is taken as an indication that the inverse
+   function cannot reverse the state calculation for this particular input,
+   and so the aggregate calculation will be redone from scratch for the
+   current frame starting position.  This convention allows moving-aggregate
+   mode to be used in situations where there are some infrequent cases that
+   are impractical to reverse out of the running state value.  The inverse
+   transition function can <quote>punt</quote> on these cases, and yet still come
+   out ahead so long as it can work for most cases.  As an example, an
+   aggregate working with floating-point numbers might choose to punt when
+   a <literal>NaN</literal> (not a number) input has to be removed from the running
+   state value.
+  </para>
+
+  <para>
+   When writing moving-aggregate support functions, it is important to be
+   sure that the inverse transition function can reconstruct the correct
+   state value exactly.  Otherwise there might be user-visible differences
+   in results depending on whether the moving-aggregate mode is used.
+   An example of an aggregate for which adding an inverse transition
+   function seems easy at first, yet where this requirement cannot be met
+   is <function>sum</function> over <type>float4</type> or <type>float8</type> inputs.  A
+   naive declaration of <function>sum(<type>float8</type>)</function> could be
+
+<programlisting>
+CREATE AGGREGATE unsafe_sum (float8)
+(
+    stype = float8,
+    sfunc = float8pl,
+    mstype = float8,
+    msfunc = float8pl,
+    minvfunc = float8mi
+);
+</programlisting>
+
+   This aggregate, however, can give wildly different results than it would
+   have without the inverse transition function. For example, consider
+
+<programlisting>
+SELECT
+  unsafe_sum(x) OVER (ORDER BY n ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING)
+FROM (VALUES (1, 1.0e20::float8),
+             (2, 1.0::float8)) AS v (n,x);
+</programlisting>
+
+   This query returns <literal>0</literal> as its second result, rather than the
+   expected answer of <literal>1</literal>.  The cause is the limited precision of
+   floating-point values: adding <literal>1</literal> to <literal>1e20</literal> results
+   in <literal>1e20</literal> again, and so subtracting <literal>1e20</literal> from that
+   yields <literal>0</literal>, not <literal>1</literal>.  Note that this is a limitation
+   of floating-point arithmetic in general, not a limitation
+   of <productname>PostgreSQL</productname>.
+  </para>
+
+ </sect2>
+
+ <sect2 id="xaggr-polymorphic-aggregates">
+  <title>Polymorphic and Variadic Aggregates</title>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>polymorphic</secondary>
+  </indexterm>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>variadic</secondary>
+  </indexterm>
+
+  <para>
+   Aggregate functions can use polymorphic
+   state transition functions or final functions, so that the same functions
+   can be used to implement multiple aggregates.
+   See <xref linkend="extend-types-polymorphic"/>
+   for an explanation of polymorphic functions.
+   Going a step further, the aggregate function itself can be specified
+   with polymorphic input type(s) and state type, allowing a single
+   aggregate definition to serve for multiple input data types.
+   Here is an example of a polymorphic aggregate:
+
+<programlisting>
+CREATE AGGREGATE array_accum (anycompatible)
+(
+    sfunc = array_append,
+    stype = anycompatiblearray,
+    initcond = '{}'
+);
+</programlisting>
+
+   Here, the actual state type for any given aggregate call is the array type
+   having the actual input type as elements.  The behavior of the aggregate
+   is to concatenate all the inputs into an array of that type.
+   (Note: the built-in aggregate <function>array_agg</function> provides similar
+   functionality, with better performance than this definition would have.)
+  </para>
+
+  <para>
+   Here's the output using two different actual data types as arguments:
+
+<programlisting>
+SELECT attrelid::regclass, array_accum(attname)
+    FROM pg_attribute
+    WHERE attnum &gt; 0 AND attrelid = 'pg_tablespace'::regclass
+    GROUP BY attrelid;
+
+   attrelid    |              array_accum
+---------------+---------------------------------------
+ pg_tablespace | {spcname,spcowner,spcacl,spcoptions}
+(1 row)
+
+SELECT attrelid::regclass, array_accum(atttypid::regtype)
+    FROM pg_attribute
+    WHERE attnum &gt; 0 AND attrelid = 'pg_tablespace'::regclass
+    GROUP BY attrelid;
+
+   attrelid    |        array_accum
+---------------+---------------------------
+ pg_tablespace | {name,oid,aclitem[],text[]}
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Ordinarily, an aggregate function with a polymorphic result type has a
+   polymorphic state type, as in the above example.  This is necessary
+   because otherwise the final function cannot be declared sensibly: it
+   would need to have a polymorphic result type but no polymorphic argument
+   type, which <command>CREATE FUNCTION</command> will reject on the grounds that
+   the result type cannot be deduced from a call.  But sometimes it is
+   inconvenient to use a polymorphic state type.  The most common case is
+   where the aggregate support functions are to be written in C and the
+   state type should be declared as <type>internal</type> because there is
+   no SQL-level equivalent for it.  To address this case, it is possible to
+   declare the final function as taking extra <quote>dummy</quote> arguments
+   that match the input arguments of the aggregate.  Such dummy arguments
+   are always passed as null values since no specific value is available when the
+   final function is called.  Their only use is to allow a polymorphic
+   final function's result type to be connected to the aggregate's input
+   type(s).  For example, the definition of the built-in
+   aggregate <function>array_agg</function> is equivalent to
+
+<programlisting>
+CREATE FUNCTION array_agg_transfn(internal, anynonarray)
+  RETURNS internal ...;
+CREATE FUNCTION array_agg_finalfn(internal, anynonarray)
+  RETURNS anyarray ...;
+
+CREATE AGGREGATE array_agg (anynonarray)
+(
+    sfunc = array_agg_transfn,
+    stype = internal,
+    finalfunc = array_agg_finalfn,
+    finalfunc_extra
+);
+</programlisting>
+
+   Here, the <literal>finalfunc_extra</literal> option specifies that the final
+   function receives, in addition to the state value, extra dummy
+   argument(s) corresponding to the aggregate's input argument(s).
+   The extra <type>anynonarray</type> argument allows the declaration
+   of <function>array_agg_finalfn</function> to be valid.
+  </para>
+
+  <para>
+   An aggregate function can be made to accept a varying number of arguments
+   by declaring its last argument as a <literal>VARIADIC</literal> array, in much
+   the same fashion as for regular functions; see
+   <xref linkend="xfunc-sql-variadic-functions"/>.  The aggregate's transition
+   function(s) must have the same array type as their last argument.  The
+   transition function(s) typically would also be marked <literal>VARIADIC</literal>,
+   but this is not strictly required.
+  </para>
+
+  <note>
+   <para>
+    Variadic aggregates are easily misused in connection with
+    the <literal>ORDER BY</literal> option (see <xref linkend="syntax-aggregates"/>),
+    since the parser cannot tell whether the wrong number of actual arguments
+    have been given in such a combination.  Keep in mind that everything to
+    the right of <literal>ORDER BY</literal> is a sort key, not an argument to the
+    aggregate.  For example, in
+<programlisting>
+SELECT myaggregate(a ORDER BY a, b, c) FROM ...
+</programlisting>
+    the parser will see this as a single aggregate function argument and
+    three sort keys.  However, the user might have intended
+<programlisting>
+SELECT myaggregate(a, b, c ORDER BY a) FROM ...
+</programlisting>
+    If <literal>myaggregate</literal> is variadic, both these calls could be
+    perfectly valid.
+   </para>
+
+   <para>
+    For the same reason, it's wise to think twice before creating aggregate
+    functions with the same names and different numbers of regular arguments.
+   </para>
+  </note>
+
+ </sect2>
+
+ <sect2 id="xaggr-ordered-set-aggregates">
+  <title>Ordered-Set Aggregates</title>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>ordered set</secondary>
+  </indexterm>
+
+  <para>
+   The aggregates we have been describing so far are <quote>normal</quote>
+   aggregates.  <productname>PostgreSQL</productname> also
+   supports <firstterm>ordered-set aggregates</firstterm>, which differ from
+   normal aggregates in two key ways.  First, in addition to ordinary
+   aggregated arguments that are evaluated once per input row, an
+   ordered-set aggregate can have <quote>direct</quote> arguments that are
+   evaluated only once per aggregation operation.  Second, the syntax
+   for the ordinary aggregated arguments specifies a sort ordering
+   for them explicitly.  An ordered-set aggregate is usually
+   used to implement a computation that depends on a specific row
+   ordering, for instance rank or percentile, so that the sort ordering
+   is a required aspect of any call.  For example, the built-in
+   definition of <function>percentile_disc</function> is equivalent to:
+
+<programlisting>
+CREATE FUNCTION ordered_set_transition(internal, anyelement)
+  RETURNS internal ...;
+CREATE FUNCTION percentile_disc_final(internal, float8, anyelement)
+  RETURNS anyelement ...;
+
+CREATE AGGREGATE percentile_disc (float8 ORDER BY anyelement)
+(
+    sfunc = ordered_set_transition,
+    stype = internal,
+    finalfunc = percentile_disc_final,
+    finalfunc_extra
+);
+</programlisting>
+
+   This aggregate takes a <type>float8</type> direct argument (the percentile
+   fraction) and an aggregated input that can be of any sortable data type.
+   It could be used to obtain a median household income like this:
+
+<programlisting>
+SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY income) FROM households;
+ percentile_disc
+-----------------
+           50489
+</programlisting>
+
+   Here, <literal>0.5</literal> is a direct argument; it would make no sense
+   for the percentile fraction to be a value varying across rows.
+  </para>
+
+  <para>
+   Unlike the case for normal aggregates, the sorting of input rows for
+   an ordered-set aggregate is <emphasis>not</emphasis> done behind the scenes,
+   but is the responsibility of the aggregate's support functions.
+   The typical implementation approach is to keep a reference to
+   a <quote>tuplesort</quote> object in the aggregate's state value, feed the
+   incoming rows into that object, and then complete the sorting and
+   read out the data in the final function.  This design allows the
+   final function to perform special operations such as injecting
+   additional <quote>hypothetical</quote> rows into the data to be sorted.
+   While normal aggregates can often be implemented with support
+   functions written in <application>PL/pgSQL</application> or another
+   PL language, ordered-set aggregates generally have to be written in
+   C, since their state values aren't definable as any SQL data type.
+   (In the above example, notice that the state value is declared as
+   type <type>internal</type> &mdash; this is typical.)
+   Also, because the final function performs the sort, it is not possible
+   to continue adding input rows by executing the transition function again
+   later.  This means the final function is not <literal>READ_ONLY</literal>;
+   it must be declared in <link linkend="sql-createaggregate"><command>CREATE AGGREGATE</command></link>
+   as <literal>READ_WRITE</literal>, or as <literal>SHAREABLE</literal> if
+   it's possible for additional final-function calls to make use of the
+   already-sorted state.
+  </para>
+
+  <para>
+   The state transition function for an ordered-set aggregate receives
+   the current state value plus the aggregated input values for
+   each row, and returns the updated state value.  This is the
+   same definition as for normal aggregates, but note that the direct
+   arguments (if any) are not provided.  The final function receives
+   the last state value, the values of the direct arguments if any,
+   and (if <literal>finalfunc_extra</literal> is specified) null values
+   corresponding to the aggregated input(s).  As with normal
+   aggregates, <literal>finalfunc_extra</literal> is only really useful if the
+   aggregate is polymorphic; then the extra dummy argument(s) are needed
+   to connect the final function's result type to the aggregate's input
+   type(s).
+  </para>
+
+  <para>
+   Currently, ordered-set aggregates cannot be used as window functions,
+   and therefore there is no need for them to support moving-aggregate mode.
+  </para>
+
+ </sect2>
+
+  <sect2 id="xaggr-partial-aggregates">
+  <title>Partial Aggregation</title>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>partial aggregation</secondary>
+  </indexterm>
+
+  <para>
+   Optionally, an aggregate function can support <firstterm>partial
+   aggregation</firstterm>.  The idea of partial aggregation is to run the aggregate's
+   state transition function over different subsets of the input data
+   independently, and then to combine the state values resulting from those
+   subsets to produce the same state value that would have resulted from
+   scanning all the input in a single operation.  This mode can be used for
+   parallel aggregation by having different worker processes scan different
+   portions of a table.  Each worker produces a partial state value, and at
+   the end those state values are combined to produce a final state value.
+   (In the future this mode might also be used for purposes such as combining
+   aggregations over local and remote tables; but that is not implemented
+   yet.)
+  </para>
+
+  <para>
+   To support partial aggregation, the aggregate definition must provide
+   a <firstterm>combine function</firstterm>, which takes two values of the
+   aggregate's state type (representing the results of aggregating over two
+   subsets of the input rows) and produces a new value of the state type,
+   representing what the state would have been after aggregating over the
+   combination of those sets of rows.  It is unspecified what the relative
+   order of the input rows from the two sets would have been.  This means
+   that it's usually impossible to define a useful combine function for
+   aggregates that are sensitive to input row order.
+  </para>
+
+  <para>
+   As simple examples, <literal>MAX</literal> and <literal>MIN</literal> aggregates can be
+   made to support partial aggregation by specifying the combine function as
+   the same greater-of-two or lesser-of-two comparison function that is used
+   as their transition function.  <literal>SUM</literal> aggregates just need an
+   addition function as combine function.  (Again, this is the same as their
+   transition function, unless the state value is wider than the input data
+   type.)
+  </para>
+
+  <para>
+   The combine function is treated much like a transition function that
+   happens to take a value of the state type, not of the underlying input
+   type, as its second argument.  In particular, the rules for dealing
+   with null values and strict functions are similar.  Also, if the aggregate
+   definition specifies a non-null <literal>initcond</literal>, keep in mind that
+   that will be used not only as the initial state for each partial
+   aggregation run, but also as the initial state for the combine function,
+   which will be called to combine each partial result into that state.
+  </para>
+
+  <para>
+   If the aggregate's state type is declared as <type>internal</type>, it is
+   the combine function's responsibility that its result is allocated in
+   the correct memory context for aggregate state values.  This means in
+   particular that when the first input is <literal>NULL</literal> it's invalid
+   to simply return the second input, as that value will be in the wrong
+   context and will not have sufficient lifespan.
+  </para>
+
+  <para>
+   When the aggregate's state type is declared as <type>internal</type>, it is
+   usually also appropriate for the aggregate definition to provide a
+   <firstterm>serialization function</firstterm> and a <firstterm>deserialization
+   function</firstterm>, which allow such a state value to be copied from one process
+   to another.  Without these functions, parallel aggregation cannot be
+   performed, and future applications such as local/remote aggregation will
+   probably not work either.
+  </para>
+
+  <para>
+   A serialization function must take a single argument of
+   type <type>internal</type> and return a result of type <type>bytea</type>, which
+   represents the state value packaged up into a flat blob of bytes.
+   Conversely, a deserialization function reverses that conversion.  It must
+   take two arguments of types <type>bytea</type> and <type>internal</type>, and
+   return a result of type <type>internal</type>.  (The second argument is unused
+   and is always zero, but it is required for type-safety reasons.)  The
+   result of the deserialization function should simply be allocated in the
+   current memory context, as unlike the combine function's result, it is not
+   long-lived.
+  </para>
+
+  <para>
+   Worth noting also is that for an aggregate to be executed in parallel,
+   the aggregate itself must be marked <literal>PARALLEL SAFE</literal>.  The
+   parallel-safety markings on its support functions are not consulted.
+  </para>
+
+ </sect2>
+
+ <sect2 id="xaggr-support-functions">
+  <title>Support Functions for Aggregates</title>
+
+  <indexterm>
+   <primary>aggregate function</primary>
+   <secondary>support functions for</secondary>
+  </indexterm>
+
+  <para>
+   A function written in C can detect that it is being called as an
+   aggregate support function by calling
+   <function>AggCheckCallContext</function>, for example:
+<programlisting>
+if (AggCheckCallContext(fcinfo, NULL))
+</programlisting>
+   One reason for checking this is that when it is true, the first input
+   must be a temporary state value and can therefore safely be modified
+   in-place rather than allocating a new copy.
+   See <function>int8inc()</function> for an example.
+   (While aggregate transition functions are always allowed to modify
+   the transition value in-place, aggregate final functions are generally
+   discouraged from doing so; if they do so, the behavior must be declared
+   when creating the aggregate.  See <xref linkend="sql-createaggregate"/>
+   for more detail.)
+  </para>
+
+  <para>
+   The second argument of <function>AggCheckCallContext</function> can be used to
+   retrieve the memory context in which aggregate state values are being kept.
+   This is useful for transition functions that wish to use <quote>expanded</quote>
+   objects (see <xref linkend="xtypes-toast"/>) as their state values.
+   On first call, the transition function should return an expanded object
+   whose memory context is a child of the aggregate state context, and then
+   keep returning the same expanded object on subsequent calls.  See
+   <function>array_append()</function> for an example.  (<function>array_append()</function>
+   is not the transition function of any built-in aggregate, but it is written
+   to behave efficiently when used as transition function of a custom
+   aggregate.)
+  </para>
+
+  <para>
+   Another support routine available to aggregate functions written in C
+   is <function>AggGetAggref</function>, which returns the <literal>Aggref</literal>
+   parse node that defines the aggregate call.  This is mainly useful
+   for ordered-set aggregates, which can inspect the substructure of
+   the <literal>Aggref</literal> node to find out what sort ordering they are
+   supposed to implement.  Examples can be found
+   in <filename>orderedsetaggs.c</filename> in the <productname>PostgreSQL</productname>
+   source code.
+  </para>
+
+ </sect2>
+
+ </sect1>

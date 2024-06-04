@@ -1,0 +1,31 @@
+book: true
+title: "Masking Data with PostgreSQL Anonymizer"
+subtitle: "A practical guide"
+toc: true
+#logo: "img/logo.png"
+titlepage: true
+titlepage-background: "img/cover.pdf"
+titlepage-color: "3C9F53"
+titlepage-text-color: "FFFFFF"
+titlepage-rule-color: "FFFFFF"
+titlepage-rule-height: 0
+listings-disable-line-numbers: true
+table-use-row-colors: true
+links-as-notes: true
+colorlinks: true
+
+header-includes:
+- |
+  ```{=latex}
+  %% Voir la config de pandoc-latex-environment
+  \usepackage{awesomebox}
+  %% Dans les listes, remplacer les tirets par des points
+  \let\labelitemi\labelitemii
+  ```
+
+pandoc-latex-environment:
+  noteblock: [slide-content]
+  tipblock: [tip]
+  warningblock: [warning]
+  cautionblock: [caution]
+  importantblock: [important]

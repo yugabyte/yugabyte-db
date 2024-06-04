@@ -1,0 +1,140 @@
+--
+-- YB non-ported tests on text search configurations and dictionaries.
+--
+CREATE TEXT SEARCH CONFIGURATION ybtscfg (COPY=english);
+\dF+ ybtscfg
+Text search configuration "public.ybtscfg"
+Parser: "pg_catalog.default"
+      Token      | Dictionaries
+-----------------+--------------
+ asciihword      | english_stem
+ asciiword       | english_stem
+ email           | simple
+ file            | simple
+ float           | simple
+ host            | simple
+ hword           | english_stem
+ hword_asciipart | english_stem
+ hword_numpart   | simple
+ hword_part      | english_stem
+ int             | simple
+ numhword        | simple
+ numword         | simple
+ sfloat          | simple
+ uint            | simple
+ url             | simple
+ url_path        | simple
+ version         | simple
+ word            | english_stem
+
+-- Test ALTER TEXT SEARCH CONFIGURATION syntax variations that aren't tested in
+-- upstream postgres tests.
+SELECT to_tsvector('ybtscfg', 'cafe 123');
+   to_tsvector
+------------------
+ '123':2 'cafe':1
+(1 row)
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg DROP MAPPING FOR int, uint;
+SELECT to_tsvector('ybtscfg', 'cafe 123');
+ to_tsvector
+-------------
+ 'cafe':1
+(1 row)
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg DROP MAPPING FOR int, uint;
+ERROR:  mapping for token type "int" does not exist
+ALTER TEXT SEARCH CONFIGURATION ybtscfg DROP MAPPING IF EXISTS FOR int, uint;
+NOTICE:  mapping for token type "int" does not exist, skipping
+NOTICE:  mapping for token type "uint" does not exist, skipping
+\dF+ ybtscfg
+Text search configuration "public.ybtscfg"
+Parser: "pg_catalog.default"
+      Token      | Dictionaries
+-----------------+--------------
+ asciihword      | english_stem
+ asciiword       | english_stem
+ email           | simple
+ file            | simple
+ float           | simple
+ host            | simple
+ hword           | english_stem
+ hword_asciipart | english_stem
+ hword_numpart   | simple
+ hword_part      | english_stem
+ numhword        | simple
+ numword         | simple
+ sfloat          | simple
+ url             | simple
+ url_path        | simple
+ version         | simple
+ word            | english_stem
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg ADD MAPPING FOR uint
+    WITH danish_stem;
+SELECT to_tsvector('ybtscfg', 'cafe 123');
+   to_tsvector
+------------------
+ '123':2 'cafe':1
+(1 row)
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg ADD MAPPING FOR uint
+    WITH danish_stem;
+ERROR:  duplicate key value violates unique constraint "pg_ts_config_map_index"
+\dF+ ybtscfg
+Text search configuration "public.ybtscfg"
+Parser: "pg_catalog.default"
+      Token      | Dictionaries
+-----------------+--------------
+ asciihword      | english_stem
+ asciiword       | english_stem
+ email           | simple
+ file            | simple
+ float           | simple
+ host            | simple
+ hword           | english_stem
+ hword_asciipart | english_stem
+ hword_numpart   | simple
+ hword_part      | english_stem
+ numhword        | simple
+ numword         | simple
+ sfloat          | simple
+ uint            | danish_stem
+ url             | simple
+ url_path        | simple
+ version         | simple
+ word            | english_stem
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg ALTER MAPPING FOR asciiword, int, uint
+    REPLACE english_stem WITH french_stem;
+SELECT to_tsvector('ybtscfg', 'cafe 123');
+   to_tsvector
+-----------------
+ '123':2 'caf':1
+(1 row)
+
+ALTER TEXT SEARCH CONFIGURATION ybtscfg ALTER MAPPING FOR asciiword, int, uint
+    REPLACE english_stem WITH french_stem;
+\dF+ ybtscfg
+Text search configuration "public.ybtscfg"
+Parser: "pg_catalog.default"
+      Token      | Dictionaries
+-----------------+--------------
+ asciihword      | english_stem
+ asciiword       | french_stem
+ email           | simple
+ file            | simple
+ float           | simple
+ host            | simple
+ hword           | english_stem
+ hword_asciipart | english_stem
+ hword_numpart   | simple
+ hword_part      | english_stem
+ numhword        | simple
+ numword         | simple
+ sfloat          | simple
+ uint            | danish_stem
+ url             | simple
+ url_path        | simple
+ version         | simple
+ word            | english_stem

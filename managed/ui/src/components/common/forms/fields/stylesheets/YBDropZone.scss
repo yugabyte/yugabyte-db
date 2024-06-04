@@ -1,0 +1,55 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../../_style/colors.scss';
+
+.drop-zone-file {
+  position: absolute;
+  top: 10px;
+  right: -110px;
+}
+
+.provider-config-container,
+.modal-content,
+.import-release-modal {
+  .form-group.file-upload {
+    display: block;
+
+    .upload-file-button {
+      border-radius: 7px;
+      overflow: hidden;
+    }
+
+    &.has-error {
+      .upload-file-button {
+        border: 1px solid colors.$YB_ERROR_TEXT_COLOR;
+        color: colors.$YB_ERROR_TEXT_COLOR;
+      }
+    }
+    &.has-value {
+      p {
+        float: right;
+        width: 200px;
+      }
+      .drop-zone-file {
+        width: calc(100% - 230px);
+        border-radius: 6px 0 0 6px;
+        height: 40px;
+        background-color: #fff;
+        line-height: 38px;
+        top: 1px;
+        left: 1px;
+        padding: 0 10px;
+        right: auto;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+    }
+  }
+  .form-group.file-upload.form-alt.has-value {
+    .drop-zone-file {
+      width: calc(100% - 250px);
+      left: auto;
+    }
+  }
+}

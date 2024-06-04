@@ -1,0 +1,127 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Ensure variables are defined.
+  assert:
+    that:
+      - package is defined
+      - user_name is defined
+      - symlink_folders is defined
+      - num_releases_to_keep is defined
+
+- set_fact:
+    package_folder: "{{ package | basename | extract_archive_folder_name }}"
+    package_name: "{{ package | basename }}"
+    release_folder: "{{ package | basename | extract_yugabyte_release_folder }}"
+    release_version : "{{ package | basename | extract_release_version }}"
+  tags:
+    - always
+
+- name: Set ybc package name
+  set_fact:
+    ybc_package_name: "{{ ybc_package | basename }}"
+    remote_tmp_ybc_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ ybc_package | basename }}"
+    software_ybc_package_folder: "{{ yb_software_dir }}/{{ ybc_dir }}"
+    ybc_symlink_dir: "{{ yb_home_dir }}/controller"
+  when: configure_ybc
+  tags: always
+
+# Need a separate set_fact since package_folder is not available until the previous set_fact has
+# completed.
+- set_fact:
+    yb_package_folder: "{{ yb_software_dir }}/{{ package_folder }}"
+    is_yugabyte_package: "{{ package_name.startswith('yugabyte') }}"
+    temporary_package_dir: "TEMPORARY"
+  tags:
+    - always
+
+- name: Retrieve package online
+  include: s3-download.yml
+  tags:
+    - download-software
+    - itest
+  when: not not itest_s3_package_path # itest_s3_package_path is defined and not ""
+
+- name: Download package
+  include: download-package.yml
+  become: yes
+  become_method: sudo
+  become_user: "{{ user_name }}"
+  tags: download-software
+
+- name: Remove older releases
+  shell: "ls \"{{ yb_home_dir }}/releases\" -t | \
+      tail -n +{{ num_releases_to_keep + 1 }} | \
+      xargs -I{} --no-run-if-empty rm -rv \"{{ yb_home_dir }}/releases/{}\" --"
+  register: rm_releases_result
+  tags:
+    - download-software
+    - yb-prebuilt-ami
+
+- name: Log remove older releases response
+  debug:
+    var: rm_releases_result.stdout_lines
+  tags:
+    - download-software
+    - yb-prebuilt-ami
+
+- name: Retrieve items to symlink
+  command: "ls {{ yb_package_folder }}"
+  register: symlink_items
+  tags:
+    - install-software
+    - yb-prebuilt-ami
+  when: is_yugabyte_package
+
+- name: Install | Create symlink for individual directory/file inside of package
+  file:
+    src: "{{ yb_package_folder }}/{{ item[1] }}"
+    dest: "{{ yb_home_dir }}/{{ item[0] }}/{{ item[1] }}"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+  with_nested:
+    - "{{ symlink_folders }}"
+    - "{{ symlink_items.stdout_lines }}"
+  tags:
+    - install-software
+    - yb-prebuilt-ami
+  when: is_yugabyte_package
+
+- name: Install | Create symlink to package folder
+  file:
+    src: "{{ yb_package_folder }}"
+    dest: "{{ yb_home_dir }}/{{ item }}"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+  with_items:
+    - "{{ symlink_folders }}"
+  tags:
+    - install-software
+    - yb-prebuilt-ami
+  when: not is_yugabyte_package
+
+# doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
+- name: Remove older yb software folders
+  shell: "ls --ignore='ybc*' \"{{ yb_software_dir }}\" -t | \
+      tail -n +{{ num_releases_to_keep + 2 }} | \
+      xargs -I{} --no-run-if-empty rm -rv \"{{ yb_software_dir }}/{}\" --"
+  register: rm_yb_softwares_result
+  tags:
+    - install-software
+    - yb-prebuilt-ami
+
+- name: Log remove older yb software folders response
+  debug:
+    var: rm_yb_softwares_result.stdout_lines
+  tags:
+    - install-software
+    - yb-prebuilt-ami

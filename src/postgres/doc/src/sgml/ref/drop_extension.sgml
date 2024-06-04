@@ -1,0 +1,126 @@
+<!--
+doc/src/sgml/ref/drop_extension.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropextension">
+ <indexterm zone="sql-dropextension">
+  <primary>DROP EXTENSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP EXTENSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP EXTENSION</refname>
+  <refpurpose>remove an extension</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP EXTENSION [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP EXTENSION</command> removes extensions from the database.
+   Dropping an extension causes its member objects, and other explicitly
+   dependent routines (see <xref linkend="sql-alterroutine"/>,
+   the <literal>DEPENDS ON EXTENSION <replaceable>extension_name</replaceable>
+   </literal> action), to be dropped as well.
+  </para>
+
+  <para>
+   You must own the extension to use <command>DROP EXTENSION</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the extension does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an installed extension.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the extension,
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      This option prevents the specified extensions from being dropped if
+      other objects, besides these extensions, their members, and their
+      explicitly dependent routines, depend on them.  This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To remove the extension <literal>hstore</literal> from the current
+   database:
+<programlisting>
+DROP EXTENSION hstore;
+</programlisting>
+   This command will fail if any of <literal>hstore</literal>'s objects
+   are in use in the database, for example if any tables have columns
+   of the <type>hstore</type> type.  Add the <literal>CASCADE</literal> option to
+   forcibly remove those dependent objects as well.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP EXTENSION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createextension"/></member>
+   <member><xref linkend="sql-alterextension"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

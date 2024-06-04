@@ -1,0 +1,175 @@
+@use '../../../_style/colors.scss';
+
+.replication-details {
+  .content-title {
+    .subtext {
+      opacity: 0.5;
+      color: black !important;
+
+      a {
+        color: black !important;
+      }
+    }
+  }
+  .graph-container {
+    .plot-container.plotly {
+      background: colors.$YB_BG_WHITE_3;
+    }
+  }
+  .replication-label {
+    opacity: 0.5;
+    color: black;
+  }
+
+  .lag-text {
+    color: green;
+    font-size: 16px;
+  }
+
+  .lag-value {
+    font-size: 16px;
+  }
+
+  .replication-lag-value {
+    &.above-threshold {
+      color: #f00000;
+    }
+    &.below-threshold {
+      color: green;
+    }
+    *.not-reported {
+      color: colors.$YB_WARNING_COLOR;
+    }
+  }
+
+  .details-canvas {
+    padding: 30px;
+
+    .replication-actions {
+      .more-actions-button {
+        margin-left: 10px;
+        .xCluster-dropdown-button {
+          i {
+            margin: 0 4px 0 0;
+          }
+        }
+      }
+
+      .replication-status-button {
+        margin-right: 10px;
+      }
+    }
+
+    .replication-info-banners-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      margin: 30px 0 20px;
+      .replication-info-banner-content {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+
+        width: 100%;
+
+        .restart-replication-button {
+          margin-left: auto;
+        }
+      }
+    }
+
+    .replication-status {
+      background: colors.$YB_WHITE;
+      padding: 12px;
+      border: 1px solid #dde1e6;
+      border-radius: 8px;
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+    }
+
+    .replication-details-panel {
+      margin-top: 30px;
+
+      .replication-overview {
+        padding: 20px;
+      }
+
+      .replication-target-universe {
+        margin-left: 35px;
+        padding: 20px 5px;
+        background: colors.$YB_WHITE;
+        border: 1px solid #e8e8e8;
+      }
+    }
+
+    .lag-status-graph {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      .lag-text,
+      .lag-value {
+        margin-left: 10px;
+      }
+      .lag-stats {
+        min-width: 300px;
+        margin-right: 60px;
+      }
+    }
+  }
+
+  .noLeftPadding {
+    padding-left: 0;
+  }
+  .noPadding {
+    padding: 0;
+  }
+  .replication-divider {
+    margin-bottom: 10px;
+  }
+  .target-universe-link {
+    text-decoration: underline;
+  }
+  .target-universe-subText {
+    font-size: 10px;
+    padding-top: 3px;
+    text-align: center;
+    color: #0b1117;
+    background: #e9eef2;
+    border-radius: 4px;
+    width: 50px;
+    height: 20px;
+    display: inline-block;
+    margin-left: 10px;
+  }
+
+  .details-actions-button {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.xCluster-details-error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  padding: 8px;
+  .delete-config-button {
+    margin-top: 24px;
+  }
+}
+
+.alertMsg {
+  * {
+    margin-right: 5px;
+  }
+
+  a {
+    text-decoration: underline;
+    color: #fff;
+  }
+}

@@ -1,0 +1,382 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/common.proto";
+import "yb/common/common_types.proto";
+import "yb/common/redis_protocol.proto";
+import "yb/common/ql_protocol.proto";
+import "yb/common/pgsql_protocol.proto";
+import "yb/common/transaction.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/docdb/docdb.proto";
+import "yb/tablet/operations.proto";
+import "yb/tablet/tablet.proto";
+import "yb/tserver/tserver_types.proto";
+
+// A batched set of insert/mutate requests.
+message WriteRequestPB {
+  // TODO(proto3) reserved 2, 3, 9;
+
+  required bytes tablet_id = 1;
+
+  // When replicating RocksDB write operations through Raft for single-shard transactions,
+  // we put a write batch here.
+  optional docdb.KeyValueWriteBatchPB write_batch = 7;
+
+  // A batch of redis operations.
+  repeated RedisWriteRequestPB redis_write_batch = 8;
+
+  // A batch of QL operations.
+  repeated QLWriteRequestPB ql_write_batch = 10;
+
+  // A batch of Pgsql operations.
+  repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
+
+  // A hybrid_time obtained by the client from a previous request.
+  // TODO crypto sign this and propagate the signature along with
+  // the hybrid_time.
+  optional fixed64 propagated_hybrid_time = 5;
+
+  optional bool include_trace = 6 [ default = false ];
+
+  optional ReadHybridTimePB read_time = 12;
+
+  // Use 2 int64 to represent UUID.
+  optional fixed64 client_id1 = 14;
+  optional fixed64 client_id2 = 15;
+  optional int64 request_id = 16;
+  optional int64 min_running_request_id = 17;
+  optional double rejection_score = 18;
+
+  optional fixed64 external_hybrid_time = 19;
+
+  optional uint64 batch_idx = 20;
+
+  optional int64 leader_term = 21;
+
+  optional uint64 start_time_micros = 22;
+
+  optional AshMetadataPB ash_metadata = 23;
+}
+
+message WriteResponsePB {
+  // If the entire WriteResponsePB request failed, the error status that
+  // caused the failure. This type of error is triggered for
+  // cases such as the tablet not being on this server, or the
+  // schema not matching. If any error specific to a given row
+  // occurs, this error will be recorded in per_row_errors below,
+  // even if all rows failed.
+  optional TabletServerErrorPB error = 1;
+
+  // If errors occurred with particular row operations, then the errors
+  // for those operations will be passed back in 'per_row_errors'.
+  message PerRowErrorPB {
+    // The index of the row in the incoming batch.
+    required int32 row_index = 1;
+    // The error that occurred.
+    required AppStatusPB error = 2;
+  }
+  repeated PerRowErrorPB per_row_errors = 2;
+
+  // A batch of redis responses.
+  repeated RedisResponsePB redis_response_batch = 8;
+
+  // A batch of QL responses.
+  repeated QLResponsePB ql_response_batch = 9;
+
+  // A batch of QL responses.
+  repeated PgsqlResponsePB pgsql_response_batch = 12;
+
+  // The hybrid_time chosen by the server for this write.
+  // TODO KUDU-611 propagate hybrid_times with server signature.
+  optional fixed64 propagated_hybrid_time = 3;
+
+  optional string trace_buffer = 10;
+
+  // Used to report restart whether this operation requires read restart.
+  optional ReadHybridTimePB restart_read_time = 11;
+
+  // Used to report used read time when transaction asked for it.
+  optional ReadHybridTimePB used_read_time = 13;
+
+  optional fixed64 local_limit_ht = 14;
+}
+
+// A list tablets request
+message ListTabletsRequestPB {
+}
+
+// A list tablets response
+message ListTabletsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message StatusAndSchemaPB {
+    required tablet.TabletStatusPB tablet_status = 1;
+    required SchemaPB schema = 2;
+    optional PartitionSchemaPB partition_schema = 3;
+  }
+
+  repeated StatusAndSchemaPB status_and_schema = 2;
+}
+
+message NoOpRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+message NoOpResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+// A verification request to check if a range of rows in main table is
+// consistent with index table content. We will verify index table rows using
+// the primary table.
+message VerifyTableRowRangeRequestPB {
+  required bytes tablet_id = 1;
+
+  // If indexes is empty, we will check all indexes
+  // If it contains entries, then we will check only the ones provided.
+  repeated bytes index_ids = 2;
+
+  optional bytes start_key = 3;
+
+  optional uint32 num_rows = 4;
+
+  // Read time if left empty will be replaced by the earliest safe time to read
+  optional fixed64 read_time = 5;
+
+  optional fixed64 propagated_hybrid_time = 6;
+}
+
+message VerifyTableRowRangeResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  map<string, uint64> consistency_stats = 2;
+
+  optional bytes verified_until = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message ReadRequestPB {
+  // The tablet to scan.
+  optional bytes tablet_id = 1;
+
+  repeated RedisReadRequestPB redis_batch = 2;
+
+  repeated QLReadRequestPB ql_batch = 4;
+
+  repeated PgsqlReadRequestPB pgsql_batch = 10;
+
+  // Whether data blocks will be cached when read from the files or discarded after use.
+  // Disable this to lower cache churn when doing large scans.
+  optional bool cache_blocks = 3 [default = true];
+
+  optional bool include_trace = 5 [ default = false ];
+
+  optional YBConsistencyLevel consistency_level = 6 [ default = STRONG ];
+  // TODO: add hybrid_time in future
+
+  optional TransactionMetadataPB transaction = 7;
+
+  optional SubTransactionMetadataPB subtransaction = 15;
+
+  optional fixed64 propagated_hybrid_time = 8;
+
+  // See ReadHybridTime for explation of next two fields.
+  optional ReadHybridTimePB read_time = 9;
+
+  optional string proxy_uuid = 11;
+
+  optional bool DEPRECATED_may_have_metadata = 12;
+
+  optional double rejection_score = 13;
+
+  optional uint64 batch_idx = 14;
+
+  optional uint64 start_time_micros = 16;
+
+  optional AshMetadataPB ash_metadata = 17;
+}
+
+message ReadResponsePB {
+  reserved 2;
+
+  repeated RedisResponsePB redis_batch = 1;
+
+  repeated QLResponsePB ql_batch = 4;
+
+  repeated PgsqlResponsePB pgsql_batch = 8;
+
+  optional TabletServerErrorPB error = 3;
+
+  optional string trace_buffer = 5;
+
+  optional fixed64 propagated_hybrid_time = 6;
+
+  // Used to report restart whether this operation requires read restart.
+  optional ReadHybridTimePB restart_read_time = 7;
+
+  // Used to report used read time when transaction asked for it.
+  optional ReadHybridTimePB used_read_time = 9;
+
+  optional fixed64 local_limit_ht = 10;
+}
+
+message GetTabletKeyRangesRequestPB {
+  optional bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional bytes lower_bound_key = 3;
+  optional bytes upper_bound_key = 4;
+  optional uint64 max_num_ranges = 5;
+  optional uint64 range_size_bytes = 6;
+  optional bool is_forward = 7 [ default = true ];
+  optional uint32 max_key_length = 8;
+}
+
+message GetTabletKeyRangesResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+// Truncate tablet request.
+message TruncateRequestPB {
+  optional bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional tablet.TruncatePB truncate = 3;
+}
+
+// Truncate tablet response.
+message TruncateResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+// Tablet's status request
+message GetTabletStatusRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+// Tablet's status response
+message GetTabletStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional tablet.TabletStatusPB tablet_status = 2;
+}
+
+message GetMasterAddressesRequestPB {
+}
+
+message GetMasterAddressesResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional string master_addresses = 2;
+}
+
+message PublishRequestPB {
+  required bytes channel = 1;
+  required bytes message = 2;
+}
+
+message PublishResponsePB {
+  required int32 num_clients_forwarded_to = 1;
+}
+
+// Get this tserver's notion of being ready for handling IO requests across all
+// tablets that it owns.
+message IsTabletServerReadyRequestPB {
+}
+
+// When response has no errors, the tserver is deemed ready as per its tablet manager layer
+// when the number of not running tablets is 0. Or the client can choose to
+// timeout before that. Also returns total tablets under this tablet server.
+message IsTabletServerReadyResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional int32 num_tablets_not_running = 2;
+  optional int32 total_tablets = 3 [default = 0];
+}
+
+// A list master servers request
+message ListMasterServersRequestPB {
+}
+
+// A list master servers response
+message ListMasterServersResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message MasterServerAndTypePB {
+    optional string master_server = 1;
+    optional bool is_leader = 2;
+  }
+
+  repeated MasterServerAndTypePB master_server_and_type = 2;
+}
+
+// Gets the schema version of the schema that is compatible with the requested schema.
+message GetCompatibleSchemaVersionRequestPB {
+  optional bytes tablet_id = 1;
+  optional SchemaPB schema = 2;
+}
+
+// Update Schema version mapping response PB.
+message GetCompatibleSchemaVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint32 compatible_schema_version = 2;
+}
+
+message CheckTserverTabletHealthRequestPB {
+  repeated bytes tablet_ids = 1;
+}
+
+message CheckTserverTabletHealthResponsePB {
+  message TabletHealthPB {
+    optional bytes tablet_id = 1;
+    optional PeerRole role = 2;
+    // Only valid if role is not LEADER.
+    optional int64 follower_lag_ms = 3;
+  }
+  optional TabletServerErrorPB error = 1;
+  repeated TabletHealthPB tablet_healths = 2;
+}
+
+message ClearAllMetaCachesOnServerRequestPB {}
+
+message ClearAllMetaCachesOnServerResponsePB {}
+
+message ClearUniverseUuidRequestPB {
+}
+
+message ClearUniverseUuidResponsePB {
+  optional TabletServerErrorPB error = 1;
+}

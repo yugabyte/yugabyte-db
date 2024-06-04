@@ -1,0 +1,255 @@
+#!/usr/bin/stap
+#
+# Copyright (c) YugaByte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
+//
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// Systemtap script for tracing the filesystem-related system calls issued
+// by a particular process, optionally scoped to within a particular path
+// subtree (i.e. a path and all paths below it).
+//
+// Effectively like 'strace -fT', except that fds are automatically resolved
+// to file names.
+//
+// Invoke as follows:
+// - stap trace_io.stp -x <pid> [path]
+//   To start tracing an existing process.
+// - stap trace_io.stp -c <command> [path]
+//   To run a command and trace it.
+//
+// See README.systemtap for prerequisite information.
+
+// Maps (pid, fd) ==> filename.
+global fds
+
+// Maps (pid, filename) ==> reference_count.
+global references
+
+// Path to filter all filenames against.
+//
+// Sadly, SystemTap doesn't provide a way to test if a string starts with a
+// prefix that isn't a string literal. Regex matching requires that the
+// regex be a string literal (not a variable), and the "string library" only
+// provides a substring matching method. We could write our own in embedded
+// C, but that means the script must be run in "unsafe" mode. Given those
+// options we use substring matching, opening us up to false positives.
+global filter_path
+
+global running
+
+// Add a reference to [fd, filename] for the current process.
+function start_tracking (fd, filename) {
+  fds[pid(), fd] = filename
+  if ([pid(), filename] in references) {
+    references[pid(), filename]++
+  } else {
+    references[pid(), filename] = 1
+  }
+}
+
+// Remove a reference from [fd, filename] for the current process. Returns
+// 1 if the pair has no more references, 0 otherwise.
+function stop_tracking (fd, filename) {
+  delete fds[pid(), fd]
+
+  references[pid(), filename]--
+  if (references[pid(), filename] == 0) {
+    delete references[pid(), filename]
+    return 1
+  }
+  return 0
+}
+
+probe begin {
+  filter_path = argc ? argv[1] : ""
+  running = 0
+
+  if (target()) {
+    printf("[%d] %s: beginning tracing of PID %d with path \"%s\"\n",
+           pid(), ctime(gettimeofday_s()), target(), filter_path)
+    running = 1
+  } else {
+    printf("Need to supply a target on the stap command line\n")
+    printf("Pass either -x <pid> (to trace an existing process)")
+    printf(" or -c <command> (to trace a new one)\n");
+    exit()
+  }
+}
+
+probe end {
+  if (running) {
+    printf("[%d] %s: ending tracing of PID %d\n",
+           pid(), ctime(gettimeofday_s()), target())
+    running = 0
+  }
+}
+
+probe syscall.open.return {
+  // The target() corresponds to the pid provided to stap(1) via -x, or the
+  // pid of the command run via -c.
+  //
+  // See 'man stap' for more details.
+  filename = user_string_quoted($filename)
+  if (pid() == target() && isinstr(filename, filter_path)) {
+    if ($flags & 64) {
+      argstr = sprintf("%s, %s, %#o", filename, _sys_open_flag_str($flags),
+                       $mode)
+    } else {
+      argstr = sprintf("%s, %s", filename, _sys_open_flag_str($flags))
+    }
+    if ($return >= 0) {
+      time = gettimeofday_us() - @entry(gettimeofday_us())
+      printf("[%d] %s: open %s (%d us)\n",
+             tid(), ctime(gettimeofday_s()), argstr, time)
+      start_tracking($return, filename)
+    }
+  }
+}
+
+probe syscall.close.return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    if (stop_tracking($fd, filename)) {
+      time = gettimeofday_us() - @entry(gettimeofday_us())
+      printf("[%d] %s: close %s (%d us)\n",
+             tid(), ctime(gettimeofday_s()), filename, time)
+    }
+  }
+}
+
+probe syscall.dup.return {
+  oldfd = $fildes
+  newfd = $return
+  if (newfd >= 0) {
+    if ([pid(), oldfd] in fds) {
+      // oldfd is duplicated to newfd, update the tracking.
+      start_tracking(newfd, fds[pid(), oldfd])
+    }
+  }
+}
+
+// For some reason probes on syscall.dup2 never trigger, but probes on the
+// raw kernel function do.
+probe kernel.function("sys_dup2").return {
+  oldfd = $oldfd
+  newfd = $return
+  if (newfd >= 0 && newfd != oldfd) {
+    // If newfd is already open, dup2() closes it.
+    if ([pid(), newfd] in fds) {
+      stop_tracking(newfd, fds[pid(), newfd])
+    }
+
+    // oldfd is duplicated to newfd.
+    if ([pid(), oldfd] in fds) {
+      start_tracking(newfd, fds[pid(), oldfd])
+    }
+  }
+}
+
+// The constants here can be found in linux/fs.h, but are hard-coded to
+// avoid usage of embedded C in systemtap.
+//
+// See `man 2 sync_file_range` for more information.
+function _sys_sync_file_range_flag_str:string (f:long) {
+  retval = ""
+  if (f & 1) {
+    retval = retval . "|WAIT_BEFORE"
+  }
+  if (f & 2) {
+    retval = retval . "|WRITE"
+  }
+  if (f & 4) {
+    retval = retval . "|WAIT_AFTER"
+  }
+  if (retval == "") {
+    return "0"
+  } else {
+    // Trim the extra pipe at the beginning.
+    return substr(retval, 1, strlen(retval) - 1)
+  }
+}
+
+// As of Ubuntu 14.04 we have to refer to sync_file_range by kernel function
+// name because there's no syscall alias defined.
+probe kernel.function("sys_sync_file_range").return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: sync_file_range %s %d %d %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, $offset, $nbytes,
+           _sys_sync_file_range_flag_str($flags), $return, time)
+  }
+}
+
+probe syscall.read.return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    argstr = sprintf("%p, %d", $buf, $count)
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: read %s %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, argstr, $return, time)
+  }
+}
+
+probe syscall.write.return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    argstr = sprintf("%p, %d", $buf, $count)
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: write %s %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, argstr, $return, time)
+  }
+}
+
+probe syscall.fsync.return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: fsync %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, $return, time)
+  }
+}
+
+probe syscall.fdatasync.return {
+  if ([pid(), $fd] in fds) {
+    filename = fds[pid(), $fd]
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: fdatasync %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, $return, time)
+  }
+}
+
+probe syscall.unlink.return {
+  filename = user_string_quoted($pathname)
+  if (pid() == target() && isinstr(filename, filter_path)) {
+    time = gettimeofday_us() - @entry(gettimeofday_us())
+    printf("[%d] %s: unlink %s -> %d (%d us)\n",
+           tid(), ctime(gettimeofday_s()), filename, $return, time)
+  }
+}

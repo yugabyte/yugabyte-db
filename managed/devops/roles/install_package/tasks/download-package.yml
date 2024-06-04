@@ -1,0 +1,184 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# TODO(bogdan,ram): hack to only assume yugabyte tar.gz has a top level dir into which it untars.
+- set_fact:
+    package_folder_or_tmp: "{{ temporary_package_dir if is_yugabyte_package else package_folder }}"
+    package_dest: "{{ yb_software_dir }}/{{ package_folder }}"
+  tags: always
+
+- name: Download package | Set temporary package path
+  set_fact:
+    tmp_package_location: "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/{{ package_name }}"
+    remote_tmp_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ package_name }}"
+  tags: always
+
+- name: Download ybc package | Set temporary package path
+  set_fact:
+    tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
+    remote_ybc_tmp_package: "{{ remote_tmp_dir | default('/tmp') }}/{{ ybc_dir }}.tar.gz"
+  when: configure_ybc
+  tags: always
+
+- name: Download package | Download "{{ package_name }}" from AWS S3
+  block:
+    - name: Download package | Download "{{ package_name }}" from AWS S3
+      command:
+        argv:
+        - s3cmd
+        - get
+        - "{{ s3_package_path }}"
+        - "{{ remote_tmp_package }}"
+        creates: "{{ remote_tmp_package }}"
+      register: s3cmd_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: s3cmd_result is succeeded
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key | default(lookup('env', 'AWS_ACCESS_KEY_ID')) }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key | default(lookup('env', 'AWS_SECRET_ACCESS_KEY')) }}"
+  when: s3_package_path is defined
+  tags: yb-prebuilt-ami
+
+- name: Download package | Create credentials file and download "{{ package_name }}" from GCS
+  block:
+    - name: Download package | Create GCS credentials file
+      tempfile:
+        path: "{{ yb_home_dir }}"
+      register: gcs_credentials_json_file
+    - name: Download package | Copy GCS credentials to file
+      template:
+        src: gcs_credentials_json.j2
+        dest: "{{ gcs_credentials_json_file.path }}"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        mode: 0600
+    - name: Download package | Download "{{ package_name }}" from GCS
+      command:
+        argv:
+          - "gsutil"
+          - "-o"
+          - "Credentials:gs_service_key_file={{ gcs_credentials_json_file.path }}"
+          - "cp"
+          - "{{ gcs_package_path }}"
+          - "{{ remote_tmp_package }}"
+        creates: "{{ remote_tmp_package }}"
+      register: gsutil_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: gsutil_result is succeeded
+  always:
+    - name: Download package | Cleanup GCS credentials file
+      when: gcs_credentials_json_file is defined and gcs_credentials_json_file.path != ""
+      file:
+        path: "{{ gcs_credentials_json_file.path }}"
+        state: absent
+  when: gcs_package_path is defined
+
+- name: Download package | Download "{{ package_name }}" from a HTTP(S) link
+  block:
+    - name:
+      get_url:
+        url: "{{ http_package_path }}"
+        dest: "{{ remote_tmp_package }}"
+        checksum: "{{ http_package_checksum | default('') }}"
+      register: get_url_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: get_url_result is succeeded
+  when: http_package_path is defined
+
+- name: Download package | Create release binary directory
+  file:
+    path: "{{ yb_software_dir }}/{{ package_folder_or_tmp }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+
+- name: Download package | Move package "{{ remote_tmp_package }}" to "{{ tmp_package_location }}"
+  copy:
+    src: "{{ remote_tmp_package }}"
+    dest: "{{ tmp_package_location }}"
+    remote_src: True
+  tags: yb-prebuilt-ami
+
+- name: Download package | Clean up temporary remote downloads
+  file:
+    path: "{{ remote_tmp_package }}"
+    state: absent
+  tags: yb-prebuilt-ami
+
+- name: Download package | Unpack package "{{ tmp_package_location }}"
+  unarchive:
+    src: "{{ tmp_package_location }}"
+    dest: "{{ yb_software_dir }}/{{ package_folder_or_tmp }}"
+    remote_src: yes
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+
+- name: Download package | Remove the package destination
+  file:
+    path: "{{ package_dest }}"
+    state: absent
+  when: is_yugabyte_package
+  tags: yb-prebuilt-ami
+
+- name: Download package | Move unpacked dir to "{{ release_folder }}"
+  command: >
+    mv
+    "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}"
+    "{{ package_dest }}"
+  when: is_yugabyte_package
+  tags: yb-prebuilt-ami
+
+- name: Download package | Update timestamp for "{{ package_dest }}"
+  file:
+    path: "{{ package_dest }}"
+    state: touch
+  tags: yb-prebuilt-ami
+
+- name: Download package | Clean the releases directory
+  file:
+    path: "{{ yb_home_dir }}/{{ release_folder }}"
+    state: absent
+  when: release_folder != ""
+  tags: yb-prebuilt-ami
+
+- name: Download package | Create releases directory
+  file:
+    path: "{{ yb_home_dir }}/{{ release_folder }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  when: release_folder != ""
+  tags: yb-prebuilt-ami
+
+- name: Download package | Move package "{{ tmp_package_location }}" to releases folder
+  copy:
+    src: "{{ tmp_package_location }}"
+    dest: "{{ yb_home_dir }}/{{ release_folder }}"
+    remote_src: True
+  when: release_folder != ""
+  tags: yb-prebuilt-ami
+
+- name: Download package | Clean up temporary downloads
+  file:
+    path: "{{ tmp_package_location }}"
+    state: absent
+  tags: yb-prebuilt-ami
+
+- name: Download package | Run the post install script
+  command: "{{ package_dest }}/bin/post_install.sh"
+  tags:
+    - download-software
+    - yb-prebuilt-ami
+  when: is_yugabyte_package

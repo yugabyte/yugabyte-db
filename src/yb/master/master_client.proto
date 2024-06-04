@@ -1,0 +1,269 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+import "yb/tablet/tablet_types.proto";
+
+// Info about a single tablet server, returned to the client as part
+// of the GetTabletLocations response. This can be used on the client
+// to update the local cache of where each TS UUID is located. In
+// the future we may also want to transmit software version info,
+// load info, topology, etc.
+message TSInfoPB {
+  required bytes permanent_uuid = 1;
+
+  repeated HostPortPB private_rpc_addresses = 2;
+
+  repeated HostPortPB broadcast_addresses = 5;
+
+  optional CloudInfoPB cloud_info = 3;
+
+  optional bytes placement_uuid = 4;
+
+  // DEPRECATED Capabilities of tablet server.
+  reserved 6;
+}
+
+message TabletLocationsPB {
+  message ReplicaPB {
+    required TSInfoPB ts_info = 1;
+    required PeerRole role = 2;
+    optional consensus.PeerMemberType member_type = 3;
+    optional tablet.RaftGroupStatePB state = 4;
+  }
+
+  required bytes tablet_id = 1;
+
+  // DEPRECATED.
+  optional bytes start_key = 2;
+  optional bytes end_key = 3;
+
+  optional PartitionPB partition = 6;
+
+  repeated ReplicaPB replicas = 4;
+
+  // true if the tablet was running but no tablet server has reported it yet.
+  // The set of replicas will be the last one that was hosting the tablet.
+  // This should happen on Master restart when the request is issued before
+  // the TS has the time to notify the Master about the tablets that is hosting.
+  required bool stale = 5;
+
+  optional bytes table_id = 7;
+  // Table ids for all the tables on this tablet.
+  repeated bytes table_ids = 8;
+
+  // See SysTabletsEntryPB for fields with the same name.
+  optional uint64 split_depth = 9;
+  optional bytes split_parent_tablet_id = 12;
+  repeated bytes split_tablet_ids = 13;
+
+  // Number of expected live replicas.
+  optional int32 expected_live_replicas = 10;
+
+  // Number of expected read replicas.
+  optional int32 expected_read_replicas = 11;
+
+  // Whether or not this tablet has been deleted.
+  optional bool is_deleted = 14;
+
+  // OpId of Committed Raft Config sent back to a tablet server when it requests a meta-
+  // -cache refresh. This OpId helps the tablet server determine if its meta-cache entry
+  // is stale by comparing this against its current raft_config_opid_index
+  optional int64 raft_config_opid_index = 15;
+}
+
+message GetIndexBackfillProgressRequestPB {
+  repeated string index_ids = 1;
+}
+
+message GetIndexBackfillProgressResponsePB {
+  optional MasterErrorPB error = 1;
+  // The ordering of the indexes' results here is expected to be the same as the ordering in the
+  // corresponding request PB (GetIndexBackfillProgressRequestPB).
+  repeated uint64 rows_processed_entries = 2;
+}
+
+message GetTabletLocationsRequestPB {
+  // The tablet IDs about which to fetch info.
+  repeated bytes tablet_ids = 1;
+
+  // If table ID is specified, table's partition_list_version will be included into response.
+  optional bytes table_id = 2;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 3;
+
+  // If true, then return any deleted tablets as well (marked with is_deleted in the returned
+  // tablet locations).
+  optional bool include_deleted = 4;
+}
+
+message GetTabletLocationsResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated TabletLocationsPB tablet_locations = 2;
+
+  // If GetTabletLocationsRequestPB::table_id is set we return table's partition_list_version for
+  // this table (see SysTablesEntryPB::partition_list_version).
+  optional uint32 partition_list_version = 4;
+
+  message Error {
+    required bytes tablet_id = 1;
+    required AppStatusPB status = 2;
+  }
+  repeated Error errors = 3;
+}
+
+message GetTableLocationsRequestPB {
+  required TableIdentifierPB table = 1;
+
+  // Partition-key range.
+  optional bytes partition_key_start = 3;
+  optional bytes partition_key_end = 4;
+
+  optional uint32 max_returned_locations = 5 [ default = 10 ];
+
+  optional bool require_tablets_running = 6;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 7;
+
+  // When set, the TabletLocationsPBs in the response will only have basic fields and
+  // partition-related fields set. The fields set are table_id, tablet_id, partition, split_depth,
+  // split_parent_tablet_id, and stale.
+  optional bool partitions_only = 8;
+}
+
+message GetTableLocationsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  repeated TabletLocationsPB tablet_locations = 2;
+  optional TableType table_type = 3;
+
+  // See SysTablesEntryPB for field with the same name.
+  optional uint32 partition_list_version = 4;
+
+  optional bool creating = 5;
+}
+
+message GetTransactionStatusTabletsRequestPB {
+  // Placement to use when deciding which local transaction tables should be considered.
+  // No local transaction tablets will be returned if not set.
+  optional CloudInfoPB placement = 1;
+}
+
+message GetTransactionStatusTabletsResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated bytes global_tablet_id = 2;
+  repeated bytes placement_local_tablet_id = 3;
+}
+
+// Reserve Postgres oid
+message ReservePgsqlOidsRequestPB {
+  optional bytes namespace_id = 1; // The namespace id of the Postgres database.
+  optional uint32 next_oid = 2;    // The next oid to reserve.
+  optional uint32 count = 3;       // The number of oids to reserve.
+}
+
+message ReservePgsqlOidsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional uint32 begin_oid = 2; // The beginning oid reserved. Can be higher than requested.
+  optional uint32 end_oid = 3;   // The end (exclusive) oid reserved.
+}
+
+message GetYsqlCatalogConfigRequestPB {
+}
+
+message GetYsqlCatalogConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint64 version = 2;
+}
+
+message RedisConfigSetRequestPB {
+  optional string keyword = 1;
+  repeated bytes args = 2;
+}
+
+message RedisConfigSetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RedisConfigGetRequestPB {
+  optional string keyword = 1;
+}
+
+message RedisConfigGetResponsePB {
+  optional string keyword = 1;
+  repeated bytes args = 2;
+  optional MasterErrorPB error = 3;
+}
+
+message GetStatefulServiceLocationRequestPB {
+  optional StatefulServiceKind service_kind = 1;
+}
+
+message StatefulServiceInfoPB {
+  optional bytes permanent_uuid = 1;
+
+  repeated HostPortPB private_rpc_addresses = 2;
+
+  repeated HostPortPB broadcast_addresses = 3;
+
+  optional CloudInfoPB cloud_info = 4;
+}
+
+message GetStatefulServiceLocationResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional StatefulServiceInfoPB service_info = 2;
+}
+
+service MasterClient {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+    // Client->Master RPCs
+  rpc GetTabletLocations(GetTabletLocationsRequestPB) returns (GetTabletLocationsResponsePB);
+
+  rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
+
+  rpc GetTransactionStatusTablets(GetTransactionStatusTabletsRequestPB)
+      returns (GetTransactionStatusTabletsResponsePB);
+
+  // For Postgres:
+  rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
+  rpc GetYsqlCatalogConfig(GetYsqlCatalogConfigRequestPB) returns (GetYsqlCatalogConfigResponsePB);
+
+  rpc GetIndexBackfillProgress(GetIndexBackfillProgressRequestPB)
+      returns (GetIndexBackfillProgressResponsePB);
+
+  // Redis Config
+  rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
+  rpc RedisConfigGet(RedisConfigGetRequestPB) returns (RedisConfigGetResponsePB);
+
+  rpc GetStatefulServiceLocation(GetStatefulServiceLocationRequestPB)
+      returns (GetStatefulServiceLocationResponsePB);
+}

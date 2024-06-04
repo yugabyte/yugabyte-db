@@ -1,0 +1,87 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
+
+.nav-tabs {
+  border-bottom: none;
+  > li {
+    > a {
+      border: 1px solid #e2e2e1;
+      border: 1px solid transparent;
+      min-width: 80px;
+      text-align: center;
+      color: #555;
+      border: 1px solid colors.$YB_GRAY;
+      background-color: rgba(colors.$YB_GRAY_HOVER, 0.7);
+      margin-right: 7px;
+      @include mixins.transition(0.35s);
+
+      &:first-child {
+        margin-left: -1px;        
+      }
+
+      @media (min-width: 768px) {
+        min-width: 116px;
+      }
+      &:hover {
+        border: 1px solid colors.$YB_GRAY_BORDER;
+        background-color: colors.$YB_GRAY_HOVER;
+        border-bottom-color: transparent;
+        @include mixins.transition(0.125s);
+      }
+    }
+    &.active {
+      > a {
+        &,
+        &:focus,
+        &:hover {
+          margin-top: 0;
+          background-color: white;
+          border: 1px solid colors.$YB_GRAY_HOVER;
+          border-bottom-color: transparent;
+          z-index: 2;
+        }
+      }
+    }
+    &.disabled {
+      cursor: not-allowed;
+      > a {
+        color: colors.$YB_DARK_GRAY;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+.tab-content {
+  position: relative;
+  margin: 0;
+  padding: 15px 20px 20px 20px;
+  border-top: none;
+  background-color: #fff;
+  min-height: 400px;
+  height: 100%;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07),
+    0 -0.05em 0.15em rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  border: none;
+  border-radius: 0 0 7px 7px;
+  .x_title {
+    margin-top: 6px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 21px;
+  }
+  .tab-content {
+    margin-bottom: 10px;
+  }
+}
+
+.panel-group:last-child {
+  margin-bottom: 0;
+}
+
+.user-list-container {
+  padding: 0 20px;
+}

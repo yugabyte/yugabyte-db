@@ -1,1 +1,20 @@
-_build
+*/.DS_STORE
+*/.DS_Store
+.DS_Store
+public/*
+docs/*
+npm-debug.log
+node_modules
+
+# VIM/emacs stuff
+*.swp
+*~
+
+static/css/site.css
+static/js/
+
+.session.vim*
+
+*.sw?
+
+.hugo_build.lock

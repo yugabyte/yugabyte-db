@@ -1,0 +1,17 @@
+{{ $tocClasses := "" }}
+{{ if $.Param "rightNav.hideH3" }}
+  {{ $tocClasses = " hide-h3" }}
+{{ end }}
+
+{{ if $.Param "rightNav.hideH4" }}
+  {{ $tocClasses = printf "%s hide-h4" $tocClasses }}
+{{ end }}
+
+{{ if not .Params.notoc }}
+{{ with .TableOfContents }}
+{{ if ge (len .) 100 }}
+<div class="td-toc{{ $tocClasses }}">{{ . }}</div>
+{{ end }}
+{{ end }}
+{{ end }}
+<script>if (!$.trim($('#TableOfContents').text())){$('aside.td-sidebar-toc .td-toc').remove();}</script>

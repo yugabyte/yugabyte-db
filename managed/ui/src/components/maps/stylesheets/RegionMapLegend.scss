@@ -1,0 +1,147 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.yb-map-legend,
+.yb-region-map-legend {
+  position: absolute;
+  max-height: 29vw;
+  bottom: 0;
+  padding: 0 15px 5px 15px;
+  margin: 0.5vw;
+  border-radius: 7px;
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.55);
+
+  .list-group-item {
+    padding: 0;
+    margin: 0;
+    border: none;
+    background-color: transparent;
+  }
+
+  .rw-widget {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+
+    &.rw-selectlist {
+      margin-left: -15px;
+      margin-right: -15px;
+      overflow-y: scroll;
+
+      & > ul > li.rw-list-option {
+        padding: 5px 15px;
+        border-radius: 0;
+
+        &.rw-state-focus {
+          background-color: transparent;
+        }
+
+        &,
+        &:hover,
+        &:focus,
+        &:active {
+          border: none;
+        }
+
+        &:hover,
+        &:active {
+          background-color: #fff;
+        }
+
+        label {
+          margin-bottom: 0;
+        }
+      }
+    }
+
+    &.rw-widget::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+.yb-map-legend {
+  margin: 2px 1px;
+  padding: 15px;
+  padding-bottom: 0;
+  background: rgba(255, 255, 255, 0.75);
+
+  h2 {
+    margin: 0 0 15px 0 !important;
+  }
+
+  h5 {
+    margin: 4px 0;
+  }
+
+  .map-legend-item {
+    padding-left: 32px;
+  }
+
+  .list-group {
+    margin: 0 0 15px 0;
+  }
+}
+
+.yb-region-map-legend {
+  h4 {
+    margin-top: 15px;
+  }
+
+  span {
+    margin-bottom: 4px;
+  }
+
+  small {
+    color: #cd6500;
+  }
+
+  .list-group {
+    margin: 10px 0;
+  }
+
+  .list-group-item {
+    margin-bottom: 2px;
+  }
+}
+
+.map-menu-selector {
+  cursor: pointer;
+  padding: 2px;
+}
+
+.provider-map-container .yb-map-legend {
+  bottom: 2px;
+  padding-bottom: 2px;
+}
+
+.yb-map-legend .map-legend-item {
+  display: inline-block;
+  vertical-align: top;
+  padding-right: 20px;
+}
+
+.provider-list {
+  flex: 8;
+  display: flex;
+  flex-direction: 'column';
+}
+
+.provider-list {
+  flex: 8;
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+}
+
+.provider-list::-webkit-scrollbar {
+  display: none;
+}
+
+.shrink-flex {
+  flex-shrink: 1;
+}

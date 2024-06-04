@@ -1,0 +1,457 @@
+--
+-- TEMP
+-- Test temp relations and indexes
+--
+-- test temp table/index masking
+CREATE TABLE temptest(col int);
+CREATE INDEX i_temptest ON temptest(col);
+CREATE TEMP TABLE temptest(tcol int);
+CREATE INDEX i_temptest ON temptest(tcol);
+SELECT * FROM temptest;
+ tcol
+------
+(0 rows)
+
+DROP TABLE temptest;
+SELECT * FROM temptest;
+ col
+-----
+(0 rows)
+
+DROP TABLE temptest;
+-- test different syntaxes for temp table creation
+CREATE TEMPORARY TABLE a (z int);
+DROP TABLE a;
+CREATE LOCAL TEMPORARY TABLE b (z int);
+DROP TABLE b;
+CREATE LOCAL TEMP TABLE c (z int);
+DROP TABLE c;
+-- GLOBAL temp table is not supported.
+CREATE GLOBAL TEMP TABLE d (z int);
+WARNING:  GLOBAL is deprecated in temporary table creation
+LINE 1: CREATE GLOBAL TEMP TABLE d (z int);
+               ^
+-- test temp table selects
+CREATE TABLE temptest(col int);
+INSERT INTO temptest VALUES (1);
+CREATE TEMP TABLE temptest(tcol float);
+INSERT INTO temptest VALUES (2.1);
+SELECT * FROM temptest;
+ tcol
+------
+  2.1
+(1 row)
+
+-- test temp table truncate
+TRUNCATE temptest;
+SELECT * FROM temptest;
+ tcol
+------
+(0 rows)
+
+DROP TABLE temptest;
+SELECT * FROM temptest;
+ col
+-----
+   1
+(1 row)
+
+DROP TABLE temptest;
+-- test temp table CREATE .. AS
+CREATE TABLE test (a int);
+INSERT INTO test VALUES (1);
+CREATE TEMP TABLE temp AS SELECT * FROM test;
+SELECT * FROM test;
+ a
+---
+ 1
+(1 row)
+
+-- test ON COMMIT DELETE ROWS
+CREATE TEMP TABLE temptest(col int) ON COMMIT DELETE ROWS;
+BEGIN;
+INSERT INTO temptest VALUES (1);
+INSERT INTO temptest VALUES (2);
+SELECT * FROM temptest;
+ col
+-----
+   1
+   2
+(2 rows)
+
+COMMIT;
+SELECT * FROM temptest;
+ col
+-----
+(0 rows)
+
+DROP TABLE temptest;
+BEGIN;
+CREATE TEMP TABLE temptest(col) ON COMMIT DELETE ROWS AS SELECT 1;
+SELECT * FROM temptest;
+ col
+-----
+   1
+(1 row)
+
+COMMIT;
+SELECT * FROM temptest;
+ col
+-----
+(0 rows)
+
+DROP TABLE temptest;
+-- test ON COMMIT DROP
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+-- INSERT INTO temptest VALUES (1);
+-- INSERT INTO temptest VALUES (2);
+-- SELECT * FROM temptest;
+-- COMMIT;
+-- SELECT * FROM temptest;
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+-- SELECT * FROM temptest;
+-- COMMIT;
+-- SELECT * FROM temptest;
+-- ON COMMIT is only allowed for TEMP
+CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
+ERROR:  ON COMMIT can only be used on temporary tables
+CREATE TABLE temptest(col) ON COMMIT DELETE ROWS AS SELECT 1;
+ERROR:  ON COMMIT can only be used on temporary tables
+-- test temp table updation
+CREATE TEMP TABLE test (a int);
+INSERT INTO test VALUES (1);
+INSERT INTO test VALUES (2);
+INSERT INTO test VALUES (1);
+UPDATE test SET a=3 WHERE a=1;
+SELECT * FROM test;
+ a
+---
+ 2
+ 3
+ 3
+(3 rows)
+
+-- test temp table row deletion
+DELETE FROM test;
+SELECT * FROM test;
+ a
+---
+(0 rows)
+
+-- test ALTER TABLE on a temp table
+ALTER TABLE test ADD COLUMN d int;
+ALTER TABLE test ADD CONSTRAINT uniq UNIQUE(d);
+INSERT INTO test (d) VALUES (1);
+INSERT INTO test (d) VALUES (1); -- should fail
+ERROR:  duplicate key value violates unique constraint "uniq"
+DETAIL:  Key (d)=(1) already exists.
+SELECT * FROM test;
+ a | d
+---+---
+   | 1
+(1 row)
+
+ALTER TABLE test DROP COLUMN d;
+DELETE FROM test;
+ALTER TABLE test ADD COLUMN b int;
+SELECT * FROM test;
+ a | b
+---+---
+(0 rows)
+
+ALTER TABLE test RENAME COLUMN b to c;
+SELECT * FROM test;
+ a | c
+---+---
+(0 rows)
+
+ALTER TABLE test ADD CONSTRAINT checkc CHECK (c >= 0);
+INSERT INTO test (c) VALUES (-1); -- should fail
+ERROR:  new row for relation "test" violates check constraint "checkc"
+DETAIL:  Failing row contains (null, -1).
+INSERT INTO test (c) VALUES (1);
+ALTER TABLE test DROP COLUMN c;
+SELECT * FROM test;
+ a
+---
+
+(1 row)
+
+-- test COPY on a temp table
+COPY test (a) FROM stdin;
+SELECT * FROM test;
+ a
+---
+
+ 1
+(2 rows)
+
+COPY test (a) TO stdout;
+\N
+1
+-- test transactions with temp tables
+BEGIN;
+INSERT INTO x VALUES (1); -- should fail
+ERROR:  relation "x" does not exist
+LINE 1: INSERT INTO x VALUES (1);
+                    ^
+INSERT INTO test VALUES (2);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+END;
+SELECT * FROM test;
+ a
+---
+
+ 1
+(2 rows)
+
+BEGIN;
+INSERT INTO test VALUES (2);
+INSERT INTO x VALUES (1); -- should fail
+ERROR:  relation "x" does not exist
+LINE 1: INSERT INTO x VALUES (1);
+                    ^
+END;
+SELECT * FROM test;
+ a
+---
+
+ 1
+(2 rows)
+
+BEGIN;
+INSERT INTO test VALUES (2);
+ROLLBACK;
+SELECT * FROM test;
+ a
+---
+
+ 1
+(2 rows)
+
+BEGIN;
+INSERT INTO test VALUES (2);
+COMMIT;
+SELECT * FROM test;
+ a
+---
+
+ 1
+ 2
+(3 rows)
+
+CREATE TABLE x (y int check (y >= 0));
+BEGIN;
+INSERT INTO test VALUES (2);
+INSERT INTO x VALUES (1);
+COMMIT;
+SELECT * FROM x;
+ y
+---
+ 1
+(1 row)
+
+SELECT * FROM test;
+ a
+---
+
+ 1
+ 2
+ 2
+(4 rows)
+
+DELETE FROM x;
+DELETE FROM test;
+BEGIN;
+INSERT INTO test VALUES (1);
+INSERT INTO x VALUES (1);
+INSERT INTO x VALUES (-1); -- constraint violation, should fail
+ERROR:  new row for relation "x" violates check constraint "x_y_check"
+DETAIL:  Failing row contains (-1).
+COMMIT;
+SELECT * FROM x;
+ y
+---
+(0 rows)
+
+SELECT * FROM test;
+ a
+---
+(0 rows)
+
+DROP TABLE test;
+DROP TABLE x;
+-- test temp table deletion
+CREATE TEMP TABLE temptest (col int);
+\c
+SELECT * FROM temptest;
+ERROR:  relation "temptest" does not exist
+LINE 1: SELECT * FROM temptest;
+                      ^
+-- Sleep a second as a workaround due to bug github #1469.
+SELECT pg_sleep(10);
+ pg_sleep
+----------
+
+(1 row)
+
+-- test temp table deletion
+CREATE TEMP TABLE temptest (col int);
+CREATE VIEW tempview AS SELECT * FROM temptest;
+NOTICE:  view "tempview" will be a temporary view
+\c
+SELECT * FROM tempview;
+ERROR:  relation "tempview" does not exist
+LINE 1: SELECT * FROM tempview;
+                      ^
+SELECT * FROM temptest;
+ERROR:  relation "temptest" does not exist
+LINE 1: SELECT * FROM temptest;
+                      ^
+-- Sleep a second as a workaround due to bug github #1469.
+SELECT pg_sleep(10);
+ pg_sleep
+----------
+
+(1 row)
+
+-- test temp table with indexes
+CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON temptest (v1);
+CREATE INDEX ON temptest USING hash (v2);
+-- \d temptest has unstable output as the temporary schemaname contains
+-- the tserver uuid. Use regexp_replace to change it to pg_temp_x so that the
+-- result is stable.
+select current_setting('data_directory') || 'describe.out' as desc_output_file
+\gset
+\o :desc_output_file
+\d temptest
+\o
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g');
+                   regexp_replace                    
+-----------------------------------------------------
+ Table "pg_temp_x.temptest"                         +
+  Column |  Type   | Collation | Nullable | Default +
+ --------+---------+-----------+----------+---------+
+  k      | integer |           | not null |         +
+  v1     | integer |           |          |         +
+  v2     | integer |           |          |         +
+ Indexes:                                           +
+     "temptest_pkey" PRIMARY KEY, btree (k ASC)     +
+     "temptest_v1_idx" UNIQUE, btree (v1 ASC)       +
+     "temptest_v2_idx" hash (v2)                    +
+                                                    +
+ 
+(1 row)
+
+INSERT INTO temptest VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO temptest VALUES (2, 2, 3);
+ERROR:  duplicate key value violates unique constraint "temptest_v1_idx"
+DETAIL:  Key (v1)=(2) already exists.
+SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  3
+ 4 |  5 |  6
+(2 rows)
+
+UPDATE temptest SET v1 = 0 WHERE k = 1;
+SELECT * FROM temptest ORDER BY k;
+ k | v1 | v2
+---+----+----
+ 1 |  0 |  3
+ 4 |  5 |  6
+(2 rows)
+
+DELETE FROM temptest WHERE k = 4;
+SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
+ k | v1 | v2
+---+----+----
+ 1 |  0 |  3
+(1 row)
+
+-- test temp table primary key duplicate error.
+INSERT INTO temptest VALUES (100, 200, 300);
+INSERT INTO temptest VALUES (100, 200, 300);
+ERROR:  duplicate key value violates unique constraint "temptest_pkey"
+DETAIL:  Key (k)=(100) already exists.
+INSERT INTO temptest VALUES (101, 201, 301), (101, 201, 301);
+ERROR:  duplicate key value violates unique constraint "temptest_pkey"
+DETAIL:  Key (k)=(101) already exists.
+DROP TABLE temptest;
+-- test temp table with primary index scan.
+CREATE TEMP TABLE temptest (a INT PRIMARY KEY);
+EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan using temptest_pkey on temptest
+   Index Cond: (a = 1)
+(2 rows)
+
+-- test temp table being used to update YB table.
+CREATE TABLE test1 (x int, y int, z int);
+INSERT INTO test1 VALUES (1, 2, 3);
+CREATE TEMP TABLE test2 as table test1;
+UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
+SELECT * FROM test1;
+ x | y | z
+---+---+---
+ 1 | 2 | 2
+(1 row)
+
+-- test temp table ORDER BY and WHERE clause after failed insertion into unique indexed column
+CREATE TEMP TABLE IF NOT EXISTS t1(c0 TEXT  DEFAULT '3.61.4.60' PRIMARY KEY NOT NULL, c1 DECIMAL);;
+INSERT INTO t1(c1) VALUES(0.835), (0.703);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (c0)=(3.61.4.60) already exists.
+SELECT t1.c0 FROM t1 ORDER BY t1.c0;
+ c0
+----
+(0 rows)
+
+SELECT t1.c0 FROM t1 where c0 in ('3.61.4.60');
+ c0
+----
+(0 rows)
+
+-- test temp table UPDATE on unique indexed column
+CREATE temp TABLE t4(c0 DECIMAL NULL, UNIQUE(c0));
+INSERT INTO t4(c0) VALUES(0.03);
+UPDATE t4 SET c0 = (0.05) WHERE t4.c0 = 0.03;
+SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;
+  c0
+------
+ 0.05
+(1 row)
+
+CREATE TEMP TABLE tempt (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON tempt (v1);
+INSERT INTO tempt VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO tempt VALUES (2, 2, 3);
+ERROR:  duplicate key value violates unique constraint "tempt_v1_idx"
+DETAIL:  Key (v1)=(2) already exists.
+SELECT * FROM tempt ORDER BY k;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  3
+ 4 |  5 |  6
+(2 rows)
+
+-- types in temp schema
+set search_path = pg_temp, public;
+create domain pg_temp.nonempty as text check (value <> '');
+-- function-syntax invocation of types matches rules for functions
+select nonempty('');
+ERROR:  function nonempty(unknown) does not exist
+LINE 1: select nonempty('');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select pg_temp.nonempty('');
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+-- other syntax matches rules for tables
+select ''::nonempty;
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+reset search_path;

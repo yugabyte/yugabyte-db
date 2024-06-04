@@ -1,0 +1,376 @@
+<!-- doc/src/sgml/xtypes.sgml -->
+
+ <sect1 id="xtypes">
+  <title>User-Defined Types</title>
+
+  <indexterm zone="xtypes">
+   <primary>data type</primary>
+   <secondary>user-defined</secondary>
+  </indexterm>
+
+  <para>
+   As described in <xref linkend="extend-type-system"/>,
+   <productname>PostgreSQL</productname> can be extended to support new
+   data types.  This section describes how to define new base types,
+   which are data types defined below the level of the <acronym>SQL</acronym>
+   language.  Creating a new base type requires implementing functions
+   to operate on the type in a low-level language, usually C.
+  </para>
+
+  <para>
+   The examples in this section can be found in
+   <filename>complex.sql</filename> and <filename>complex.c</filename>
+   in the <filename>src/tutorial</filename> directory of the source distribution.
+   See the <filename>README</filename> file in that directory for instructions
+   about running the examples.
+  </para>
+
+ <para>
+  <indexterm>
+   <primary>input function</primary>
+  </indexterm>
+  <indexterm>
+   <primary>output function</primary>
+  </indexterm>
+  A user-defined type must always have input and output functions.
+  These functions determine how the type appears in strings (for input
+  by the user and output to the user) and how the type is organized in
+  memory.  The input function takes a null-terminated character string
+  as its argument and returns the internal (in memory) representation
+  of the type.  The output function takes the internal representation
+  of the type as argument and returns a null-terminated character
+  string.  If we want to do anything more with the type than merely
+  store it, we must provide additional functions to implement whatever
+  operations we'd like to have for the type.
+ </para>
+
+ <para>
+  Suppose we want to define a type <type>complex</type> that represents
+  complex numbers. A natural way to represent a complex number in
+  memory would be the following C structure:
+
+<programlisting>
+typedef struct Complex {
+    double      x;
+    double      y;
+} Complex;
+</programlisting>
+
+  We will need to make this a pass-by-reference type, since it's too
+  large to fit into a single <type>Datum</type> value.
+ </para>
+
+ <para>
+  As the external string representation of the type, we choose a
+  string of the form <literal>(x,y)</literal>.
+ </para>
+
+ <para>
+  The input and output functions are usually not hard to write,
+  especially the output function.  But when defining the external
+  string representation of the type, remember that you must eventually
+  write a complete and robust parser for that representation as your
+  input function.  For instance:
+
+<programlisting><![CDATA[
+PG_FUNCTION_INFO_V1(complex_in);
+
+Datum
+complex_in(PG_FUNCTION_ARGS)
+{
+    char       *str = PG_GETARG_CSTRING(0);
+    double      x,
+                y;
+    Complex    *result;
+
+    if (sscanf(str, " ( %lf , %lf )", &x, &y) != 2)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+                 errmsg("invalid input syntax for type %s: \"%s\"",
+                        "complex", str)));
+
+    result = (Complex *) palloc(sizeof(Complex));
+    result->x = x;
+    result->y = y;
+    PG_RETURN_POINTER(result);
+}
+]]>
+</programlisting>
+
+  The output function can simply be:
+
+<programlisting><![CDATA[
+PG_FUNCTION_INFO_V1(complex_out);
+
+Datum
+complex_out(PG_FUNCTION_ARGS)
+{
+    Complex    *complex = (Complex *) PG_GETARG_POINTER(0);
+    char       *result;
+
+    result = psprintf("(%g,%g)", complex->x, complex->y);
+    PG_RETURN_CSTRING(result);
+}
+]]>
+</programlisting>
+ </para>
+
+ <para>
+  You should be careful to make the input and output functions inverses of
+  each other.  If you do not, you will have severe problems when you
+  need to dump your data into a file and then read it back in.  This
+  is a particularly common problem when floating-point numbers are
+  involved.
+ </para>
+
+ <para>
+  Optionally, a user-defined type can provide binary input and output
+  routines.  Binary I/O is normally faster but less portable than textual
+  I/O.  As with textual I/O, it is up to you to define exactly what the
+  external binary representation is.  Most of the built-in data types
+  try to provide a machine-independent binary representation.  For
+  <type>complex</type>, we will piggy-back on the binary I/O converters
+  for type <type>float8</type>:
+
+<programlisting><![CDATA[
+PG_FUNCTION_INFO_V1(complex_recv);
+
+Datum
+complex_recv(PG_FUNCTION_ARGS)
+{
+    StringInfo  buf = (StringInfo) PG_GETARG_POINTER(0);
+    Complex    *result;
+
+    result = (Complex *) palloc(sizeof(Complex));
+    result->x = pq_getmsgfloat8(buf);
+    result->y = pq_getmsgfloat8(buf);
+    PG_RETURN_POINTER(result);
+}
+
+PG_FUNCTION_INFO_V1(complex_send);
+
+Datum
+complex_send(PG_FUNCTION_ARGS)
+{
+    Complex    *complex = (Complex *) PG_GETARG_POINTER(0);
+    StringInfoData buf;
+
+    pq_begintypsend(&buf);
+    pq_sendfloat8(&buf, complex->x);
+    pq_sendfloat8(&buf, complex->y);
+    PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+]]>
+</programlisting>
+ </para>
+
+ <para>
+  Once we have written the I/O functions and compiled them into a shared
+  library, we can define the <type>complex</type> type in SQL.
+  First we declare it as a shell type:
+
+<programlisting>
+CREATE TYPE complex;
+</programlisting>
+
+  This serves as a placeholder that allows us to reference the type while
+  defining its I/O functions.  Now we can define the I/O functions:
+
+<programlisting>
+CREATE FUNCTION complex_in(cstring)
+    RETURNS complex
+    AS '<replaceable>filename</replaceable>'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION complex_out(complex)
+    RETURNS cstring
+    AS '<replaceable>filename</replaceable>'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION complex_recv(internal)
+   RETURNS complex
+   AS '<replaceable>filename</replaceable>'
+   LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION complex_send(complex)
+   RETURNS bytea
+   AS '<replaceable>filename</replaceable>'
+   LANGUAGE C IMMUTABLE STRICT;
+</programlisting>
+ </para>
+
+ <para>
+  Finally, we can provide the full definition of the data type:
+<programlisting>
+CREATE TYPE complex (
+   internallength = 16,
+   input = complex_in,
+   output = complex_out,
+   receive = complex_recv,
+   send = complex_send,
+   alignment = double
+);
+</programlisting>
+ </para>
+
+ <para>
+  <indexterm>
+    <primary>array</primary>
+    <secondary>of user-defined type</secondary>
+  </indexterm>
+  When you define a new base type,
+  <productname>PostgreSQL</productname> automatically provides support
+  for arrays of that type.  The array type typically
+  has the same name as the base type with the underscore character
+  (<literal>_</literal>) prepended.
+ </para>
+
+ <para>
+  Once the data type exists, we can declare additional functions to
+  provide useful operations on the data type.  Operators can then be
+  defined atop the functions, and if needed, operator classes can be
+  created to support indexing of the data type.  These additional
+  layers are discussed in following sections.
+ </para>
+
+ <para>
+  If the internal representation of the data type is variable-length, the
+  internal representation must follow the standard layout for variable-length
+  data: the first four bytes must be a <type>char[4]</type> field which is
+  never accessed directly (customarily named <structfield>vl_len_</structfield>). You
+  must use the <function>SET_VARSIZE()</function> macro to store the total
+  size of the datum (including the length field itself) in this field
+  and <function>VARSIZE()</function> to retrieve it.  (These macros exist
+  because the length field may be encoded depending on platform.)
+ </para>
+
+ <para>
+  For further details see the description of the
+  <xref linkend="sql-createtype"/> command.
+ </para>
+
+ <sect2 id="xtypes-toast">
+  <title>TOAST Considerations</title>
+   <indexterm>
+    <primary>TOAST</primary>
+    <secondary>and user-defined types</secondary>
+   </indexterm>
+
+ <para>
+  If the values of your data type vary in size (in internal form), it's
+  usually desirable to make the data type <acronym>TOAST</acronym>-able (see <xref
+  linkend="storage-toast"/>). You should do this even if the values are always
+  too small to be compressed or stored externally, because
+  <acronym>TOAST</acronym> can save space on small data too, by reducing header
+  overhead.
+ </para>
+
+ <para>
+  To support <acronym>TOAST</acronym> storage, the C functions operating on the data
+  type must always be careful to unpack any toasted values they are handed
+  by using <function>PG_DETOAST_DATUM</function>.  (This detail is customarily hidden
+  by defining type-specific <function>GETARG_DATATYPE_P</function> macros.)
+  Then, when running the <command>CREATE TYPE</command> command, specify the
+  internal length as <literal>variable</literal> and select some appropriate storage
+  option other than <literal>plain</literal>.
+ </para>
+
+ <para>
+  If data alignment is unimportant (either just for a specific function or
+  because the data type specifies byte alignment anyway) then it's possible
+  to avoid some of the overhead of <function>PG_DETOAST_DATUM</function>. You can use
+  <function>PG_DETOAST_DATUM_PACKED</function> instead (customarily hidden by
+  defining a <function>GETARG_DATATYPE_PP</function> macro) and using the macros
+  <function>VARSIZE_ANY_EXHDR</function> and <function>VARDATA_ANY</function> to access
+  a potentially-packed datum.
+  Again, the data returned by these macros is not aligned even if the data
+  type definition specifies an alignment. If the alignment is important you
+  must go through the regular <function>PG_DETOAST_DATUM</function> interface.
+ </para>
+
+ <note>
+  <para>
+   Older code frequently declares <structfield>vl_len_</structfield> as an
+   <type>int32</type> field instead of <type>char[4]</type>.  This is OK as long as
+   the struct definition has other fields that have at least <type>int32</type>
+   alignment.  But it is dangerous to use such a struct definition when
+   working with a potentially unaligned datum; the compiler may take it as
+   license to assume the datum actually is aligned, leading to core dumps on
+   architectures that are strict about alignment.
+  </para>
+ </note>
+
+ <para>
+  Another feature that's enabled by <acronym>TOAST</acronym> support is the
+  possibility of having an <firstterm>expanded</firstterm> in-memory data
+  representation that is more convenient to work with than the format that
+  is stored on disk.  The regular or <quote>flat</quote> varlena storage format
+  is ultimately just a blob of bytes; it cannot for example contain
+  pointers, since it may get copied to other locations in memory.
+  For complex data types, the flat format may be quite expensive to work
+  with, so <productname>PostgreSQL</productname> provides a way to <quote>expand</quote>
+  the flat format into a representation that is more suited to computation,
+  and then pass that format in-memory between functions of the data type.
+ </para>
+
+ <para>
+  To use expanded storage, a data type must define an expanded format that
+  follows the rules given in <filename>src/include/utils/expandeddatum.h</filename>,
+  and provide functions to <quote>expand</quote> a flat varlena value into
+  expanded format and <quote>flatten</quote> the expanded format back to the
+  regular varlena representation.  Then ensure that all C functions for
+  the data type can accept either representation, possibly by converting
+  one into the other immediately upon receipt.  This does not require fixing
+  all existing functions for the data type at once, because the standard
+  <function>PG_DETOAST_DATUM</function> macro is defined to convert expanded inputs
+  into regular flat format.  Therefore, existing functions that work with
+  the flat varlena format will continue to work, though slightly
+  inefficiently, with expanded inputs; they need not be converted until and
+  unless better performance is important.
+ </para>
+
+ <para>
+  C functions that know how to work with an expanded representation
+  typically fall into two categories: those that can only handle expanded
+  format, and those that can handle either expanded or flat varlena inputs.
+  The former are easier to write but may be less efficient overall, because
+  converting a flat input to expanded form for use by a single function may
+  cost more than is saved by operating on the expanded format.
+  When only expanded format need be handled, conversion of flat inputs to
+  expanded form can be hidden inside an argument-fetching macro, so that
+  the function appears no more complex than one working with traditional
+  varlena input.
+  To handle both types of input, write an argument-fetching function that
+  will detoast external, short-header, and compressed varlena inputs, but
+  not expanded inputs.  Such a function can be defined as returning a
+  pointer to a union of the flat varlena format and the expanded format.
+  Callers can use the <function>VARATT_IS_EXPANDED_HEADER()</function> macro to
+  determine which format they received.
+ </para>
+
+ <para>
+  The <acronym>TOAST</acronym> infrastructure not only allows regular varlena
+  values to be distinguished from expanded values, but also
+  distinguishes <quote>read-write</quote> and <quote>read-only</quote> pointers to
+  expanded values.  C functions that only need to examine an expanded
+  value, or will only change it in safe and non-semantically-visible ways,
+  need not care which type of pointer they receive.  C functions that
+  produce a modified version of an input value are allowed to modify an
+  expanded input value in-place if they receive a read-write pointer, but
+  must not modify the input if they receive a read-only pointer; in that
+  case they have to copy the value first, producing a new value to modify.
+  A C function that has constructed a new expanded value should always
+  return a read-write pointer to it.  Also, a C function that is modifying
+  a read-write expanded value in-place should take care to leave the value
+  in a sane state if it fails partway through.
+ </para>
+
+ <para>
+  For examples of working with expanded values, see the standard array
+  infrastructure, particularly
+  <filename>src/backend/utils/adt/array_expanded.c</filename>.
+ </para>
+
+ </sect2>
+
+</sect1>

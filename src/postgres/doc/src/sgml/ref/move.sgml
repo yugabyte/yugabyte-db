@@ -1,0 +1,124 @@
+<!--
+doc/src/sgml/ref/move.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-move">
+ <indexterm zone="sql-move">
+  <primary>MOVE</primary>
+ </indexterm>
+
+ <indexterm zone="sql-move">
+  <primary>cursor</primary>
+  <secondary>MOVE</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>MOVE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>MOVE</refname>
+  <refpurpose>position a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<!-- Note the "direction" bit is also in ref/fetch.sgml -->
+<synopsis>
+MOVE [ <replaceable class="parameter">direction</replaceable> ] [ FROM | IN ] <replaceable class="parameter">cursor_name</replaceable>
+
+<phrase>where <replaceable class="parameter">direction</replaceable> can be one of:</phrase>
+
+    NEXT
+    PRIOR
+    FIRST
+    LAST
+    ABSOLUTE <replaceable class="parameter">count</replaceable>
+    RELATIVE <replaceable class="parameter">count</replaceable>
+    <replaceable class="parameter">count</replaceable>
+    ALL
+    FORWARD
+    FORWARD <replaceable class="parameter">count</replaceable>
+    FORWARD ALL
+    BACKWARD
+    BACKWARD <replaceable class="parameter">count</replaceable>
+    BACKWARD ALL
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>MOVE</command> repositions a cursor without retrieving any data.
+   <command>MOVE</command> works exactly like the <command>FETCH</command>
+   command, except it only positions the cursor and does not return rows.
+  </para>
+
+  <para>
+   The parameters for the <command>MOVE</command> command are identical to
+   those of the <command>FETCH</command> command; refer to
+   <xref linkend="sql-fetch"/>
+   for details on syntax and usage.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, a <command>MOVE</command> command returns a command
+   tag of the form
+<screen>
+MOVE <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows that a <command>FETCH</command> command with the same parameters
+   would have returned (possibly zero).
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+<programlisting>
+BEGIN WORK;
+DECLARE liahona CURSOR FOR SELECT * FROM films;
+
+-- Skip the first 5 rows:
+MOVE FORWARD 5 IN liahona;
+MOVE 5
+
+-- Fetch the 6th row from the cursor liahona:
+FETCH 1 FROM liahona;
+ code  | title  | did | date_prod  |  kind  |  len
+-------+--------+-----+------------+--------+-------
+ P_303 | 48 Hrs | 103 | 1982-10-22 | Action | 01:37
+(1 row)
+
+-- Close the cursor liahona and end the transaction:
+CLOSE liahona;
+COMMIT WORK;
+</programlisting>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>MOVE</command> statement in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-close"/></member>
+   <member><xref linkend="sql-declare"/></member>
+   <member><xref linkend="sql-fetch"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

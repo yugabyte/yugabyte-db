@@ -1,0 +1,91 @@
+{
+  "yugabyte": {
+    "%symlinks%": {
+      "bin/ysqlsh": "../postgres/bin/ysqlsh"
+    },
+    ".": [
+      "$BUILD_ROOT/auto_flags.json",
+      "$BUILD_ROOT/master_flags.xml",
+      "$BUILD_ROOT/tserver_flags.xml",
+      "$BUILD_ROOT/version_metadata.json"
+    ],
+    "bin": [
+      "$BUILD_ROOT/bin/ldb",
+      "$BUILD_ROOT/bin/log-dump",
+      "$BUILD_ROOT/bin/odyssey",
+      "$BUILD_ROOT/bin/sst_dump",
+      "$BUILD_ROOT/bin/yb-admin",
+      "$BUILD_ROOT/bin/yb-bulk_load",
+      "$BUILD_ROOT/bin/yb-generate_partitions_main",
+      "$BUILD_ROOT/bin/yb-master",
+      "$BUILD_ROOT/bin/yb-pbc-dump",
+      "$BUILD_ROOT/bin/yb-ts-cli",
+      "$BUILD_ROOT/bin/yb-tserver",
+      "$BUILD_ROOT/bin/yb-ysck",
+      "$BUILD_ROOT/gobin/yugabyted-ui",
+      "$BUILD_ROOT/postgres/bin/*",
+      "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
+      "bin/bulk_load_cleanup.sh",
+      "bin/bulk_load_helper.sh",
+      "bin/configure",
+      "bin/log_cleanup.sh",
+      "bin/yb-check-consistency.py",
+      "bin/yugabyted",
+      "bin/openssl_proxy.sh",
+      "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
+      "scripts/installation/bin/yb-ctl",
+      "thirdparty/installed/common/bin/openssl",
+      "thirdparty/installed/common/bin/redis-cli",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
+    ],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
+    "postgres": ["$BUILD_ROOT/postgres/*"],
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+      "$BUILD_ROOT/share/ysql_conn_mgr.template.conf",
+      "$BUILD_ROOT/share/ysql_migrations",
+      "sample/*.sql",
+      "Linux-only:https://downloads.yugabyte.com/ybc/2.0.0.0-b19/ybc-2.0.0.0-b19-${YBCOS}-${ARCH}.tar.gz"
+    ],
+    "tools": [
+      "bin/yb-prof.py",
+      "bin/print_stacks.sh",
+      "bin/yb-check-failed-tablets.sh",
+      "scripts/k8s_preflight.py",
+      "scripts/k8s_parent.py",
+      "scripts/k8s_ybc_parent.py"
+    ],
+    "www": ["www/*"]
+  },
+  "yugabyte-client": {
+    "%symlinks%": {
+      "bin/ysqlsh": "../postgres/bin/ysqlsh"
+    },
+    ".": ["$BUILD_ROOT/version_metadata.json"],
+    "bin": [
+      "$BUILD_ROOT/postgres/bin/ysqlsh",
+      "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
+      "thirdparty/installed/common/bin/openssl",
+      "thirdparty/installed/common/bin/redis-cli",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
+    ],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "sample/*.sql"
+    ]
+  }
+}

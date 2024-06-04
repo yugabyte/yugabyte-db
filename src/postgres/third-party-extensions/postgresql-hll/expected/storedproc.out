@@ -1,0 +1,55 @@
+-- ----------------------------------------------------------------
+-- Establishes global setting behavior with stored procedures.
+-- ----------------------------------------------------------------
+-- Outside stored procedure.
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+
+-- When defining a stored procedure the global statements don't take
+-- effect.
+CREATE OR REPLACE FUNCTION testfunc_azfwygmg() RETURNS void AS $$
+BEGIN
+PERFORM hll_set_max_sparse(-1);
+PERFORM hll_set_defaults(11,5,-1,1);
+END;
+$$ LANGUAGE plpgsql;
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                256
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (10,4,128,0)
+(1 row)
+
+-- When invoking a stored procedure they work.
+SELECT testfunc_azfwygmg();
+ testfunc_azfwygmg 
+-------------------
+ 
+(1 row)
+
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+

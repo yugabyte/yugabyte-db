@@ -1,0 +1,69 @@
+@use '../../../_style/colors.scss';
+
+.throttle-parameters-modal {
+  width: 800px;
+  background: colors.$YB_BG_WHITE_3;
+  border-radius: 8px;
+
+  .modal-header {
+    padding: 22px 24px;
+  }
+
+  .modal-body {
+    padding: 12px 24px !important;
+  }
+
+  .fields {
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+
+    .row:not(:last-child) {
+      margin-bottom: 24px;
+    }
+
+    .react-numeric-input {
+      width: 96px;
+      margin-top: 8px;
+    }
+
+    .text-secondary {
+      font-style: normal;
+      font-weight: 600;
+      font-size: 12px;
+      line-height: 15px;
+      color: colors.$YB_DARKER_GRAY;
+      opacity: 0.8;
+    }
+  }
+
+  .section {
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 20px;
+    margin-bottom: 8px;
+  }
+
+  .err-msg {
+    color: colors.$YB_ERROR_TEXT_COLOR;
+    margin-bottom: 5px;
+    margin-top: 5px;
+  }
+
+  .infos {
+    & > div {
+      margin-top: 2px;
+    }
+
+    margin-bottom: 24px;
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 21px;
+  }
+}
+
+.throttle-parameters-config {
+  position: fixed;
+  z-index: 99999 !important;
+}

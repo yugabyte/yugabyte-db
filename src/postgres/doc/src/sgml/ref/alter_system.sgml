@@ -1,0 +1,144 @@
+<!--
+doc/src/sgml/ref/alter_system.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altersystem">
+ <indexterm zone="sql-altersystem">
+  <primary>ALTER SYSTEM</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER SYSTEM</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER SYSTEM</refname>
+  <refpurpose>change a server configuration parameter</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER SYSTEM SET <replaceable class="parameter">configuration_parameter</replaceable> { TO | = } { <replaceable class="parameter">value</replaceable> | '<replaceable class="parameter">value</replaceable>' | DEFAULT }
+
+ALTER SYSTEM RESET <replaceable class="parameter">configuration_parameter</replaceable>
+ALTER SYSTEM RESET ALL
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER SYSTEM</command> is used for changing server configuration
+   parameters across the entire database cluster.  It can be more convenient
+   than the traditional method of manually editing
+   the <filename>postgresql.conf</filename> file.
+   <command>ALTER SYSTEM</command> writes the given parameter setting to
+   the <filename>postgresql.auto.conf</filename> file, which is read in
+   addition to <filename>postgresql.conf</filename>.
+   Setting a parameter to <literal>DEFAULT</literal>, or using the
+   <command>RESET</command> variant, removes that configuration entry from the
+   <filename>postgresql.auto.conf</filename> file. Use <literal>RESET
+   ALL</literal> to remove all such configuration entries.
+  </para>
+
+  <para>
+   Values set with <command>ALTER SYSTEM</command> will be effective after
+   the next server configuration reload, or after the next server restart
+   in the case of parameters that can only be changed at server start.
+   A server configuration reload can be commanded by calling the SQL
+   function <function>pg_reload_conf()</function>, running <literal>pg_ctl reload</literal>,
+   or sending a <systemitem>SIGHUP</systemitem> signal to the main server process.
+  </para>
+
+  <para>
+   Only superusers and users granted <literal>ALTER SYSTEM</literal> privilege
+   on a parameter can change it using <command>ALTER SYSTEM</command>.  Also, since
+   this command acts directly on the file system and cannot be rolled back,
+   it is not allowed inside a transaction block or function.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">configuration_parameter</replaceable></term>
+    <listitem>
+     <para>
+      Name of a settable configuration parameter.  Available parameters are
+      documented in <xref linkend="runtime-config"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">value</replaceable></term>
+    <listitem>
+     <para>
+      New value of the parameter.  Values can be specified as string
+      constants, identifiers, numbers, or comma-separated lists of
+      these, as appropriate for the particular parameter.
+      <literal>DEFAULT</literal> can be written to specify removing the
+      parameter and its value from <filename>postgresql.auto.conf</filename>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   This command can't be used to set <xref linkend="guc-data-directory"/>,
+   nor parameters that are not allowed in <filename>postgresql.conf</filename>
+   (e.g., <link linkend="runtime-config-preset">preset options</link>).
+  </para>
+
+  <para>
+   See <xref linkend="config-setting"/> for other ways to set the parameters.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Set the <literal>wal_level</literal>:
+<programlisting>
+ALTER SYSTEM SET wal_level = replica;
+</programlisting>
+  </para>
+
+  <para>
+   Undo that, restoring whatever setting was effective
+   in <filename>postgresql.conf</filename>:
+<programlisting>
+ALTER SYSTEM RESET wal_level;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The <command>ALTER SYSTEM</command> statement is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-set"/></member>
+   <member><xref linkend="sql-show"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

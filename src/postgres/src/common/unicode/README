@@ -1,0 +1,28 @@
+This directory contains tools to generate the tables in
+src/include/common/unicode_norm.h, used for Unicode normalization. The
+generated .h file is included in the source tree, so these are normally not
+needed to build PostgreSQL, only if you need to re-generate the .h file
+from the Unicode data files for some reason, e.g. to update to a new version
+of Unicode.
+
+Generating unicode_norm_table.h
+-------------------------------
+
+Run
+
+    make update-unicode
+
+from the top level of the source tree and commit the result.
+
+Tests
+-----
+
+The Unicode consortium publishes a comprehensive test suite for the
+normalization algorithm, in a file called NormalizationTest.txt. This
+directory also contains a perl script and some C code, to run our
+normalization code with all the test strings in NormalizationTest.txt.
+To download NormalizationTest.txt and run the tests:
+
+    make normalization-check
+
+This is also run as part of the update-unicode target.
