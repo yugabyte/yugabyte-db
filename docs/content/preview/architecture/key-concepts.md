@@ -113,7 +113,7 @@ OIDs are unique only in the context of a specific universe and are not guarantee
 
 By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the [tablet leaders](#tablet-leader) to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a [smart driver](#smart-driver), set the topology keys to target the preferred region.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a [smart driver](#smart-driver), you can set the topology keys to target the preferred region. This means that the smart driver will distribute connections uniformly among the nodes in the preferred region, further optimizing performance.
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
