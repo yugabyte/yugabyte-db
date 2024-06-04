@@ -34,13 +34,24 @@ Recommendations are based on experiments done on [RF3](../../../architecture/doc
 
 Note that for cases where it is not possible to provide database access to the client machine running voyager, you can gather the metadata from the source database using plain bash/psql scripts by voyager, and then use voyager to analyze the metadata directly.
 
-### Sample Migration Assessment Report
+The following table describes the type of data that is collected during a migration assessment.
 
-A sample Migration Assessment Report is as follows:
+| Data | Collected (Yes/No/Optional) | Details |
+| :--- | :-------------------------- | :------ |
+| Application or user data  | No | assess-migration does not collect any application or user data. |
+| Passwords | No | assess-migration does not store any passwords. |
+| Database metadata - schema, object, object names | Yes | assess-migration collects the schema metadata including table IOPS, table size, and so on, and the actual schema. |
+| Database name | Yes | assess-migration collects database names and schema names to be mentioned in the generated report. |
+| Performance metrics | Optional | assess-migration captures performance metrics from the database (IOPS) for rightsizing the target environment. |
+| Server or database credentials | No | assess-migration doesn't capture any server or database credentials. |
+
+### Sample Migration Assessment report
+
+A sample Migration Assessment report is as follows:
 
 ![Migration report](/images/migrate/assess-migration.jpg)
 
-## Generate a Migration Assessment Report
+## Generate a Migration Assessment report
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.
