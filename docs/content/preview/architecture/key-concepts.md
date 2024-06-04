@@ -49,6 +49,12 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
 
+## Follower reads
+
+Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
+
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link "../../../explore/going-beyond-sql/follower-reads-ysql/">}}
+
 ## Hybrid time
 
 Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link "../transactions/transactions-overview#hybrid-logical-clocks">}}
@@ -103,9 +109,21 @@ While OIDs are an integral part of PostgreSQL's internal architecture, they are 
 OIDs are unique only within the context of a specific universe and are not guaranteed to be unique across different universes.
 {{</note>}}
 
+## Preferred region
+
+By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
+
+Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions.
+
+In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link "../../../preview/develop/build-global-apps/global-database/">}}
+
 ## Primary cluster
 
-A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously.
+A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously. {{<link "../docdb-replication/replication/">}}
 
 ## Raft
 
@@ -115,7 +133,7 @@ Raft stands for Replication for availability and fault tolerance. This is the al
 
 Read replica clusters are optional clusters that can be set up in conjunction with a [primary cluster](#primary-cluster) to perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
 
-Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. {{<link "../docdb-replication/read-replicas">}}
+Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. Reading from read replicas requires enabling [follower reads](#follower-reads). {{<link "../docdb-replication/read-replicas">}}
 
 ## Rebalancing
 
