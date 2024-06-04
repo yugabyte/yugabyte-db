@@ -165,7 +165,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 
     // Calculate cpu usage and available cpu values
     const totalCpuUsage = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
-    const cpuUsage = Math.ceil((Math.min(totalCpuUsage, 100) / (nodeList?.length ?? 1)) * totalCores / 100);
+    const cpuUsage = Math.ceil(totalCpuUsage / (nodeList?.length ?? 1) * totalCores / 100);
     const cpuAvailable = totalCores - cpuUsage;
 
     // Update data values as per the calculation performed

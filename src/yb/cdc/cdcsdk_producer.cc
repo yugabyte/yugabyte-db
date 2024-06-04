@@ -92,8 +92,6 @@ DEFINE_NON_RUNTIME_int64(
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-
 namespace yb {
 namespace cdc {
 

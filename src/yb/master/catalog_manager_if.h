@@ -130,9 +130,7 @@ class CatalogManagerIf {
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
-  virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
-  virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
-
+  virtual Result<SysClusterConfigEntryPB> GetClusterConfig() = 0;
 
   virtual Status SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
@@ -220,7 +218,8 @@ class CatalogManagerIf {
   virtual Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
-  virtual Result<SnapshotInfoPB> GenerateSnapshotInfoFromSchedule(
+  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+      GenerateSnapshotInfoFromSchedule(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
@@ -338,6 +337,11 @@ class CatalogManagerIf {
       const yb::OpIdPB& safe_opid,
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
+
+  virtual Status PopulateCDCStateTableOnNewTableCreation(
+      const scoped_refptr<TableInfo>& table,
+      const TabletId& tablet_id,
+      const OpId& safe_opid) = 0;
 
   virtual Status WaitForSnapshotSafeOpIdToBePopulated(
       const xrepl::StreamId& stream_id,

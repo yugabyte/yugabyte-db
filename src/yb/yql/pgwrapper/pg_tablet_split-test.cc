@@ -245,6 +245,42 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// Trigger a tablet split when a transaction has an outstanding statement in progress.
+// The split will cause ops to be retried at the YBSession level.
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto num_rows_str = "10000";
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0), 0", num_rows_str));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Reduce max batch size so as to increase chances of encountering a WriteRpc amidst split.
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size=100"));
+  ASSERT_OK(conn.Execute("UPDATE t SET v=v+10 where k >= 1"));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+
+  auto status_future = std::async(std::launch::async, [&conn]() {
+    return conn.Execute("UPDATE t SET v=v+100 WHERE k >= 1");
+  });
+  ASSERT_OK(WaitFor([&conn] () {
+    return conn.IsBusy();
+  }, 1s * kTimeMultiplier, "Wait for the request to be submitted to the query layer"));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  ASSERT_OK(status_future.get());
+  auto row_count_str = ASSERT_RESULT(conn.FetchRowAsString("SELECT COUNT(*) FROM t WHERE v=110"));
+  ASSERT_EQ(row_count_str, num_rows_str);
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO a"));
+  row_count_str = ASSERT_RESULT(conn.FetchRowAsString("SELECT COUNT(*) FROM t WHERE v=110"));
+  ASSERT_EQ(row_count_str, "0");
+  ASSERT_OK(conn.CommitTransaction());
+}
+
 // Make sure parent tablet shutdown does not crash during long scans and does not abort them.
 TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   constexpr auto kScanAfterSplitDuration = 65s;

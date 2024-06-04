@@ -1192,21 +1192,20 @@ DefineIndex(Oid relationId,
 
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	accessMethodId = accessMethodForm->oid;
-	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
-							  accessMethodId != YBGIN_AM_OID))
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+
+	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
 				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
 						 "React with thumbs up to raise its priority")));
-	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
-							   accessMethodId == YBGIN_AM_OID))
+	if (!IsYBRelation(rel) && amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
-	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_ACCESS_METHOD_OID,
 								 accessMethodId);

@@ -612,12 +612,13 @@ public class CertificateHelper {
     try {
       CertificateInfo cer1 = CertificateInfo.get(cert1);
       CertificateInfo cer2 = CertificateInfo.get(cert2);
-      FileInputStream is1 = new FileInputStream(cer1.getCertificate());
-      FileInputStream is2 = new FileInputStream(cer2.getCertificate());
-      CertificateFactory fact = CertificateFactory.getInstance("X.509");
-      X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
-      X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
-      return !certObj2.equals(certObj1);
+      try (FileInputStream is1 = new FileInputStream(cer1.getCertificate());
+          FileInputStream is2 = new FileInputStream(cer2.getCertificate())) {
+        CertificateFactory fact = CertificateFactory.getInstance("X.509");
+        X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
+        X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
+        return !certObj2.equals(certObj1);
+      }
     } catch (IOException | CertificateException e) {
       log.error("Unable to read certs {}: {}", cert1.toString(), cert2.toString());
       throw new RuntimeException("Could not read certs to compare. " + e);

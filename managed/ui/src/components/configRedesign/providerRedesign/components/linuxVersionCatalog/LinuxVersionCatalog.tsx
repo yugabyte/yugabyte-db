@@ -194,6 +194,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             onClick={() => toggleShowLinuxVersionModal(true)}
             startIcon={<Add />}
             variant="secondary"
+            data-testid="LinuxVersionCatalog-AddLinuxVersion"
           >
             {t('addLinuxVersion')}
           </YBButton>
@@ -220,6 +221,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
                 : editYBImageOptions.useX86
             }
             checked={ybImageOptions.useYBImages}
+            inputProps={{
+              'data-testid': 'LinuxVersionCatalog-IncludeYBVersion'
+            }}
           />
           <YBCheckbox
             label={t('x86_64', { keyPrefix: 'universeForm.instanceConfig' })}
@@ -230,6 +234,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             }}
             disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useX86)}
             checked={ybImageOptions.useX86}
+            inputProps={{
+              'data-testid': 'LinuxVersionCatalog-Includex86'
+            }}
           />
           {providerType === ProviderCode.AWS && (
             <YBCheckbox
@@ -241,6 +248,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
               }}
               disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useArm)}
               checked={ybImageOptions.useArm}
+              inputProps={{
+                'data-testid': 'LinuxVersionCatalog-IncludeAarch'
+              }}
             />
           )}
         </div>
@@ -268,7 +278,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...img,
             metadata: {
               type: ImageBundleType.CUSTOM
-            } as any
+            } as any,
+            useAsDefault: imageBundles.filter(
+              (i) => i.details.arch === img.details.arch && i.useAsDefault === true
+            ).length === 0
           });
           toggleShowLinuxVersionModal(false);
         }}

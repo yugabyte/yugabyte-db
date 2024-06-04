@@ -189,7 +189,7 @@ yb-master-0   0/2       ContainerCreating  0          5s
 yb-tserver-0  0/2       ContainerCreating  0          4s
 ```
 
-For details on the roles of these pods in a YugabyteDB cluster, refer to [Universe](../../architecture/concepts/universe/).
+For details on the roles of these pods in a YugabyteDB cluster, refer to [Architecture](../../architecture/).
 
 The status of all the pods change to  _Running_ state in a few seconds, as per the following output:
 

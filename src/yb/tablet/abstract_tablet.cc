@@ -42,7 +42,8 @@ Status AbstractTablet::HandleQLReadRequest(
     const docdb::YQLStorageIf& ql_storage,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     QLReadRequestResult* result,
-    WriteBuffer* rows_data) {
+    WriteBuffer* rows_data,
+    const docdb::DocDBStatistics* statistics) {
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
@@ -55,7 +56,7 @@ Status AbstractTablet::HandleQLReadRequest(
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       ql_storage, read_operation_data, *doc_read_context, pending_op, &resultset,
-      &result->restart_read_ht);
+      &result->restart_read_ht, statistics);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {

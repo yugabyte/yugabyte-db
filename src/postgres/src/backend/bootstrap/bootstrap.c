@@ -380,9 +380,11 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 		YBCCreateDatabase(Template1DbOid,
 		                  "template1",
 		                  InvalidOid,
+		                  "template0",  
 		                  YbFirstBootstrapObjectId,
 		                  false /* colocated */,
-		                  NULL /* retry_on_oid_collision */);
+		                  NULL /* retry_on_oid_collision */,
+		                  0 /* clone_time */);
 	}
 
 	/*

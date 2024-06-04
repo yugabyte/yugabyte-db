@@ -22,6 +22,7 @@ namespace yb {
 namespace master {
 
 struct InboundXClusterReplicationGroupTableStatus {
+  std::string full_table_name;
   TableId source_table_id;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
   TableId target_table_id;
@@ -43,11 +44,13 @@ struct XClusterInboundReplicationGroupStatus {
   uint32 validated_remote_auto_flags_config_version = 0;
   uint32 validated_local_auto_flags_config_version = 0;
   std::string db_scoped_info;
-  std::vector<InboundXClusterReplicationGroupTableStatus> table_statuses;
+  std::map<NamespaceName, std::vector<InboundXClusterReplicationGroupTableStatus>>
+      table_statuses_by_namespace;
 };
 
 class XClusterOutboundTableStreamStatus {
  public:
+  std::string full_table_name;
   TableId table_id;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
   std::string state;

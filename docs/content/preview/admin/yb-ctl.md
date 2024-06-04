@@ -151,7 +151,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/authentication-ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable_auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/authentication-ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable_auth`](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"

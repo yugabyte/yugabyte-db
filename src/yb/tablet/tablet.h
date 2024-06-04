@@ -927,7 +927,7 @@ class Tablet : public AbstractTablet,
   // is_forward).
   //
   // It is guaranteed that returned keys are at most max_key_length bytes.
-  // Both lower_bound_key and upper_bound_key are inclusive. They are adjusted by this function
+  // Both lower_bound_key and upper_bound_key are exclusive. They are adjusted by this function
   // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
   // key_bounds_ is not set) and to be no longer than max_key_length.
   //
@@ -948,7 +948,7 @@ class Tablet : public AbstractTablet,
   //   specified lower_bound_key or the beginning of the first tablet).
   //
   // where n <= max_num_ranges.
-  // If max_num_ranges is 0, nothing will be written to the `keys_buffer`.
+  // max_num_ranges set to 0 is treated as no limit on number of ranges.
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
@@ -1125,8 +1125,6 @@ class Tablet : public AbstractTablet,
 
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
-
-  std::unique_ptr<docdb::YQLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;

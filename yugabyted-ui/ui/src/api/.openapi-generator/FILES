@@ -2,8 +2,11 @@
 .npmignore
 README.md
 package.json
+src/apis/BackupInfoApi.ts
 src/apis/ClusterApi.ts
 src/apis/ClusterInfoApi.ts
+src/apis/PitrInfoApi.ts
+src/apis/RestoreInfoApi.ts
 src/apis/VoyagerInfoApi.ts
 src/apis/VoyagerMetricsApi.ts
 src/apis/index.ts
@@ -16,6 +19,7 @@ src/models/AlertsResponse.ts
 src/models/ApiError.ts
 src/models/ApiErrorError.ts
 src/models/AssesmentComplexityInfo.ts
+src/models/BackupDetails.ts
 src/models/CloudEnum.ts
 src/models/CloudInfo.ts
 src/models/ClusterData.ts
@@ -42,6 +46,9 @@ src/models/GflagsInfo.ts
 src/models/HealthCheckInfo.ts
 src/models/HealthCheckResponse.ts
 src/models/IndividualMigrationTaskInfo.ts
+src/models/InlineResponse200.ts
+src/models/InlineResponse2001.ts
+src/models/InlineResponse2002.ts
 src/models/IsLoadBalancerIdle.ts
 src/models/LiveQueryResponseData.ts
 src/models/LiveQueryResponseSchema.ts
@@ -57,10 +64,12 @@ src/models/NodeData.ts
 src/models/NodeDataCloudInfo.ts
 src/models/NodeDataMetrics.ts
 src/models/NodeDataMetricsActiveConnections.ts
+src/models/PITRSchedule.ts
 src/models/PlacementBlock.ts
 src/models/PlacementCloudInfo.ts
 src/models/PlacementInfo.ts
 src/models/RaftConfig.ts
+src/models/RestoreDetails.ts
 src/models/SlowQueryResponseData.ts
 src/models/SlowQueryResponseSchema.ts
 src/models/SlowQueryResponseYSQLData.ts

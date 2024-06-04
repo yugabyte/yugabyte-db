@@ -3,11 +3,17 @@ package com.yugabyte.troubleshoot.ts.models;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
+@Builder(toBuilder = true)
+@NoArgsConstructor
+@AllArgsConstructor
 public class GraphLayout {
   @Data
   @Accessors(chain = true)
@@ -20,9 +26,12 @@ public class GraphLayout {
 
   @Data
   @Accessors(chain = true)
+  @Builder(toBuilder = true)
+  @NoArgsConstructor
+  @AllArgsConstructor
   public static class Metadata {
     private List<GroupByLabel> supportedGroupBy;
-    private GraphLabel currentGroupBy;
+    private List<GraphLabel> currentGroupBy;
   }
 
   @Data

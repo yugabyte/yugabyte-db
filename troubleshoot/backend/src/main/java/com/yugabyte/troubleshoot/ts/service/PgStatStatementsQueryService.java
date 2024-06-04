@@ -76,4 +76,17 @@ public class PgStatStatementsQueryService
   public List<PgStatStatementsQuery> listAll() {
     return new QPgStatStatementsQuery().findList();
   }
+
+  @Override
+  protected PgStatStatementsQuery prepareForSave(
+      PgStatStatementsQuery entity, PgStatStatementsQuery before) {
+    if (before == null || before.getLastActive() == null) {
+      return entity;
+    }
+    if (entity.getLastActive() == null || entity.getLastActive().isBefore(before.getLastActive())) {
+      // Always prefer max out of 2
+      entity.setLastActive(before.getLastActive());
+    }
+    return super.prepareForSave(entity, before);
+  }
 }

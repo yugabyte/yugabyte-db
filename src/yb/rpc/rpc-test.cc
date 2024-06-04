@@ -355,7 +355,7 @@ TEST_F(TestRpc, TestHighFDs) {
 }
 
 // Test that connections are kept alive by ScanIdleConnections between calls.
-TEST_F(TestRpc, TestConnectionKeepalive) {
+TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(TestConnectionKeepalive)) {
   google::FlagSaver saver;
 
   // Only run one reactor per messenger, so we can grab the metrics from that
@@ -541,7 +541,7 @@ TEST_F(TestRpc, TestNegotiationTimeout) {
 
 // Test that client calls get failed properly when the server they're connected to
 // shuts down.
-TEST_F(TestRpc, TestServerShutsDown) {
+TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(TestServerShutsDown)) {
   // Set up a simple socket server which accepts a connection.
   HostPort server_addr;
   Socket listen_sock;
@@ -1167,7 +1167,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
 }  // namespace
 
-TEST_F(TestRpc, CantAllocateReadBuffer) {
+TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(CantAllocateReadBuffer)) {
   RunPlainTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
 }
 
@@ -1474,7 +1474,7 @@ TEST_F(TestRpcSecureCompression, ConcurrentOps) {
   RunSecureCompressionTest(&TestConcurrentOps);
 }
 
-TEST_F(TestRpcSecureCompression, CantAllocateReadBuffer) {
+TEST_F(TestRpcSecureCompression, YB_DISABLE_TEST_ON_MACOS(CantAllocateReadBuffer)) {
   RunSecureCompressionTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
 }
 

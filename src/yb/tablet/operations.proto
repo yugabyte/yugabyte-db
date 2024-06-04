@@ -180,4 +180,9 @@ message CloneTabletRequestPB {
   optional SchemaPB target_schema = 12;
   optional PartitionSchemaPB target_partition_schema = 13;
   optional bool target_skip_table_tombstone_check = 14;
+
+  // If set, checkout the active rocksdb folder to the target snapshot.
+  // This is set for tablets that were hidden before the snapshot that covers the clone time was
+  // taken (we do not take snapshots after hiding a tablet).
+  optional bool clone_from_active_rocksdb = 15;
 }

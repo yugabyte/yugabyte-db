@@ -260,6 +260,9 @@ DEFINE_test_flag(bool, pause_before_tablet_health_response, false,
 
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
+DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
+    "Fail setting retention barrier on newly created tablets");
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -360,6 +363,7 @@ void PerformAtLeader(
   if (*context) {
     resp->set_propagated_hybrid_time(server->Clock()->Now().ToUint64());
     if (status.ok()) {
+      FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer.peer, req, resp);
       context->RespondSuccess();
     } else {
       SetupErrorAndRespond(resp->mutable_error(), status, context);
@@ -436,6 +440,7 @@ class WriteQueryCompletionCallback {
       response_->set_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
+    FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer_, query_->client_request(), response_);
     context_->RespondSuccess();
     VLOG(1) << __PRETTY_FUNCTION__ << " RespondedSuccess";
   }
@@ -493,9 +498,10 @@ class ScanResultChecksummer {
 
 Result<std::shared_ptr<tablet::AbstractTablet>> TabletServiceImpl::GetTabletForRead(
   const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) {
+  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
+  tserver::ReadResponsePB* resp) {
   return GetTablet(server_->tablet_peer_lookup(), tablet_id, std::move(tablet_peer),
-                   consistency_level, allow_split_tablet);
+                   consistency_level, allow_split_tablet, resp);
 }
 
 TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
@@ -1538,7 +1544,13 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
-  auto status = DoCreateTablet(req, resp);
+
+  CoarseTimePoint deadline = context.GetClientDeadline();
+  CoarseTimePoint now = CoarseMonoClock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now);
+  MonoDelta timeout = MonoDelta::FromNanoseconds(duration.count());
+
+  auto status = DoCreateTablet(req, resp, timeout);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
   } else {
@@ -1547,7 +1559,8 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
 }
 
 Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
-                                              CreateTabletResponsePB* resp) {
+                                              CreateTabletResponsePB* resp,
+                                              const MonoDelta& timeout) {
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms > 0 &&
                     req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE)) {
     std::this_thread::sleep_for(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms * 1ms);
@@ -1603,14 +1616,46 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
     hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
-  status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
+  auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services));
-  if (PREDICT_FALSE(!status.ok())) {
+      hosted_services);
+  if (PREDICT_FALSE(!tablet_peer_result.ok())) {
+    status = tablet_peer_result.status();
     return status.IsAlreadyPresent()
         ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
         : status;
   }
+  bool cdc_sdk_setup_retention =
+      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+  if (!cdc_sdk_setup_retention) {
+    return Status::OK();
+  }
+  auto tablet_peer = *tablet_peer_result;
+  status = SetupCDCSDKRetentionOnNewTablet(timeout, resp, tablet_peer);
+  if (!status.ok()) {
+     tablet_peer->SetFailed(status);
+     return status;
+  }
+  return Status::OK();
+}
+
+Status TabletServiceAdminImpl::SetupCDCSDKRetentionOnNewTablet(
+    const MonoDelta& timeout, CreateTabletResponsePB* resp,
+    const tablet::TabletPeerPtr& tablet_peer) {
+  RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(timeout));
+
+  tablet::RemoveIntentsData data;
+  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+
+  if (FLAGS_TEST_cdc_sdk_fail_setting_retention_barrier) {
+     return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+  }
+  RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+      data.op_id, server_->Clock()->Now(), false /* require_history_cutoff */)));
+
+  TEST_SYNC_POINT("SetupCDCSDKRetentionOnNewTablet::End");
+
+  data.op_id.ToPB(resp->mutable_cdc_sdk_safe_op_id());
   return Status::OK();
 }
 
@@ -2154,7 +2199,8 @@ Status TabletServiceImpl::PerformWrite(
   VLOG(2) << "Received Write RPC: " << req->DebugString();
   UpdateClock(*req, server_->Clock());
 
-  auto tablet = VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id()));
+  auto tablet =
+      VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
   RETURN_NOT_OK(CheckWriteThrottling(req->rejection_score(), tablet.peer.get()));
 
   if (tablet.tablet->metadata()->hidden()) {
@@ -2204,6 +2250,7 @@ Status TabletServiceImpl::PerformWrite(
   if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
+    FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
     MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock())(Status::OK());
     return Status::OK();
   }
@@ -2235,6 +2282,7 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
+  FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
   query->set_callback(WriteQueryCompletionCallback(
       tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace(),
       req->has_leader_term()));
@@ -2287,6 +2335,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 #endif // NDEBUG
 
   if (FLAGS_TEST_tserver_noop_read_write) {
+    LOG(INFO) << "returning do tue no op read_write";
     context.RespondSuccess();
     return;
   }

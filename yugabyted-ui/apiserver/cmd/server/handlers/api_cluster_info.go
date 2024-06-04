@@ -1665,6 +1665,27 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
         }
     }
 
+    // Check for version mismatches among nodes
+    nodeVersions, err := c.helper.GetAllNodeVersions()
+    if err != nil {
+        c.logger.Errorf("Error fetching node versions: %s", err.Error())
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    isVersionMismatch := c.helper.ValidateVersions(nodeVersions)
+    if isVersionMismatch {
+        var versionDetails []string
+        for nodeIP, version := range nodeVersions {
+            versionDetails = append(versionDetails, fmt.Sprintf("%s:%s", nodeIP, version))
+        }
+        mismatchInfo := fmt.Sprintf(
+            "Node version mismatch detected. Following are the version of nodes: %s",
+            strings.Join(versionDetails, ", "),
+        )
+        alertsResponse.Data = append(alertsResponse.Data, models.AlertsInfo{
+            Name: "version mismatch",
+            Info: mismatchInfo,
+        })
+    }
     return ctx.JSON(http.StatusOK, alertsResponse)
 }
 

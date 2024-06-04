@@ -360,7 +360,13 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             createMasterAddressUpdateTask(universe, currentLiveMasters, allLiveTservers);
           });
       if (!mastersToStop.isEmpty()) {
-        createStopMasterTasks(mastersToStop)
+        createStopServerTasks(
+                mastersToStop,
+                ServerType.MASTER,
+                params -> {
+                  params.isIgnoreError = false;
+                  params.deconfigure = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
       // Do this once after all the master addresses are frozen as this is expensive.
@@ -425,8 +431,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       stopProcessesOnNode(
           nodeDetails,
           EnumSet.of(ServerType.TSERVER),
-          false,
-          false,
+          false /* remove master from quorum */,
+          false /* deconfigure */,
           SubTaskGroupType.UpdatingGFlags);
 
       AnsibleConfigureServers.Params params =

@@ -4777,7 +4777,10 @@ yb_restart_portal(const char* portal_name)
 
 	/* delete tuplestore storage, if any */
 	if (portal->holdContext)
+	{
 		MemoryContextDelete(portal->holdContext);
+		portal->holdContext = NULL;
+	}
 
 	/* the portal run context might not have been reset, so do it now */
 	MemoryContextReset(portal->ybRunContext);

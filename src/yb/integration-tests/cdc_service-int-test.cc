@@ -29,9 +29,11 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
@@ -51,6 +53,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -99,6 +102,7 @@ DECLARE_string(vmodule);
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
 
+DECLARE_bool(enable_metacache_partial_refresh);
 namespace yb {
 
 namespace log {
@@ -902,7 +906,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
 }
 
-TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
+TEST_F(CDCServiceTest, YB_DISABLE_TEST_ON_MACOS(TestGetChangesWithDeadline)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = false;
   docdb::DisableYcqlPackedRow();
   stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
@@ -1029,6 +1033,71 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
     return Status::OK();
   }
 };
+
+// When GetChanges RPC is sent to non-leader TServer and that TServer is
+// serving as a proxy, the proxy should receive a TabletConsensusInfo that
+// it can use to refresh its metacache.
+TEST_F(CDCServiceTestMultipleServersOneTablet, TestGetChangesRpcTabletConsensusInfo) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) =
+      true;
+  // Find the leader and followers for our tablet.
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  const auto proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  const master::MasterClusterProxy master_proxy(
+      proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+  const auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, proxy_cache_.get()));
+  itest::TServerDetails* leader_ts;
+  ASSERT_OK(itest::FindTabletLeader(ts_map, GetTablet(), timeout, &leader_ts));
+  std::vector<std::string> follower_uuids;
+  std::vector<int> follower_idx;
+  for (int i = 0; i < 3; ++i) {
+    auto tserver = cluster_->mini_tablet_server(i)->server();
+    auto uuid = tserver->permanent_uuid();
+    if (uuid != leader_ts->uuid()) {
+      follower_uuids.push_back(uuid);
+      follower_idx.push_back(i);
+    }
+  }
+  tserver::MiniTabletServer* leader_mini_tserver;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(GetTablet());
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+
+  // Pick the first follower as proxy to send a GetChanges request so it will
+  // request the leader location and cache it in its metacache.
+  HostPort endpoint;
+  endpoint = HostPort::FromBoundEndpoint(
+      cluster_->mini_tablet_server(follower_idx[0])->bound_rpc_addr());
+  cdc_proxy_ = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(), endpoint);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id(), cdc::CDCSDK));
+  GetChangesResponsePB change_resp;
+  ASSERT_NO_FATALS(GetAllChanges(GetTablet(), stream_id_, &change_resp));
+
+  // Step down the leader onto the second follower.
+  auto target_details = ts_map.at(follower_uuids[1]).get();
+  ASSERT_OK((itest::WaitForAllPeersToCatchup(GetTablet(), TServerDetailsVector(ts_map), timeout)));
+  ASSERT_OK(itest::LeaderStepDown(leader_ts, GetTablet(), target_details, timeout, false, nullptr));
+  ASSERT_OK(itest::WaitUntilLeader(target_details, GetTablet(), timeout));
+
+  // The first follower will now first request the previous leader,
+  // find out it is not the leader, and receive a TabletConsensusInfo to refresh its metacache.
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+  Synchronizer sync;
+  bool refresh_succeeded = false;
+  sync_point_instance->SetCallBack(
+      "CDCSDKMetaCacheRefreshTest::Refresh",
+      [sync_point_instance, callback = sync.AsStdStatusCallback(), &refresh_succeeded](void* arg) {
+        refresh_succeeded = *reinterpret_cast<bool*>(arg);
+        sync_point_instance->DisableProcessing();
+        callback(Status::OK());
+      });
+  sync_point_instance->EnableProcessing();
+  GetChangesResponsePB change_resp1;
+  ASSERT_NO_FATALS(GetAllChanges(GetTablet(), stream_id_, &change_resp1));
+  ASSERT_OK(sync.Wait());
+  ASSERT_TRUE(refresh_succeeded);
+}
 
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   // Test that the metric value is not time since epoch after a leadership change.

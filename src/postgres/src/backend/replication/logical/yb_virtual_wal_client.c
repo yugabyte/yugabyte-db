@@ -247,6 +247,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInYBDecodeMicros = 0;
+		YbWalSndTotalTimeInReorderBufferMicros = 0;
 		YbWalSndTotalTimeInSendingMicros = 0;
 		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
@@ -293,6 +295,41 @@ PreProcessBeforeFetchingNextBatch()
 	long secs;
 	int microsecs;
 
+	/* Log the summary of time spent in processing the previous batch. */
+	if (log_min_messages <= DEBUG1 &&
+		last_getconsistentchanges_response_receipt_time != 0)
+	{
+		TimestampDifference(last_getconsistentchanges_response_receipt_time,
+							GetCurrentTimestamp(), &secs, &microsecs);
+
+		/*
+		 * Note that this processing time does not include the time taken for
+		 * the conversion from QLValuePB (proto) to PG datum values. This is
+		 * done in ybc_pggate and is logged separately.
+		 *
+		 * The time being logged here is the total time it took for processing
+		 * and sending a whole batch AFTER converting all the values to the PG
+		 * format.
+		 */
+		elog(DEBUG1,
+			 "Walsender processing time for the last batch is (%ld s, %d us)",
+			 secs, microsecs);
+		elog(DEBUG1,
+			 "More Information: "
+			 "batch_size: %d, "
+			 "yb_decode: %" PRIu64 " us, "
+			 "reorder buffer: %" PRIu64 " us, "
+			 "socket: %" PRIu64 " us.",
+			 (cached_records) ? cached_records->row_count : 0,
+			 YbWalSndTotalTimeInYBDecodeMicros,
+			 YbWalSndTotalTimeInReorderBufferMicros,
+			 YbWalSndTotalTimeInSendingMicros);
+	}
+
+	/* We no longer need the earlier record batch. */
+	if (cached_records)
+		MemoryContextReset(cached_records_context);
+
 	if (last_getconsistentchanges_response_empty)
 	{
 		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
@@ -309,23 +346,6 @@ PreProcessBeforeFetchingNextBatch()
 	}
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
-
-	/* Log the summary of time spent in processing the previous batch. */
-	if (log_min_messages <= DEBUG1 &&
-		last_getconsistentchanges_response_receipt_time != 0)
-	{
-		TimestampDifference(last_getconsistentchanges_response_receipt_time,
-							GetCurrentTimestamp(), &secs, &microsecs);
-		elog(DEBUG1,
-			 "Walsender processing time for the last batch is (%ld s, %d us)",
-			 secs, microsecs);
-		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
-			 YbWalSndTotalTimeInSendingMicros);
-	}
-
-	/* We no longer need the earlier record batch. */
-	if (cached_records)
-		MemoryContextReset(cached_records_context);
 }
 
 static void

@@ -401,11 +401,9 @@ namespace {
 Status ChangeClusterConfig(
     master::CatalogManagerIf* catalog_manager,
     std::function<void(SysClusterConfigEntryPB*)> config_changer) {
-  GetMasterClusterConfigResponsePB config_resp;
-  RETURN_NOT_OK(catalog_manager->GetClusterConfig(&config_resp));
-
   ChangeMasterClusterConfigRequestPB change_req;
-  *change_req.mutable_cluster_config() = std::move(*config_resp.mutable_cluster_config());
+  *change_req.mutable_cluster_config() =
+      VERIFY_RESULT(catalog_manager->GetClusterConfig());
   SysClusterConfigEntryPB* config = change_req.mutable_cluster_config();
 
   config_changer(config);

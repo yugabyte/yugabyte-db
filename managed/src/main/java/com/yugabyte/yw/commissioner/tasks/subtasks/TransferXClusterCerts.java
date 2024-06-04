@@ -193,14 +193,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
       }
 
       // Copy the certificate file to the node.
-      nodeUniverseManager
-          .uploadFileToNode(
-              node,
-              targetUniverse,
-              taskParams().rootCertPath.toString(),
-              sourceCertificatePath,
-              "600")
-          .processErrors("Copying the certificate file to the node failed");
+      nodeUniverseManager.uploadFileToNode(
+          node, targetUniverse, taskParams().rootCertPath.toString(), sourceCertificatePath, "600");
     } else if (taskParams().action.equals(Params.Action.REMOVE)) {
       log.info(
           "Removing server cert located at {} from node {} in universe {}",

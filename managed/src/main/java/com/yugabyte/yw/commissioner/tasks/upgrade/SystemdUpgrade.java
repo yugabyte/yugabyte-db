@@ -41,7 +41,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
-    taskParams().verifyParams(getUniverse(), isFirstTry);
+    taskParams().verifyParams(getUniverse(), getNodeState(), isFirstTry);
   }
 
   @Override

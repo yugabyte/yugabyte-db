@@ -57,7 +57,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override;
 
   Status BuildYQLScanSpec(
       const QLReadRequestPB& request,

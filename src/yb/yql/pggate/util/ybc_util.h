@@ -179,6 +179,11 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
  */
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
+/*
+ * Allows for customizing the maximum size of a batch of explicit row lock operations.
+ */
+extern int yb_explicit_row_locking_batch_size;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);

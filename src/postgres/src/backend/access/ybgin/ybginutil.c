@@ -28,6 +28,8 @@
 #include "access/relation.h"
 #include "access/reloptions.h"
 #include "c.h"
+#include "nodes/execnodes.h"
+#include "commands/ybccmds.h"
 #include "nodes/nodes.h"
 #include "utils/index_selfuncs.h"
 
@@ -96,6 +98,19 @@ ybginvalidate(Oid opclassoid)
 	 * string and pass it down).
 	 */
 	return ginvalidate(opclassoid);
+}
+
+void
+ybginbindschema(YBCPgStatement handle,
+				struct IndexInfo *indexInfo,
+				TupleDesc indexTupleDesc,
+				int16 *coloptions)
+{
+	YBCBindCreateIndexColumns(handle,
+							  indexInfo,
+							  indexTupleDesc,
+							  coloptions,
+							  indexInfo->ii_NumIndexKeyAttrs);
 }
 
 /*

@@ -60,9 +60,7 @@ When upgrading a node or performing maintenance, the first step is to take it of
 {{<collapse title="Take a node offline locally">}}
 To take a node offline locally, you can just stop the node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd4
-```
+{{%cluster/cmd op="stop" nodes="4"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
@@ -106,9 +104,7 @@ After completing the upgrade and the required maintenance, you restart the node.
 
 To simulate bringing back a node online locally, you can just start the stopped node.
 
-```bash
-./bin/yugabyted start --base_dir=/tmp/ybd4
-```
+{{%cluster/cmd op="stop" nodes="4"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}

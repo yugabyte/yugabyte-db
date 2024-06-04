@@ -44,11 +44,11 @@ Result<ResponsePB> XClusterClient::SyncLeaderMasterRpc(
   return resp;
 }
 
-Status XClusterClient::CreateXClusterReplication(
+Status XClusterClient::CreateXClusterReplicationFromCheckpoint(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::string& target_master_addresses) {
-  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
-  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Target master_addresses is empty");
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Invalid Target master_addresses");
 
   master::CreateXClusterReplicationRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
@@ -67,8 +67,8 @@ Status XClusterClient::CreateXClusterReplication(
 Result<IsOperationDoneResult> XClusterClient::IsCreateXClusterReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::string& target_master_addresses) {
-  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
-  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Target master_addresses is empty");
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Invalid Target master_addresses");
 
   master::IsCreateXClusterReplicationDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
@@ -94,15 +94,16 @@ Result<IsOperationDoneResult> XClusterClient::IsCreateXClusterReplicationDone(
   return IsOperationDoneResult::Done();
 }
 
-Result<std::vector<NamespaceId>> XClusterClient::XClusterCreateOutboundReplicationGroup(
+Status XClusterClient::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceName>& namespace_names) {
-  SCHECK(!namespace_names.empty(), InvalidArgument, "At least one namespace name is required");
+    const std::vector<NamespaceId>& namespace_ids) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!namespace_ids.empty(), InvalidArgument, "At least one namespace Id is required");
 
   master::XClusterCreateOutboundReplicationGroupRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
-  for (const auto& ns : namespace_names) {
-    req.add_namespace_names(ns);
+  for (const auto& namespace_id : namespace_ids) {
+    req.add_namespace_ids(namespace_id);
   }
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterCreateOutboundReplicationGroup, req);
@@ -111,27 +112,100 @@ Result<std::vector<NamespaceId>> XClusterClient::XClusterCreateOutboundReplicati
     return StatusFromPB(resp.error().status());
   }
 
-  std::vector<NamespaceId> namespace_ids;
-  for (const auto& namespace_id : resp.namespace_ids()) {
-    namespace_ids.push_back(namespace_id);
-  }
-
-  return namespace_ids;
+  return Status::OK();
 }
 
-Status XClusterClient::IsXClusterBootstrapRequired(
+Status XClusterClient::IsBootstrapRequired(
     CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
     const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
+
   return yb_client_.data_->IsXClusterBootstrapRequired(
       &yb_client_, deadline, replication_group_id, namespace_id, std::move(callback));
 }
 
-Status XClusterClient::XClusterDeleteOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+Status XClusterClient::RemoveNamespaceFromOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::string& target_master_addresses) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
+
+  master::XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_id(namespace_id);
+
+  if (!target_master_addresses.empty()) {
+    auto hp_vec =
+        VERIFY_RESULT(HostPort::ParseStrings(target_master_addresses, master::kMasterDefaultPort));
+    HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterRemoveNamespaceFromOutboundReplicationGroup, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Status XClusterClient::DeleteOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+
   master::XClusterDeleteOutboundReplicationGroupRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
 
+  if (!target_master_addresses.empty()) {
+    auto hp_vec =
+        VERIFY_RESULT(HostPort::ParseStrings(target_master_addresses, master::kMasterDefaultPort));
+    HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+  }
+
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterDeleteOutboundReplicationGroup, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::RemoveNamespaceFromUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const NamespaceId& source_namespace_id, const UniverseUuid& target_universe_uuid) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!source_namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
+
+  master::AlterUniverseReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_producer_namespace_id_to_remove(source_namespace_id);
+  if (!target_universe_uuid.IsNil()) {
+    req.set_universe_uuid(target_universe_uuid.ToString());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(AlterUniverseReplication, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::DeleteUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
+    const UniverseUuid& target_universe_uuid) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+
+  master::DeleteUniverseReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_ignore_errors(ignore_errors);
+  if (!target_universe_uuid.IsNil()) {
+    req.set_universe_uuid(target_universe_uuid.ToString());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(DeleteUniverseReplication, req);
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -143,9 +217,121 @@ Status XClusterClient::GetXClusterStreams(
     CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
     const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
     const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
+
   return yb_client_.data_->GetXClusterStreams(
       &yb_client_, deadline, replication_group_id, namespace_id, table_names, pg_schema_names,
       std::move(callback));
+}
+
+Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid namespace name");
+
+  master::XClusterAddNamespaceToOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_id(namespace_id);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterAddNamespaceToOutboundReplicationGroup, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Status XClusterClient::AddNamespaceToXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses, const NamespaceId& source_namespace_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Invalid target master addresses");
+  SCHECK(!source_namespace_id.empty(), InvalidArgument, "Invalid namespace name");
+
+  master::AddNamespaceToXClusterReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_id(source_namespace_id);
+
+  auto hp_vec =
+      VERIFY_RESULT(HostPort::ParseStrings(target_master_addresses, master::kMasterDefaultPort));
+  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(AddNamespaceToXClusterReplication, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Result<IsOperationDoneResult> XClusterClient::IsAlterXClusterReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!target_master_addresses.empty(), InvalidArgument, "Invalid target master_addresses");
+
+  master::IsAlterXClusterReplicationDoneRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  auto hp_vec =
+      VERIFY_RESULT(HostPort::ParseStrings(target_master_addresses, master::kMasterDefaultPort));
+  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(IsAlterXClusterReplicationDone, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+
+  if (resp.has_replication_error()) {
+    return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
+  }
+
+  return IsOperationDoneResult::Done();
+}
+
+Status XClusterClient::RepairOutboundXClusterReplicationGroupAddTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const xrepl::StreamId& stream_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
+  SCHECK(!table_id.empty(), InvalidArgument, "Invalid Table Id");
+  SCHECK(!stream_id.IsNil(), InvalidArgument, "Invalid Stream Id");
+
+  master::RepairOutboundXClusterReplicationGroupAddTableRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_table_id(table_id);
+  req.set_stream_id(stream_id.ToString());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RepairOutboundXClusterReplicationGroupAddTable, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::RepairOutboundXClusterReplicationGroupRemoveTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!table_id.empty(), InvalidArgument, "Invalid Table Id");
+
+  master::RepairOutboundXClusterReplicationGroupRemoveTableRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_table_id(table_id);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RepairOutboundXClusterReplicationGroupRemoveTable, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)
@@ -180,8 +366,14 @@ Status XClusterRemoteClient::Init(
                                  .add_master_server_addr(master_addrs)
                                  .default_admin_operation_timeout(timeout_)
                                  .Build(messenger_.get()));
+  xcluster_client_ = std::make_unique<XClusterClient>(*yb_client_);
 
   return Status::OK();
+}
+
+XClusterClient* XClusterRemoteClient::GetXClusterClient() {
+  CHECK_NOTNULL(xcluster_client_);
+  return xcluster_client_.get();
 }
 
 template <typename ResponsePB, typename RequestPB, typename Method>
@@ -219,11 +411,11 @@ Result<UniverseUuid> XClusterRemoteClient::SetupDbScopedUniverseReplication(
   SCHECK_EQ(
       namespace_names.size(), source_namespace_ids.size(), InvalidArgument,
       "Namespace names and IDs count must match");
-  for (const auto& namespace_name : namespace_names) {
-    req.add_namespace_names(namespace_name);
-  }
-  for (const auto& namespace_id : source_namespace_ids) {
-    req.add_producer_namespace_ids(namespace_id);
+  for (size_t i = 0; i < namespace_names.size(); i++) {
+    auto* namespace_id = req.add_producer_namespaces();
+    namespace_id->set_id(source_namespace_ids[i]);
+    namespace_id->set_name(namespace_names[i]);
+    namespace_id->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
   }
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(SetupUniverseReplication, req);
@@ -302,4 +494,41 @@ Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
 
   return Status::OK();
 }
+
+Status XClusterRemoteClient::AddNamespaceToDbScopedUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const UniverseUuid& target_universe_uuid, const NamespaceName& namespace_name,
+    const NamespaceId& source_namespace_id, const std::vector<TableId>& source_table_ids,
+    const std::vector<xrepl::StreamId>& bootstrap_ids) {
+  master::AlterUniverseReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_universe_uuid(target_universe_uuid.ToString());
+
+  master::NamespaceIdentifierPB namespace_info;
+  namespace_info.set_id(source_namespace_id);
+  namespace_info.set_name(namespace_name);
+  namespace_info.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  req.mutable_producer_namespace_to_add()->Swap(&namespace_info);
+
+  req.mutable_producer_table_ids_to_add()->Reserve(narrow_cast<int>(source_table_ids.size()));
+  for (const auto& table_id : source_table_ids) {
+    req.add_producer_table_ids_to_add(table_id);
+  }
+
+  for (const auto& bootstrap_id : bootstrap_ids) {
+    req.add_producer_bootstrap_ids_to_add(bootstrap_id.ToString());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(AlterUniverseReplication, req);
+
+  if (resp.has_error()) {
+    auto status = StatusFromPB(resp.error().status());
+    if (!status.ok() && !status.IsAlreadyPresent()) {
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace yb::client

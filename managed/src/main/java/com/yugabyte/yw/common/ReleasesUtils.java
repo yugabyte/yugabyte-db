@@ -10,6 +10,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -45,6 +47,7 @@ public class ReleasesUtils {
 
   @Inject private Config appConfig;
   @Inject private ConfigHelper configHelper;
+  @Inject private RuntimeConfGetter confGetter;
 
   public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
 
@@ -108,12 +111,13 @@ public class ReleasesUtils {
         return metadataFromHelmChart(
             new BufferedInputStream(Files.newInputStream(releaseFilePath)));
       }
-      ExtractedMetadata em =
-          versionMetadataFromInputStream(
-              new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
-      em.sha256 = sha256;
-      em.releaseTag = tagFromName(releaseFilePath.toString());
-      return em;
+      try (BufferedInputStream stream =
+          new BufferedInputStream(new FileInputStream(releaseFilePath.toFile()))) {
+        ExtractedMetadata em = versionMetadataFromInputStream(stream);
+        em.sha256 = sha256;
+        em.releaseTag = tagFromName(releaseFilePath.toString());
+        return em;
+      }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for file " + releaseFilePath.toString());
@@ -129,9 +133,13 @@ public class ReleasesUtils {
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     try {
       if (isHelmChart(url.getFile())) {
-        return metadataFromHelmChart(new BufferedInputStream(url.openStream()));
+        try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
+          return metadataFromHelmChart(stream);
+        }
       }
-      return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
+      try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
+        return versionMetadataFromInputStream(stream);
+      }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
@@ -414,6 +422,22 @@ public class ReleasesUtils {
       httpLocation.paths.x86_64_checksum = artifact.getFormattedSha256();
     }
     return httpLocation;
+  }
+
+  public void validateVersionAgainstCurrentYBA(String version) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
+      return;
+    }
+    String currVersion = ybaCurrentVersion();
+    if (Util.compareYbVersions(version, currVersion) > 0) {
+      log.error("invalid version {} is newer then the yba version {}", version, currVersion);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Release version %s is newer then yba version %s and is not compatible",
+              version, currVersion));
+    }
+    log.trace("version {} is valid", currVersion);
   }
 
   private String getAndValidateYbaMinimumVersion(JsonNode node) {

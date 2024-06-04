@@ -19,6 +19,7 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
 
 import InfoMessageIcon from '../../../../../../../redesign/assets/info-message.svg';
+import { ReleaseState } from '../../../../../releases/components/dtos';
 
 const MAX_RELEASE_TAG_CHAR = 20;
 
@@ -146,7 +147,8 @@ export const DBVersionField = ({
     ? sortVersionStrings(
         data?.filter((versionData: any) => {
           return isReleasesEnabled
-            ? isVersionStable(versionData.label.version)
+            ? versionData.label.state === ReleaseState.ACTIVE &&
+                isVersionStable(versionData.label.version)
             : isVersionStable(versionData.label);
         }),
         isReleasesEnabled
@@ -157,7 +159,8 @@ export const DBVersionField = ({
     ? sortVersionStrings(
         data?.filter((versionData: any) => {
           return isReleasesEnabled
-            ? !isVersionStable(versionData.label.version)
+            ? versionData.label.state === ReleaseState.ACTIVE &&
+                !isVersionStable(versionData.label.version)
             : !isVersionStable(versionData.label);
         }),
         isReleasesEnabled

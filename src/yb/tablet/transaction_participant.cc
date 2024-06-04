@@ -52,7 +52,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -105,11 +105,11 @@ DEFINE_NON_RUNTIME_int32(wait_queue_poll_interval_ms, 100,
     "active blockers.");
 
 // TODO: this should be turned into an autoflag.
-DEFINE_RUNTIME_bool(cdc_write_post_apply_metadata, yb::IsDebug(),
+DEFINE_RUNTIME_bool(cdc_write_post_apply_metadata, yb::kIsDebug,
     "Write post-apply transaction metadata to intentsdb for transaction that have been applied but "
     " have not yet been streamed by CDC.");
 
-DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, yb::IsDebug(),
+DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, yb::kIsDebug,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
 
@@ -148,6 +148,12 @@ DEFINE_test_flag(int32, txn_participant_inject_delay_on_start_shutdown_ms, 0,
 DEFINE_test_flag(double, txn_participant_error_on_load, 0.0,
                  "Probability that the participant would error on call to SetDB before launching "
                  "the transaction loader thread.");
+
+DEFINE_test_flag(bool, skip_process_apply, false,
+                 "If true, ProcessApply will be skipped");
+
+DEFINE_test_flag(bool, load_transactions_sync, false,
+                 "If true, the test will block until the loader has finished loading all txns.");
 
 namespace yb {
 namespace tablet {
@@ -815,6 +821,9 @@ class TransactionParticipant::Impl
   }
 
   Status ProcessApply(const TransactionApplyData& data) {
+    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_skip_process_apply))) {
+      return Status::OK();
+    }
     VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
 
     RETURN_NOT_OK(loader_.WaitLoaded(data.transaction_id));
@@ -1024,6 +1033,10 @@ class TransactionParticipant::Impl
         return STATUS_FORMAT(InternalError, "Flag TEST_txn_participant_error_on_load set.");
       }
       loader_.Start(pending_op_counter_blocking_rocksdb_shutdown_start, db_);
+      if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_load_transactions_sync))) {
+        RETURN_NOT_OK(loader_.WaitAllLoaded());
+        std::this_thread::sleep_for(500ms);
+      }
       return Status::OK();
     }
 
@@ -1398,13 +1411,6 @@ class TransactionParticipant::Impl
       >
   > Transactions;
 
-  void CompleteLoad(const std::function<void()>& functor) override {
-    MinRunningNotifier min_running_notifier(&applier_);
-    std::lock_guard lock(mutex_);
-    functor();
-    TransactionsModifiedUnlocked(&min_running_notifier);
-  }
-
   void LoadFinished(Status load_status) EXCLUDES(status_resolvers_mutex_) override {
     // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
     // sure that at the end of Load, we unblock shutdown.
@@ -1442,24 +1448,29 @@ class TransactionParticipant::Impl
       std::this_thread::sleep_for(10ms);
     }
 
-    if (!pending_applies.empty()) {
-      LOG_WITH_PREFIX(INFO)
+    {
+      LOG_IF_WITH_PREFIX(INFO, !pending_applies.empty())
           << __func__ << ": starting " << pending_applies.size() << " pending applies";
+      MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard lock(mutex_);
-      size_t idx = 0;
-      for (const auto& p : pending_applies) {
-        auto it = transactions_.find(p.first);
-        if (it == transactions_.end()) {
-          LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(p.first);
-          continue;
-        }
+      if (!pending_applies.empty()) {
+        size_t idx = 0;
+        for (const auto& p : pending_applies) {
+          auto it = transactions_.find(p.first);
+          if (it == transactions_.end()) {
+            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(p.first);
+            continue;
+          }
 
-        TransactionApplyData apply_data;
-        apply_data.transaction_id = p.first;
-        apply_data.commit_ht = p.second.commit_ht;
-        (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
-        ++idx;
+          TransactionApplyData apply_data;
+          apply_data.transaction_id = p.first;
+          apply_data.commit_ht = p.second.commit_ht;
+          (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
+          ++idx;
+        }
       }
+      transactions_loaded_ = true;
+      TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
     {
@@ -1481,7 +1492,7 @@ class TransactionParticipant::Impl
 
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     metric_transactions_running_->set_value(transactions_.size());
-    if (auto res = loader_.Completed(); !res.ok() || !(*res)) {
+    if (!transactions_loaded_) {
       return;
     }
 
@@ -2168,6 +2179,8 @@ class TransactionParticipant::Impl
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
+
+  bool transactions_loaded_ GUARDED_BY(mutex_) = false;
 
   bool pending_applied_notified_ = false;
   std::mutex pending_applies_mutex_;

@@ -63,7 +63,8 @@ Status YQLVirtualTable::GetIterator(
     const docdb::ReadOperationData& read_operation_data,
     const qlexpr::QLScanSpec& spec,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
+    std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
+    const docdb::DocDBStatistics* statistics) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());

@@ -45,12 +45,14 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.RollbackAutoFlags,
           TaskType.KubernetesCommandExecutor,
           TaskType.ModifyBlackList,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
@@ -61,6 +63,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
@@ -71,6 +74,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
@@ -81,18 +85,21 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
@@ -109,27 +116,13 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
@@ -142,19 +135,6 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                "old-version")),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -173,6 +153,11 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
                 "commandType",
@@ -181,6 +166,35 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType",
+                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
+                "ybSoftwareVersion",
+                "old-version")),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType",
+                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
+                "ybSoftwareVersion",
+                "old-version")),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -210,6 +224,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   public void setup() throws Exception {
     setFollowerLagMock();
     setUnderReplicatedTabletsMock();
+    setCheckNodesAreSafeToTakeDown(mockClient);
     this.rollbackKubernetesUpgrade =
         new RollbackKubernetesUpgrade(mockBaseTaskDependencies, mockOperatorStatusUpdaterFactory);
     rollbackKubernetesUpgrade.setTaskUUID(UUID.randomUUID());
@@ -228,6 +243,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.RollbackUpgrade,

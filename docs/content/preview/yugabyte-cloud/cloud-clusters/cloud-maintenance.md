@@ -11,7 +11,9 @@ menu:
 type: docs
 ---
 
-Yugabyte occasionally performs maintenance on clusters. This can include infrastructure and database upgrades. Depending on the type of maintenance, your cluster may be restarted, which disrupts service briefly. Yugabyte notifies you in advance of any upcoming maintenance via email. The email includes the date and time of the maintenance window. One week before a scheduled maintenance, an **Upcoming Maintenance** badge is displayed on the cluster.
+Yugabyte occasionally performs maintenance on clusters. This can include infrastructure and database upgrades. Depending on the type of maintenance, your cluster may be restarted. [Fault tolerant](../../cloud-basics/create-clusters-overview#fault-tolerance) clusters use rolling restarts, meaning your cluster has no downtime. Clusters with no fault tolerance (including your Sandbox) will briefly be unavailable. For more information on the impact, see [What to expect during maintenance](#what-to-expect-during-maintenance).
+
+Yugabyte notifies you in advance of any upcoming maintenance via email. The email includes the date and time of the maintenance window. One week before a scheduled maintenance, an **Upcoming Maintenance** badge is displayed on the cluster.
 
 Yugabyte only performs cluster maintenance, including YugabyteDB database upgrades and server setting updates, during scheduled maintenance windows. The maintenance window is a weekly four hour interval during which Yugabyte may perform maintenance on the cluster.
 
@@ -60,15 +62,17 @@ To set the maintenance exclusion period for a cluster:
 
 ## What to expect during maintenance
 
-Yugabyte performs rolling maintenance and upgrades on multi-node clusters with zero downtime. However, the cluster is still subject to the following:
+Yugabyte performs rolling maintenance and upgrades on [fault tolerant](../../cloud-basics/create-clusters-overview/#fault-tolerance) clusters with zero downtime. However, the cluster is still subject to the following:
 
 - Dropped connections - Connections to the stopped node are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
 - Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.
-- May not be [highly available](../../../explore/fault-tolerance/) - During maintenance, one node is always offline. In a multi-node cluster with a [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of 1, if one of the remaining nodes goes down (for a total of 2 nodes offline), you can no longer access the database.
+- May not be [highly available](../../../explore/fault-tolerance/) - During maintenance, one node is always offline. Depending on the fault tolerance of the cluster, an outage of an additional fault domain could result in downtime.
+
+Clusters with no fault tolerance (including your Sandbox) will briefly be unavailable.
 
 ## Critical maintenance
 
-Yugabyte occasionally performs critical maintenance on clusters. This includes routine but time-sensitive maintenance and updates. As with regular maintenance, Yugabyte notifies you in advance of any upcoming critical maintenance via email.
+Yugabyte occasionally performs high priority maintenance on clusters. This includes routine but time-sensitive maintenance and updates. As with regular maintenance, Yugabyte notifies you in advance of any upcoming critical maintenance via email.
 
 Critical maintenance includes the following:
 

@@ -77,10 +77,12 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = NULL;
 	amroutine->aminitparallelscan = NULL;
 	amroutine->amparallelrescan = NULL;
+	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybgininsert;
 	amroutine->yb_amdelete = ybgindelete;
 	amroutine->yb_ambackfill = ybginbackfill;
 	amroutine->yb_ammightrecheck = ybginmightrecheck;
+	amroutine->yb_ambindschema = ybginbindschema;
 
 	PG_RETURN_POINTER(amroutine);
 }

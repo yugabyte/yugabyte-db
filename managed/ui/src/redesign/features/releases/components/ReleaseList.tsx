@@ -1,7 +1,7 @@
 import { ChangeEvent, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem, Dropdown } from 'react-bootstrap';
-import { useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Tooltip, makeStyles } from '@material-ui/core';
 import { Add, Refresh } from '@material-ui/icons';
@@ -186,6 +186,8 @@ export const NewReleaseList = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [modalTitle, setModalTitle] = useState<string>(ModalTitle.ADD_RELEASE);
 
+  const refreshRelease = useMutation(() => ReleasesAPI.refreshRelease());
+
   const {
     data: releasesData,
     isIdle: isReleasesIdle,
@@ -341,6 +343,10 @@ export const NewReleaseList = () => {
 
   const onSetReleaseArchitecture = (selectedArchitecture: ReleasePlatformArchitecture | null) => {
     setReleaseArchitecture(selectedArchitecture);
+  };
+
+  const onRefreshRelease = () => {
+    refreshRelease.mutate();
   };
 
   const onActionPerformed = () => {
@@ -612,6 +618,7 @@ export const NewReleaseList = () => {
                   variant="secondary"
                   onClick={() => {
                     onActionPerformed();
+                    onRefreshRelease();
                   }}
                 />
                 <YBButton

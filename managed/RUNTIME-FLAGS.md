@@ -121,6 +121,7 @@
 | "HA test connection request timeout" | "yb.ha.test_request_timeout" | "GLOBAL" | "The request to test HA connection to standby will timeout after the specified amount of time." | "Duration" |
 | "HA test connection connection timeout" | "yb.ha.test_connection_timeout" | "GLOBAL" | "The client will wait for the specified amount of time to make a connection to the remote address." | "Duration" |
 | "XCluster isBootstrapRequired rpc max parallel threads" | "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads" | "GLOBAL" | "Sets the maximum allowed number of threads to be run concurrently for xcluster isBootstrapRequired rpc" | "Integer" |
+| "Auto create user on SSO login" | "yb.security.oidc_enable_auto_create_users" | "GLOBAL" | "Enable user creation on SSO login" | "Boolean" |
 | "YBC poll upgrade result tries" | "ybc.upgrade.poll_result_tries" | "GLOBAL" | "YBC poll upgrade result tries count." | "Integer" |
 | "YBC poll upgrade result Sleep time" | "ybc.upgrade.poll_result_sleep_ms" | "GLOBAL" | "YBC poll upgrade result sleep time." | "Long" |
 | "HA Shutdown Level" | "yb.ha.shutdown_level" | "GLOBAL" | "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion" | "Integer" |

@@ -11,18 +11,17 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.troubleshoot.ts.CommonUtils;
 import com.yugabyte.troubleshoot.ts.logs.LogsUtil;
 import com.yugabyte.troubleshoot.ts.models.*;
-import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
-import com.yugabyte.troubleshoot.ts.service.PgStatStatementsService;
-import com.yugabyte.troubleshoot.ts.service.UniverseDetailsService;
-import com.yugabyte.troubleshoot.ts.service.UniverseMetadataService;
+import com.yugabyte.troubleshoot.ts.service.*;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.client.YBAClientError;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
+import io.prometheus.client.Counter;
 import io.prometheus.client.Summary;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -57,6 +56,15 @@ public class StatStatementsQuery {
           "PG Stat Statements node processing time",
           LABEL_RESULT);
 
+  private static final Counter STAT_STATEMENTS_STORED =
+      buildCounter(
+          "ts_pss_query_stat_statements_stored", "PG Stat Statements entries stored in TS storage");
+
+  private static final Counter STAT_STATEMENTS_INACTIVE =
+      buildCounter(
+          "ts_pss_query_stat_statements_inactive",
+          "PG Stat Statements entries skipped because of inactivity");
+
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
       "2.18.1.0-b67";
 
@@ -88,6 +96,8 @@ public class StatStatementsQuery {
   private final PgStatStatementsService pgStatStatementsService;
   private final PgStatStatementsQueryService pgStatStatementsQueryService;
 
+  private final RuntimeConfigService runtimeConfigService;
+
   private final ThreadPoolTaskExecutor pgStatStatementsQueryExecutor;
   private final ThreadPoolTaskExecutor pgStatStatementsNodesQueryExecutor;
   private final ObjectMapper objectMapper;
@@ -99,6 +109,7 @@ public class StatStatementsQuery {
       UniverseDetailsService universeDetailsService,
       PgStatStatementsService pgStatStatementsService,
       PgStatStatementsQueryService pgStatStatementsQueryService,
+      RuntimeConfigService runtimeConfigService,
       ThreadPoolTaskExecutor pgStatStatementsQueryExecutor,
       ThreadPoolTaskExecutor pgStatStatementsNodesQueryExecutor,
       ObjectMapper objectMapper,
@@ -107,6 +118,7 @@ public class StatStatementsQuery {
     this.universeDetailsService = universeDetailsService;
     this.pgStatStatementsService = pgStatStatementsService;
     this.pgStatStatementsQueryService = pgStatStatementsQueryService;
+    this.runtimeConfigService = runtimeConfigService;
     this.pgStatStatementsQueryExecutor = pgStatStatementsQueryExecutor;
     this.pgStatStatementsNodesQueryExecutor = pgStatStatementsNodesQueryExecutor;
     this.objectMapper = objectMapper;
@@ -168,13 +180,29 @@ public class StatStatementsQuery {
       progress.setInProgress(true);
       progress.setStartTimestamp(System.currentTimeMillis());
       progress.setNodes(details.getUniverseDetails().getNodeDetailsSet().size());
+      Duration queryActiveDuration =
+          runtimeConfigService
+              .getUniverseConfig(metadata)
+              .getDuration(RuntimeConfigKey.PSS_QUERY_ACTIVE_PERIOD);
+      Instant activeQueriesAfter =
+          Instant.now().minus(queryActiveDuration.toSeconds(), ChronoUnit.SECONDS);
+      Set<PgStatStatementsQueryId> activeQueries =
+          pgStatStatementsQueryService.listByUniverseId(metadata.getId()).stream()
+              .filter(
+                  query ->
+                      query.getLastActive() != null
+                          && query.getLastActive().isAfter(activeQueriesAfter))
+              .map(PgStatStatementsQuery::getId)
+              .collect(Collectors.toSet());
+
       Map<String, Future<NodeProcessResult>> results = new HashMap<>();
       for (UniverseDetails.UniverseDefinition.NodeDetails node :
           details.getUniverseDetails().getNodeDetailsSet()) {
         results.put(
             node.getNodeName(),
             pgStatStatementsNodesQueryExecutor.submit(
-                LogsUtil.wrapCallable(() -> processNode(metadata, details, node, progress))));
+                LogsUtil.wrapCallable(
+                    () -> processNode(metadata, details, node, progress, activeQueries))));
       }
       Map<QueryKey, QueryData> combinedQueries = new HashMap<>();
       for (Map.Entry<String, Future<NodeProcessResult>> resultEntry : results.entrySet()) {
@@ -224,7 +252,8 @@ public class StatStatementsQuery {
                                   .setDbId(e.getKey().getDatabaseId())
                                   .setQueryId(e.getKey().getQueryId()))
                           .setDbName(e.getValue().getDbName())
-                          .setQuery(e.getValue().getQuery()))
+                          .setQuery(e.getValue().getQuery())
+                          .setLastActive(e.getValue().getActiveTimestamp()))
               .toList();
       pgStatStatementsQueryService.save(pgStatStatementsQueries);
       universesProcessStartTime.remove(details.getId());
@@ -244,7 +273,8 @@ public class StatStatementsQuery {
       UniverseMetadata metadata,
       UniverseDetails details,
       UniverseDetails.UniverseDefinition.NodeDetails node,
-      UniverseProgress progress) {
+      UniverseProgress progress,
+      Set<PgStatStatementsQueryId> activeQueries) {
     Long startTime = System.currentTimeMillis();
     try {
       NodeProcessResult nodeResult = new NodeProcessResult(true);
@@ -286,8 +316,8 @@ public class StatStatementsQuery {
         long queryId = statsJson.get(QUERY_ID).asLong();
         String queryText = statsJson.get(QUERY).asText();
         QueryKey key = new QueryKey(metadata.getId(), node.getNodeName(), dbId, queryId);
-        nodeResult.getQueries().put(key, new QueryData(dbName, queryText));
         JsonNode previousStats = queryLastStats.get(key);
+        Instant activeTimestamp = null;
         if (previousStats != null) {
           Instant oldTimestamp =
               OffsetDateTime.parse(previousStats.get(TIMESTAMP).textValue(), PG_TIMESTAMP_FORMAT)
@@ -308,11 +338,25 @@ public class StatStatementsQuery {
               statsJson,
               Duration.between(oldTimestamp, newTimestamp),
               statStatements);
-          statStatementsList.add(statStatements);
+          if (statStatements.getRps() > 0) {
+            activeTimestamp = statStatements.getActualTimestamp();
+            statStatementsList.add(statStatements);
+          } else if (activeQueries.contains(
+              new PgStatStatementsQueryId()
+                  .setUniverseId(statStatements.getUniverseId())
+                  .setDbId(statStatements.getDbId())
+                  .setQueryId(statStatements.getQueryId()))) {
+            statStatementsList.add(statStatements);
+          } else {
+            STAT_STATEMENTS_INACTIVE.inc();
+          }
         }
+        QueryData queryData = new QueryData(dbName, queryText, activeTimestamp);
+        nodeResult.getQueries().put(key, queryData);
         queryLastStats.put(key, statsJson);
       }
       pgStatStatementsService.save(statStatementsList);
+      STAT_STATEMENTS_STORED.inc(statStatementsList.size());
       NODE_PROCESS_TIME.labels(RESULT_SUCCESS).observe(System.currentTimeMillis() - startTime);
       return nodeResult;
     } catch (YBAClientError error) {
@@ -379,7 +423,7 @@ public class StatStatementsQuery {
       if (stats.getP99Latency().isNaN() && callsCount >= calls * 0.99) {
         stats.setP99Latency(upperBound);
       }
-      if (callsCount == calls) {
+      if (stats.getMaxLatency().isNaN() && callsCount == calls) {
         stats.setMaxLatency(upperBound);
       }
     }
@@ -429,6 +473,7 @@ public class StatStatementsQuery {
   private static class QueryData {
     String dbName;
     String query;
+    @EqualsAndHashCode.Exclude Instant activeTimestamp;
   }
 
   @Value

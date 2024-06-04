@@ -27,10 +27,6 @@ YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service offering from 
 
 Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB in your preferred environments (spanning on-prem, in the public cloud, and in Kubernetes) and topologies (single- and multi-region).
 
-You can access YugabyteDB Anywhere via an Internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, you can access YugabyteDB Anywhere via most mobile browsers, except Opera Mini.
-
-YugabyteDB Anywhere offers the following built-in [roles for user accounts](administer-yugabyte-platform/anywhere-rbac/): Super Admin, Admin, Backup Admin, Read only, and Connect only, with the latter having limited access to functionality. Unless otherwise specified, the YugabyteDB Anywhere documentation describes the functionality available to a Super Admin user.
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Install"

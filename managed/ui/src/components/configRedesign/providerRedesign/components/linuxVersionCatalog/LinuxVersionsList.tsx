@@ -253,11 +253,20 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
   const formatActions = (image: ImageBundle, index: number) => {
     return (
       <div className={classes.actionButtons}>
-        {
-          !isEmpty(errors[index]) ? <YBPopover hoverMsg={<div> {split(errors[index]?.message, ValidationErrMsgDelimiter).map(msg => <div>{msg}</div>)}</div>}>
+        {!isEmpty(errors[index]) ? (
+          <YBPopover
+            hoverMsg={
+              <div>
+                {' '}
+                {split(errors[index]?.message, ValidationErrMsgDelimiter).map((msg) => (
+                  <div>{msg}</div>
+                ))}
+              </div>
+            }
+          >
             <img src={ErrorIcon} />
-          </YBPopover> : null
-        }
+          </YBPopover>
+        ) : null}
         <MoreActionsMenu
           menuOptions={[
             {
@@ -266,6 +275,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 setEditDetails(image);
               },
               icon: <Edit />,
+              dataTestId: `LinuxVersionsCard${index}-Edit`,
               menuItemWrapper(elem) {
                 return (
                   <RbacValidator
@@ -288,6 +298,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 setImageAsDefault(image);
               },
               disabled: image.useAsDefault,
+              dataTestId: `LinuxVersionsCard${index}-SetDefault`,
               menuItemWrapper(elem) {
                 if (!image.useAsDefault) return elem;
                 return (
@@ -318,6 +329,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 onDelete(image);
               },
               icon: <Delete />,
+              dataTestId: `LinuxVersionsCard${index}-Delete`,
               menuItemWrapper(elem) {
                 return (
                   <RbacValidator
@@ -336,7 +348,11 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
             }
           ]}
         >
-          <YBButton variant="secondary" className={classes.moreOptionsBut}>
+          <YBButton
+            variant="secondary"
+            className={classes.moreOptionsBut}
+            data-testid={`LinuxVersionsCard${index}-MoreButton`}
+          >
             <img alt="More" src={MoreIcon} width="20" />
           </YBButton>
         </MoreActionsMenu>

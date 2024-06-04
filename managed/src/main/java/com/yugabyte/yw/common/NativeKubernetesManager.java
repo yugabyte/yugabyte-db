@@ -18,6 +18,7 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -139,6 +140,11 @@ public class NativeKubernetesManager extends KubernetesManager {
     try (KubernetesClient client = getClient(config)) {
       return client.namespaces().list().getItems();
     }
+  }
+
+  @Override
+  public boolean dbNamespaceExists(Map<String, String> config, String namespace) {
+    throw new UnsupportedOperationException("Unimplemented method 'dbNamespaceExists'");
   }
 
   @Override
@@ -464,9 +470,14 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public String getStorageClass(
-      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+      Map<String, String> config, String storageClassName, String outputFormat) {
     // TODO Auto-generated method stub
     return null;
+  }
+
+  @Override
+  public StorageClass getStorageClass(Map<String, String> config, String storageClassName) {
+    throw new UnsupportedOperationException("Unimplemented method 'getStorageClass'");
   }
 
   @Override
@@ -521,5 +532,12 @@ public class NativeKubernetesManager extends KubernetesManager {
       boolean newNamingStyle) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'deleteAllServerTypePods'");
+  }
+
+  @Override
+  public boolean resourceExists(
+      Map<String, String> config, String resourceType, String resourceName, String namespace) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'resourceExists'");
   }
 }

@@ -110,6 +110,7 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
+#include "replication/walsender_private.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -554,6 +555,8 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	ReorderBufferTupleBuf *tuple;
 	Size		alloc_len;
 
+	TimestampTz yb_start_time = GetCurrentTimestamp();
+
 	alloc_len = tuple_len + SizeofHeapTupleHeader;
 
 	tuple = (ReorderBufferTupleBuf *)
@@ -564,7 +567,11 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	tuple->tuple.t_data = ReorderBufferTupleBufData(tuple);
 
 	if (IsYugaByteEnabled())
+	{
 		tuple->yb_is_omitted = NULL;
+		YbWalSndTotalTimeInReorderBufferMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
+	}
 
 	return tuple;
 }
@@ -783,6 +790,8 @@ ReorderBufferQueueChange(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn,
 {
 	ReorderBufferTXN *txn;
 
+	TimestampTz yb_start_time = GetCurrentTimestamp();
+
 	txn = ReorderBufferTXNByXid(rb, xid, true, NULL, lsn, true);
 
 	/*
@@ -817,6 +826,10 @@ ReorderBufferQueueChange(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn,
 
 	/* check the memory limits and evict something if needed */
 	ReorderBufferCheckMemoryLimit(rb);
+
+	if (IsYugaByteEnabled())
+		YbWalSndTotalTimeInReorderBufferMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 }
 
 /*
@@ -2716,6 +2729,8 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 {
 	ReorderBufferTXN *txn;
 
+	TimestampTz yb_start_time = GetCurrentTimestamp();
+
 	txn = ReorderBufferTXNByXid(rb, xid, false, NULL, InvalidXLogRecPtr,
 								false);
 
@@ -2725,6 +2740,10 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 
 	ReorderBufferReplay(txn, rb, xid, commit_lsn, end_lsn, commit_time,
 						origin_id, origin_lsn);
+
+	if (IsYugaByteEnabled())
+		YbWalSndTotalTimeInReorderBufferMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 }
 
 /*
@@ -2993,6 +3012,8 @@ ReorderBufferForget(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn)
 {
 	ReorderBufferTXN *txn;
 
+	TimestampTz yb_start_time = GetCurrentTimestamp();
+
 	txn = ReorderBufferTXNByXid(rb, xid, false, NULL, InvalidXLogRecPtr,
 								false);
 
@@ -3020,6 +3041,10 @@ ReorderBufferForget(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn)
 
 	/* remove potential on-disk data, and deallocate */
 	ReorderBufferCleanupTXN(rb, txn);
+
+	if (IsYugaByteEnabled())
+		YbWalSndTotalTimeInReorderBufferMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 }
 
 /*
@@ -3100,9 +3125,15 @@ ReorderBufferImmediateInvalidation(ReorderBuffer *rb, uint32 ninvalidations,
 void
 ReorderBufferProcessXid(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn)
 {
+	TimestampTz yb_start_time = GetCurrentTimestamp();
+
 	/* many records won't have an xid assigned, centralize check here */
 	if (xid != InvalidTransactionId)
 		ReorderBufferTXNByXid(rb, xid, true, NULL, lsn, true);
+
+	if (IsYugaByteEnabled())
+		YbWalSndTotalTimeInReorderBufferMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 }
 
 /*

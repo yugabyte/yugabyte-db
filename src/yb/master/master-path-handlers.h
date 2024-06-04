@@ -127,6 +127,9 @@ class MasterPathHandlers {
     uint32_t user_tablet_followers = 0;
     uint32_t system_tablet_leaders = 0;
     uint32_t system_tablet_followers = 0;
+    // Hidden tablets are not broken down by leader vs. follower or user vs. system. They just count
+    // the number of tablets peers which are hidden.
+    uint32_t hidden_tablet_peers = 0;
 
     void operator+=(const TabletCounts& other);
   };
@@ -148,8 +151,30 @@ class MasterPathHandlers {
     typedef std::map<std::string, ZoneTree> RegionTree;
     typedef std::map<std::string, RegionTree> CloudTree;
   };
+
+  struct PlacementClusterTabletCounts {
+    TabletCounts counts;
+    uint32_t live_node_count = 0;
+    uint32_t blacklisted_node_count = 0;
+    uint32_t dead_node_count = 0;
+    uint32_t active_tablet_peer_count = 0;
+    // Tablet replica limits are computed from flag values. If these flag values are unset the
+    // universe will have no limit. This is represented with std::nullopt.
+    std::optional<uint64_t> tablet_replica_limit = 0;
+  };
+
+  struct UniverseTabletCounts {
+    // Keys are placement_uuids.
+    std::unordered_map<std::string, PlacementClusterTabletCounts> per_placement_cluster_counts;
+  };
+
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
+
+  UniverseTabletCounts CalculateUniverseTabletCounts(
+      const TabletCountMap& tablet_count_map,
+      const std::vector<std::shared_ptr<TSDescriptor>>& descs, const BlacklistSet& blacklist_set,
+      int hide_dead_node_threshold_mins);
 
   struct ReplicaInfo {
     PeerRole role;
@@ -182,6 +207,12 @@ class MasterPathHandlers {
                       std::stringstream* output,
                       const int hide_dead_node_threshold_override,
                       TServersViewType viewType);
+
+  void DisplayUniverseSummary(
+      const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
+      const std::string& live_id,
+      int hide_dead_node_threshold_mins,
+      std::stringstream* output);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(

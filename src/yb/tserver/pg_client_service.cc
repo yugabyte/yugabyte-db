@@ -66,7 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -86,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -1415,6 +1415,7 @@ class PgClientServiceImpl::Impl {
 
     size_t ignored_calls = 0;
     size_t ignored_calls_no_wait_state = 0;
+    size_t cntr = 0;
     for (const auto& conns : dump_resp.inbound_connections()) {
       for (const auto& call : conns.calls_in_flight()) {
         if (ShouldIgnoreCall(req, call)) {
@@ -1425,9 +1426,11 @@ class PgClientServiceImpl::Impl {
           continue;
         }
         resp->add_wait_states()->CopyFrom(call.wait_state());
+        VLOG(2) << cntr++ << " Inbound call sending " << call.wait_state().DebugString();
       }
     }
     if (dump_resp.has_local_calls()) {
+      cntr = 0;
       for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
         if (ShouldIgnoreCall(req, call)) {
           ignored_calls++;
@@ -1437,25 +1440,30 @@ class PgClientServiceImpl::Impl {
           continue;
         }
         resp->add_wait_states()->CopyFrom(call.wait_state());
+        VLOG(2) << cntr++ << " Local call sending " << call.wait_state().DebugString();
       }
     }
     LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls_no_wait_state > 0)
         << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
         << " without wait state";
-    VLOG(2) << __PRETTY_FUNCTION__
+    VLOG(3) << __PRETTY_FUNCTION__
             << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
   void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
-    Result<Uuid> local_uuid = Uuid::FromHexString(instance_id_);
+    Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
+    size_t cntr = 0;
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
+      yb::WaitStateInfoPB pb;
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         if (local_uuid) {
           wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
         }
-        wait_state_ptr->ToPB(resp->add_wait_states());
+        wait_state_ptr->ToPB(&pb);
+        resp->add_wait_states()->CopyFrom(pb);
+        VLOG(2) << cntr++ << " Tracker call sending " << pb.DebugString();
       }
     }
   }

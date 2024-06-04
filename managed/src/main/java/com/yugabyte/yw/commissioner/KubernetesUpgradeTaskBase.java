@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -46,6 +48,68 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   @Override
   protected boolean isBlacklistLeaders() {
     return getOrCreateExecutionContext().isBlacklistLeaders();
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
+    log.debug("Nodes to be restarted {}", nodesToBeRestarted);
+    if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
+        && nodesToBeRestarted != null
+        && !nodesToBeRestarted.isEmpty()) {
+      createCheckNodesAreSafeToTakeDownTask(
+          nodesToBeRestarted.mastersList,
+          nodesToBeRestarted.tserversList,
+          getTargetSoftwareVersion());
+    }
+  }
+
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  protected String getTargetSoftwareVersion() {
+    return null;
+  }
+
+  private MastersAndTservers nodesToBeRestarted;
+
+  // Override in child classes if required
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(UpgradeOption.ROLLING_UPGRADE /* Only Rolling support in K8s */);
+  }
+
+  protected final MastersAndTservers getNodesToBeRestarted() {
+    if (nodesToBeRestarted == null) {
+      nodesToBeRestarted = calculateNodesToBeRestarted();
+    }
+    return nodesToBeRestarted;
+  }
+
+  protected MastersAndTservers fetchNodes(UpgradeOption upgradeOption) {
+    return new MastersAndTservers(
+        fetchMasterNodes(getUniverse(), upgradeOption),
+        fetchTServerNodes(getUniverse(), upgradeOption));
+  }
+
+  private List<NodeDetails> fetchMasterNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> masterNodes = universe.getMasters();
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
+      return UpgradeTaskBase.sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
+    }
+    return masterNodes;
+  }
+
+  private List<NodeDetails> fetchTServerNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> tServerNodes = universe.getTServers();
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      return UpgradeTaskBase.sortTServersInRestartOrder(universe, tServerNodes);
+    }
+    return tServerNodes;
   }
 
   public abstract SubTaskGroupType getTaskSubGroupType();

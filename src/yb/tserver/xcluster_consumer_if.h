@@ -20,6 +20,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/result.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
 
@@ -67,6 +68,9 @@ class XClusterConsumerIf {
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;
   virtual std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const = 0;
   virtual void ClearAllClientMetaCaches() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_replication_error_count() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_apply_failure_count() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_poll_failure_count() const = 0;
 };
 
 typedef std::function<Result<pgwrapper::PGConn>(const std::string&, const CoarseTimePoint&)>

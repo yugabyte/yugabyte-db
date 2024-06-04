@@ -326,6 +326,9 @@ od_frontend_attach_and_deploy(od_client_t *client, char *context)
 	if (rc == -1)
 		return OD_ESERVER_WRITE;
 
+	if (client->deploy_err)
+		return YB_OD_DEPLOY_ERR;
+
 	/* set number of replies to discard */
 	client->server->deploy_sync = rc;
 
@@ -798,6 +801,8 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;
+	/* fallthrough */
+	case YB_ROLE_OID_PARAMETER_STATUS:
 	case KIWI_BE_PARAMETER_STATUS:
 		rc = od_backend_update_parameter(server, "main", data, size, 0);
 		if (rc == -1)
@@ -848,6 +853,10 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	 */
 	if (yb_is_route_invalid(server->route))
 		return OD_ESERVER_READ;
+
+	/* error was caught during the deploy phase, return and forward to client */
+	if (client->deploy_err)
+		return YB_OD_DEPLOY_ERR;
 
 	/* discard replies during configuration deploy */
 	if (is_deploy)
@@ -2015,6 +2024,16 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		od_error(&instance->logger, context, client, server,
 			 "unexpected error status %s (%d)",
 			 od_frontend_status_to_str(status), (uint32)status);
+		od_router_close(router, client);
+		break;
+	case YB_OD_DEPLOY_ERR:
+		/* close both client and server connection */
+		/* backend connection is not in a usable state */ 
+		od_error(&instance->logger, context, client, server,
+				"deploy error: %s, status %s", client->deploy_err,
+				od_frontend_status_to_str(status));
+		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
+		/* close backend connection */
 		od_router_close(router, client);
 		break;
 	default:

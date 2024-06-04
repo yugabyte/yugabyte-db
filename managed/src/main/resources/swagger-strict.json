@@ -6569,7 +6569,7 @@
           "type" : "string"
         },
         "ldapGroupfield" : {
-          "description" : "LDAP field to get the group information",
+          "description" : "Group dn field to get the group's name from",
           "example" : "cn",
           "type" : "string"
         },
@@ -6593,8 +6593,8 @@
           "type" : "string"
         },
         "ldapUserfield" : {
-          "description" : "LDAP field to get the user information",
-          "example" : "cn",
+          "description" : "Dn/Attribute field to get the user's name from",
+          "example" : "cn, sAMAccountName",
           "type" : "string"
         },
         "targetApi" : {
@@ -6777,9 +6777,16 @@
     "MasterInfo" : {
       "description" : "Information about master",
       "properties" : {
+        "instanceUUID" : {
+          "type" : "string"
+        },
         "peerRole" : {
           "enum" : [ "FOLLOWER", "LEADER", "LEARNER", "NON_PARTICIPANT", "READ_REPLICA", "UNKNOWN_ROLE" ],
           "type" : "string"
+        },
+        "port" : {
+          "format" : "int32",
+          "type" : "integer"
         },
         "privateIp" : {
           "type" : "string"
@@ -6789,7 +6796,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "peerRole", "privateIp", "uptimeSeconds" ],
+      "required" : [ "instanceUUID", "peerRole", "port", "privateIp", "uptimeSeconds" ],
       "type" : "object"
     },
     "MasterNode" : {
@@ -6803,25 +6810,6 @@
         }
       },
       "required" : [ "cloudInfo", "masterRpcPort" ],
-      "type" : "object"
-    },
-    "MasterNodesInfo" : {
-      "properties" : {
-        "host" : {
-          "type" : "string"
-        },
-        "isLeader" : {
-          "type" : "boolean"
-        },
-        "masterUUID" : {
-          "type" : "string"
-        },
-        "port" : {
-          "format" : "int32",
-          "type" : "integer"
-        }
-      },
-      "required" : [ "host", "isLeader", "masterUUID", "port" ],
       "type" : "object"
     },
     "MastersList" : {
@@ -8680,6 +8668,11 @@
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
+        },
+        "createdForDr" : {
+          "description" : "Created for DR",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "customerUUID" : {
           "description" : "Customer UUID of this config",
@@ -10783,6 +10776,16 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "RoleAttribute" : {
+      "properties" : {
+        "name" : {
+          "enum" : [ "SUPERUSER", "NOSUPERUSER", "CREATEDB", "NOCREATEDB", "CREATEROLE", "NOCREATEROLE", "INHERIT", "NOINHERIT", "LOGIN", "NOLOGIN", "REPLICATION", "NOREPLICATION", "BYPASSRLS", "NOBYPASSRLS" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
       "type" : "object"
     },
     "RoleBinding" : {
@@ -22235,6 +22238,7 @@
     },
     "/api/v1/customers/{cUUID}/releases" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "getListOfReleases",
         "parameters" : [ {
@@ -22281,10 +22285,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all releases",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.list instead. List all releases",
         "tags" : [ "Release management" ]
       },
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "createRelease",
         "parameters" : [ {
@@ -22325,7 +22330,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a release",
+        "summary" : "Deprecated: sinceVersion 2024.1. Use ReleasesController.create instead. Create a release",
         "tags" : [ "Release management" ]
       },
       "put" : {
@@ -22367,6 +22372,7 @@
     },
     "/api/v1/customers/{cUUID}/releases/{name}" : {
       "delete" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "deleteRelease",
         "parameters" : [ {
@@ -22404,10 +22410,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a release",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.delete instead. Delete a release",
         "tags" : [ "Release management" ]
       },
       "put" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "updateRelease",
         "parameters" : [ {
@@ -22453,7 +22460,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update a release",
+        "summary" : "Deprecated: sinceVersion: 2024.1. Use ReleasesController.update instead. Update a release",
         "tags" : [ "Release management" ]
       }
     },
@@ -24201,52 +24208,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a master node's addresses",
-        "tags" : [ "Universe node metadata (metamaster)" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters/info" : {
-      "get" : {
-        "description" : "Available since YBA version 2.21.1.0.",
-        "operationId" : "getMasterNodesInfo",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/MasterNodesInfo"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/MasterNodesInfo"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Lists all master nodes details",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },

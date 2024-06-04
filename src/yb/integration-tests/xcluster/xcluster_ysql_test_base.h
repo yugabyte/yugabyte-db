@@ -76,7 +76,10 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
-  Result<bool> IsTableDeleted(Cluster* cluster, const client::YBTableName& table_name);
+  Result<bool> IsTableDeleted(Cluster& cluster, const client::YBTableName& table_name);
+
+  Status WaitForTableToFullyDelete(
+      Cluster& cluster, const client::YBTableName& table_name, MonoDelta timeout);
 
   Status DropYsqlTable(
       Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
@@ -132,8 +135,16 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
-  Status CheckpointReplicationGroup();
-  Status CreateReplicationFromCheckpoint(const std::string& target_master_addresses = {});
+  Status CheckpointReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+  Result<bool> IsXClusterBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& source_namespace_id);
+  Status AddNamespaceToXClusterReplication(
+      const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+  Status CreateReplicationFromCheckpoint(
+      const std::string& target_master_addresses = {},
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
   Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
 
  protected:

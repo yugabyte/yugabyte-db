@@ -296,9 +296,13 @@ export const AddReleaseModal = ({
       onActionPerformed();
       onClose();
     },
-    onError: () => {
+    onError: (error: any) => {
       onActionPerformed();
-      toast.error(t('releases.addReleaseModal.addReleaseFailure'));
+      toast.error(
+        isNonEmptyString(error?.response?.data?.error)
+          ? error?.response?.data?.error
+          : t('releases.addReleaseModal.addReleaseFailure')
+      );
     }
   });
 

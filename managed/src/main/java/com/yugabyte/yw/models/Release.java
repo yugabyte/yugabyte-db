@@ -202,7 +202,7 @@ public class Release extends Model {
               "artifact matching platform %s and architecture %s already exists",
               artifact.getPlatform(), artifact.getArchitecture()));
     }
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
 
     // Move the state from incomplete to active when adding a Linux type. Kubernetes artifacts
     // are not sufficient to make a release move into the "active" state.
@@ -225,7 +225,7 @@ public class Release extends Model {
     return ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
   }
 
-  public void setReleaseTag(String tag) {
+  public void saveReleaseTag(String tag) {
     this.releaseTag = encodeReleaseTag(tag);
     save();
   }
@@ -240,12 +240,12 @@ public class Release extends Model {
     return releaseTag;
   }
 
-  public void setReleaseDate(Date date) {
+  public void saveReleaseDate(Date date) {
     this.releaseDate = date;
     save();
   }
 
-  public void setReleaseNotes(String notes) {
+  public void saveReleaseNotes(String notes) {
     this.releaseNotes = notes;
     save();
   }
@@ -256,6 +256,10 @@ public class Release extends Model {
           BAD_REQUEST, "cannot update release state from 'INCOMPLETE'");
     }
     this.state = state;
+  }
+
+  public void saveState(ReleaseState state) {
+    setState(state);
     save();
   }
 

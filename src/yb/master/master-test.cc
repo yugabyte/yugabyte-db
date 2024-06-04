@@ -117,8 +117,8 @@ class MasterTest : public MasterTestBase {
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
     TSToMasterCommonPB common, TSRegistrationPB registration) {
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   TSHeartbeatRequestPB req;
@@ -201,8 +201,8 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
   // Start the master with FLAGS_master_enable_universe_uuid_heartbeat_check set to false,
   // restart master, and set this flag to true (to simulate autoflag behavior). Ensure that after
   // setting the flag to true, universe_uuid is eventually set.
-  master::SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  master::SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   ASSERT_EQ(config.universe_uuid(), "");
 
   ASSERT_OK(mini_master_->Restart());
@@ -211,11 +211,12 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
   FLAGS_master_enable_universe_uuid_heartbeat_check = true;
 
   config.Clear();
-  ASSERT_OK(WaitFor([&]() {
-    if (!mini_master_->catalog_manager().GetClusterConfig(&config).ok()) {
+  ASSERT_OK(WaitFor([this]() {
+    auto config_result = mini_master_->catalog_manager().GetClusterConfig();
+    if (!config_result.ok()) {
       return false;
     }
-    return !config.universe_uuid().empty();
+    return !config_result->universe_uuid().empty();
   }, MonoDelta::FromSeconds(30), "Wait for universe_uuid set in cluster config"));
 }
 
@@ -268,8 +269,8 @@ TEST_F(MasterTest, TestNoUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -292,8 +293,8 @@ TEST_F(MasterTest, TestEmptyStringUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -317,8 +318,8 @@ TEST_F(MasterTest, TestMatchingUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -339,8 +340,8 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
@@ -485,8 +486,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
   *cloud_info_ts4.mutable_placement_region() = "region-pqr";
   *cloud_info_ts4.mutable_placement_zone() = "zone-anything";
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try heartbeat from all the tservers. The master hasn't heard of them, so should ask them to

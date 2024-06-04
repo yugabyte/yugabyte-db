@@ -1173,20 +1173,18 @@ public class DrConfigController extends AuthenticatedController {
                     XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                         && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
-    Set<String> foundDBIds =
+    Set<String> foundDbIds =
         requestedTableInfoList.stream()
-            .map(tableInfo -> tableInfo.getNamespace().getName())
+            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
             .collect(Collectors.toSet());
     // Ensure all DB names are found.
-    if (foundDBIds.size() != dbIds.size()) {
+    if (foundDbIds.size() != dbIds.size()) {
       Set<String> missingDbIds =
-          dbIds.stream()
-              .filter(tableId -> !foundDBIds.contains(tableId))
-              .collect(Collectors.toSet());
+          dbIds.stream().filter(dbId -> !foundDbIds.contains(dbId)).collect(Collectors.toSet());
       throw new IllegalArgumentException(
           String.format(
               "Some of the DB ids were not found: was %d, found %d, missing dbs: %s",
-              dbIds.size(), foundDBIds.size(), missingDbIds));
+              dbIds.size(), foundDbIds.size(), missingDbIds));
     }
     return requestedTableInfoList;
   }

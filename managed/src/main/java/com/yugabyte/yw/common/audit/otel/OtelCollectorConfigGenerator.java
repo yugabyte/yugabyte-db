@@ -196,20 +196,20 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
     filterOperator.setType("filter");
-    filterOperator.setExpr("body not matches \"^.*AUDIT: user:.*$\"");
+    filterOperator.setExpr("body not matches \"^.*AUDIT: user:(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =
         new OtelCollectorConfigFormat.RegexOperator();
     regexOperator.setType("regex_parser");
     regexOperator.setRegex(
-        "^((?P<log_level>\\w)(?P<log_time>\\d{2}\\d{2} \\d{2}:\\d{2}:\\d{2}[.]\\d{6})"
-            + " (?P<thread_id>\\d+) (?P<file_name>[^:]+):(?P<file_line>\\d+)[]] AUDIT: "
+        "(?P<log_level>\\w)(?P<log_time>\\d{2}\\d{2} \\d{2}:\\d{2}:\\d{2}[.]\\d{6})"
+            + "\\s*(?P<thread_id>\\d+) (?P<file_name>[^:]+):(?P<file_line>\\d+)[]] AUDIT: "
             + "user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\\d+)[|]"
             + "source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\\d+)[|]"
             + "timestamp:(?P<timestamp>\\d+)[|]type:(?P<type>[^|]+)[|]"
             + "category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]"
-            + "scope:(?P<scope>[^|]+)[|]operation:(?P<statement>.*))|(.*)$");
+            + "scope:(?P<scope>[^|]+)[|]operation:(?P<statement>(.|\\n|\\r|\\s)*)");
     regexOperator.setOn_error("drop");
     OtelCollectorConfigFormat.OperatorTimestamp timestamp =
         new OtelCollectorConfigFormat.OperatorTimestamp();
@@ -226,6 +226,10 @@ public class OtelCollectorConfigGenerator {
     receiver.setInclude(
         ImmutableList.of(provider.getYbHome() + "/tserver/logs/yb-tserver.*." + logLevel + ".*"));
     receiver.setExclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/*.gz"));
+    // Set multiline config to split by both normal log prefix and audit log prefix.
+    MultilineConfig multilineConfig = new MultilineConfig();
+    multilineConfig.setLine_start_pattern("([A-Z]\\d{4})");
+    receiver.setMultiline(multilineConfig);
     return receiver;
   }
 

@@ -30,6 +30,9 @@
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
+#define YbAshIsClientAddrSet() \
+	(YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra && !IsBootstrapProcessingMode())
+
 /* GUC variables */
 extern bool yb_ash_enable_infra;
 extern bool yb_enable_ash;

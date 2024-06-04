@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -19,7 +20,10 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -334,6 +338,59 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
+  }
+
+  @Test
+  public void testInvalidDbRoleAttribute() {
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("ysqlAdminUsername", "yugabyte")
+            .put("username", "test")
+            .put("password", "Test@123")
+            .put("dbName", "test");
+
+    ObjectNode replication = Json.newObject();
+    replication.put("name", "REPLICATION");
+
+    ObjectNode test = Json.newObject();
+    test.put("name", "test");
+
+    ArrayNode dbRoleAttributesList = Json.newArray();
+    dbRoleAttributesList.add(replication);
+    dbRoleAttributesList.add(test);
+
+    bodyJson.set("dbRoleAttributes", dbRoleAttributesList);
+
+    String url1 =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/create_restricted_db_credentials";
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url1, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYsqlQueryExecutor);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertErrorNodeValue(resultJson, "dbRoleAttributes[1].name", "Invalid value");
+    assertAuditEntry(0, customer.getUuid());
+
+    String url2 =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/create_db_credentials";
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url2, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYsqlQueryExecutor, mockYcqlQueryExecutor);
+    assertErrorNodeValue(resultJson, "dbRoleAttributes[1].name", "Invalid value");
+    assertAuditEntry(0, customer.getUuid());
   }
 
   private void updateUniverseAPIDetails(

@@ -97,20 +97,21 @@ class XClusterSourceManager {
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<std::vector<NamespaceId>> CreateOutboundReplicationGroup(
+  Status CreateOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceName>& namespace_names, const LeaderEpoch& epoch);
+      const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch);
 
-  Result<NamespaceId> AddNamespaceToOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name,
+  Status AddNamespaceToOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const LeaderEpoch& epoch);
 
   Status RemoveNamespaceFromOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const LeaderEpoch& epoch);
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
 
   Status DeleteOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id, const LeaderEpoch& epoch);
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
 
   Result<std::optional<bool>> IsBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -128,6 +129,15 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
 
+  Status AddNamespaceToTarget(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& target_master_addresses, const NamespaceId& source_namespace_id,
+      const LeaderEpoch& epoch);
+
+  Result<IsOperationDoneResult> IsAlterXClusterReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
+
   Status PopulateXClusterStatus(
       XClusterStatus& xcluster_status, const SysXClusterConfigEntryPB& xcluster_config) const;
 
@@ -138,6 +148,14 @@ class XClusterSourceManager {
 
   Status MarkIndexBackfillCompleted(
       const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch);
+
+  Status RepairOutboundReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id, const LeaderEpoch& epoch);
+
+  Status RepairOutboundReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const LeaderEpoch& epoch);
 
  private:
   friend class XClusterOutboundReplicationGroup;
@@ -164,8 +182,6 @@ class XClusterSourceManager {
   Result<std::shared_ptr<XClusterOutboundReplicationGroup>> GetOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id) const
       EXCLUDES(outbound_replication_group_map_mutex_);
-
-  Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);

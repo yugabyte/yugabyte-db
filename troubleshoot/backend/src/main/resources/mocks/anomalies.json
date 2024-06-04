@@ -194,7 +194,7 @@
             "recommendation": "Check ASH graph for this query",
             "supportingGraphs": [
               {
-                "name": "active_session_history",
+                "name": "active_session_history_tserver",
                 "filters": {
                   "universeUuid": ["c623b9af-e863-4b0b-b98c-7bdcff465c2b"],
                   "queryId": ["3694949039461716331"]

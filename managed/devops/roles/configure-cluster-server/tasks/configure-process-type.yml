@@ -94,6 +94,7 @@
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
   tags:
+    - never
     - override_gflags
 
 # Cronjob approach for starting yb-master and yb-tserver

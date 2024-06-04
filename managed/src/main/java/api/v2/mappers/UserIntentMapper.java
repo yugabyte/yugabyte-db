@@ -5,6 +5,7 @@ import api.v2.models.AvailabilityZoneGFlags;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNetworkingSpec;
 import api.v2.models.ClusterSpec;
+import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.ClusterStorageSpec;
 import api.v2.models.ClusterStorageSpec.StorageTypeEnum;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
@@ -40,9 +41,6 @@ public interface UserIntentMapper {
   })
   StorageTypeEnum mapStorageType(StorageType storageType);
 
-  @Mapping(target = "assignPublicIp", source = "assignPublicIP")
-  @Mapping(target = "assignStaticPublicIp", source = "assignStaticPublicIP")
-  @Mapping(target = "enableIpv6", source = "enableIPV6")
   @Mapping(target = "enableLb", source = "enableLB")
   ClusterNetworkingSpec userIntentToClusterNetworkingSpec(
       UniverseDefinitionTaskParams.UserIntent userIntent);
@@ -75,19 +73,17 @@ public interface UserIntentMapper {
   // inverse mapping
   @Mapping(target = "deviceInfo", source = "storageSpec")
   @Mapping(target = ".", source = "networkingSpec")
-  @Mapping(target = "assignPublicIP", source = "networkingSpec.assignPublicIp")
-  @Mapping(target = "assignStaticPublicIP", source = "networkingSpec.assignStaticPublicIp")
-  @Mapping(target = "enableIPV6", source = "networkingSpec.enableIpv6")
   @Mapping(target = "enableLB", source = "networkingSpec.enableLb")
   @Mapping(target = ".", source = "providerSpec")
   @Mapping(target = "imageBundleUUID", source = "providerSpec.imageBundleUuid")
-  @Mapping(target = "specificGFlags", source = "gflags")
+  @Mapping(target = "specificGFlags", source = "clusterSpec")
   UserIntent toV1UserIntent(ClusterSpec clusterSpec);
 
   @InheritInverseConfiguration
   StorageType mapStorageTypeEnum(StorageTypeEnum storageType);
 
-  default SpecificGFlags clusterGFlagsToSpecificGFlags(ClusterGFlags clusterGFlags) {
+  default SpecificGFlags clusterGFlagsToSpecificGFlags(ClusterSpec clusterSpec) {
+    ClusterGFlags clusterGFlags = clusterSpec.getGflags();
     if (clusterGFlags == null) {
       return null;
     }
@@ -102,6 +98,10 @@ public interface UserIntentMapper {
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);
+    }
+    if (clusterSpec.getClusterType() != null
+        && !clusterSpec.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
+      specificGFlags.setInheritFromPrimary(true);
     }
     return specificGFlags;
   }

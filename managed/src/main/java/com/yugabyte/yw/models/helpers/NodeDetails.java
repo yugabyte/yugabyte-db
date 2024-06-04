@@ -283,7 +283,6 @@ public class NodeDetails {
           NodeState.Stopped,
           NodeState.Decommissioned,
           NodeState.Resizing,
-          NodeState.SystemdUpgrade,
           NodeState.Terminated);
 
   @Override

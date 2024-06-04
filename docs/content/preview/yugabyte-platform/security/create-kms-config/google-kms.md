@@ -47,18 +47,6 @@ Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS]
 
 Conceptually, Google Cloud KMS consists of a key ring containing one or more cryptographic keys, with each key capable of having multiple versions.
 
-## Prerequisites
-
-The Google Cloud user associated with a KMS configuration requires a custom role assigned to the service account with the following KMS-related permissions:
-
-- `cloudkms.keyRings.create`
-- `cloudkms.keyRings.get`
-- `cloudkms.cryptoKeys.create`
-- `cloudkms.cryptoKeys.get`
-- `cloudkms.cryptoKeyVersions.useToEncrypt`
-- `cloudkms.cryptoKeyVersions.useToDecrypt`
-- `cloudkms.locations.generateRandomBytes`
-
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
 - The primary cryptographic key version should be in the Enabled state.
@@ -66,6 +54,8 @@ If you are planning to use an existing cryptographic key with the same name, it 
 - The key rotation period should be set to Never (manual rotation).
 
 Note that YugabyteDB Anywhere does not manage the key ring and deleting the KMS configuration does not destroy the key ring, cryptographic key, or its versions on Google Cloud KMS.
+
+The Google Cloud user associated with a KMS configuration requires a custom role assigned to the service account. Refer to [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
 
 ## Create a KMS configuration
 

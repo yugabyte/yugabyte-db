@@ -1,0 +1,24 @@
+#!/bin/bash
+# Copyright (c) YugaByte, Inc.
+set -euo pipefail
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m) (yet)."
+  exit 0
+fi
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
+# Relative path to devops home
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../../../../../../../../devops
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+
+# Use dynamic paths to shorten shebangs below 64 characters.
+"$DEVOPS_HOME/bin/install_python_requirements.sh" --use_dynamic_paths
+
+activate_virtualenv
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py "$@"

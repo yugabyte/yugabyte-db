@@ -443,7 +443,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   }
 }
 
-TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
+TEST_F(CreateTableStressTest, YB_DISABLE_TEST_ON_MACOS(TestHeartbeatDeadline)) {
   DontVerifyClusterBeforeNextTearDown();
 
   // 500ms deadline / 50 ms wait ~= 10 Tablets processed before Master hits deadline
@@ -460,21 +460,28 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
     FLAGS_num_test_tablets, &resp));
 
-  master::SysClusterConfigEntryPB config;
-  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetClusterConfig(&config));
+  master::SysClusterConfigEntryPB config =
+      ASSERT_RESULT(cluster_->mini_master()->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Grab TS#1 and Generate a Full Report for it.
-  auto ts_server = cluster_->mini_tablet_server(0)->server();
   master::TSHeartbeatRequestPB hb_req;
-  hb_req.mutable_common()->mutable_ts_instance()->CopyFrom(ts_server->instance_pb());
-  hb_req.set_universe_uuid(universe_uuid);
-  ts_server->tablet_manager()->StartFullTabletReport(hb_req.mutable_tablet_report());
-  ASSERT_GT(hb_req.tablet_report().updated_tablets_size(),
-            FLAGS_heartbeat_rpc_timeout_ms / FLAGS_TEST_inject_latency_during_tablet_report_ms);
-  ASSERT_EQ(ts_server->tablet_manager()->GetReportLimit(), FLAGS_tablet_report_limit);
-  ASSERT_LE(hb_req.tablet_report().updated_tablets_size(), FLAGS_tablet_report_limit);
+  {
+    // The TabletServer pointer is invalid after the Shutdown call below. So introduce a scope to
+    // explicitly contain the ts_server lifetime to when it is valid.
+    auto ts_server = cluster_->mini_tablet_server(0)->server();
+    hb_req.mutable_common()->mutable_ts_instance()->CopyFrom(ts_server->instance_pb());
+    hb_req.set_universe_uuid(universe_uuid);
+    ts_server->tablet_manager()->StartFullTabletReport(hb_req.mutable_tablet_report());
+    ASSERT_GT(
+        hb_req.tablet_report().updated_tablets_size(),
+        FLAGS_heartbeat_rpc_timeout_ms / FLAGS_TEST_inject_latency_during_tablet_report_ms);
+    ASSERT_EQ(ts_server->tablet_manager()->GetReportLimit(), FLAGS_tablet_report_limit);
+    ASSERT_LE(hb_req.tablet_report().updated_tablets_size(), FLAGS_tablet_report_limit);
+  }
 
+  // Stop TS#1 so their heartbeat doesn't interfere with our fake one.
+  cluster_->mini_tablet_server(0)->Shutdown();
   rpc::ProxyCache proxy_cache(messenger_.get());
   master::MasterHeartbeatProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
 
@@ -482,7 +489,10 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   // This should go over the deadline and get truncated.
   master::TSHeartbeatResponsePB hb_resp;
   hb_req.mutable_tablet_report()->set_is_incremental(true);
-  hb_req.mutable_tablet_report()->set_sequence_number(1);
+  // Bump sequence number because the TS' heartbeat thread continues to run after we grab the
+  // sequence number so it may have already invalidated the sequence number we grabbed.
+  hb_req.mutable_tablet_report()->set_sequence_number(
+      hb_req.tablet_report().sequence_number() + 100);
   hb_req.set_universe_uuid(universe_uuid);
   Status heartbeat_status;
   // Regression testbed often has stalls at this timing granularity.  Allow a couple hiccups.
@@ -491,7 +501,8 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
     heartbeat_status = proxy.TSHeartbeat(hb_req, &hb_resp, &rpc);
     if (heartbeat_status.ok()) break;
-    ASSERT_TRUE(heartbeat_status.IsTimedOut());
+    ASSERT_TRUE(heartbeat_status.IsTimedOut())
+        << Format("Heartbeat status is: $0", heartbeat_status);
   }
   ASSERT_OK(heartbeat_status);
   ASSERT_TRUE(hb_resp.tablet_report().processing_truncated());

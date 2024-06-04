@@ -166,6 +166,14 @@ class AutoFieldsetScope {
 
   std::stringstream& output_;
 };
+
+std::optional<uint64_t> ToUnsignedOrNullopt(int64_t val) {
+  if (val == std::numeric_limits<int64_t>::max()) {
+    return std::nullopt;
+  } else {
+    return val;
+  }
+}
 }  // namespace
 
 using consensus::RaftPeerPB;
@@ -191,6 +199,7 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
   user_tablet_followers += other.user_tablet_followers;
   system_tablet_leaders += other.system_tablet_leaders;
   system_tablet_followers += other.system_tablet_followers;
+  hidden_tablet_peers += other.hidden_tablet_peers;
 }
 
 MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
@@ -400,6 +409,40 @@ bool TabletServerComparator(
 
 }  // anonymous namespace
 
+MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTabletCounts(
+    const TabletCountMap& tablet_count_map, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+    const BlacklistSet& blacklist_set,
+    int hide_dead_node_threshold_mins) {
+  UniverseTabletCounts counts;
+  for (const auto& desc : descs) {
+    if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
+      continue;
+    }
+    const auto& placement_uuid = desc->placement_uuid();
+    PlacementClusterTabletCounts& placement_cluster_counts =
+        counts.per_placement_cluster_counts[placement_uuid];
+    if (auto* tablet_count = FindOrNull(tablet_count_map, desc->permanent_uuid())) {
+      placement_cluster_counts.counts += *tablet_count;
+    }
+    if (desc->IsBlacklisted(blacklist_set)) {
+      placement_cluster_counts.blacklisted_node_count++;
+    } else if (desc->IsLive()) {
+      placement_cluster_counts.live_node_count++;
+    } else {
+      placement_cluster_counts.dead_node_count++;
+    }
+    placement_cluster_counts.active_tablet_peer_count += desc->num_live_replicas();
+  }
+
+  auto limits = tserver::GetTabletReplicaPerResourceLimits();
+  for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    cluster_counts.tablet_replica_limit =
+        ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
+  }
+  return counts;
+}
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
@@ -425,7 +468,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   // Comparator orders by cloud, region, zone and uuid fields.
   std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
 
-  for (auto desc : local_descs) {
+  for (const auto& desc : local_descs) {
     if (desc->placement_uuid() == current_uuid) {
       if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
         continue;
@@ -518,6 +561,57 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
 
       *output << "  </tr>\n";
     }
+  }
+  *output << "</table>\n";
+}
+
+void MasterPathHandlers::DisplayUniverseSummary(
+    const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
+    const std::string& live_id,
+    int hide_dead_node_threshold_mins,
+    std::stringstream* output) {
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
+  auto universe_counts = CalculateUniverseTabletCounts(
+      tablet_map, all_descs, blacklist, hide_dead_node_threshold_mins);
+
+  // auto include_placement_uuids = universe_counts.per_placement_cluster_counts.size() > 1;
+  // auto placement_uuid_header = include_placement_uuids ? "<th>Cluster UUID</th>\n" : "";
+  *output << "<h2>Universe Summary</h2>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Cluster UUID</th>\n"
+          << "    <th>Total Live TServers</th>\n"
+          << "    <th>Total Blacklisted TServers</th>\n"
+          << "    <th>Total Dead TServers</th>\n"
+          << "    <th>User Tablet-Peers</th>\n"
+          << "    <th>System Tablet-Peers</th>\n"
+          << "    <th>Hidden Tablet-Peers</th>\n"
+          << "    <th>Active Tablet-Peers</th>\n"
+          << "    <th>Tablet Peer Limit</th>\n"
+          << "  </tr>\n";
+  for (const auto& [placement_uuid, cluster_counts] :
+       universe_counts.per_placement_cluster_counts) {
+    auto placement_uuid_entry = Format(
+        "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
+    auto limit_entry = cluster_counts.tablet_replica_limit.has_value()
+                           ? Format("$0", *cluster_counts.tablet_replica_limit)
+                           : "N/A";
+    auto user_total =
+        cluster_counts.counts.user_tablet_followers + cluster_counts.counts.user_tablet_leaders;
+    auto system_total =
+        cluster_counts.counts.system_tablet_followers + cluster_counts.counts.system_tablet_leaders;
+    *output << "<tr>\n"
+            // << placement_uuid_entry
+            << "  <td>" << placement_uuid_entry << "</td>\n"
+            << "  <td>" << cluster_counts.live_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.blacklisted_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.dead_node_count << "</td>\n"
+            << "  <td>" << user_total << "</td>\n"
+            << "  <td>" << system_total << "</td>\n"
+            << "  <td>" << cluster_counts.counts.hidden_tablet_peers << "</td>\n"
+            << "  <td>" << cluster_counts.active_tablet_peer_count << "</td>\n"
+            << "  <td>" << limit_entry << "</td>\n";
   }
   *output << "</table>\n";
 }
@@ -654,15 +748,14 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     hide_dead_node_threshold_override = atoi(threshold_arg->second.c_str());
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
-  auto live_id = config.replication_info().live_replicas().placement_uuid();
+  auto live_id = cluster_config_result->replication_info().live_replicas().placement_uuid();
 
   vector<std::shared_ptr<TSDescriptor> > descs;
   const auto& ts_manager = master_->ts_manager();
@@ -680,6 +773,9 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   }
 
   *output << std::setprecision(output_precision_);
+  if (viewType == TServersViewType::kTServersDefaultView) {
+    DisplayUniverseSummary(tablet_map, descs, live_id, hide_dead_node_threshold_override, output);
+  }
   *output << "<h2>Tablet Servers</h2>\n";
 
   if (!live_id.empty()) {
@@ -730,12 +826,11 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
 
@@ -748,7 +843,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   CalculateTabletMap(&tablet_map);
 
   std::unordered_set<string> cluster_uuids;
-  auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
+  auto primary_uuid = cluster_config_result->replication_info().live_replicas().placement_uuid();
   cluster_uuids.insert(primary_uuid);
   for (auto desc : descs) {
     cluster_uuids.insert(desc->placement_uuid());
@@ -879,12 +974,11 @@ void MasterPathHandlers::HandleHealthCheck(
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
   auto replication_factor = master_->catalog_manager()->GetReplicationFactor();
@@ -899,7 +993,8 @@ void MasterPathHandlers::HandleHealthCheck(
   const auto* ts_manager = master_->ts_manager();
   ts_manager->GetAllDescriptors(&descs);
 
-  const auto& live_placement_uuid = config.replication_info().live_replicas().placement_uuid();
+  const auto& live_placement_uuid =
+      cluster_config_result->replication_info().live_replicas().placement_uuid();
   // Ignore read replica health for V1.
 
   vector<std::shared_ptr<TSDescriptor> > dead_nodes;
@@ -2344,13 +2439,13 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     return;
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
+  const auto& config = *cluster_config_result;
 
   // Get all the tables.
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
@@ -2804,16 +2899,16 @@ void MasterPathHandlers::HandleGetClusterConfig(
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   *output << "<h1>Current Cluster Config</h1>\n";
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
   *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
-  << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(config.DebugString()) << "</pre>";
+          << "<pre class=\"prettyprint\">"
+          << EscapeForHtmlToString(cluster_config_result->DebugString()) << "</pre>";
 }
 
 void MasterPathHandlers::HandleGetClusterConfigJSON(
@@ -2823,18 +2918,17 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     jw.EndObject();
     return;
   }
 
   // return cluster config in JSON format
-  jw.Protobuf(config);
+  jw.Protobuf(*cluster_config_result);
 }
 
 void MasterPathHandlers::GetXClusterJSON(std::stringstream& output, bool pretty) {
@@ -2877,14 +2971,13 @@ void MasterPathHandlers::HandleXCluster(
 
   uint32 outbound_group_table_id = 0;
   if (!xcluster_status.outbound_replication_group_statuses.empty()) {
-    output << "<h3>Outbound ReplicationGroups</h3>\n";
+    output << "<br><h3>Outbound Replication Groups</h3>\n";
     for (const auto& outbound_replication_group :
          xcluster_status.outbound_replication_group_statuses) {
       auto group_fs = AutoFieldsetScope(
           output, Format("Group: $0", outbound_replication_group.replication_group_id));
 
-      output << "<pre class=\"prettyprint\">"
-             << "state: " << outbound_replication_group.state;
+      output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
       if (!outbound_replication_group.target_universe_info.empty()) {
         output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
       }
@@ -2902,14 +2995,14 @@ void MasterPathHandlers::HandleXCluster(
         output << "</pre>";
 
         HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-            outbound_replication_group, outbound_group_table_id, "Table Id", "Stream Id", "State",
-            "Checkpointing", "Part of initial bootstrap");
+            outbound_replication_group, outbound_group_table_id, "Table name", "Table Id",
+            "Stream Id", "State", "Checkpointing", "Part of initial bootstrap");
         outbound_group_table_id++;
 
         for (const auto& table_status : namespace_status.table_statuses) {
           HTML_PRINT_TABLE_ROW(
-              table_status.table_id, table_status.stream_id, table_status.state,
-              BoolToString(table_status.is_checkpointing),
+              table_status.full_table_name, table_status.table_id, table_status.stream_id,
+              table_status.state, BoolToString(table_status.is_checkpointing),
               BoolToString(table_status.is_part_of_initial_bootstrap));
         }
         HTML_END_TABLE;
@@ -2919,22 +3012,24 @@ void MasterPathHandlers::HandleXCluster(
 
   if (!xcluster_status.outbound_table_stream_statuses.empty()) {
     output << "<br><h3>Outbound table streams</h3>\n";
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(outbound_table_streams, "Table Id", "Stream Id", "State");
+    HTML_PRINT_TABLE_WITH_HEADER_ROW(
+        outbound_table_streams, "Table name", "Table Id", "Stream Id", "State");
     for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
-      HTML_PRINT_TABLE_ROW(table_status.table_id, table_status.stream_id, table_status.state);
+      HTML_PRINT_TABLE_ROW(
+          table_status.full_table_name, table_status.table_id, table_status.stream_id,
+          table_status.state);
     }
     HTML_END_TABLE;
   }
 
-  output << "<br><h3>Inbound ReplicationGroups</h3>\n";
+  output << "<br><h3>Inbound Replication Groups</h3>\n";
 
   uint32 inbound_group_table_id = 0;
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
     auto group_fs = AutoFieldsetScope(
         output, Format("Group: $0", inbound_replication_group.replication_group_id));
 
-    output << "<pre class=\"prettyprint\">"
-           << "state: " << inbound_replication_group.state
+    output << "<pre class=\"prettyprint\">" << "state: " << inbound_replication_group.state
            << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
            << "\ntransactional: " << BoolToString(inbound_replication_group.transactional)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
@@ -2949,20 +3044,26 @@ void MasterPathHandlers::HandleXCluster(
            << inbound_replication_group.compatible_auto_flag_config_version;
     output << "</pre>";
 
-    HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-        inbound_replication_group, inbound_group_table_id, "Producer Table Id", "Stream Id",
-        "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
-        "Local tserver optimized", "Producer schema version", "Consumer schema version", "Status");
-    inbound_group_table_id++;
+    for (const auto& [namespace_name, table_statuses] :
+         inbound_replication_group.table_statuses_by_namespace) {
+      auto namespace_fs = AutoFieldsetScope(output, Format("Namespace: $0", namespace_name));
 
-    for (const auto& table_status : inbound_replication_group.table_statuses) {
-      HTML_PRINT_TABLE_ROW(
-          table_status.source_table_id, table_status.stream_id, table_status.target_table_id,
-          table_status.source_tablet_count, table_status.target_tablet_count,
-          BoolToString(table_status.local_tserver_optimized), table_status.source_schema_version,
-          table_status.target_schema_version, table_status.status);
+      HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
+          inbound_replication_group, inbound_group_table_id, "Table name", "Producer Table Id",
+          "Stream Id", "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
+          "Local tserver optimized", "Producer schema version", "Consumer schema version",
+          "Status");
+      inbound_group_table_id++;
+      for (const auto& table_status : table_statuses) {
+        HTML_PRINT_TABLE_ROW(
+            table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
+            table_status.target_table_id, table_status.source_tablet_count,
+            table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
+            table_status.source_schema_version, table_status.target_schema_version,
+            table_status.status);
+      }
+      HTML_END_TABLE;
     }
-    HTML_END_TABLE;
   }
 
   HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
@@ -3365,22 +3466,24 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
 
     TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
-
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
-
       for (const auto& replica : *replication_locations) {
+        auto& counts = (*tablet_map)[replica.first];
+        if (tablet->LockForRead()->is_hidden()) {
+          counts.hidden_tablet_peers++;
+        }
         if (is_user_table || table->IsColocationParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].user_tablet_leaders++;
+            counts.user_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].user_tablet_followers++;
+            counts.user_tablet_followers++;
           }
         } else {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].system_tablet_leaders++;
+            counts.system_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].system_tablet_followers++;
+            counts.system_tablet_followers++;
           }
         }
       }

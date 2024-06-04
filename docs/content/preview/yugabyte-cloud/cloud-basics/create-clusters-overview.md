@@ -93,9 +93,11 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-YugabyteDB achieves resilience by replicating data across fault domains using the [Raft consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
+YugabyteDB achieves resiliency by replicating data across fault domains using the [Raft consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages, whether planned or unplanned. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+
+With a fault tolerant cluster, planned outages such as maintenance and upgrades are performed using a rolling restart, meaning your workloads are not interrupted.
 
 YugabyteDB Managed provides the following configurations for fault tolerance.
 
@@ -113,7 +115,7 @@ You can't change the cluster fault tolerance after the cluster is created.
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For application development and testing, you can set fault tolerance to **None** to create a single-node cluster.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. A cluster with fault tolerance of None (including your Sandbox) is subject to downtime during maintenance and outages.
 
 #### Region
 

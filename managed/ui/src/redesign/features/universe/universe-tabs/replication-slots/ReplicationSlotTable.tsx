@@ -46,13 +46,6 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
     return currentLag > 0 ? formatDuration(currentLag) : '0ms';
   };
 
-  const getStatus = (sID: string, label: string) => {
-    const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
-    if (!streamResult) return 'n/a';
-    const expiryTime = Number(_.last(streamResult?.data?.cdcsdk_expiry_time_mins?.data[0]?.y));
-    return expiryTime > 0 ? _.capitalize(label) : _.capitalize(SlotState.EXPIRED);
-  };
-
   const handleRowClick = (row: ReplicationSlot) => {
     browserHistory.push(`/universes/${universeUUID}/replication-slots/${row.streamID}`);
   };
@@ -100,13 +93,11 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               dataFormat={(cell, row) => (
                 <StatusBadge
                   statusType={
-                    getStatus(row.streamID, cell) === _.capitalize(SlotState.EXPIRED)
-                      ? Badge_Types.EXPIRED
-                      : [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
-                      ? Badge_Types.EXPIRED
+                    [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
+                      ? Badge_Types.SUCCESS
                       : Badge_Types.DELETED
                   }
-                  customLabel={getStatus(row.streamID, cell)}
+                  customLabel={_.capitalize(cell)}
                 />
               )}
             >
@@ -145,7 +136,8 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
         <Typography variant="body2" className={classes.emptyContainerSubtitle}>
           {t('cdc.emptyContainerSubtitle')}
         </Typography>
-        <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
+        {/* Enable below link when we get something to display */}
+        {/* <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
           <img src={Flash} alt="--" /> &nbsp;
           <Link
             component={'button'}
@@ -155,7 +147,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
           >
             {t('cdc.emptyContainerLink')}
           </Link>
-        </Box>
+        </Box> */}
       </Box>
     );
 };

@@ -13,14 +13,14 @@ type: docs
 
 YugabyteDB replicates data using [Raft](https://en.wikipedia.org/wiki/Raft_(algorithm)) consensus protocol for fault tolerance and providing consistency guarantees.
 
-The authors of Raft, [Diego Ongaro](https://ongardie.net/) and [John Ousterhout](https://web.stanford.edu/~ouster/cgi-bin/home.php), wanted to create a consensus protocol that was simpler and more understandable than the widely-used [Paxos](https://en.wikipedia.org/wiki/Paxos_(computer_science)) protocol. Although the authors chose the name "Raft" because they felt it was a good metaphor for the way the protocol helps a distributed system "stay afloat" and maintain consistency, even in the face of failures, it is common to see Raft expanded as _Replication for Availability and Fault tolerance_.
+The authors of Raft, [Diego Ongaro](https://ongardie.net/) and [John Ousterhout](https://web.stanford.edu/~ouster/cgi-bin/home.php), wanted to create a consensus protocol that was simpler and more understandable than the widely-used [Paxos](https://en.wikipedia.org/wiki/Paxos_(computer_science)) protocol. Although the authors chose the name "Raft" when [thinking about logs](https://groups.google.com/g/raft-dev/c/95rZqptGpmU), what can be built using them, and how to escape the island of Paxos, it is common to see Raft expanded as _Replication for Availability and Fault Tolerance_.
 
 YugabyteDB's implementation of Raft is based on [Apache Kudu](https://kudu.apache.org/docs/)'s implementation of Raft but has several enhancements, such as leader leases and pre-voting state during learner mode for correctness, and more.
 
 Let us go over the different components involved in Raft consensus protocol and how they work.
 
 {{<tip>}}
-To see an animated visual of the working of Raft, see [Raft Visualization](https://Raft.github.io/).
+To see an animated visual of the workings of Raft, see [Raft Visualization](https://Raft.github.io/).
 {{</tip>}}
 
 ## Roles

@@ -325,7 +325,8 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
           Format("Drop column $0", col));
   }
   SchemaToPB(builder.Build(), mutable_pb.mutable_schema());
-  return YsqlDdlTxnAlterTableHelper(txn_data, ddl_log_entries, "" /* new_table_name */);
+  return YsqlDdlTxnAlterTableHelper(
+      txn_data, ddl_log_entries, "" /* new_table_name */, true /* success */);
 }
 
 Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data) {
@@ -345,7 +346,8 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
     mutable_pb.mutable_schema()->CopyFrom(ddl_state.previous_schema());
     const string new_table_name = ddl_state.previous_table_name();
     mutable_pb.set_name(new_table_name);
-    return YsqlDdlTxnAlterTableHelper(txn_data, ddl_log_entries, new_table_name);
+    return YsqlDdlTxnAlterTableHelper(
+        txn_data, ddl_log_entries, new_table_name, false /* success */);
   }
 
   // This must be a failed Delete transaction.
@@ -367,7 +369,8 @@ Status CatalogManager::ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data)
 
 Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                                   const std::vector<DdlLogEntry>& ddl_log_entries,
-                                                  const string& new_table_name) {
+                                                  const string& new_table_name,
+                                                  bool success) {
   auto& table_pb = txn_data.write_lock.mutable_data()->pb;
   const int target_schema_version = table_pb.version() + 1;
   table_pb.set_version(target_schema_version);
@@ -393,7 +396,9 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   auto table = txn_data.table;
   table->AddDdlTxnWaitingForSchemaVersion(target_schema_version, txn_data.ddl_txn_id);
 
-  LOG(INFO) << "Sending Alter Table request as part of rollback for table " << table->name();
+  auto action = success ? "roll forward" : "rollback";
+  LOG(INFO) << "Sending Alter Table request as part of " << action
+            << " for table " << table->name();
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
 }
 

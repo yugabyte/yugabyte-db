@@ -81,7 +81,8 @@ class XClusterConsumer : public XClusterConsumerIf {
       std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
       ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func,
-      const TserverXClusterContextIf& xcluster_context);
+      const TserverXClusterContextIf& xcluster_context,
+      const scoped_refptr<MetricEntity>& server_metric_entity);
 
   ~XClusterConsumer();
   Status Init();
@@ -128,6 +129,21 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   void ClearAllClientMetaCaches() const override;
 
+  void IncrementApplyFailureCount() { metric_apply_failure_count_->Increment(); }
+
+  void IncrementPollFailureCount() { metric_poll_failure_count_->Increment(); }
+
+  scoped_refptr<Counter> TEST_metric_replication_error_count() const override {
+    return metric_replication_error_count_;
+  }
+
+  scoped_refptr<Counter> TEST_metric_apply_failure_count() const override {
+    return metric_apply_failure_count_;
+  }
+
+  scoped_refptr<Counter> TEST_metric_poll_failure_count() const override {
+    return metric_poll_failure_count_;
+  }
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
@@ -252,6 +268,12 @@ class XClusterConsumer : public XClusterConsumerIf {
   GetNamespaceInfoFunc get_namespace_info_func_;
 
   const TserverXClusterContextIf& xcluster_context_;
+
+  scoped_refptr<Counter> metric_apply_failure_count_;
+
+  scoped_refptr<Counter> metric_poll_failure_count_;
+
+  scoped_refptr<Counter> metric_replication_error_count_;
 };
 
 } // namespace tserver

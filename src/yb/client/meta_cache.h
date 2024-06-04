@@ -81,6 +81,7 @@ class EventStats;
 namespace client {
 
 class ClientTest_TestMasterLookupPermits_Test;
+class ClientTest_TestMetacacheRefreshWhenSentToWrongLeader_Test;
 class YBClient;
 class YBTable;
 
@@ -94,6 +95,7 @@ using ProcessedTablesMap =
     std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;
 
 using tserver::AllowSplitTablet;
+using tserver::TabletConsensusInfoPB;
 
 // The information cached about a given tablet server in the cluster.
 //
@@ -106,6 +108,7 @@ class RemoteTabletServer {
                      const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                      const tserver::LocalTabletServer* local_tserver = nullptr);
   explicit RemoteTabletServer(const master::TSInfoPB& pb);
+  explicit RemoteTabletServer(const consensus::RaftPeerPB& raft_peer);
   ~RemoteTabletServer();
 
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
@@ -116,6 +119,9 @@ class RemoteTabletServer {
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
   void Update(const master::TSInfoPB& pb);
+
+  // Requires that the raft_peer's UUID matches this RemoteTabletServer
+  void UpdateFromRaftPeer(const consensus::RaftPeerPB& raft_peer);
 
   // Is this tablet server local?
   bool IsLocal() const;
@@ -233,7 +239,7 @@ struct ReplicasCount {
 // This class is thread-safe.
 class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
-  static constexpr int64_t kUnknownOpIdIndex = -1;
+  static constexpr int64_t kUnknownOpIdIndex = -2;
 
   RemoteTablet(std::string tablet_id,
                dockv::Partition partition,
@@ -248,6 +254,13 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   void Refresh(
       const TabletServerMap& tservers,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB_ReplicaPB>& replicas);
+
+  // Update this tablet's replica locations with raft_config from a Tablet Server.
+  Status RefreshFromRaftConfig(
+      const TabletServerMap& tservers,
+      const consensus::RaftConfigPB& raft_config,
+      const consensus::ConsensusStatePB& consensus_state
+  );
 
   // Mark this tablet as stale, indicating that the cached tablet metadata is
   // out of date. Staleness is checked by the MetaCache when
@@ -341,7 +354,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
-  MonoTime refresh_time() { return refresh_time_.load(std::memory_order_acquire); }
+  MonoTime full_refresh_time() { return full_refresh_time_.load(std::memory_order_acquire); }
 
   // See TabletLocationsPB::split_depth.
   uint64 split_depth() const { return split_depth_; }
@@ -359,7 +372,11 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   void AddReplicasAsJson(JsonWriter* writer) const;
 
+  std::string current_leader_uuid() const;
+
  private:
+  FRIEND_TEST(client::ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
+
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
 
@@ -374,18 +391,26 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
+
+  // The UUID of the current leader replica.
+  // Invariant: equal to the UUID of the replica in replicas_ with the role LEADER or "" if there is
+  // no such replica.
+  std::string current_leader_uuid_;
+
   // The opid of the latest committed raft config that we fetched from a tablet
   // server. Defaulted to kUnknownOpIdIndex so when it is first created, it will be
   // refreshed when we next try a partial update because of stale leadership or raft config.
   int64_t raft_config_opid_index_;
+  // Can be updated only when remote tablet is refreshed after a lookup to master or via a
+  // TabletConsensusInfo piggybacked from a response.
   std::vector<std::shared_ptr<RemoteReplica>> replicas_;
   PartitionListVersion last_known_partition_list_version_ = 0;
 
   std::atomic<ReplicasCount> replicas_count_{{0, 0}};
 
-  // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
-  // checking whether it has been initialized everytime we use this value.
-  std::atomic<MonoTime> refresh_time_{MonoTime::Min()};
+  // Last time this object was fully refreshed. Initialized to MonoTime::Min() so we don't have to
+  // be checking whether it has been initialized everytime we use this value.
+  std::atomic<MonoTime> full_refresh_time_{MonoTime::Min()};
 
   int64_t lookups_without_new_replicas_ = 0;
 
@@ -599,6 +624,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void ClearAll();
 
+  // TabletConsensusInfo is piggybacked from the response of a TServer.
+  // Returns Status::OK() if and only if the meta-cache was updated.
+  Status RefreshTabletInfoWithConsensusInfo(
+      const tserver::TabletConsensusInfoPB& tablet_consensus_info);
+
+  int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
  private:
   friend class LookupRpc;
   friend class LookupByKeyRpc;
@@ -606,6 +638,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   friend class LookupFullTableRpc;
 
   FRIEND_TEST(client::ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(client::ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
 
   // Lookup the given tablet by partition_start_key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
@@ -621,6 +654,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // This is called when we get some response from the master which contains
   // the latest host/port info for a server.
   void UpdateTabletServerUnlocked(const master::TSInfoPB& pb) REQUIRES(mutex_);
+
+  Status UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) REQUIRES(mutex_);
 
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.

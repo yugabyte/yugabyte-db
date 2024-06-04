@@ -326,6 +326,10 @@ ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) 
   return cmeta_->ToConsensusStatePB(type);
 }
 
+ConsensusStatePB ReplicaState::GetConsensusStateFromCache() const {
+  return cmeta_->GetConsensusStateFromCache();
+}
+
 PeerRole ReplicaState::GetActiveRoleUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->active_role();

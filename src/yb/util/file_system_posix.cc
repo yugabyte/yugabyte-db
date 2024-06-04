@@ -30,6 +30,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
+#include "yb/util/stack_trace_tracker.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/thread_restrictions.h"
@@ -125,6 +126,7 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, uint8_t* scratch) {
   do {
     r = fread_unlocked(scratch, 1, n, file_);
   } while (r == 0 && ferror(file_) && errno == EINTR);
+  TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
   *result = Slice(scratch, r);
   if (r < n) {
     if (feof(file_)) {
@@ -191,6 +193,7 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
       }
       break;
     }
+    TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
     ptr += r;
     offset += r;
     left -= r;
@@ -306,6 +309,7 @@ Status PosixWritableFile::Append(const Slice& data) {
       }
       return STATUS_IO_ERROR(filename_, errno);
     }
+    yb::TrackStackTrace(yb::StackTraceTrackingGroup::kWriteIO, done);
     left -= done;
     src += done;
   }

@@ -76,6 +76,10 @@
   to = "https://docs-archive.yugabyte.com/v2.8/deploy/docker/docker-swarm/"
   force = true
 
+[[redirects]]
+  from = "/preview/admin/docker-compose/"
+  to = "/preview/quick-start/docker/"
+
 ##########################################################
 # Move Hugo Aliases (that redirects using meta refresh tag)
 ##########################################################
@@ -91,6 +95,10 @@
 [[redirects]]
   from = "/architecture/core-functions/write-path/"
   to = "/preview/architecture/core-functions/write-path/"
+
+[[redirects]]
+  from = "/preview/architecture/core-functions/*"
+  to = "/preview/architecture/"
 
 [[redirects]]
   from = "/architecture/transactions/distributed-txns/"
@@ -594,8 +602,28 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/"
-  to = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/"
+  from = "preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
+   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+   to = "/preview/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -630,7 +658,7 @@
 
 [[redirects]]
   from = "/latest/develop/*"
-  to = "/preview/develop/"
+  to = "/preview/develop/:splat"
   force = true
 
 [[redirects]]
@@ -1252,10 +1280,6 @@
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
 
-[[redirects]]
-   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/"
-   to = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/default/"
-
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)
 #
@@ -1328,6 +1352,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://js.driftt.com/
             https://cdn.segment.com/
         ;
 
@@ -1362,6 +1387,7 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://www.gstatic.com
+            https://www.google.com/s2/favicons
         ;
 
         child-src 'self' 'unsafe-inline'
@@ -1369,12 +1395,17 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
+            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
             https://*.yugabyte.com/
             https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
             https://yugabyte.thinkific.com/
+        ;
+
+        media-src 'self' 'unsafe-inline'
+        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

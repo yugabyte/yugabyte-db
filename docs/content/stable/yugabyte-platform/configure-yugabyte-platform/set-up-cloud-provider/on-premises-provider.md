@@ -60,9 +60,9 @@ To add regions for the provider, do the following:
 
 1. To add a zone, click **Add Zone** and enter a name for the zone.
 
-  {{<tip title="Rack awareness">}}
+    {{<tip title="Rack awareness">}}
 For on-premises deployments, consider racks as zones to treat them as fault domains.
-  {{</tip>}}
+    {{</tip>}}
 
 1. Click **Add Region**.
 

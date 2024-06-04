@@ -6,9 +6,6 @@ properties:
     type: string
     format: uuid
     example: 19ebde21-d537-47dc-8fab-3edc243c6f68
-  placement_info:
-    $ref: ./PlacementInfo.yaml
-    readOnly: true
   spot_price:
     description: TBD
     type: number

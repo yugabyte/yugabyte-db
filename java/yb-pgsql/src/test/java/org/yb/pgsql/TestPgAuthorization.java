@@ -494,7 +494,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       ConnectionBuilder limitRoleUserConnBldr = getConnectionBuilder().withUser("limit_role");
       try (Connection ignored1 = limitRoleUserConnBldr.connect()) {
+        // TODO(GH #18886) While running the test on ysql conn mgr port, add a wait for
+        // ysql conn mgr stats to get updated to check if conn limit is exceeded or not.
         try (Connection connection2 = limitRoleUserConnBldr.connect()) {
+          // TODO(GH #18886) While running the test on ysql conn mgr port, add a wait for
+          // ysql conn mgr stats to get updated to check if conn limit is exceeded or not.
           // Third concurrent connection causes error.
           try (Connection ignored3 = limitRoleUserConnBldr.connect()) {
             fail("Expected third login attempt to fail");
@@ -507,7 +511,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
           // Close second connection.
           connection2.close();
-
+          // TODO(GH #18886) While running the test on ysql conn mgr port, add a wait for
+          // ysql conn mgr stats to get updated to check if conn limit is exceeded or not.
           // New connection now succeeds.
           try (Connection ignored2 = limitRoleUserConnBldr.connect()) {
             // No-op.

@@ -19,11 +19,11 @@ properties:
     description: The secondary subnet in the AZ.
     type: string
   num_nodes_in_az:
-    description: Number of nodes in each Az.
+    description: Number of nodes in each AZ.
     type: integer
     format: int32
-  is_affinitized:
-    description: Is this an affinitized zone.
+  leader_affinity:
+    description: Affinitizes raft leaders to this AZ.
     type: boolean
   lb_name:
     description: The Load Balancer id.

@@ -113,6 +113,7 @@ extern PGDLLIMPORT bool enable_seqscan;
 extern PGDLLIMPORT bool enable_indexscan;
 extern PGDLLIMPORT bool enable_indexonlyscan;
 extern PGDLLIMPORT bool enable_bitmapscan;
+extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_incremental_sort;

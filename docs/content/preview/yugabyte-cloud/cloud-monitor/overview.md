@@ -38,7 +38,7 @@ The following table describes the metrics available on the **Overview**.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| Operations/sec | The number of [YB-TServer](../../../architecture/concepts/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
+| Operations/sec | The number of [YB-TServer](../../../architecture/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | Average Latency (ms) | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. An [alert](../cloud-alerts/) is issued when node CPU use exceeds 70% (Warning) or 90% (Severe) on average for at least 5 minutes. |
 | Disk Usage (GB) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks. An [alert](../cloud-alerts/) is issued when the free storage on any node in the cluster falls below 40% (Warning) and 25% (Severe). |
@@ -97,11 +97,11 @@ The **Performance** tab provides the following metrics in addition to the Overvi
 
 ### Tablet Server
 
-The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-TServer) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each one hosts one or more tablet peers.
+The [YugabyteDB Tablet Server](../../../architecture/yb-tserver/) (YB-TServer) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each one hosts one or more tablet peers.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| YB-TServer Operations/sec | The number of [YB-TServer](../../../architecture/concepts/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
+| YB-TServer Operations/sec | The number of YB-TServer read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | YB-TServer Average Latency (ms) | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | Handler Latency (ms) | Incoming queue: time (in milliseconds) incoming RPC requests spend in the worker queue before the beginning of processing.<br>Outbound queue time: time (in milliseconds) between an outbound call being created and put in the queue.<br>Outbound transfer time: time (in milliseconds) the outgoing traffic takes to exit the queue.<br>Note that Handler is a software implementation of a ring queue. | If this metric spikes or remains at a high level, it indicates a network issue or that the queues are full. |
 | YB-TServer Threads Running | The current number of running threads. | You may consider this information while examining other metrics. |
@@ -134,7 +134,7 @@ The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-T
 
 ### Master Server
 
-The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Master) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations.
+The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |

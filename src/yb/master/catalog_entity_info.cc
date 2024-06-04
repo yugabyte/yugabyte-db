@@ -34,12 +34,14 @@
 
 #include <string>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -984,6 +986,16 @@ bool TableInfo::IsSequencesSystemTable() const {
   return false;
 }
 
+bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
+}
+
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
   SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
@@ -1245,6 +1257,11 @@ bool CDCStreamInfo::IsCDCSDKStream() const {
   return l->pb.has_namespace_id() && !l->pb.namespace_id().empty();
 }
 
+HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
+  auto l = LockForRead();
+  return HybridTime(l->pb.cdcsdk_stream_metadata().snapshot_time());
+}
+
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
@@ -1298,6 +1315,12 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 }
 
 // ================================================================================================
+// PersistentUniverseReplicationInfo
+// ================================================================================================
+
+bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
+
+// ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
@@ -1317,10 +1340,7 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   return setup_universe_replication_error_;
 }
 
-bool UniverseReplicationInfo::IsDbScoped() const {
-  auto l = LockForRead();
-  return l->pb.has_db_scoped_info() && l->pb.db_scoped_info().namespace_infos_size() > 0;
-}
+bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
 
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo

@@ -28,6 +28,7 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -50,21 +51,6 @@ typedef struct
 	const uint64_t *backfill_write_time;
 } YBCBuildState;
 
-/*
- * Utility method to bind const to column.
- */
-static void
-bindColumn(YBCPgStatement stmt,
-		   int attr_num,
-		   Oid type_id,
-		   Oid collation_id,
-		   Datum datum,
-		   bool is_null)
-{
-	YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum,
-									is_null);
-	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
-}
 
 /*
  * Utility method to set binds for index write statement.
@@ -98,7 +84,14 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 		Datum		value   = values[attnum - 1];
 		bool		is_null = isnull[attnum - 1];
 
-		bindColumn(stmt, attnum, type_id, collation_id, value, is_null);
+		YbBindDatumToColumn(stmt,
+							attnum,
+							type_id,
+							collation_id,
+							value,
+							is_null,
+							NULL /* null_type_entity */);
+
 
 		/*
 		 * If any of the indexed columns is null, we need to take case of
@@ -116,12 +109,13 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 	 * - to NULL otherwise (setting is_null to true is enough).
 	 */
 	if (unique_index)
-		bindColumn(stmt,
-				   YBUniqueIdxKeySuffixAttributeNumber,
-				   BYTEAOID,
-				   InvalidOid,
-				   ybbasectid,
-				   !has_null_attr /* is_null */);
+		YbBindDatumToColumn(stmt,
+							YBUniqueIdxKeySuffixAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							ybbasectid,
+							!has_null_attr /* is_null */,
+							NULL /* null_type_entity */);
 
 	/*
 	 * We may need to set the base ctid column:
@@ -129,12 +123,14 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 	 * - for non-unique indexes always (it is a key column).
 	 */
 	if (ybctid_as_value || !unique_index)
-		bindColumn(stmt,
-				   YBIdxBaseTupleIdAttributeNumber,
-				   BYTEAOID,
-				   InvalidOid,
-				   ybbasectid,
-				   false /* is_null */);
+		YbBindDatumToColumn(stmt,
+							YBIdxBaseTupleIdAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							ybbasectid,
+							false /* is_null */,
+							NULL /* null_type_entity */);
+
 }
 
 static void
@@ -604,6 +600,19 @@ ybcinendscan(IndexScanDesc scan)
 	ybc_free_ybscan((YbScanDesc)scan->opaque);
 }
 
+static void
+ybcinbindschema(YBCPgStatement handle,
+				struct IndexInfo *indexInfo,
+				TupleDesc indexTupleDesc,
+				int16 *coloptions)
+{
+	YBCBindCreateIndexColumns(handle,
+							  indexInfo,
+							  indexTupleDesc,
+							  coloptions,
+							  indexInfo->ii_NumIndexKeyAttrs);
+}
+
 /*
  * LSM handler function: return IndexAmRoutine with access method parameters
  * and callbacks.
@@ -650,11 +659,13 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = yb_estimate_parallel_size;
 	amroutine->aminitparallelscan = yb_init_partition_key_data;
 	amroutine->amparallelrescan = NULL;
+	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;
 	amroutine->yb_ambackfill = ybcinbackfill;
 	amroutine->yb_ammightrecheck = ybcinmightrecheck;
 	amroutine->yb_amgetbitmap = ybcgetbitmap;
+	amroutine->yb_ambindschema = ybcinbindschema;
 
 	PG_RETURN_POINTER(amroutine);
 }

@@ -234,6 +234,7 @@ void Batcher::FlushAsync(
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
     transaction->batcher_if().ExpectOperations(operations_count);
+    SetSubTransactionMetadataPB(transaction->GetSubTransactionMetadataPB());
   }
 
   ops_queue_.reserve(ops_.size());
@@ -685,7 +686,8 @@ void Batcher::Flushed(
       // See comments for YBTransaction::Impl::running_requests_ and
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
-      transaction->batcher_if().Flushed(ops, flush_extra_result.used_read_time, status);
+      transaction->batcher_if().Flushed(
+          ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time, status);
     }
   }
   if (status.ok() && read_point_) {
@@ -788,6 +790,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
     }
     Add(op);
   }
+  SetSubTransactionMetadataPB(failed_batcher->GetSubTransactionMetadataPB());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

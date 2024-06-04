@@ -75,12 +75,6 @@ DEFINE_RUNTIME_int32(retrying_rpc_max_jitter_ms, 50,
     "Maximum random delay to add between rpc retry attempts.");
 TAG_FLAG(retrying_rpc_max_jitter_ms, advanced);
 
-DEFINE_RUNTIME_int32(
-    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
-    "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
-    "tserver");
-TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
-
 DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
                  "For testing purposes, slow down the run method to take longer.");
 
@@ -93,6 +87,8 @@ DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
+
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 namespace yb {
 namespace master {
@@ -715,10 +711,12 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        const string& permanent_uuid,
                                        const scoped_refptr<TabletInfo>& tablet,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules,
-                                       LeaderEpoch epoch)
+                                       LeaderEpoch epoch,
+                                       CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid, tablet->table(),
                            std::move(epoch), /* async_task_throttler */ nullptr),
-    tablet_id_(tablet->tablet_id()) {
+    tablet_id_(tablet->tablet_id()),
+    cdc_sdk_set_retention_barriers_(cdc_sdk_set_retention_barriers) {
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -752,6 +750,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   }
 
   req_.mutable_hosted_stateful_services()->CopyFrom(table_pb.hosted_stateful_services());
+  req_.set_cdc_sdk_set_retention_barriers(cdc_sdk_set_retention_barriers);
 }
 
 std::string AsyncCreateReplica::description() const {
@@ -773,6 +772,23 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
     }
 
     return;
+  }
+  if (cdc_sdk_set_retention_barriers_) {
+    if (!resp_.has_cdc_sdk_safe_op_id()) {
+      LOG(WARNING) << "Response did not include cdcsdk_safe_op_id. Not inserting any rows into "
+                   << "cdc_state table for tablet id: " << tablet_id();
+      return;
+    }
+    auto status = master_->catalog_manager()->PopulateCDCStateTableOnNewTableCreation(
+        table(), tablet_id_, OpId::FromPB(resp_.cdc_sdk_safe_op_id()));
+    if (!status.ok()) {
+      WARN_NOT_OK(
+          status, Format(
+                      "$0 failed while populating cdc_state table in "
+                      "AsyncCreateReplica::HandleResponse.",
+                      description()));
+      return;
+    }
   }
 
   TransitionToCompleteState();
@@ -1581,6 +1597,7 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     *add_table.mutable_partition_schema() = l->pb.partition_schema();
   }
   add_table.set_pg_table_id(table_->pg_table_id());
+  add_table.set_skip_table_tombstone_check(FLAGS_ysql_yb_enable_alter_table_rewrite);
 }
 
 string AsyncAddTableToTablet::description() const {

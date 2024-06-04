@@ -393,6 +393,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
+  const bool*     TEST_ysql_hide_catalog_version_increment_log;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -570,6 +571,7 @@ typedef struct PgReplicaIdentityDescriptor {
 
 typedef struct PgReplicationSlotDescriptor {
   const char *slot_name;
+  const char *output_plugin;
   const char *stream_id;
   YBCPgOid database_oid;
   bool active;
@@ -706,6 +708,8 @@ typedef struct PgAshConfig {
   bool* is_metadata_set;
   bool* yb_enable_ash;
   unsigned char yql_endpoint_tserver_uuid[16];
+  // length of host should be equal to INET6_ADDRSTRLEN
+  char host[46];
 } YBCPgAshConfig;
 
 typedef struct YBCBindColumn {
@@ -735,6 +739,12 @@ typedef struct PgTabletsDescriptor {
   const char* partition_key_end;
   size_t partition_key_end_len;
 } YBCPgTabletsDescriptor;
+
+typedef struct PgExplicitRowLockParams {
+  int rowmark;
+  int pg_wait_policy;
+  int docdb_wait_policy;
+} YBCPgExplicitRowLockParams;
 
 #ifdef __cplusplus
 }  // extern "C"

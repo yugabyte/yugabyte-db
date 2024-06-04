@@ -98,6 +98,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/tools/yb-admin_util.h"
@@ -1361,8 +1362,6 @@ Status TSTabletManager::ApplyCloneTablet(
     auto target_meta = VERIFY_RESULT(RaftGroupMetadata::CreateNew(
         target_meta_data, data_root_dir, wal_root_dir));
 
-    auto source_snapshot_dir = JoinPathSegments(
-        VERIFY_RESULT(source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
     // Create target parent table directory if required.
     auto target_parent_table_dir = DirName(target_meta->snapshots_dir());
     RETURN_NOT_OK_PREPEND(
@@ -1370,10 +1369,24 @@ Status TSTabletManager::ApplyCloneTablet(
         Format("Failed to create RocksDB table directory $0", target_parent_table_dir));
     auto target_snapshot_dir = JoinPathSegments(
         VERIFY_RESULT(target_meta->TopSnapshotsDir()), target_snapshot_id.ToString());
-    LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
-    RETURN_NOT_OK(CopyDirectory(
-        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
-        CreateIfMissing::kTrue));
+
+    // Copy or create the snapshot into the target snapshot directory.
+    if (request->clone_from_active_rocksdb()) {
+      RETURN_NOT_OK_PREPEND(source_tablet->snapshots().Create(tablet::CreateSnapshotData {
+          .snapshot_hybrid_time = operation->hybrid_time(),
+          .hybrid_time = operation->hybrid_time(),
+          .op_id = operation->op_id(),
+          .snapshot_dir = target_snapshot_dir,
+          .schedule_id = SnapshotScheduleId::Nil(),
+      }), Format("Could not create from active rocksdb of tablet $0", source_tablet_id));
+    } else {
+      auto source_snapshot_dir = JoinPathSegments(VERIFY_RESULT(
+          source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
+      LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
+      RETURN_NOT_OK(CopyDirectory(
+          fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
+          CreateIfMissing::kTrue));
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_crash_before_clone_target_marked_ready)) {
       LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_clone_target_marked_ready";
