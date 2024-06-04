@@ -64,7 +64,7 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 [Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link "../../explore/transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels, [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) in the {{<product "ysql">}} API and one isolation level, [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
@@ -111,15 +111,13 @@ OIDs are unique only in the context of a specific universe and are not guarantee
 
 ## Preferred region
 
-By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the [tablet leaders](#tablet-leader) to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a [smart driver](#smart-driver), set the topology keys to target the preferred region.
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions.
-
-In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link "../../develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link "../../develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
@@ -172,7 +170,7 @@ Tablets are also referred as shards.
 
 ## Tablet leader
 
-In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas as termed followers.
+In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas are called followers.
 
 ## Tablet splitting
 
