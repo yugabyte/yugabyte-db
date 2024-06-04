@@ -15885,7 +15885,7 @@
           "type" : "boolean"
         },
         "logLevel" : {
-          "description" : "Log level",
+          "description" : "Log level. For NOTICE, INFO, DEBUG levels, user also needs to set 'log_min_messages' to the required level for the audit logs to be exported. Default 'log_min_messages' is WARNING.",
           "enum" : [ "DEBUG1", "DEBUG2", "DEBUG3", "DEBUG4", "DEBUG5", "INFO", "NOTICE", "WARNING", "LOG" ],
           "type" : "string"
         },

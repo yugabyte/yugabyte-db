@@ -9,6 +9,7 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
 import java.util.UUID;
@@ -61,5 +62,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseDeleteSpec universeDeleteSpec)
       throws Exception {
     return universeHandler.deleteUniverse(cUUID, uniUUID, universeDeleteSpec);
+  }
+
+  @Override
+  public YBATask startSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart uniUpgrade)
+      throws Exception {
+    return universeUpgradeHandler.startSoftwareUpgrade(request, cUUID, uniUUID, uniUpgrade);
   }
 }

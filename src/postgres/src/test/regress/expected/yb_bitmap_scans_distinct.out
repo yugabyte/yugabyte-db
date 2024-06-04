@@ -86,7 +86,7 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                Storage Table Rows Scanned: 1000
                ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
                      Index Cond: (r1 < 2)
-                     Storage Table Read Requests: 2
+                     Storage Table Read Requests: 1
                      Storage Table Rows Scanned: 1000
 (11 rows)
 
@@ -212,7 +212,7 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                Storage Table Rows Scanned: 1000
                ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
                      Index Cond: (r1 < 2)
-                     Storage Table Read Requests: 2
+                     Storage Table Read Requests: 1
                      Storage Table Rows Scanned: 1000
 (11 rows)
 

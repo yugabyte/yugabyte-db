@@ -220,7 +220,7 @@ if [[ -n ${ybc_tar} ]]; then
   tar xf "$ybc_tar"
   cp ./ybc-*/bin/* "${ybc_dest}/"
   ( set -x; ls -l "${ybc_dest}/")
-  export YB_TEST_YB_CONTROLLER=0
+  export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-1}
   export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=1
 else
   log "Did not find YBC tarfile. Not setting YB_TEST_YB_CONTROLLER."

@@ -72,3 +72,4 @@ devops/pex/pexEnv
 src/main/resources/openapi.yaml
 src/main/resources/openapi_public.yaml
 src/main/resources/openapi/paths/_index.yaml
+tmp

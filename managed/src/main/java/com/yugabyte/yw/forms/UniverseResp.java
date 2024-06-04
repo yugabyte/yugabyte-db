@@ -109,7 +109,7 @@ public class UniverseResp {
         .collect(
             Collectors.toMap(
                 t -> placementModificationTaskUuids.get(t.getUuid()),
-                t -> UniverseTaskBase.getAllowedTasksOnFailure(t.getTaskType())));
+                t -> UniverseTaskBase.getAllowedTasksOnFailure(t)));
   }
 
   public static void fillClusterRegions(List<Cluster> clusters) {

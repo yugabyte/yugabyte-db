@@ -1129,4 +1129,8 @@ extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
 
+static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
+	return db_oid == kYBCPgSequencesDataDatabaseOid;
+}
+
 #endif /* PG_YB_UTILS_H */
