@@ -992,32 +992,114 @@ static Node *transform_cypher_map_projection(cypher_parsestate *cpstate,
     }
 }
 
+/*
+ * Helper function to transform a cypher map into an agtype map. The function
+ * will use agtype_add to concatenate the argument list when the number of
+ * parameters (keys and values) exceeds 100, a PG limitation.
+ */
 static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    List *newkeyvals = NIL;
-    ListCell *le;
-    FuncExpr *fexpr;
-    Oid func_oid;
+    List *newkeyvals_args = NIL;
+    ListCell *le = NULL;
+    FuncExpr *fexpr = NULL;
+    FuncExpr *aa_lhs_arg = NULL;
+    Oid abm_func_oid = InvalidOid;
+    Oid aa_func_oid = InvalidOid;
+    int nkeyvals = 0;
+    int i = 0;
 
-    Assert(list_length(cm->keyvals) % 2 == 0);
+    /* get the number of keys and values */
+    nkeyvals = list_length(cm->keyvals);
 
+    /* error out if it isn't even */
+    if (nkeyvals % 2 != 0)
+    {
+         ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("number of keys does not match number of values")));
+    }
+
+    if (nkeyvals == 0)
+    {
+        abm_func_oid = get_ag_func_oid("agtype_build_map", 0);
+    }
+    else if (!cm->keep_null)
+    {
+        abm_func_oid = get_ag_func_oid("agtype_build_map_nonull", 1, ANYOID);
+    }
+    else
+    {
+        abm_func_oid = get_ag_func_oid("agtype_build_map", 1, ANYOID);
+    }
+
+    /* get the concat function oid, if necessary */
+    if (nkeyvals > 100)
+    {
+        aa_func_oid = get_ag_func_oid("agtype_add", 2, AGTYPEOID, AGTYPEOID);
+    }
+
+    /* get the key/val list */
     le = list_head(cm->keyvals);
+    /* while we have key/val to process */
     while (le != NULL)
     {
-        Node *key;
-        Node *val;
-        Node *newval;
+        Node *key = NULL;
+        Node *val = NULL;
+        Node *newval = NULL;
         ParseCallbackState pcbstate;
-        Const *newkey;
+        Const *newkey = NULL;
 
+        /* get the key */
         key = lfirst(le);
         le = lnext(cm->keyvals, le);
+        /* get the value */
         val = lfirst(le);
         le = lnext(cm->keyvals, le);
 
+        /* transform the value */
         newval = transform_cypher_expr_recurse(cpstate, val);
 
+        /*
+         * If we have more than 50 key/value pairs, 100 elements, we will need
+         * to add in the list concatenation function.
+         */
+        if (i >= 50)
+        {
+            /* build the object for the first 50 pairs for concat */
+            fexpr = makeFuncExpr(abm_func_oid, AGTYPEOID, newkeyvals_args,
+                                 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+            fexpr->location = cm->location;
+
+            /* initial case, set up for concatenating 2 lists */
+            if (aa_lhs_arg == NULL)
+            {
+                aa_lhs_arg = fexpr;
+            }
+            /*
+             * For every other case, concatenate the list on to the previous
+             * concatenate operation.
+             */
+            else
+            {
+                List *aa_args = list_make2(aa_lhs_arg, fexpr);
+
+                fexpr = makeFuncExpr(aa_func_oid, AGTYPEOID, aa_args,
+                                     InvalidOid, InvalidOid,
+                                     COERCE_EXPLICIT_CALL);
+                fexpr->location = cm->location;
+
+                /* set the lhs to the concatenation operation */
+                aa_lhs_arg = fexpr;
+            }
+
+            /* reset for the next 50 pairs */
+            newkeyvals_args = NIL;
+            i = 0;
+            fexpr = NULL;
+        }
+
+        /* build and append the transformed key/val pair */
         setup_parser_errposition_callback(&pcbstate, pstate, cm->location);
         // typtypmod, typcollation, typlen, and typbyval of agtype are
         // hard-coded.
@@ -1025,33 +1107,35 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
                            CStringGetTextDatum(strVal(key)), false, false);
         cancel_parser_errposition_callback(&pcbstate);
 
-        newkeyvals = lappend(lappend(newkeyvals, newkey), newval);
+        newkeyvals_args = lappend(lappend(newkeyvals_args, newkey), newval);
+
+        i++;
     }
 
-    if (list_length(newkeyvals) == 0)
-    {
-        func_oid = get_ag_func_oid("agtype_build_map", 0);
-    }
-    else if (!cm->keep_null)
-    {
-        func_oid = get_ag_func_oid("agtype_build_map_nonull", 1, ANYOID);
-    }
-    else
-    {
-        func_oid = get_ag_func_oid("agtype_build_map", 1, ANYOID);
-    }
-
-    fexpr = makeFuncExpr(func_oid, AGTYPEOID, newkeyvals, InvalidOid,
+    /* now build the final map function */
+    fexpr = makeFuncExpr(abm_func_oid, AGTYPEOID, newkeyvals_args, InvalidOid,
                          InvalidOid, COERCE_EXPLICIT_CALL);
     fexpr->location = cm->location;
+
+    /*
+     * If there was a previous concatenation, build a final concatenation
+     * function node.
+     */
+    if (aa_lhs_arg != NULL)
+    {
+        List *aa_args = list_make2(aa_lhs_arg, fexpr);
+
+        fexpr = makeFuncExpr(aa_func_oid, AGTYPEOID, aa_args, InvalidOid,
+                             InvalidOid, COERCE_EXPLICIT_CALL);
+    }
 
     return (Node *)fexpr;
 }
 
 /*
  * Helper function to transform a cypher list into an agtype list. The function
- * will use agtype_add to concatenate lists when the number of parameters
- * exceeds 100, a PG limitation.
+ * will use agtype_add to concatenate argument lists when the number of list
+ * elements, parameters, exceeds 100, a PG limitation.
  */
 static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
 {
