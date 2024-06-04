@@ -6,7 +6,7 @@ description: Learn data modeling in YSQL and how to identify the patterns used t
 menu:
   preview:
     identifier: data-modeling-ysql
-    parent: learn
+    parent: data-modeling
     weight: 100
 type: docs
 ---
