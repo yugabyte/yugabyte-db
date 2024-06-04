@@ -866,6 +866,9 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+// Enable viewing Java call stacks in "perf" tool
+Universal / javaOptions += "-J-XX:+PreserveFramePointer"
+
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
