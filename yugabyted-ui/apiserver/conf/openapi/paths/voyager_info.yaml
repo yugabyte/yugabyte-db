@@ -104,3 +104,27 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+'/migration_assessment_v2':
+  get:
+    summary: Get the Database assessment details
+    description: Get the Database assessment details
+    operationId: GetMigrationAssessmentInfo
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerAssessmentResponseV2'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
