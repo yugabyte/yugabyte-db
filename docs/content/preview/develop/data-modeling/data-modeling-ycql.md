@@ -8,7 +8,7 @@ aliases:
 menu:
   preview:
     identifier: data-modeling-ycql
-    parent: learn
+    parent: data-modeling
     weight: 110
 type: docs
 ---

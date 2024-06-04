@@ -6,8 +6,8 @@ description: Learn how YugabyteDB brings the best of SQL and NoSQL together into
 menu:
   preview:
     identifier: sql-nosql
-    parent: learn
-    weight: 130
+    parent: data-modeling
+    weight: 200
 type: docs
 ---
 
