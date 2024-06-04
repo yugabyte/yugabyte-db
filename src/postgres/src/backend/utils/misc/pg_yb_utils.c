@@ -1391,6 +1391,40 @@ YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 }
 
 const char*
+YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
+								 bool *is_omitted)
+{
+	Datum attr = (Datum) 0;
+	int natts = tupleDesc->natts;
+	bool isnull = false;
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	appendStringInfoChar(&buf, '(');
+	for (int attnum = 1; attnum <= natts; ++attnum) {
+		attr = heap_getattr(tuple, attnum, tupleDesc, &isnull);
+		if (is_omitted && is_omitted[attnum - 1])
+		{
+			appendStringInfoString(&buf, "omitted");
+		}
+		else if (isnull)
+		{
+			appendStringInfoString(&buf, "null");
+		}
+		else
+		{
+			Oid typid = TupleDescAttr(tupleDesc, attnum - 1)->atttypid;
+			appendStringInfoString(&buf, YBDatumToString(attr, typid));
+		}
+		if (attnum != natts) {
+			appendStringInfoString(&buf, ", ");
+		}
+	}
+	appendStringInfoChar(&buf, ')');
+	return buf.data;
+}
+
+const char*
 YbBitmapsetToString(Bitmapset *bms)
 {
 	StringInfo str = makeStringInfo();
