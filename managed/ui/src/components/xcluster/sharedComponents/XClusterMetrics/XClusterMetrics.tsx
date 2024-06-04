@@ -164,7 +164,7 @@ export const XClusterMetrics = ({
     splitMode: replicationLagMetricsSplitMode,
     splitCount: replicationLagMetricsSplitCount
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -173,13 +173,13 @@ export const XClusterMetrics = ({
   };
   const configReplicationLagMetricQuery = useQuery(
     isFixedTimeRange
-      ? metricQueryKey.detail(replciationLagMetricRequestParams)
+      ? metricQueryKey.detail(replicationLagMetricRequestParams)
       : metricQueryKey.live(
-          replciationLagMetricRequestParams,
+          replicationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
         ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent

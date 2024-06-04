@@ -15759,6 +15759,15 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "replicationStatusErrors" : {
+          "description" : "Short human readable replication status error messages",
+          "items" : {
+            "enum" : [ "Missing op ID", "Schema mismatch", "Missing table", "Auto flag config mismatch" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "restoreTime" : {
           "description" : "Time of the last try to restore data to the target universe",
           "example" : "2022-12-12T13:07:18Z",

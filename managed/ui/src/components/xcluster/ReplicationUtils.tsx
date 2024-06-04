@@ -89,13 +89,13 @@ export const CurrentReplicationLag = ({
     api.fetchUniverse(sourceUniverseUuid)
   );
 
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     replicationUuid: xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -169,14 +169,14 @@ export const CurrentTableReplicationLag = ({
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix,
     streamId,
     tableId
   };
   const tableLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled
     }

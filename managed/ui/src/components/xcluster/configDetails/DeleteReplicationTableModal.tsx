@@ -10,7 +10,7 @@ interface DeleteModalProps {
   onCancel: () => void;
 }
 
-const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
+const DeleteReplicationTableModal: FC<DeleteModalProps> = ({
   deleteTableName,
   onConfirm,
   onCancel
@@ -37,4 +37,4 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
   );
 };
 
-export default DeleteReplicactionTableModal;
+export default DeleteReplicationTableModal;
