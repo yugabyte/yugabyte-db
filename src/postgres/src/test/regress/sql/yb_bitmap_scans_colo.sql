@@ -303,6 +303,22 @@ explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 
 --
+-- #22622: test local recheck of condition for a column that is not a target
+--
+create table local_recheck_test (k1 character(10), k2 character(10));
+insert into local_recheck_test values ('a', 'a');
+create index on local_recheck_test(k1 ASC);
+create index on local_recheck_test(k2 ASC);
+
+/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+
+-- the second condition is necessary to force a recheck
+-- the first condition is rechecked locally, so k2 must be fetched.
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+
+--
 -- test pk of different types
 --
 CREATE TABLE pk_int (k_int INT PRIMARY KEY, v_text varchar);
