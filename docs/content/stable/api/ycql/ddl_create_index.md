@@ -101,9 +101,9 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 ### User-enforced consistency
 
-{{<tip title="Caution">}}
-Opt for user-enforced consistency only when there is no other solution to your problem as there is a considerable user effort needed to keep the index and table in sync.
-{{</tip>}}
+{{<warning title="Caution">}}
+Opt for user-enforced consistency only when there is no other solution to your problem. User-enforced consistency requires considerable user effort to keep the index and table in sync.
+{{</warning>}}
 
 Indexes require transactions to have been enabled on the table. For cases where the table was created without enabling transactions, `consistency_level` has to be set to `user_enforced` like,
 
@@ -112,10 +112,6 @@ CREATE TABLE orders (id int PRIMARY KEY, warehouse int);
 CREATE INDEX ON orders (warehouse)
       WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
 ```
-
-{{< warning >}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
-{{< /warning >}}
 
 {{< warning title="Syncing table and index">}}
 When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. 
@@ -141,7 +137,7 @@ Also, if the index is created after data has been added to the table, the index 
 - When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
 {{<warning>}}
-**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+**Caveat**: Row-level TTL cannot be set on a table with a secondary index during INSERTS/UPDATES. {{<issue 10992>}}
 {{</warning>}}
 
 ### INCLUDED COLUMNS

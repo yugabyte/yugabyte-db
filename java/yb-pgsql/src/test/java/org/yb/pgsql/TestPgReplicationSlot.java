@@ -83,7 +83,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG1");
+    flagMap.put("ysql_log_min_messages", "DEBUG2");
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdcsdk_enable_dynamic_table_support", "true");
@@ -512,7 +512,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testDynamicTableAdditionForAllTablesPublication() throws Exception {
-    String slotName = "test_dynamic_table_addition_slot";
+    String slotName = "test_dynamic_table_addition_for_all_tables_pub";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -614,7 +614,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation() throws Exception {
-    String slotName = "test_dynamic_table_addition_slot";
+    String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -2236,7 +2236,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testDynamicTableAdditionForTablesCreatedAfterStreamCreation() throws Exception {
-    String slotName = "test_dynamic_table_addition_slot";
+    String slotName = "test_dynamic_table_addition_slot_after_stream_creation";
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");

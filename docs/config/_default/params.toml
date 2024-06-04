@@ -55,7 +55,10 @@ version_menu_pagelinks = true
   version = "v2.21 (Preview)"
 [[versions]]
   url = "/stable"
-  version = "v2.20 (LTS)"
+  version = "v2024.1 (STS)"
+[[versions]]
+  url = "/v2.20"
+  version = "v2.20 (STS)"
 [[versions]]
   url = "/v2.18"
   version = "v2.18 (STS)"
@@ -74,7 +77,7 @@ version_menu_pagelinks = true
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.21"
-  preview_version_slug = "preview"
+  preview_version_slug = "stable"
   # To disable heading/title icons for particular page, define `hideHeadingIcon: true` on that page params.
   heading_icons = true
 

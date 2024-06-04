@@ -92,35 +92,6 @@ func (yc *YbaCtlComponent) Status() common.Status {
 	}
 }
 
-// MarkYbaInstallStart sets the .installing marker.
-func (yc *YbaCtlComponent) MarkYBAInstallStart() error {
-	// .installStarted written at the beginning of Installations, and renamed to
-	// .installCompleted at the end of the install. That way, if an install fails midway,
-	// the operations can be tried again in an idempotent manner. We also write the mode
-	// of install to this file so that we can disallow installs between types (root ->
-	// non-root and non-root -> root both prohibited).
-	var data []byte
-	if common.HasSudoAccess() {
-		data = []byte("root\n")
-	} else {
-		data = []byte("non-root\n")
-	}
-	return os.WriteFile(common.YbaInstallingMarker(), data, 0666)
-}
-
-// MarkYbaInstallDone sets the .installed marker. This also deletes the .installing marker.
-func (yc *YbaCtlComponent) MarkYBAInstallDone() error {
-	_, err := os.Stat(common.YbaInstalledMarker())
-	if err == nil {
-		return nil
-	}
-	if !os.IsNotExist(err) {
-		log.Fatal(fmt.Sprintf("Error querying file status %s : %s", common.YbaInstalledMarker(), err))
-	}
-	common.RenameOrFail(common.YbaInstallingMarker(), common.YbaInstalledMarker())
-	return nil
-}
-
 func createHomeBinDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

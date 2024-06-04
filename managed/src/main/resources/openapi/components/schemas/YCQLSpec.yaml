@@ -10,3 +10,9 @@ properties:
     description: Whether to enable authentication to access YCQL on this Universe
     type: boolean
     example: false
+  password:
+    description: Password to set for the YCQL database in this universe. Required if enable_auth is true.
+    type: string
+    format: password
+    example: password
+    writeOnly: true

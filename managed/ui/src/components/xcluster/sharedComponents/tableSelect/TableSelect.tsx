@@ -685,19 +685,22 @@ export const TableSelect = (props: TableSelectProps) => {
         </div>
       )}
       <Box display="flex" flexDirection="column" marginTop={2} gridGap={theme.spacing(2)}>
-        {props.configAction !== XClusterConfigAction.CREATE && (
-          <YBBanner variant={YBBannerVariant.INFO}>
-            <Typography variant="body2">
-              <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX}.${
-                  props.isDrInterface ? 'droppedTablesInfoTextDr' : 'droppedTablesInfoTextXCluster'
-                }`}
-                values={{ droppedTableCount: props.sourceDroppedTableUuids.size }}
-                components={{ bold: <b /> }}
-              />
-            </Typography>
-          </YBBanner>
-        )}
+        {props.configAction !== XClusterConfigAction.CREATE &&
+          props.sourceDroppedTableUuids.size > 0 && (
+            <YBBanner variant={YBBannerVariant.INFO}>
+              <Typography variant="body2">
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.${
+                    props.isDrInterface
+                      ? 'droppedTablesInfoTextDr'
+                      : 'droppedTablesInfoTextXCluster'
+                  }`}
+                  values={{ droppedTableCount: props.sourceDroppedTableUuids.size }}
+                  components={{ bold: <b /> }}
+                />
+              </Typography>
+            </YBBanner>
+          )}
         <YBBanner variant={YBBannerVariant.INFO}>
           <Typography variant="body2">
             <Trans

@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/external_yb_controller.h"
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/join.h"
 
@@ -45,7 +46,9 @@ ExternalYbController::ExternalYbController(
       server_port_(server_port),
       yb_master_webserver_port_(yb_master_webserver_port),
       yb_tserver_webserver_port_(yb_tserver_webserver_port),
-      extra_flags_(extra_flags) {}
+      extra_flags_(extra_flags),
+      stdout_tailer_thread_(nullptr),
+      stderr_tailer_thread_(nullptr) {}
 
 Status ExternalYbController::Start() {
   CHECK(!process_);
@@ -65,6 +68,7 @@ Status ExternalYbController::Start() {
   argv.push_back("--ysql_dumpall=" + ysql_dumpall_);
   argv.push_back("--ysqlsh=" + ysqlsh_);
   argv.push_back("--logtostderr");
+  argv.push_back("--v=1");
   argv.push_back(Format("--server_port=$0", server_port_));
   argv.push_back(Format("--yb_master_webserver_port=$0", yb_master_webserver_port_));
   argv.push_back(Format("--yb_tserver_webserver_port=$0", yb_tserver_webserver_port_));
@@ -78,11 +82,38 @@ Status ExternalYbController::Start() {
 
   RETURN_NOT_OK_PREPEND(p->Start(), Format("Failed to start subprocess $0", exe_));
 
-  // Allow some time for server initialisation.
-  SleepFor(MonoDelta::FromMilliseconds(500));
+  bool pingSuccess = false;
+  int retries = 0;
+  while (!pingSuccess && retries++ < 20) {
+    auto status = ping();
+    if (status.ok()) {
+      pingSuccess = true;
+      break;
+    }
+    // Allow some time for server initialisation.
+    SleepFor(MonoDelta::FromMilliseconds(500));
+  }
 
-  // Make sure we can ping the server.
-  CHECK_OK(ping());
+  if (!pingSuccess) {
+    return STATUS_FORMAT(InternalError, "Failed to ping YB Controller server!");
+  }
+
+  auto default_output_prefix = Format("[yb-controller-$0]", idx_);
+  auto* listener = stdout_tailer_thread_ ? stdout_tailer_thread_->listener() : nullptr;
+  stdout_tailer_thread_ = std::make_unique<ExternalDaemon::LogTailerThread>(
+      Format("[yb-controller-$0 stdout]", idx_), p->ReleaseChildStdoutFd(), &std::cout);
+  if (listener) {
+    stdout_tailer_thread_->SetListener(listener);
+  }
+
+  listener = stderr_tailer_thread_ ? stderr_tailer_thread_->listener() : nullptr;
+  // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
+  // assume that by default in the output prefix.
+  stderr_tailer_thread_ = std::make_unique<ExternalDaemon::LogTailerThread>(
+      default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
+  if (listener) {
+    stderr_tailer_thread_->SetListener(listener);
+  }
 
   process_.swap(p);
 

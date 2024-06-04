@@ -49,6 +49,11 @@ public class UniverseApiControllerTest extends UniverseTestBase {
             universe -> {
               // arch
               universe.getUniverseDetails().arch = PublicCloudConstants.Architecture.aarch64;
+              // ysql
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL = true;
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true;
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ysqlPassword =
+                  "password#1";
               // regionList
               List<Region> regions = Region.getByProvider(providerUuid);
               universe.getUniverseDetails().getPrimaryCluster().userIntent.regionList =
@@ -97,17 +102,14 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
     YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
-    UUID universeUUID = createTask.getResourceUuid();
-    Universe dbUniverse = Universe.getOrBadRequest(universeUUID, customer);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+    UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
 
-    // validate that the Universe created in the DB matches properties specified in the createSpec
-    validateUniverseCreateSpec(universeCreateSpec, dbUniverse);
-
-    // fetch the newly created Universe using v2 API and validate it once more
-    com.yugabyte.yba.v2.client.models.Universe universeResp =
-        api.getUniverse(customer.getUuid(), universeUUID);
-    validateUniverseSpec(universeResp.getSpec(), dbUniverse);
-    validateUniverseInfo(universeResp.getInfo(), dbUniverse);
+    // validate that the Universe create params matches properties specified in the createSpec
+    validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
   }
 
   @Test
@@ -120,17 +122,14 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
     YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
-    UUID universeUUID = createTask.getResourceUuid();
-    Universe dbUniverse = Universe.getOrBadRequest(universeUUID, customer);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+    UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
 
-    // validate that the Universe created in the DB matches properties specified in the createSpec
-    validateUniverseCreateSpec(universeCreateSpec, dbUniverse);
-
-    // fetch the newly created Universe using v2 API and validate it once more
-    com.yugabyte.yba.v2.client.models.Universe universeResp =
-        api.getUniverse(customer.getUuid(), universeUUID);
-    validateUniverseSpec(universeResp.getSpec(), dbUniverse);
-    validateUniverseInfo(universeResp.getInfo(), dbUniverse);
+    // validate that the Universe create params matches properties specified in the createSpec
+    validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
   }
 
   @Test

@@ -957,7 +957,6 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
 
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
-  TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
 };
 
 class AsyncTsTestRetry : public RetrySpecificTSRpcTask {

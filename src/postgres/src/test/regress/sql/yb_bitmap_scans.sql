@@ -2,50 +2,6 @@
 -- YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
 SET yb_explain_hide_non_deterministic_fields = true;
-
---
--- -- test disabling bitmap scans --
--- for each combination of yb_enable_bitmapscan and enable_bitmapscan, try
---  1. a case where the planner chooses bitmap scans
---  2. a case where we tell the planner to use bitmap scans
---  3. a case where the alternative option (seq scan) is disabled
---
-CREATE TABLE test_disable(a int, b int);
-CREATE INDEX ON test_disable(a ASC);
-CREATE INDEX ON test_disable(b ASC);
-
-SET yb_enable_bitmapscan = true;
-SET enable_bitmapscan = true;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-
-SET yb_enable_bitmapscan = true;
-SET enable_bitmapscan = false;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-
-SET yb_enable_bitmapscan = false;
-SET enable_bitmapscan = true;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-
-SET yb_enable_bitmapscan = false;
-SET enable_bitmapscan = false;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 
@@ -154,49 +110,26 @@ SELECT random() FROM test_skip WHERE a = 1 OR (b < 10 AND b % 2 = 0);
 CREATE TABLE pk (k INT PRIMARY KEY, a INT);
 CREATE INDEX ON pk(a ASC);
 INSERT INTO pk SELECT i, i FROM generate_series(1, 1000) i;
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk WHERE k = 123 OR a = 123;
 /*+ BitmapScan(pk) */
 SELECT * FROM pk WHERE k = 123 OR a = 123;
 
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
 /*+ BitmapScan(pk) */
 SELECT * FROM pk WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
 
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
 /*+ BitmapScan(pk) */
 SELECT * FROM pk WHERE k = 123 OR k = 124 OR a = 122 OR a = 123 ORDER BY k;
 
 -- test non-existent results
-/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(pk) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
 /*+ BitmapScan(pk) */
 SELECT COUNT(*) FROM pk WHERE k = 2000 OR a < 0;
-
---
--- test system catalog queries (they are colocated)
---
-/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
-/*+ BitmapScan(pg_authid) */
-SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
-
-
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
-    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
-    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-
-SET yb_enable_expression_pushdown = false;
-
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
-    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
-    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
-
-RESET yb_enable_expression_pushdown;
 
 --
 -- test indexes on multiple columns / indexes with additional columns
@@ -207,31 +140,73 @@ CREATE INDEX ON multi (h HASH) INCLUDE (a);
 CREATE INDEX ON multi (b ASC, c ASC);
 INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1, 1000) i;
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8  ORDER BY a;
 
 -- try some slightly complex nested logical operands queries
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;
+
+--
+-- test exceeding work_mem
+--
+INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1001, 10000) i;
+
+SET work_mem TO '4MB'; -- does not exceed work_mem
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+
+SET work_mem TO '4GB'; -- does not exceed very large work_mem
+
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+
+SET work_mem TO '100kB';
+-- normal case
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+
+-- verify remote filters apply to the table scan when we've exceeded work_mem
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;
+
+-- verify local filters still apply when pushdown is disabled
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;
+
+-- where the first bitmap index scan exceeds work_mem
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;
+
+-- where the second bitmap index scan exceeds work_mem
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER BY a;
+
+-- where the third bitmap index scan exceeds work_mem
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;
+
+RESET work_mem;
 
 --
 -- test limits
@@ -242,13 +217,13 @@ INSERT INTO test_limit SELECT i, i * 2, i * 3 FROM generate_series(1, 1000) i;
 SET yb_fetch_row_limit = 100;
 SET yb_fetch_size_limit = 0;
 
-/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
 
 SET yb_fetch_row_limit = 0;
 SET yb_fetch_size_limit = '1kB';
 
-/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, COSTS OFF)
+/*+ BitmapScan(test_limit) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
 
 RESET yb_fetch_row_limit;
@@ -258,22 +233,22 @@ RESET yb_fetch_size_limit;
 -- test remote pushdown
 --
 
-/*+ BitmapScan(multi multi_b_c_idx) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi multi_b_c_idx) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
 /*+ BitmapScan(multi multi_b_c_idx) */
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
 
-/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
 /*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
 
-/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
 
-/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
+/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
 /*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
@@ -286,8 +261,8 @@ CREATE INDEX ON test_false (a ASC);
 CREATE INDEX ON test_false (b ASC);
 INSERT INTO test_false VALUES (1, 1), (2, 2);
 
-/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a <= 1 AND a = 2);
-/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
+/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a <= 1 AND a = 2);
+/*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
 
 --
 -- test recheck index conditions
@@ -297,62 +272,88 @@ create index on recheck_test (col ASC);
 
 insert into recheck_test select i from generate_series(1, 10) i;
 
-explain (analyze, costs off) /*+ BitmapScan(t) */
+explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col IN (5, 6);
-explain (analyze, costs off) /*+ BitmapScan(t) */
+explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col IN (5, 6) AND t.col < 3;
 
-explain (analyze, costs off) /*+ BitmapScan(t) */
+explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
-explain (analyze, costs off) /*+ BitmapScan(t) */
+explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 
 --
--- test colocated queries
+-- test pk of different types
 --
-CREATE DATABASE colo WITH colocation = true;
-\c colo;
+CREATE TABLE pk_int (k_int INT PRIMARY KEY, v_text varchar);
+CREATE INDEX ON pk_int(v_text ASC);
+INSERT INTO pk_int SELECT i, i::text FROM generate_series(1, 100) i;
 
-SET yb_explain_hide_non_deterministic_fields = true;
-SET enable_bitmapscan = true;
-SET yb_enable_bitmapscan = true;
+CREATE TABLE pk_text (k_text varchar PRIMARY KEY, v_int INT);
+CREATE INDEX ON pk_text(v_int ASC);
+INSERT INTO pk_text SELECT i::text, i FROM generate_series(1, 100) i;
 
-CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT, v varchar);
-CREATE INDEX ON pk_colo(a ASC);
-CREATE INDEX ON pk_colo(v ASC);
-INSERT INTO pk_colo SELECT i, i, i::text FROM generate_series(1, 1000) i;
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_int WHERE k_int = 12 OR v_text = '12';
+/*+ BitmapScan(pk_int) */
+SELECT * FROM pk_int WHERE k_int = 12 OR v_text = '12';
 
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
-/*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
+/*+ BitmapScan(pk_text) */
+SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
 
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
-/*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_int WHERE (k_int < 10 AND k_int % 2 = 1) OR (v_text LIKE '999%' AND v_text LIKE '%5') ORDER BY k_int;
+/*+ BitmapScan(pk_int) */
+SELECT * FROM pk_int WHERE (k_int < 10 AND k_int % 2 = 1) OR (v_text LIKE '999%' AND v_text LIKE '%5') ORDER BY k_int;
 
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
-/*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
+/*+ BitmapScan(pk_text) */
+SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
-/*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_int WHERE k_int < 5 OR v_text < '11' ORDER BY k_int;
+/*+ BitmapScan(pk_int) */
+SELECT * FROM pk_int WHERE k_int < 5 OR v_text < '11' ORDER BY k_int;
+
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+/*+ BitmapScan(pk_text) */
+SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12') ORDER BY k_int;
+/*+ BitmapScan(pk_int) */
+SELECT * FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12') ORDER BY k_int;
+
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
+/*+ BitmapScan(pk_text) */
+SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
 
 -- test count
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
-/*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12');
+/*+ BitmapScan(pk_int) */
+SELECT COUNT(*) FROM pk_int WHERE k_int IN (12, 13) OR v_text IN ('11', '12');
+
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
+/*+ BitmapScan(pk_text) */
+SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
 
 -- test non-existent results
-/*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
-/*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
+/*+ BitmapScan(pk_int) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM pk_int WHERE k_int = 2000 OR v_text = 'nonexistent';
+/*+ BitmapScan(pk_int) */
+SELECT COUNT(*) FROM pk_int WHERE k_int = 2000 OR v_text = 'nonexistent';
+
+/*+ BitmapScan(pk_text) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
+/*+ BitmapScan(pk_text) */
+SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

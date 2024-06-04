@@ -57,7 +57,7 @@ The following is an example of a payload that is collected:
         "id": "eca8b3cfb2ee4eca94dde519634e1e38",
         "attributes": {
             "partition": "hash_split: [16380, 19110)",
-            "table_name": "redis",
+            "table_name": "test",
             "table_id": "82f5f7ab81a44923b5f544fbd0664afe"
         },
         "metrics": [

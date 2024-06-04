@@ -19,7 +19,7 @@ pg_hint_plan makes it possible to tweak execution plans using "hints", which are
 
 {{< warning title="Revisit your hint plans" >}}
 
-To use `pg_hint_plan` effectively, you need thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
+To use `pg_hint_plan` effectively, you need a thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
 
 {{< /warning >}}
 
@@ -46,7 +46,6 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 {{<note title="Enable pg_hint_plan for all sessions">}}
 You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
-
 
 ### Turn on debug output
 
@@ -158,6 +157,7 @@ Scan method hints enforce the scanning method on tables when specified along wit
 | NoIndexOnlyScan(table) | Do not enable IndexOnlyScan on the table. |
 | IndexScanRegexp(table regex) | Enable index scan on the table whose indices match with the regular expression defined by `regex`. |
 | IndexOnlyScanRegexp(table regex) | Do not enable index scan on the table whose indices match with the regular expression defined by `regex`. |
+| BitmapScan(table) | Enable BitmapScan on the table. |
 
 In the following example, the hint `/*+SeqScan(t2)*/` allows table `t2` to be scanned using `SeqScan`.
 
@@ -457,6 +457,7 @@ The joining order in the first query is `/*+Leading(t1 t2 t3)*/`, whereas the jo
 
 Planner method configuration parameters provide a crude method of influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters:
 
+- enable_bitmapscan
 - enable_hashagg
 - enable_hashjoin
 - enable_indexscan

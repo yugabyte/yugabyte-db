@@ -122,5 +122,4 @@ else
 
   log "Activating pex environment $pex_venv_dir"
   activate_pex
-  rm $pex_lock
 fi

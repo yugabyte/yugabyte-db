@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB universes use a set of [default ports](../../../reference/configuration/default-ports) to manage access to services.
+YugabyteDB Anywhere and the universes it manages use a set of [default ports](../../prepare/networking/) to manage access to services.
 
 When deploying a universe, YugabyteDB Anywhere allows you to customize these ports.
 

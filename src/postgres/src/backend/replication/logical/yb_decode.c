@@ -287,9 +287,12 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	before_op_tuple_buf->yb_is_omitted_size =
 		(should_handle_omitted_case) ? nattrs : 0;
 
-	elog(DEBUG2, "The before_op heap tuple: %s and after_op heap tuple: %s",
-		 YbHeapTupleToString(before_op_tuple, tupdesc),
-		 YbHeapTupleToString(after_op_tuple, tupdesc));
+	elog(DEBUG2,
+		 "yb_decode: The before_op heap tuple: %s and after_op heap tuple: %s",
+		 YbHeapTupleToStringWithIsOmitted(before_op_tuple, tupdesc,
+										  before_op_is_omitted),
+		 YbHeapTupleToStringWithIsOmitted(after_op_tuple, tupdesc,
+										  after_op_is_omitted));
 
 	change->data.tp.newtuple = after_op_tuple_buf;
 	change->data.tp.oldtuple = before_op_tuple_buf;
@@ -431,8 +434,8 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	}
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
-	elog(DEBUG2, "The heap tuple: %s for operation: %s",
-		 YbHeapTupleToString(tuple, tupdesc),
+	elog(DEBUG2, "yb_decode: The heap tuple: %s for operation: %s",
+		 YbHeapTupleToStringWithIsOmitted(tuple, tupdesc, NULL),
 		 (change_type == REORDER_BUFFER_CHANGE_INSERT) ? "INSERT" : "DELETE");
 
 	RelationClose(relation);
