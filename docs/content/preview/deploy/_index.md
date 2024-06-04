@@ -7,6 +7,8 @@ headcontent: Deploy to the public cloud, a private data center, or Kubernetes
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
+  - /preview/architecture/layered-architecture/
+  - /preview/architecture/overview/
 menu:
   preview:
     identifier: deploy

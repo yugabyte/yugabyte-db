@@ -70,7 +70,6 @@ class NodeConnectModal extends Component {
 
     const providerUsed = _.find(providers?.data, { uuid: providerUUID });
     const imageBundleUsed = _.find(providerUsed?.imageBundles, { uuid: cluster?.userIntent?.imageBundleUUID });
-    const regionMetadata = _.get(imageBundleUsed?.details?.regions, currentRow?.cloudInfo?.region);
 
     const tectiaSSH = runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === 'yb.security.ssh2_enabled'
@@ -106,7 +105,7 @@ class NodeConnectModal extends Component {
       );
 
       const accessKeyInfo = accessKey?.keyInfo;
-      const sshPort = regionMetadata?.sshPortOverride ?? (accessKeyInfo?.sshPort || 22);
+      const sshPort = imageBundleUsed?.details?.sshPort ?? (accessKeyInfo?.sshPort || 22);
       if (!isTectiaSSHEnabled) {
         accessCommand = `sudo ssh -i ${accessKeyInfo?.privateKey ?? '<private key>'
           } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;

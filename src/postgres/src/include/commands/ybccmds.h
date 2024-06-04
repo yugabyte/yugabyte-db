@@ -37,8 +37,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
-	bool *retry_on_oid_collision);
+	Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid,
+	bool colocated, bool *retry_on_oid_collision, int64 clone_time);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -85,6 +85,12 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid pgTableId,
 						   Oid oldRelfileNodeId);
 
+extern void YBCBindCreateIndexColumns(YBCPgStatement handle,
+									  IndexInfo *indexInfo,
+									  TupleDesc indexTupleDesc,
+									  int16 *coloptions,
+									  int numIndexKeyAttrs);
+
 extern void YBCDropIndex(Relation index);
 
 extern List* YBCPrepareAlterTable(List** subcmds,
@@ -113,6 +119,7 @@ extern void YBCValidatePlacement(const char *placement_info);
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
 extern void YBCCreateReplicationSlot(const char *slot_name,
+									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
 									 uint64_t *consistent_snapshot_time);
 

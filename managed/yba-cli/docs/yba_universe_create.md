@@ -45,6 +45,7 @@ yba universe create [flags]
       --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
       --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
+      --assign-static-public-ip                          [Optional] Assign Static Public IPs to the DB servers for connections over the internet. (default true)
       --enable-ysql                                      [Optional] Enable YSQL endpoint. (default true)
       --ysql-password string                             [Optional] YSQL authentication password. Use single quotes ('') to provide values with special characters.
       --enable-ycql                                      [Optional] Enable YCQL endpoint. (default true)

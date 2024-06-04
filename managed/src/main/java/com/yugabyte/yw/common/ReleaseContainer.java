@@ -80,7 +80,19 @@ public class ReleaseContainer {
     if (isLegacy()) {
       return this.metadata.getFilePath(arch);
     } else {
-      ReleaseArtifact artifact = this.release.getArtifactForArchitecture(arch);
+      ReleaseArtifact artifact = null;
+      // If we do not get an artifact, assume non-k8s instead of trying to get the k8s platform.
+      // This is similar to the ReleaseManager.ReleaseMetadata.getFilePath implementation, which
+      // returns a default value if arch is null.
+      if (arch == null) {
+        artifact =
+            this.release.getArtifacts().stream()
+                .filter(ra -> ra.getPlatform() == ReleaseArtifact.Platform.LINUX)
+                .findFirst()
+                .orElse(null);
+      } else {
+        artifact = this.release.getArtifactForArchitecture(arch);
+      }
       if (artifact == null) {
         throw new RuntimeException("no artifact found for architecture " + arch.name());
       }
@@ -340,7 +352,7 @@ public class ReleaseContainer {
         this.metadata.chartPath = chartPath.toString();
       } else {
         ReleaseLocalFile rlf = ReleaseLocalFile.create(chartPath.toString());
-        artifact.setPackageFileID(rlf.getFileUUID());
+        artifact.savePackageFileID(rlf.getFileUUID());
       }
     } catch (Exception e) {
       log.error("failed to download helmchart from " + urlPath, e);
@@ -440,6 +452,13 @@ public class ReleaseContainer {
     }
   }
 
+  public void setArtifactMatchingArchitecture(Architecture arch) {
+    // only relevant for non-legacy
+    if (!isLegacy()) {
+      this.artifact = release.getArtifactForArchitecture(arch);
+    }
+  }
+
   private void setArtifactMatchingPackage(String ybPackage) {
     for (ReleaseArtifact artifact : this.release.getArtifacts()) {
       if (artifact.getPackageURL() != null && artifact.getPackageURL().equals(ybPackage)) {
@@ -468,5 +487,19 @@ public class ReleaseContainer {
     } else {
       return this.release.getState() == Release.ReleaseState.ACTIVE;
     }
+  }
+
+  public static class ImportExportRelease {
+    public ReleaseMetadata releaseMetadata;
+    public Release release;
+    public ReleaseArtifact releaseArtifact;
+  }
+
+  public ImportExportRelease toImportExportRelease() {
+    ImportExportRelease ier = new ImportExportRelease();
+    ier.releaseMetadata = this.metadata;
+    ier.release = this.release;
+    ier.releaseArtifact = this.artifact;
+    return ier;
   }
 }

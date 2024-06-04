@@ -26,6 +26,7 @@
 
 #include "pg_yb_utils.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
@@ -844,6 +845,34 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static void
+IpAddressToBytes(YBCPgAshConfig *ash_config)
+{
+	if (!YbAshIsClientAddrSet())
+		return;
+
+	uint8_t addr_family = ash_config->metadata->addr_family;
+
+	switch (addr_family)
+	{
+		case AF_UNIX:
+			switch_fallthrough();
+		case AF_UNSPEC:
+			break;
+		case AF_INET:
+			switch_fallthrough();
+		case AF_INET6:
+			if (inet_ntop(addr_family, ash_config->metadata->client_addr,
+						  ash_config->host, INET6_ADDRSTRLEN) == NULL)
+				ereport(LOG,
+						(errmsg("failed converting IP address from binary to string")));
+			break;
+		default:
+			ereport(LOG,
+					(errmsg("unknown address family found: %u", addr_family)));
+	}
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -877,6 +906,7 @@ YBInitPostgresBackend(
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
 		ash_config.yb_enable_ash = &yb_enable_ash;
+		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)
@@ -1600,6 +1630,7 @@ typedef struct DdlTransactionState
 	CatalogModificationAspects catalog_modification_aspects;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
+	const char *original_ddl_command_tag;
 } DdlTransactionState;
 
 static DdlTransactionState ddl_transaction_state = {0};
@@ -1618,7 +1649,12 @@ YBResetEnableNonBreakingDDLMode()
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
+	 * 
+	 * Also, reset Connection Manager cache if the value was cached to begin
+	 * with.
 	 */
+	if (YbIsClientYsqlConnMgr() && yb_make_next_ddl_statement_nonbreaking)
+		YbSendParameterStatusForConnectionManager("yb_make_next_ddl_statement_nonbreaking", "false");
 	yb_make_next_ddl_statement_nonbreaking = false;
 }
 
@@ -1721,6 +1757,8 @@ YBDecrementDdlNestingLevel()
 	if (yb_test_fail_next_ddl)
 	{
 		yb_test_fail_next_ddl = false;
+		if (YbIsClientYsqlConnMgr())
+			YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "false");
 		elog(ERROR, "Failed DDL operation as requested");
 	}
 	if (ddl_transaction_state.nesting_level == 0)
@@ -1747,7 +1785,8 @@ YBDecrementDdlNestingLevel()
 				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 				YbIncrementMasterCatalogVersionTableEntry(
 					mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
-					ddl_transaction_state.is_global_ddl);
+					ddl_transaction_state.is_global_ddl,
+					ddl_transaction_state.original_ddl_command_tag);
 
 			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
 		}
@@ -1845,6 +1884,8 @@ YbDdlModeOptional YbGetDdlMode(
 		 * be incremented.
 		 */
 		ddl_transaction_state.original_node_tag = node_tag;
+		ddl_transaction_state.original_ddl_command_tag =
+			GetCommandTagName(CreateCommandTag(parsetree));
 	}
 	else
 	{
@@ -4964,4 +5005,15 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
 	assign_yb_read_time(read_time, NULL);
 	YbRelationCacheInvalidate();
+}
+
+uint64_t
+YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
+{
+	long secs;
+	int microsecs;
+
+	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
+						&microsecs);
+	return secs * USECS_PER_SEC + microsecs;
 }

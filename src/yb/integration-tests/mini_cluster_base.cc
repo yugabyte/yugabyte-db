@@ -82,8 +82,4 @@ Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
 }
 
-Status MiniClusterBase::InitStatefulServiceClient(client::StatefulServiceClientBase* client) {
-  auto host_port = VERIFY_RESULT(GetLeaderMasterBoundRpcAddr());
-  return client->TEST_Init("127.0.0.52", host_port.ToString());
-}
 }  // namespace yb

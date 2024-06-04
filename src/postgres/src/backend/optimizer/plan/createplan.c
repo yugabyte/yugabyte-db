@@ -4765,7 +4765,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			Plan	   *subplan;
 			List	   *subqual;
 			List	   *subindexqual;
-			List	   *subindexpushdownqual = NIL;
+			List	   *subindexpushdownqual;
 			List	   *subindexEC;
 
 			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
@@ -4970,9 +4970,10 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		*indexqual = subindexquals;
 		*indexECs = subindexECs;
 
-		if (indexpushdownquals && ipath->indexinfo->rel->is_yb_relation)
-			*indexpushdownquals = ((YbBitmapIndexScan *) plan)
-									->yb_idx_pushdown.quals;
+		if (indexpushdownquals)
+			*indexpushdownquals = ipath->indexinfo->rel->is_yb_relation
+				? ((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals
+				: NIL;
 	}
 	else
 	{

@@ -12,6 +12,8 @@ public class MasterInfo {
   private String privateIp;
   private Long uptimeSeconds;
   private PeerRole peerRole;
+  private String instanceUUID;
+  private int port;
 
   public enum PeerRole {
     FOLLOWER,
@@ -31,7 +33,17 @@ public class MasterInfo {
               .getPrivateRpcAddressesList()
               .get(0)
               .getHost());
+      result.setPort(
+          masterRegistrationResponse
+              .getServerRegistration()
+              .getPrivateRpcAddressesList()
+              .get(0)
+              .getPort());
     }
+
+    result.setInstanceUUID(
+        masterRegistrationResponse.getInstanceId().getPermanentUuid().toStringUtf8());
+
     result.setUptimeSeconds(
         (System.currentTimeMillis()
                 - masterRegistrationResponse.getInstanceId().getStartTimeUs() / 1000)

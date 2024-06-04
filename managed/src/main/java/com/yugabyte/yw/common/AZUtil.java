@@ -610,9 +610,8 @@ public class AZUtil implements CloudUtil {
   private String readBlob(
       BlobContainerClient blobContainerClient, String fileName, int bytesToRead) {
     BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
-    BlobInputStream blobIS = blobClient.openInputStream();
     byte[] data = new byte[bytesToRead];
-    try {
+    try (BlobInputStream blobIS = blobClient.openInputStream()) {
       blobIS.read(data);
     } catch (IOException e) {
       throw new PlatformServiceException(
@@ -631,13 +630,13 @@ public class AZUtil implements CloudUtil {
       con.setRequestMethod("GET");
       con.setRequestProperty("Accept-Charset", StandardCharsets.UTF_8.toString());
       con.connect();
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
       StringBuffer content = new StringBuffer();
-      while ((inputLine = in.readLine()) != null) {
-        content.append(inputLine);
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          content.append(inputLine);
+        }
       }
-      in.close();
       JsonNode response = Json.mapper().readTree(content.toString());
       Double spotPrice = response.findValue("retailPrice").asDouble();
       log.info(

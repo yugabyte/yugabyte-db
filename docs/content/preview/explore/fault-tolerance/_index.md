@@ -81,7 +81,7 @@ See [Handling node upgrades](./handling-node-upgrades) to understand how Yugabyt
 
 ## Transaction resilience
 
-YugabyteDB ensures that the [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
+YugabyteDB ensures that the [provisional records](../../architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
 
 {{<tip>}}
 See [High availability of transactions](./transaction-availability) to understand how transactions do not fail during fault domain failures.

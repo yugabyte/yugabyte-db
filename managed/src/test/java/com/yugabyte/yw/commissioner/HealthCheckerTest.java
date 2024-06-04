@@ -124,10 +124,6 @@ public class HealthCheckerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
 
-    ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
-    when(mockNodeUniverseManager.uploadFileToNode(any(), any(), anyString(), any(), any(), any()))
-        .thenReturn(dummyShellUploadResponse);
-
     report = spy(new HealthCheckerReport());
 
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);

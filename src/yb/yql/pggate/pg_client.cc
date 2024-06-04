@@ -61,6 +61,8 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "and report it.");
 
 DECLARE_bool(TEST_index_read_multiple_partitions);
+DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
+DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
@@ -147,6 +149,28 @@ struct ResponseReadyTraits<Result<rpc::CallData>> {
     return std::move(*big_call_data);
   }
 };
+
+void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptionsPB* options) {
+  // Don't send ASH metadata if it's not set
+  if (!(*ash_config.yb_enable_ash) || !(*ash_config.is_metadata_set)) {
+    return;
+  }
+
+  // session_id is not set here as it's already set in PgPerformRequestPB
+  auto* ash_metadata = options->mutable_ash_metadata();
+  const auto* pg_metadata = ash_config.metadata;
+  ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
+  ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
+  ash_metadata->set_query_id(pg_metadata->query_id);
+
+  uint8_t addr_family = pg_metadata->addr_family;
+  ash_metadata->set_addr_family(addr_family);
+  // unix addresses are displayed as null, so we only send IPv4 and IPv6 addresses.
+  if (addr_family == AF_INET || addr_family == AF_INET6) {
+      ash_metadata->mutable_client_host_port()->set_host(ash_config.host);
+      ash_metadata->mutable_client_host_port()->set_port(pg_metadata->client_port);
+  }
+}
 
 } // namespace
 
@@ -682,19 +706,7 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
     auto& arena = operations->front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
-    if (*ash_config_.yb_enable_ash) {
-      // Don't send ASH metadata if it's not set
-      // ash_metadata_ can be null during tests which directly create the
-      // pggate layer without the PG backend.
-      // session_id is not set here as it's already set in PgPerformRequestPB
-      if (*ash_config_.is_metadata_set) {
-        auto* ash_metadata = options->mutable_ash_metadata();
-        ash_metadata->set_yql_endpoint_tserver_uuid(ash_config_.yql_endpoint_tserver_uuid, 16);
-        ash_metadata->set_root_request_id(ash_config_.metadata->root_request_id, 16);
-        ash_metadata->set_query_id(ash_config_.metadata->query_id);
-      }
-    }
-
+    AshMetadataToPB(ash_config_, options);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
@@ -1113,8 +1125,9 @@ class PgClient::Impl : public BigDataFetcher {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
-    req.set_fetch_flush_and_compaction_states(true);
-    req.set_fetch_raft_log_appender_states(true);
+    req.set_fetch_raft_log_appender_states(FLAGS_TEST_ash_fetch_wait_states_for_raft_log);
+    req.set_fetch_flush_and_compaction_states(
+        FLAGS_TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
     req.set_fetch_cql_states(true);
     req.set_ignore_ash_and_perform_calls(true);
     tserver::PgActiveSessionHistoryResponsePB resp;

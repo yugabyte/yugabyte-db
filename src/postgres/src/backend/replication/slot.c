@@ -104,8 +104,6 @@ ReplicationSlot *MyReplicationSlot = NULL;
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
-const char *PG_OUTPUT_PLUGIN = "pgoutput";
-
 static void ReplicationSlotShmemExit(int code, Datum arg);
 static void ReplicationSlotDropAcquired(void);
 static void ReplicationSlotDropPtr(ReplicationSlot *slot);
@@ -256,6 +254,7 @@ ReplicationSlotValidateName(const char *name, int elevel)
 void
 ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency persistency, bool two_phase,
+					  char *yb_plugin_name,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time)
 {
@@ -273,7 +272,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateReplicationSlot(name, yb_snapshot_action, yb_consistent_snapshot_time);
+		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
+								 yb_consistent_snapshot_time);
 		return;
 	}
 
@@ -491,7 +491,7 @@ retry:
 
 		s = palloc(sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
-		namestrcpy(&s->data.plugin, PG_OUTPUT_PLUGIN);
+		namestrcpy(&s->data.plugin, yb_replication_slot->output_plugin);
 		s->data.database = yb_replication_slot->database_oid;
 		s->data.persistency = RS_PERSISTENT;
 		strcpy(s->data.yb_stream_id, yb_replication_slot->stream_id);

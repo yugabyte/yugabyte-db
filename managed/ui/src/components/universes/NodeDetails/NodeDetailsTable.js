@@ -221,9 +221,13 @@ export default class NodeDetailsTable extends Component {
 
     const getStatusUptime = (cell, row) => {
       let uptime = '_';
-      if (isDefinedNotNull(row.uptime_seconds)) {
+      const uptimeSeconds =
+        isDedicatedNodes && row.dedicatedTo === NodeType.Master.toUpperCase()
+          ? row.master_uptime_seconds
+          : row.uptime_seconds;
+      if (isDefinedNotNull(uptimeSeconds)) {
         // get the difference between the moments
-        const difference = parseFloat(row.uptime_seconds) * 1000;
+        const difference = parseFloat(uptimeSeconds) * 1000;
 
         //express as a duration
         const diffDuration = moment.duration(difference);

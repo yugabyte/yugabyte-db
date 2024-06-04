@@ -34,7 +34,7 @@ namespace yb::tserver {
 namespace {
 const int64_t kCompleteJsonb = 1;
 const std::string kDDLCommandCreateTable = "CREATE TABLE";
-const std::string kDDLCommandDropTable = "DROP TABLE";
+const std::string kDDLCommandCreateIndex = "CREATE INDEX";
 }
 
 class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
@@ -200,7 +200,7 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   // Verify that supported command tags are processed.
   {
     ddl_queue_handler.ClearState();
-    for (const auto& command_tag : {kDDLCommandCreateTable, kDDLCommandDropTable}) {
+    for (const auto& command_tag : {kDDLCommandCreateTable, kDDLCommandCreateIndex}) {
       ddl_queue_handler.rows_.emplace_back(
           1, query_id, ConstructJson(/* version */ 1, command_tag));
     }

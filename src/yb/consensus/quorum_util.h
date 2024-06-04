@@ -35,6 +35,7 @@
 #include <string>
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_consensus_util.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
@@ -51,9 +52,6 @@ enum RaftConfigState {
   UNCOMMITTED_QUORUM,
   COMMITTED_QUORUM,
 };
-
-bool IsRaftConfigMember(const std::string& uuid, const RaftConfigPB& config);
-bool IsRaftConfigVoter(const std::string& uuid, const RaftConfigPB& config);
 
 // Get the specified member of the config.
 // Returns Status::NotFound if a member with the specified uuid could not be
@@ -100,11 +98,6 @@ size_t CountServersInTransition(const RaftConfigPB& config, const std::string& i
 
 // Calculates size of a configuration majority based on # of voters.
 size_t MajoritySize(size_t num_voters);
-
-// Determines the role that the peer with uuid 'uuid' plays in the cluster.
-// If the peer uuid is not a voter in the configuration, this function will return
-// NON_PARTICIPANT, regardless of whether it is listed as leader in cstate.
-PeerRole GetConsensusRole(const std::string& uuid, const ConsensusStatePB& cstate);
 
 // Determines the member type that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return

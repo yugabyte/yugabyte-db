@@ -76,7 +76,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               xClusterConfig,
               true /* keepEntry */,
               taskParams().isForced(),
-              false) /* deletePitrConfigs */;
+              false /* deletePitrConfigs */);
 
           if (xClusterConfig.isUsedForDr()) {
             createSetDrStatesTask(

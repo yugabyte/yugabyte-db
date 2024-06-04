@@ -96,7 +96,7 @@ DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
                  "When set, skips partitioning_version checks to prevent tablet splitting.");
 
 DEFINE_RUNTIME_bool(
-    split_respects_tablet_replica_limits, true,
+    split_respects_tablet_replica_limits, false,
     "Whether to check the cluster tablet replica limit before splitting a tablet. If true, the "
     "system will no longer split tablets when the limit machinery determines the cluster cannot "
     "support any more tablet replicas.");
@@ -248,6 +248,12 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for YEDIS tables, table_id: $0", table->id());
+  }
+  if (table->IsXClusterDDLReplicationTable()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for xCluster DDL Replication tables, table_id: $0",
+        table->id());
   }
 
   auto replication_info = VERIFY_RESULT(filter_->GetTableReplicationInfo(table));

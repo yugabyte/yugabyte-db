@@ -93,6 +93,10 @@ class Uuid {
   // Given a string representation of uuid in hex where the bytes are in host byte order, build
   // an appropriate UUID object.
   static Result<Uuid> FromHexString(const std::string& hex_string);
+  // FromHexString above expects the string to have bytes in the host byte order (little endian)
+  // this variant is useful to generate a uuid where the bytes are in network order (big endian)
+  // Functionally, accepts strings similar to FromString, however the dashes are not required.
+  static Result<Uuid> FromHexStringBigEndian(const std::string& hex_string);
 
   std::string ToHexString() const;
 

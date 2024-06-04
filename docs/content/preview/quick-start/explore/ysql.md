@@ -682,7 +682,7 @@ This raises the "Cannot transfer" error defined in the procedure, and automatica
 
 ### Triggers
 
-Use [triggers](../../../explore/ysql-language-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
+Use [triggers](../../../explore/ysql-language-features/advanced-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
 
 1. Add a column to store the last update time.
 

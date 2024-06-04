@@ -1,8 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
 ARG BASE_IMAGE=docker.io/library/almalinux:8
-# Use following command to create docker image
-# docker build --build-arg BASE_IMAGE=docker.io/centos:7 .
-# Use following command to create UBI-based docker image
-# docker build --build-arg BASE_IMAGE=registry.access.redhat.com/ubi7/ubi:7.9
 # Use following command to create almalinux based image
 # docker build --build-arg BASE_IMAGE=docker.io/library/almalinux:8
 # Use following command to create UBI-8 based docker image
@@ -24,8 +21,6 @@ ARG BASE_IMAGE
 ARG VERSION=Development
 ARG RELEASE=Unknown
 ARG USER=root
-# `--build-arg JAVA_VERSION=11` to use java 11
-ARG JAVA_VERSION=1.8.0
 
 LABEL name="YugabyteDB" \
     maintainer="YugaByte" \
@@ -49,42 +44,59 @@ WORKDIR $YB_HOME
 ARG yum_install="yum install --disableplugin=subscription-manager"
 ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager"
 
+# Add the almalinux8 package repo if we are building for ubi.
+RUN <<EOF
+  if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8"* ]]; then
+    cat <<- "EOR" > /etc/yum.repos.d/almalinux8.repo
+[almalinux8-appstream]
+name=Almalinux8-appstream
+baseurl=https://repo.almalinux.org/almalinux/8/AppStream/$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-8
+
+[almalinux8-baseos]
+name=Almalinux8-baseos
+baseurl=https://repo.almalinux.org/almalinux/8/BaseOS/$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-8
+EOR
+  fi
+EOF
+
+# Ensure our base system is fully up to date
+RUN set -x; \
+  $yum_upgrade -y \
+  && rm -rf ~/.cache \
+  && yum clean all && rm -rf /var/cache/yum
+
 # Install required python packages first
 # this should leave us with python3.8 as the default python3
+# We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
 RUN set -x ; \
-    if [[ "$BASE_IMAGE" == "centos:7" ]]; then \
-      $yum_install -y install centos-release-scl-rh && \
-      yum_install="$yum_install --enablerepo=centos-sclo-rh"; \
-    fi && \
-    if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi7/ubi"* \
-          || "$BASE_IMAGE" == "centos:7" ]]; then \
-      $yum_install -y \
-        rh-python38 \
-        rh-python38-python-setuptools \
-        rh-python38-python-devel \
-        rh-python38-python-pip \
-        rh-python38-python-psutil \
-      && echo "source /opt/rh/rh-python38/enable" >> /etc/bashrc \
-      && source /opt/rh/rh-python38/enable; \
-    else \
-      $yum_install -y  \
-        python38-devel \
-        python38-pip \
-        python38-psutil; \
-    fi \
+   $yum_install -y  \
+      python38-devel \
+      python38-pip \
+      python38-psutil \
     && pip3 install --upgrade pip \
-    && pip3 install --upgrade lxml
+    && pip3 install --upgrade lxml \
+    && pip3 install --upgrade s3cmd \
+    && if [[ "$(uname -m)" == "x86_64" ]]; then \
+      pip3 install --upgrade psutil; \
+    fi \
+    && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
+    && rm -rf ~/.cache \
+    && yum clean all && rm -rf /var/cache/yum
 
 # Install required packages that are universal across RHEL versions
-# This pulls in python3.6 as a dependency and then makes it default python even overriding
-# anything we may have set previously so we need to set py3.8 as default at the end of this block.
 RUN $yum_install -y \
       bind-utils \
       diffutils \
       glibc-all-langpacks \
       glibc-langpack-en \
       glibc-locale-source \
-      java-${JAVA_VERSION}-openjdk-headless \
+      iotop \
       less \
       ncurses-compat-libs \
       ncurses-devel \
@@ -94,35 +106,11 @@ RUN $yum_install -y \
       redhat-rpm-config \
       rsync \
       procps \
+      sysstat \
+      tcpdump \
       which \
     && alternatives --set python3 /usr/bin/python3.8 \
     && alternatives --set python /usr/bin/python3.8 \
-    && yum clean all && rm -rf /var/cache/yum
-
-COPY CentOS.repo /etc/yum.repos.d/CentOS.repo
-COPY almalinux8*.repo /etc/yum.repos.d/
-
-RUN /bin/bash -O extglob -c 'rm -f /etc/yum.repos.d/almalinux8-!($(uname -m)).repo'
-
-ARG utils="s3cmd sysstat iotop tcpdump fio"
-RUN set -x; \
-    if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi7"*  ]]; then \
-        $yum_install -y http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
-        $yum_install -y --enablerepo=epel-* --enablerepo=centos-* $utils && \
-        $yum_upgrade -y --enablerepo=epel-* --enablerepo=centos-*; \
-    elif [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8"* ]]; then \
-        $yum_install -y http://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
-        $yum_install -y --enablerepo=epel-* --enablerepo=almalinux8-* $utils && \
-        $yum_upgrade -y --enablerepo=epel-* --enablerepo=almalinux8-*; \
-    elif [[ "$BASE_IMAGE" == *"almalinux"* ]]; then \
-        $yum_install -y epel-release && \
-        $yum_install -y $utils && \
-        $yum_upgrade -y; \
-    else \
-        $yum_install -y http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
-        $yum_install -y $utils && \
-        $yum_upgrade -y ; \
-    fi \
     && yum clean all && rm -rf /var/cache/yum
 
 RUN set -x; \
@@ -171,7 +159,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.19.0
+ARG AZV=10.20.1
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \
@@ -187,11 +175,12 @@ RUN set -x; \
 # Install gsutil
 ARG GSV=4.60
 RUN set -x; \
-    mkdir /tmp/gsutils && \
-    curl -o /tmp/gsutils/gsutil_${GSV}.tar.gz \
-      https://storage.googleapis.com/pub/gsutil_${GSV}.tar.gz && \
-    tar -xzf /tmp/gsutils/gsutil_${GSV}.tar.gz -C /usr/local/ && \
-    chown :root -R /usr/local/gsutil
+    mkdir /tmp/gsutils \
+    && curl -o /tmp/gsutils/gsutil_${GSV}.tar.gz \
+      https://storage.googleapis.com/pub/gsutil_${GSV}.tar.gz \
+    && tar -xzf /tmp/gsutils/gsutil_${GSV}.tar.gz -C /usr/local/ \
+    && chown :root -R /usr/local/gsutil \
+    && rm -rf /tmp/gsutils
 
 # Configure azcopy and gsutil
 RUN mkdir /home/yugabyte/.boto \

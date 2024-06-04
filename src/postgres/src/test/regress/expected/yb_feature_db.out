@@ -1,11 +1,6 @@
 --
 -- Test case for CREATE DATABASE unsupported options
 --
-CREATE DATABASE test TEMPLATE = some_template;
-ERROR:  Value other than default, template0 or template1 for template option is not yet supported
-LINE 1: CREATE DATABASE test TEMPLATE = some_template;
-                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 CREATE DATABASE test IS_TEMPLATE = TRUE;
 ERROR:  Value other than default or false for is_template option is not yet supported
 LINE 1: CREATE DATABASE test IS_TEMPLATE = TRUE;

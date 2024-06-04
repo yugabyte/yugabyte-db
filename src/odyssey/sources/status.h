@@ -26,6 +26,7 @@ typedef enum {
 	OD_ECLIENT_WRITE,
 	OD_ESYNC_BROKEN,
 	OD_ECATCHUP_TIMEOUT,
+	YB_OD_DEPLOY_ERR,
 } od_frontend_status_t;
 
 static inline char *od_frontend_status_to_str(od_frontend_status_t status)
@@ -67,6 +68,8 @@ static inline char *od_frontend_status_to_str(od_frontend_status_t status)
 		return "OD_ESYNC_BROKEN";
 	case OD_ECATCHUP_TIMEOUT:
 		return "OD_ECATCHUP_TIMEOUT";
+	case YB_OD_DEPLOY_ERR:
+		return "YB_OD_DEPLOY_ERR";
 	}
 	return "UNKNOWN";
 }
@@ -82,6 +85,7 @@ static const od_frontend_status_t od_frontend_status_errs[] = {
 	OD_ECLIENT_READ,
 	OD_ESYNC_BROKEN,
 	OD_ECATCHUP_TIMEOUT,
+	YB_OD_DEPLOY_ERR,
 };
 
 #define OD_FRONTEND_STATUS_ERRORS_TYPES_COUNT \

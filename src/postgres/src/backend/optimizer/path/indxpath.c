@@ -357,12 +357,16 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		if (IsYugaByteEnabled() && rel->is_yb_relation)
 		{
-			YbBitmapTablePath *bpath;
-			bpath = create_yb_bitmap_table_path(root, rel, bitmapqual,
-												rel->lateral_relids, 1.0, 0);
-			add_path(rel, (Path *) bpath);
+			if (yb_enable_bitmapscan)
+			{
+				YbBitmapTablePath *bpath;
+				bpath = create_yb_bitmap_table_path(root, rel, bitmapqual,
+													rel->lateral_relids, 1.0,
+													0);
+				add_path(rel, (Path *) bpath);
 
-			/* TODO(#20575): support parallel bitmap scans */
+				/* TODO(#20575): support parallel bitmap scans */
+			}
 		}
 		else
 		{
@@ -438,16 +442,23 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			loop_count = get_loop_count(root, rel->relid, required_outer);
 
 			if (IsYugaByteEnabled() && rel->is_yb_relation)
-				bpath = (Path *) create_yb_bitmap_table_path(root, rel,
-															 bitmapqual,
-															 required_outer,
-															 loop_count, 0);
-
+			{
+				if (yb_enable_bitmapscan)
+				{
+					bpath = (Path *) create_yb_bitmap_table_path(root, rel,
+																bitmapqual,
+																required_outer,
+																loop_count, 0);
+					add_path(rel, bpath);
+				}
+			}
 			else
+			{
 				bpath = (Path *) create_bitmap_heap_path(root, rel, bitmapqual,
 														 required_outer,
 														 loop_count, 0);
-			add_path(rel, bpath);
+				add_path(rel, bpath);
+			}
 		}
 	}
 }
@@ -1706,6 +1717,9 @@ generate_bitmap_or_paths(PlannerInfo *root, RelOptInfo *rel,
 	List	   *all_clauses;
 	ListCell   *lc;
 
+	if (IsYugaByteEnabled() && rel->is_yb_relation && !yb_enable_bitmapscan)
+		return NIL;
+
 	/*
 	 * We can use both the current and other clauses as context for
 	 * build_paths_for_OR; no need to remove ORs from the lists.
@@ -2106,12 +2120,13 @@ yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 	 */
 	bpath.path.parallel_workers = 0;
 
-	/* Now we can do cost_yb_bitmap_table_scan */
-	cost_yb_bitmap_table_scan(&bpath.path, root, rel,
-							  bpath.path.param_info,
-							  ipath,
-							  get_loop_count(root, rel->relid,
-											 PATH_REQ_OUTER(ipath)));
+	if (yb_enable_bitmapscan)
+		/* Now we can do cost_yb_bitmap_table_scan */
+		cost_yb_bitmap_table_scan(&bpath.path, root, rel,
+								  bpath.path.param_info,
+								  ipath,
+								  get_loop_count(root, rel->relid,
+												 PATH_REQ_OUTER(ipath)));
 
 	return bpath.path.total_cost;
 }

@@ -174,6 +174,9 @@ public class AttachDetachController extends AuthenticatedController {
       if (release != null && release.hasLocalRelease()) {
         release = null;
       }
+      if (release != null) {
+        release.setArtifactMatchingArchitecture(universe.getUniverseDetails().arch);
+      }
 
       List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
 
@@ -204,7 +207,7 @@ public class AttachDetachController extends AuthenticatedController {
               .schedules(schedules)
               .backups(backups)
               .customerConfigs(customerConfigs)
-              .ybReleaseMetadata(release)
+              .ybReleaseMetadata(release != null ? release.toImportExportRelease() : null)
               .oldPlatformPaths(platformPaths)
               .skipReleases(detachUniverseFormData.skipReleases)
               .build();

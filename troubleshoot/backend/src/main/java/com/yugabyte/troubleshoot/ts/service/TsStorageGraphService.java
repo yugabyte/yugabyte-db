@@ -4,6 +4,7 @@ import static com.yugabyte.troubleshoot.ts.MetricsUtil.*;
 import static com.yugabyte.troubleshoot.ts.service.GraphService.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Streams;
 import com.yugabyte.troubleshoot.ts.models.*;
 import java.sql.ResultSet;
@@ -80,7 +81,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     GraphResponse response = new GraphResponse();
     response.setSuccessful(true);
     response.setName(query.getName());
-    response.setLayout(config.getLayout());
+    response.setLayout(config.getLayout().toBuilder().build());
     response.setStepSeconds(query.getStepSeconds());
 
     Set<String> groupByLabels = new LinkedHashSet<>();
@@ -88,17 +89,19 @@ public class TsStorageGraphService implements GraphSourceIF {
       // Will group data for all the nodes into single line.
       groupByLabels.add(GraphLabel.instanceName.name());
     }
-    String groupByColumn = null;
-    if (query.getGroupBy() != null) {
+    List<String> groupByColumns;
+    if (CollectionUtils.isNotEmpty(query.getGroupBy())) {
+      groupByColumns =
+          query.getGroupBy().stream().map(GraphLabel::name).collect(Collectors.toList());
       groupByLabels.addAll(
           config.getFilterColumns().entrySet().stream()
-              .filter(e -> e.getKey().equals(query.getGroupBy().name()))
+              .filter(e -> groupByColumns.contains(e.getKey()))
               .flatMap(
                   e ->
                       Streams.concat(
                           Stream.of(e.getKey()), e.getValue().getAssumesGroupBy().stream()))
+              .distinct()
               .collect(Collectors.toSet()));
-      groupByColumn = query.getGroupBy().name();
     } else {
       groupByLabels.addAll(
           config.getFilterColumns().entrySet().stream()
@@ -108,15 +111,20 @@ public class TsStorageGraphService implements GraphSourceIF {
                       Streams.concat(
                           Stream.of(e.getKey()), e.getValue().getAssumesGroupBy().stream()))
               .collect(Collectors.toSet()));
-      groupByColumn =
+      groupByColumns =
           config.getFilterColumns().entrySet().stream()
               .filter(e -> e.getValue().isDefaultGroupBy())
               .map(Map.Entry::getKey)
-              .findFirst()
-              .orElse(null);
+              .collect(Collectors.toList());
     }
-    if (response.getLayout().getMetadata() != null && groupByColumn != null) {
-      response.getLayout().getMetadata().setCurrentGroupBy(GraphLabel.valueOf(groupByColumn));
+    if (response.getLayout().getMetadata() != null && CollectionUtils.isNotEmpty(groupByColumns)) {
+      response
+          .getLayout()
+          .setMetadata(
+              response.getLayout().getMetadata().toBuilder()
+                  .currentGroupBy(
+                      groupByColumns.stream().map(GraphLabel::valueOf).collect(Collectors.toList()))
+                  .build());
     }
     Set<String> filterByLabels =
         query.getFilters().keySet().stream().map(GraphLabel::name).collect(Collectors.toSet());
@@ -127,9 +135,20 @@ public class TsStorageGraphService implements GraphSourceIF {
                     groupByLabels.contains(entry.getKey())
                         || filterByLabels.contains(entry.getKey())
                         || (query.getSettings().getSplitType() == GraphSettings.SplitType.NODE
-                            && entry.getKey().equals(GraphLabel.instanceName.name())))
+                            && entry.getKey().equals(GraphLabel.instanceName.name()))
+                        || StringUtils.isNotEmpty(entry.getValue().getDefaultValue()))
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
+    config.getFilterColumns().entrySet().stream()
+        .filter(entry -> StringUtils.isNotEmpty(entry.getValue().getDefaultValue()))
+        .filter(entry -> !query.getFilters().containsKey(GraphLabel.valueOf(entry.getKey())))
+        .forEach(
+            entry ->
+                query
+                    .getFilters()
+                    .put(
+                        GraphLabel.valueOf(entry.getKey()),
+                        ImmutableList.of(entry.getValue().getDefaultValue())));
     // Generate SQL statement
     String sql = "SELECT ";
     sql += config.getTimestampColumn() + ", ";
@@ -155,6 +174,9 @@ public class TsStorageGraphService implements GraphSourceIF {
                     })
                 .collect(Collectors.joining(" AND "))
             + " ";
+    if (StringUtils.isNotEmpty(config.getAdditionalFilter())) {
+      sql += "AND " + config.getAdditionalFilter() + " ";
+    }
     sql += "AND " + config.getTimestampColumn() + " > :startTimestamp ";
     sql += "AND " + config.getTimestampColumn() + " <= :endTimestamp ";
     sql += "ORDER BY ";
@@ -247,7 +269,7 @@ public class TsStorageGraphService implements GraphSourceIF {
             && query.getSettings().isReturnAggregatedValue()) {
           // Will add one more line with average value
           LineKey averageKey = new LineKey(key);
-          averageKey.getLabels().remove(GraphLabel.instanceName.name());
+          String instanceName = averageKey.getLabels().remove(GraphLabel.instanceName.name());
 
           GroupedLine groupedAverageLine =
               averageLines.computeIfAbsent(averageKey, k -> new GroupedLine());
@@ -255,6 +277,7 @@ public class TsStorageGraphService implements GraphSourceIF {
               .getValues()
               .computeIfAbsent(aggregateTimestamp, k -> new ArrayList<>())
               .add(rawLineValuePair.getValue().getValue());
+          groupedAverageLine.nodesListForAvg.add(instanceName);
           groupedAverageLine.total += rawLineValuePair.getValue().getValue();
           groupedAverageLine.totalPoints++;
         }
@@ -294,7 +317,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     Map<String, TsStorageGraphConfig.DataColumn> dataColumnByAlias =
         config.getDataColumns().entrySet().stream()
             .collect(Collectors.toMap(e -> e.getValue().getAlias(), Map.Entry::getValue));
-    String nameColumn = groupByColumn;
+    String nameColumn = groupByColumns.stream().findFirst().orElse(null);
     Stream.concat(groupedLines.entrySet().stream(), averageLines.entrySet().stream())
         .forEach(
             groupedLineEntry -> {
@@ -303,7 +326,7 @@ public class TsStorageGraphService implements GraphSourceIF {
               GraphData graphData = new GraphData();
               String alias = key.getLabels().remove(ALIAS);
               if (nameColumn != null && config.getDataColumns().size() == 1) {
-                graphData.setName(key.getLabels().remove(nameColumn));
+                graphData.setName(key.getLabels().get(nameColumn));
               } else {
                 graphData.setName(alias);
               }
@@ -318,25 +341,40 @@ public class TsStorageGraphService implements GraphSourceIF {
                 graphData.setWaitEventClass(
                     key.getLabels().remove(GraphLabel.waitEventClass.name()));
               }
+              if (key.getLabels().containsKey(GraphLabel.waitEventType.name())) {
+                graphData.setWaitEventType(key.getLabels().remove(GraphLabel.waitEventType.name()));
+              }
               if (key.getLabels().containsKey(GraphLabel.waitEvent.name())) {
                 graphData.setWaitEvent(key.getLabels().remove(GraphLabel.waitEvent.name()));
               }
 
               graphData.setLabels(key.getLabels());
               for (var valueGroup : groupedLine.values.entrySet()) {
-                double aggregated = Double.NaN;
-                DoubleStream valuesStream = valueGroup.getValue().stream().mapToDouble(a -> a);
+                OptionalDouble aggregated = OptionalDouble.empty();
+                DoubleStream valuesStream =
+                    valueGroup.getValue().stream()
+                        .filter(value -> !value.isNaN())
+                        .mapToDouble(a -> a);
                 TsStorageGraphConfig.DataColumn dataColumn = dataColumnByAlias.get(alias);
                 switch (dataColumn.getAggregation()) {
-                  case avg -> aggregated = valuesStream.average().getAsDouble();
-                  case sum -> aggregated = valuesStream.sum();
-                  case max -> aggregated = valuesStream.max().getAsDouble();
-                  case min -> aggregated = valuesStream.min().getAsDouble();
+                  case avg -> aggregated = valuesStream.average();
+                  case sum -> aggregated =
+                      OptionalDouble.of(
+                          // Fast hack to calculate average for ASH. Need to rebuild with
+                          // TimescaleDB
+                          // anyway.
+                          groupedLine.getNodesListForAvg().isEmpty()
+                              ? valuesStream.sum()
+                              : valuesStream.sum() / groupedLine.getNodesListForAvg().size());
+                  case max -> aggregated = valuesStream.max();
+                  case min -> aggregated = valuesStream.min();
                 }
                 graphData
                     .getPoints()
                     .add(
-                        new GraphPoint().setX(valueGroup.getKey().toEpochMilli()).setY(aggregated));
+                        new GraphPoint()
+                            .setX(valueGroup.getKey().toEpochMilli())
+                            .setY(aggregated.orElse(Double.NaN)));
               }
               response.getData().add(graphData);
             });
@@ -403,6 +441,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     private double total;
     private double totalPoints;
     private Map<Instant, List<Double>> values = new TreeMap<>();
+    private Set<String> nodesListForAvg = new HashSet<>();
 
     public double getAverage() {
       return total / totalPoints;

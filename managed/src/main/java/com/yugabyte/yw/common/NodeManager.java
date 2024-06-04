@@ -332,6 +332,17 @@ public class NodeManager extends DevopsBase {
         }
       }
 
+      if (type == NodeCommandType.Manage_Otel_Collector) {
+        boolean useSudo =
+            params instanceof ManageOtelCollector.Params
+                && ((ManageOtelCollector.Params) params).useSudo;
+        if (useSudo && StringUtils.isNotBlank(params.sshUserOverride)) {
+          // Use the sudo user for configuring the otel configs in case
+          // the node is running system level systemd.
+          sshUser = params.sshUserOverride;
+        }
+      }
+
       Integer sshPort = null;
       if (params.sshPortOverride != null) {
         sshPort = params.sshPortOverride;
@@ -451,8 +462,18 @@ public class NodeManager extends DevopsBase {
           && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
-      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)
+          || StringUtils.isNotBlank(sshUser)) {
         subCommand.add("--ssh_user");
+        if (type == NodeCommandType.Manage_Otel_Collector) {
+          boolean useSudo =
+              params instanceof ManageOtelCollector.Params
+                  && ((ManageOtelCollector.Params) params).useSudo;
+          if (!useSudo) {
+            sshUser = "yugabyte";
+          }
+        }
+
         if (StringUtils.isNotBlank(sshUser)) {
           subCommand.add(sshUser);
         } else {
@@ -1947,6 +1968,11 @@ public class NodeManager extends DevopsBase {
               // Backward compatiblity.
               imageBundleDefaultImage = taskParam.getRegion().getYbImage();
             }
+            if (StringUtils.isNotBlank(taskParam.getMachineImage())) {
+              // YBM use case - in case machineImage is used for deploying the universe we should
+              // fallback to sshUser configured in the provider.
+              taskParam.sshUserOverride = provider.getDetails().getSshUser();
+            }
             String ybImage =
                 Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
@@ -2013,25 +2039,6 @@ public class NodeManager extends DevopsBase {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
-          UniverseDefinitionTaskParams.Cluster cluster =
-              universe.getCluster(nodeTaskParam.placementUuid);
-          Map<String, String> gflags =
-              GFlagsUtil.getGFlagsForAZ(
-                  nodeTaskParam.azUuid,
-                  ServerType.TSERVER,
-                  cluster,
-                  universe.getUniverseDetails().clusters);
-
-          // Add audit log config
-          addOtelColArgs(
-              commandArgs,
-              taskParam,
-              taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-              provider,
-              userIntent);
-
           String imageBundleDefaultImage = "";
           if (toOverwriteNodeProperties != null && StringUtils.isBlank(taskParam.machineImage)) {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
@@ -2095,6 +2102,24 @@ public class NodeManager extends DevopsBase {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
+          // Add audit log config
+          addOtelColArgs(
+              commandArgs,
+              taskParam,
+              taskParam.otelCollectorEnabled,
+              taskParam.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              provider,
+              userIntent);
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
@@ -2143,6 +2168,23 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
+          // Add audit log config
+          addOtelColArgs(
+              commandArgs,
+              taskParam,
+              taskParam.otelCollectorEnabled,
+              taskParam.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              provider,
+              userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
@@ -2268,6 +2310,9 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
+          }
+          if ("stop".equalsIgnoreCase(taskParam.command) && taskParam.deconfigure) {
+            commandArgs.add("--deconfigure");
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
@@ -2563,6 +2608,9 @@ public class NodeManager extends DevopsBase {
               GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
+          if (params.useSudo) {
+            commandArgs.add("--use_sudo");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));

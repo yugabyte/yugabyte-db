@@ -53,7 +53,12 @@ export const LinuxVersionEmpty: FC<LinuxVersionEmptyProps> = ({ onAdd, viewMode 
         }
         isControl
       >
-        <YBButton variant="secondary" startIcon={<Add />} onClick={() => onAdd()}>
+        <YBButton
+          variant="secondary"
+          startIcon={<Add />}
+          onClick={() => onAdd()}
+          data-testid="LinuxVersionEmpty-AddLinuxVersion"
+        >
           {t('addLinuxVersion')}
         </YBButton>
       </RbacValidator>

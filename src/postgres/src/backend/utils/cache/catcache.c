@@ -1803,6 +1803,8 @@ SearchCatCacheMiss(CatCache *cache,
 			 * For safety, disable catcache logging within the scope of this
 			 * function as YBDatumToString below may trigger additional cache
 			 * lookups (to get the attribute type info).
+			 * Also only call YBDatumToString when MyDatabaseId is valid to
+			 * avoid PG FATAL.
 			 */
 			yb_debug_log_catcache_events = false;
 			for (int i = 0; i < nkeys; i++)
@@ -1814,8 +1816,10 @@ SearchCatCacheMiss(CatCache *cache,
 				Oid typid = OIDOID; // default.
 				if (attnum > 0)
 					typid = TupleDescAttr(cache->cc_tupdesc, attnum - 1)->atttypid;
-
-				appendStringInfoString(&buf, YBDatumToString(cur_skey[i].sk_argument, typid));
+				if (OidIsValid(MyDatabaseId))
+					appendStringInfoString(&buf, YBDatumToString(cur_skey[i].sk_argument, typid));
+				else
+					appendStringInfo(&buf, "typid=%u value=<not logged>", typid);
 			}
 			ereport(LOG,
 					(errmsg("Catalog cache miss on cache with id %d:\n"

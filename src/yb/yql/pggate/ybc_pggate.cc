@@ -77,8 +77,6 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
@@ -303,17 +301,27 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
 }
 
-// Sets the client address in the ASH circular buffer and returns the address family.
-// The host comes from the class HostPort and that only accepts IPv4/IPv6 as of today,
-// that's why there is no check for a unix domain socket here.
-uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* client_addr) {
-  if (host.find(':') == std::string::npos) { // IPv4 address
-    inet_pton(AF_INET, host.c_str(), client_addr);
-    return AF_INET;
+// Sets the client address in the ASH circular buffer.
+void AshGetTServerClientAddress(
+    uint8_t addr_family, const std::string& host, unsigned char* client_addr) {
+  // If addr_family is AF_UNIX or AF_UNSPEC, it will be nulled out in the view.
+  switch (addr_family) {
+    case AF_UNIX:
+    case AF_UNSPEC:
+      break;
+    case AF_INET:
+    case AF_INET6: {
+      int res = inet_pton(addr_family, host.c_str(), client_addr);
+      if (res == 0) {
+        LOG(DFATAL) << "IP address not in presentation format";
+      } else if (res == -1) {
+        LOG(DFATAL) << "Not a valid address family: " << addr_family;
+      }
+      break;
+    }
+    default:
+      LOG(DFATAL) << "Unknown address family found: " << addr_family;
   }
-  // IPv6 address
-  inet_pton(AF_INET6, host.c_str(), client_addr);
-  return AF_INET6;
 }
 
 uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
@@ -343,7 +351,6 @@ void AshCopyTServerSample(
 
   cb_metadata->query_id = tserver_metadata.query_id();
   cb_metadata->session_id = tserver_metadata.session_id();
-  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_status_code());
@@ -360,8 +367,10 @@ void AshCopyTServerSample(
 
   AshCopyAuxInfo(tserver_sample, component, cb_sample);
 
-  cb_metadata->addr_family = AshGetTServerClientAddress(
-      tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
+  cb_metadata->addr_family = tserver_metadata.addr_family();
+  AshGetTServerClientAddress(cb_metadata->addr_family, tserver_metadata.client_host_port().host(),
+                             cb_metadata->client_addr);
+  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
 }
 
 void AshCopyTServerSamples(
@@ -733,14 +742,13 @@ YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
                                                 legacy_colocated_database));
 }
 
-YBCStatus YBCPgNewCreateDatabase(const char *database_name,
-                                 const YBCPgOid database_oid,
-                                 const YBCPgOid source_database_oid,
-                                 const YBCPgOid next_oid,
-                                 bool colocated,
-                                 YBCPgStatement *handle) {
+YBCStatus YBCPgNewCreateDatabase(
+    const char* database_name, const YBCPgOid database_oid, const YBCPgOid source_database_oid,
+    const char* source_database_name, const YBCPgOid next_oid, const bool colocated,
+    const int64_t clone_time, YBCPgStatement* handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
-      database_name, database_oid, source_database_oid, next_oid, colocated, handle));
+      database_name, database_oid, source_database_oid, source_database_name, next_oid, colocated,
+      clone_time, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
@@ -1786,6 +1794,17 @@ YBCStatus YBCAddForeignKeyReferenceIntent(
   });
 }
 
+YBCStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
+    YBCPgOid database_oid, const PgExplicitRowLockParams *params, bool is_region_local) {
+  return ToYBCStatus(pgapi->AddExplicitRowLockIntent(
+      {database_oid, table_relfilenode_oid}, YbctidAsSlice(ybctid), *params, is_region_local));
+}
+
+YBCStatus YBCFlushExplicitRowLockIntents() {
+  return ToYBCStatus(pgapi->FlushExplicitRowLockIntents());
+}
+
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;
   static bool cached = false;
@@ -1871,6 +1890,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .ysql_enable_db_catalog_version_mode =
           &FLAGS_ysql_enable_db_catalog_version_mode,
+      .TEST_ysql_hide_catalog_version_increment_log =
+          &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
   };
   // clang-format on
   return &accessor;
@@ -2086,10 +2107,12 @@ YBCStatus YBCGetTableKeyRanges(
 // Replication Slots.
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
+                                                     plugin_name,
                                                      database_oid,
                                                      snapshot_action,
                                                      handle));
@@ -2156,6 +2179,7 @@ YBCStatus YBCPgListReplicationSlots(
 
       new (dest) YBCReplicationSlotDescriptor{
           .slot_name = YBCPAllocStdString(info.slot_name()),
+          .output_plugin = YBCPAllocStdString(info.output_plugin_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
           .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
@@ -2203,6 +2227,7 @@ YBCStatus YBCPgGetReplicationSlot(
 
   new (*replication_slot) YBCReplicationSlotDescriptor{
       .slot_name = YBCPAllocStdString(slot_info.slot_name()),
+      .output_plugin = YBCPAllocStdString(slot_info.output_plugin_name()),
       .stream_id = YBCPAllocStdString(slot_info.stream_id()),
       .database_oid = slot_info.database_oid(),
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
@@ -2350,6 +2375,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   *DCHECK_NOTNULL(record_batch) = NULL;
   const auto resp = result.get();
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
+  auto response_to_pg_conversion_start = GetCurrentTimeMicros();
   auto row_count = resp.cdc_sdk_proto_records_size();
 
   // Used for logging a summary of the response received from the CDC service.
@@ -2494,6 +2520,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   } else {
     VLOG(1) << "Received 0 rows in GetConsistentChangesResponsePB response\n";
   }
+
+  auto time_in_conversion = GetCurrentTimeMicros() - response_to_pg_conversion_start;
+  VLOG(1) << "Time spent in converting from QLValuePB to PG datum in PgGate: "
+          << time_in_conversion << " us";
 
   return YBCStatusOK();
 }

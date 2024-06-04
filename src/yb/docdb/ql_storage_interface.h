@@ -47,7 +47,8 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
+      const DocDBStatistics* statistics = nullptr) const = 0;
 
   virtual Status BuildYQLScanSpec(
       const QLReadRequestPB& request,

@@ -183,7 +183,10 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           [&catalog_manager = catalog_manager_](const NamespaceIdentifierPB& ns_identifier) {
             return catalog_manager.FindNamespace(ns_identifier);
           },
-      .get_tables_func = std::bind(&XClusterSourceManager::GetTablesToReplicate, this, _1),
+      .get_tables_func =
+          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
+            return GetTablesEligibleForXClusterReplication(catalog_manager, namespace_id);
+          },
       .create_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
       .checkpoint_xcluster_streams_func =
@@ -227,15 +230,6 @@ XClusterSourceManager::GetOutboundReplicationGroup(
   return *outbound_replication_group;
 }
 
-Result<std::vector<TableInfoPtr>> XClusterSourceManager::GetTablesToReplicate(
-    const NamespaceId& namespace_id) {
-  auto table_infos = VERIFY_RESULT(catalog_manager_.GetTableInfosForNamespace(namespace_id));
-  EraseIf(
-      [](const TableInfoPtr& table) { return !IsTableEligibleForXClusterReplication(*table); },
-      &table_infos);
-  return table_infos;
-}
-
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>>
 XClusterSourceManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
@@ -272,9 +266,9 @@ std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
   return std::nullopt;
 }
 
-Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicationGroup(
+Status XClusterSourceManager::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceName>& namespace_names, const LeaderEpoch& epoch) {
+    const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch) {
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     SCHECK(
@@ -295,8 +289,7 @@ Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicatio
   auto outbound_replication_group = InitOutboundReplicationGroup(replication_group_id, metadata);
 
   // This will persist the group to SysCatalog.
-  auto namespace_ids =
-      VERIFY_RESULT(outbound_replication_group->AddNamespaces(epoch, namespace_names));
+  RETURN_NOT_OK(outbound_replication_group->AddNamespaces(epoch, namespace_ids));
 
   se.Cancel();
   {
@@ -304,34 +297,37 @@ Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicatio
     outbound_replication_group_map_[replication_group_id] = std::move(outbound_replication_group);
   }
 
-  return namespace_ids;
+  return Status::OK();
 }
 
-Result<NamespaceId> XClusterSourceManager::AddNamespaceToOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name,
-    const LeaderEpoch& epoch) {
-  auto outbound_replication_group =
-      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
-
-  return outbound_replication_group->AddNamespace(epoch, namespace_name);
-}
-
-Status XClusterSourceManager::RemoveNamespaceFromOutboundReplicationGroup(
+Status XClusterSourceManager::AddNamespaceToOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const LeaderEpoch& epoch) {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
-  return outbound_replication_group->RemoveNamespace(epoch, namespace_id);
+  RETURN_NOT_OK(outbound_replication_group->AddNamespace(epoch, namespace_id));
+
+  return Status::OK();
+}
+
+Status XClusterSourceManager::RemoveNamespaceFromOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  return outbound_replication_group->RemoveNamespace(epoch, namespace_id, target_master_addresses);
 }
 
 Status XClusterSourceManager::DeleteOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id, const LeaderEpoch& epoch) {
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   // This will remove the group from SysCatalog.
-  RETURN_NOT_OK(outbound_replication_group->Delete(epoch));
+  RETURN_NOT_OK(outbound_replication_group->Delete(target_master_addresses, epoch));
 
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
@@ -378,6 +374,24 @@ Result<IsOperationDoneResult> XClusterSourceManager::IsCreateXClusterReplication
       target_master_addresses, epoch);
 }
 
+Status XClusterSourceManager::AddNamespaceToTarget(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& target_master_addresses, const NamespaceId& source_namespace_id,
+    const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->AddNamespaceToTarget(
+      target_master_addresses, source_namespace_id, epoch);
+}
+
+Result<IsOperationDoneResult> XClusterSourceManager::IsAlterXClusterReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->IsAlterXClusterReplicationDone(target_master_addresses, epoch);
+}
+
 class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
  public:
   explicit XClusterCreateStreamContextImpl(
@@ -416,7 +430,7 @@ XClusterSourceManager::CreateStreamsForDbScoped(
   record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
   return CreateStreamsInternal(
-      table_ids, SysCDCStreamEntryPB::ACTIVE, options, /*transactional=*/true, epoch);
+      table_ids, SysCDCStreamEntryPB::INITIATED, options, /*transactional=*/true, epoch);
 }
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
@@ -920,6 +934,10 @@ Status XClusterSourceManager::PopulateXClusterStatus(
   for (const auto& [table_id, streams] : GetAllStreams()) {
     for (const auto& stream : streams) {
       XClusterOutboundTableStreamStatus table_stream_status;
+      auto table_info_res = catalog_manager_.GetTableById(table_id);
+      if (table_info_res) {
+        table_stream_status.full_table_name = GetFullTableName(*table_info_res.get());
+      }
       table_stream_status.table_id = table_id;
       table_stream_status.stream_id = stream->StreamId();
       table_stream_status.state =
@@ -961,7 +979,6 @@ Status XClusterSourceManager::PopulateXClusterStatus(
 
       for (const auto& [table_id, table_info] : namespace_status.table_infos()) {
         XClusterOutboundReplicationGroupTableStatus table_status;
-        table_status.table_id = table_id;
         if (table_info.has_stream_id()) {
           auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(table_info.stream_id()));
           auto stream_status = FindOrNull(stream_status_map, stream_id);
@@ -1074,4 +1091,33 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
 
   return Status::OK();
 }
+
+Status XClusterSourceManager::RepairOutboundReplicationGroupAddTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const xrepl::StreamId& stream_id, const LeaderEpoch& epoch) {
+  auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+
+  auto stream_info = VERIFY_RESULT(catalog_manager_.GetXReplStreamInfo(stream_id));
+  auto stream_table_ids = stream_info->table_id();
+  SCHECK(
+      stream_info->IsXClusterStream() && stream_table_ids.size() == 1, InvalidArgument,
+      Format("Stream $0 is not valid for use in xCluster", stream_id));
+  SCHECK_EQ(
+      stream_table_ids.Get(0), table_id, InvalidArgument,
+      Format("Stream $0 belongs to a different table", stream_id));
+
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->RepairAddTable(
+      table_info->namespace_id(), table_id, stream_id, epoch);
+}
+
+Status XClusterSourceManager::RepairOutboundReplicationGroupRemoveTable(
+    const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+    const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->RepairRemoveTable(table_id, epoch);
+}
+
 }  // namespace yb::master

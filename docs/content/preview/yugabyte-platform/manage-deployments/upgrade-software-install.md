@@ -14,7 +14,8 @@ type: docs
 
 YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade, where each node is upgraded one at a time. YugabyteDB [automatically re-balances](../../../explore/linear-scalability/data-distribution/) the universe as nodes are taken down and brought back up during the upgrade.
 
-If you have issues after upgrading a universe, you can roll back in-place and restore the universe to its state before the upgrade. Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.
+If you have issues after upgrading a universe, you can roll back in-place and restore the universe to its state before the upgrade.
+<!-- Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later. -->
 
 ## View and import releases
 
@@ -54,7 +55,8 @@ You upgrade a universe in the following phases:
 
 - Upgrade - Update the nodes in the universe to the new database version.
 - Monitor - Evaluate the performance and functioning of the new version.
-- Rollback - If you encounter any issues while monitoring the universe, you have the option to roll back in-place and restore the universe to its state before the upgrade. (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.)
+- Rollback - If you encounter any issues while monitoring the universe, you have the option to roll back in-place and restore the universe to its state before the upgrade.
+<!-- (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.) -->
 - Finalize - Depending on the changes included in the upgrade, you may need to finalize the upgrade to make the upgrade permanent. The system will tell you if this step is necessary. After finalizing, you can no longer roll back.
 
 ### Perform the upgrade
@@ -93,7 +95,7 @@ YugabyteDB Anywhere starts the upgrade process, and you can view the progress on
 
 #### Upgrade manually-provisioned on-premises universe
 
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe from a database version prior to 2.18.0 to a version at 2.18.0 or later, you must additionally manually install YB Controller (YBC) after the otherwise-automated software upgrade procedure completes.
+If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/on-premises/) universe from a database version prior to 2.18.0 to a version at 2.18.0 or later, you must additionally manually install YB Controller (YBC) after the otherwise-automated software upgrade procedure completes.
 
 To install YBC, call the following API after the software upgrade:
 

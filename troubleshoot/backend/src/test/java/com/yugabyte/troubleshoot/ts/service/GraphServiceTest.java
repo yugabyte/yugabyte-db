@@ -60,17 +60,23 @@ public class GraphServiceTest {
     pgStatStatementsService.save(createStatements("node2", 1L, 30));
     pgStatStatementsService.save(createStatements("node3", 1L, 30));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "TServer", "Consensus", "WAL_Sync", 1L, "0.0.0.0", 50));
+        createAshEntries(
+            "node1", "TServer", "Consensus", "Network", "WAL_Sync", 1L, "0.0.0.0", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "YSQL", "YSQLQuery", "QueryProcessing", 200L, "1.1.1.1", 30));
+        createAshEntries(
+            "node1", "YSQL", "YSQLQuery", "Network", "QueryProcessing", 200L, "1.1.1.1", 30));
     activeSessionHistoryService.save(
-        createAshEntries("node1", "YSQL", "TServerWait", "CatalogRead", 200L, "1.1.1.1", 50));
+        createAshEntries(
+            "node1", "YSQL", "TServerWait", "Network", "CatalogRead", 200L, "1.1.1.1", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "TServer", "Consensus", "WAL_Sync", 1L, "0.0.0.0", 30));
+        createAshEntries(
+            "node2", "TServer", "Consensus", "Network", "WAL_Sync", 1L, "0.0.0.0", 30));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "YSQL", "YSQLQuery", "QueryProcessing", 200L, "2.2.2.2", 50));
+        createAshEntries(
+            "node2", "YSQL", "YSQLQuery", "Network", "QueryProcessing", 200L, "2.2.2.2", 50));
     activeSessionHistoryService.save(
-        createAshEntries("node2", "YSQL", "TServerWait", "CatalogRead", 300L, "2.2.2.2", 50));
+        createAshEntries(
+            "node2", "YSQL", "TServerWait", "Network", "CatalogRead", 300L, "2.2.2.2", 50));
 
     server = MockRestServiceServer.createServer(prometheusClientTemplate);
   }
@@ -81,8 +87,9 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_tserver");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -101,13 +108,14 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -126,14 +134,15 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
-    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -153,7 +162,7 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(
         ImmutableMap.of(
             GraphLabel.queryId,
@@ -161,6 +170,7 @@ public class GraphServiceTest {
             GraphLabel.regionCode,
             ImmutableList.of("us-west-1")));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -179,10 +189,11 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
-    graphQuery.setGroupBy(GraphLabel.queryId);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.queryId));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -202,10 +213,11 @@ public class GraphServiceTest {
     GraphQuery graphQuery = new GraphQuery();
     graphQuery.setEnd(periodEnd);
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
-    graphQuery.setName("active_session_history");
+    graphQuery.setName("active_session_history_ysql");
     graphQuery.setFilters(ImmutableMap.of(GraphLabel.regionCode, ImmutableList.of("us-west-1")));
-    graphQuery.setGroupBy(GraphLabel.clientNodeIp);
+    graphQuery.setGroupBy(ImmutableList.of(GraphLabel.clientNodeIp));
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -235,6 +247,7 @@ public class GraphServiceTest {
             ImmutableList.of("us-west-1")));
     graphQuery.setName("query_latency");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -264,6 +277,7 @@ public class GraphServiceTest {
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     List<GraphResponse> response =
         graphService.getGraphs(metadata.getId(), ImmutableList.of(graphQuery));
@@ -284,6 +298,7 @@ public class GraphServiceTest {
     graphQuery.setStart(periodEnd.minus(Duration.ofMinutes(200)));
     graphQuery.setName("ysql_sql_latency");
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query="
@@ -327,7 +342,9 @@ public class GraphServiceTest {
         ImmutableMap.of(
             GraphLabel.regionCode, ImmutableList.of("us-west-1"),
             GraphLabel.instanceType, ImmutableList.of("tserver")));
+    graphQuery.setFillMissingPoints(false);
     graphQuery.setSettings(new GraphSettings());
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query="
@@ -374,12 +391,14 @@ public class GraphServiceTest {
         ImmutableMap.of(
             GraphLabel.regionCode, ImmutableList.of("us-west-1"),
             GraphLabel.instanceType, ImmutableList.of("tserver")));
+    graphQuery.setFillMissingPoints(false);
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
     settings.setSplitType(GraphSettings.SplitType.NODE);
     settings.setSplitCount(2);
     settings.setReturnAggregatedValue(true);
     graphQuery.setSettings(settings);
+    graphQuery.setFillMissingPoints(false);
 
     String expectedQuery =
         "http://localhost:9090/api/v1/query_range?query=((avg(rate(rpc_latency_sum%7B"
@@ -471,6 +490,7 @@ public class GraphServiceTest {
       String nodeName,
       String waitEventComponent,
       String waitEventClass,
+      String waitEventType,
       String waitEvent,
       long queryId,
       String clientNodeIp,
@@ -483,6 +503,7 @@ public class GraphServiceTest {
                     nodeName,
                     waitEventComponent,
                     waitEventClass,
+                    waitEventType,
                     waitEvent,
                     queryId,
                     clientNodeIp))
@@ -494,6 +515,7 @@ public class GraphServiceTest {
       String nodeName,
       String waitEventComponent,
       String waitEventClass,
+      String waitEventType,
       String waitEvent,
       long queryId,
       String clientNodeIp) {
@@ -505,6 +527,7 @@ public class GraphServiceTest {
         .setRpcRequestId(new Random().nextLong())
         .setWaitEventComponent(waitEventComponent)
         .setWaitEventClass(waitEventClass)
+        .setWaitEventType(waitEventType)
         .setWaitEvent(waitEvent)
         .setTopLevelNodeId(UUID.randomUUID())
         .setQueryId(queryId)

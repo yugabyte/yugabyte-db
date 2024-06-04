@@ -12,7 +12,8 @@ import BackIcon from './images/back.svg';
 export default class YBModalForm extends Component {
   render() {
     const {
-      isButtonDisabled,
+      isButtonDisabled: isFormDisabled,
+      isSubmitDisabled,
       visible,
       onHide,
       size,
@@ -107,7 +108,7 @@ export default class YBModalForm extends Component {
                       loading={props.isSubmitting}
                       btnText={submitLabel}
                       btnType="submit"
-                      disabled={props.isSubmitting || isButtonDisabled}
+                      disabled={props.isSubmitting || isFormDisabled || isSubmitDisabled}
                       data-testid={submitTestId}
                     />
                     {showCancelButton && (
@@ -116,7 +117,7 @@ export default class YBModalForm extends Component {
                         btnText={cancelLabel}
                         onClick={onHide}
                         data-testid={cancelTestId}
-                        disabled={isButtonDisabled}
+                        disabled={isFormDisabled}
                       />
                     )}
                     {footerAccessory && (

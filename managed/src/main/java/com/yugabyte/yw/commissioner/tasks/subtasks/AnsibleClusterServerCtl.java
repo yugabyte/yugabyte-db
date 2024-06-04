@@ -35,8 +35,9 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String command;
     public int sleepAfterCmdMills = 0;
     public boolean isIgnoreError = false;
-
     public boolean checkVolumesAttached = false;
+    // Set it to deconfigure the server like deleting the conf file.
+    public boolean deconfigure = false;
   }
 
   @Override

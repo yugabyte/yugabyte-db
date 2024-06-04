@@ -16,7 +16,7 @@ properties:
       type: string
       format: uuid
   preferred_region:
-    description: The region to nominate as the preferred region in a multi-region cluster
+    description: The region to nominate as the preferred region in a geo-partitioned multi-region cluster
     type: string
     format: uuid
   access_key_code:

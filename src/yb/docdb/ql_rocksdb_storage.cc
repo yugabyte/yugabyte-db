@@ -48,9 +48,11 @@ Status QLRocksDBStorage::GetIterator(
     const ReadOperationData& read_operation_data,
     const qlexpr::QLScanSpec& spec,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
+    std::unique_ptr<YQLRowwiseIteratorIf> *iter,
+    const docdb::DocDBStatistics* statistics) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
+      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
+      statistics);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();

@@ -56,7 +56,7 @@ ycqlsh> use demo;
 ycqlsh:demo> CREATE TABLE t_demo(id INT PRIMARY KEY);
 ```
 
-Note that although tables are [internally sharded](../../../architecture/concepts/yb-tserver/) across multiple YB-TServer pods, every YB-TServer pod has the ability to process any query, irrespective of its actual tablet assignment.
+Note that although tables are [internally sharded](../../../architecture/yb-tserver/) across multiple YB-TServer pods, every YB-TServer pod has the ability to process any query, irrespective of its actual tablet assignment.
 
 ## Connect externally
 

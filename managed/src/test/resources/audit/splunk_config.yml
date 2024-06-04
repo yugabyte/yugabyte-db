@@ -25,13 +25,14 @@ receivers:
     attributes: {audit_log_type: ycql}
     exclude: [/home/yugabyte/tserver/logs/*.gz]
     include: [/home/yugabyte/tserver/logs/yb-tserver.*.WARNING.*]
+    multiline: {line_start_pattern: '([A-Z]\d{4})'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*AUDIT: user:.*$"', type: filter}
+      expr: 'body not matches "^.*AUDIT: user:(.|\\n|\\r|\\s)*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
-      regex: '^((?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})
-        (?P<thread_id>\d+) (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]scope:(?P<scope>[^|]+)[|]operation:(?P<statement>.*))|(.*)$'
+      regex: '(?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+)
+        (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]scope:(?P<scope>[^|]+)[|]operation:(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: ms, layout_type: epoch, parse_from: attributes.timestamp}
       type: regex_parser
     start_at: beginning

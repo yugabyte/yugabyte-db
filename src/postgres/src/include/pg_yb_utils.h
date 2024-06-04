@@ -1140,4 +1140,7 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
+
+extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
+
 #endif /* PG_YB_UTILS_H */

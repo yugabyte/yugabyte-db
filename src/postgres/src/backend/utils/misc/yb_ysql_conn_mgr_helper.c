@@ -41,6 +41,7 @@
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
+#include "storage/procarray.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
@@ -647,6 +648,7 @@ YbHandleSetSessionParam(int yb_client_id)
  * Checks done in this function:
  *  		1. Does the role exist.
  * 			2. Is the role permitted to login.
+ * 			3. Check whether connection limit is exceeded for the role
  */
 static int8_t
 SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
@@ -654,6 +656,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 {
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
+	int yb_net_client_connections = 0;
 	char	   *rname;
 
 	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
@@ -691,9 +694,39 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	}
 
 	/*
-	 * TODO(janand) GH #18886 Add support for "too many connections for role"
-	 * error.
-	 */
+	* yb_num_logical_conn: Stores count for all client connections made to conn mgr.
+	* yb_num_physical_conn_from_ysqlconnmgr: Stores physical connection count created from
+	* conn mgr to yb/database.
+	* CountUserBackends: Function returns total number of backend connections made by given
+	* user(roleid). It will be sum of physical connections from connection manager and direct
+	* connections to yb/database. 
+	*/
+
+	uint32_t yb_num_logical_conn = 0,
+				 yb_num_physical_conn_from_ysqlconnmgr = 0;
+
+		yb_net_client_connections = CountUserBackends(*roleid);
+
+		if (IsYugaByteEnabled() &&
+		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr)) {
+			yb_net_client_connections +=
+			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		
+		}
+	
+	if (rform->rolconnlimit >= 0 &&
+			!rform->rolsuper &&
+			yb_net_client_connections + 1 > rform->rolconnlimit)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("too many connections for role \"%s\"", rname)));
+		ReleaseSysCache(roleTup);
+		return -1;
+	}
+
 	ReleaseSysCache(roleTup);
 	return 0;
 }
@@ -877,4 +910,28 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 
 	shmdt(shmp);
 	return true;
+}
+
+/* 
+ * Create a provision to send a ParameterStatus packet back to Connection Manager to
+ * change the cached value of a certain GUC variable, outside of the usual
+ * ReportGucOption function. This can be useful for some implicit changes to
+ * GUC variable values that do not normally send a ParameterStatus packet
+ * back to Connection Manager.
+ */
+void
+YbSendParameterStatusForConnectionManager(const char *name, const char *value)
+{
+	Assert(YbIsClientYsqlConnMgr());
+
+	CHECK_FOR_INTERRUPTS();
+	StringInfoData msgbuf;
+
+	pq_beginmessage(&msgbuf, 'S');
+	pq_sendstring(&msgbuf, name);
+	pq_sendstring(&msgbuf, value);
+	pq_endmessage(&msgbuf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
 }

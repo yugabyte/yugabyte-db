@@ -349,9 +349,11 @@ func init() {
 		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
 			"for each cluster as a separate flag or as comma separated values.")
 
-	// Advanced configuratopn // taken only for Primary cluster
+	// Advanced configuration // taken only for Primary cluster
 	createUniverseCmd.Flags().Bool("assign-public-ip", true,
 		"[Optional] Assign Public IPs to the DB servers for connections over the internet.")
+	createUniverseCmd.Flags().Bool("assign-static-public-ip", true,
+		"[Optional] Assign Static Public IPs to the DB servers for connections over the internet.")
 	createUniverseCmd.Flags().Bool("enable-ysql", true,
 		"[Optional] Enable YSQL endpoint.")
 	createUniverseCmd.Flags().String("ysql-password", "",

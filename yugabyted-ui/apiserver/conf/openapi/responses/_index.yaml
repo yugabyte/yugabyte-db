@@ -213,7 +213,7 @@ BackupDetailsListResponse:
       schema:
         type: object
         properties:
-          schedules:
+          backup:
             type: array
             uniqueItems: true
             items:
@@ -227,7 +227,7 @@ RestoreDetailsListResponse:
       schema:
         type: object
         properties:
-          schedules:
+          restore:
             type: array
             uniqueItems: true
             items:

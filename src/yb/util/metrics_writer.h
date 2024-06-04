@@ -72,6 +72,10 @@ class PrometheusWriter {
     return num_of_entries_cut_off_;
   }
 
+  int64_t TEST_GetAggregatedValue(std::string metric_name, std::string entity_id) {
+    return aggregated_values_[metric_name][entity_id];
+  }
+
  private:
   friend class MetricsTest;
   // FlushSingleEntry() was a function template with type of "value" as template

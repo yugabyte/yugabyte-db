@@ -6,7 +6,6 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
@@ -395,9 +394,12 @@ public class NodeAgentPoller {
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
-    log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
-    List<String> command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
-    nodeAgentClient.executeCommand(nodeAgent, command);
+    if (dirs.size() > 0) {
+      log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
+      List<String> command =
+          ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
+      nodeAgentClient.executeCommand(nodeAgent, command).processErrors();
+    }
     installerFiles.getCopyFileInfos().stream()
         .forEach(
             f -> {
@@ -406,13 +408,20 @@ public class NodeAgentPoller {
                   f.getSourcePath(),
                   f.getTargetPath(),
                   nodeAgent.getUuid());
-              nodeAgentClient.uploadFile(
-                  nodeAgent, f.getSourcePath().toString(), f.getTargetPath().toString());
+              int perm = 0;
               if (StringUtils.isNotBlank(f.getPermission())) {
-                nodeAgentClient.executeCommand(
-                    nodeAgent,
-                    Lists.newArrayList("chmod", f.getPermission(), f.getTargetPath().toString()));
+                try {
+                  perm = Integer.parseInt(f.getPermission().trim(), 8);
+                } catch (NumberFormatException e) {
+                }
               }
+              nodeAgentClient.uploadFile(
+                  nodeAgent,
+                  f.getSourcePath().toString(),
+                  f.getTargetPath().toString(),
+                  null /*user*/,
+                  perm,
+                  null /*timeout*/);
             });
   }
 

@@ -1,7 +1,6 @@
-# contrib/yb_xcluster_ddl_replication/yb_schedule
-
 test: setup
 test: create_table
+test: create_index
 
 test: colocated_setup
 test: create_colocated_table

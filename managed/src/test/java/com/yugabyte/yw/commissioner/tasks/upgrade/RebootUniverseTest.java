@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -132,6 +133,35 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     assertEquals(73, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testRollingRebootNotLiveNode() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.nodeDetailsSet.iterator().next().state = NodeDetails.NodeState.UpdateGFlags;
+          u.setUniverseDetails(details);
+        },
+        false);
+    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    TaskInfo taskInfo = submitTask(taskParams);
+    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    for (int i = 0; i < subTasks.size(); i++) {
+      if (subTasksByPosition.get(i).get(0).getTaskType() == TaskType.FreezeUniverse) {
+        break;
+      }
+      // Verify no CheckNodesAreSafeToTakeDown before freeze
+      assertNotEquals(
+          TaskType.CheckNodesAreSafeToTakeDown, subTasksByPosition.get(i).get(0).getTaskType());
+    }
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

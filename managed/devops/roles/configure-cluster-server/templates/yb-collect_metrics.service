@@ -1,0 +1,13 @@
+[Unit]
+Description=Yugabyte collect metrics
+
+[Service]
+{% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Type=oneshot
+WorkingDirectory={{yb_home_dir}}/bin
+ExecStart=/bin/bash {{yb_home_dir}}/bin/collect_metrics_wrapper.sh
+
+[Install]

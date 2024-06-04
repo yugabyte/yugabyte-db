@@ -12067,6 +12067,7 @@ createdb_opt_name:
 					$$ = pstrdup($1);
 				}
 			| COLOCATION				    { $$ = pstrdup($1); }
+			| AS OF							{ $$ = pstrdup("clone_time"); }
 		;
 
 /*

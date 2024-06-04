@@ -128,16 +128,16 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
+    sudo useradd -u <yugabyte_user_uid> -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    - `yugabyte_user_uid` is a common UID for the `yugabyte` user to use across all nodes. Use the same UID for the `yugabyte` user on all nodes in the same cluster. If you don't use a common UID, you may run into issues, for example, if you are using NFS for backups.
+
+    - `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
-
-    If you are using NFS for backups, ensure the `yugabyte` user has the same UID across all nodes in the same cluster.
 
 1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
 

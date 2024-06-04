@@ -265,6 +265,15 @@ extern TableScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
+extern void
+YbBindDatumToColumn(YBCPgStatement stmt,
+					int attr_num,
+					Oid type_id,
+					Oid collation_id,
+					Datum datum,
+					bool is_null,
+					const YBCPgTypeEntity *null_type_entity);
+
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
@@ -372,6 +381,7 @@ extern bool YbFetchTableSlot(Relation relation, ItemPointer tid, TupleTableSlot 
  * This API is needed for reading data from a catalog (system table).
  */
 extern bool YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple);
+extern void YBCFlushTupleLocks();
 
 /*
  * ANALYZE support: sampling of table data

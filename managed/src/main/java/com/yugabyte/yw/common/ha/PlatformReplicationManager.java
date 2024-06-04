@@ -342,11 +342,12 @@ public class PlatformReplicationManager {
                     return;
                   }
 
-                  // Update local last backup time if creating the backup succeeded.
                   config
                       .getLocal()
                       .ifPresent(
                           localInstance -> {
+                            // Update local last backup time since creating the backup succeeded.
+                            localInstance.updateLastBackup();
                             remoteInstances.forEach(
                                 instance -> {
                                   try {

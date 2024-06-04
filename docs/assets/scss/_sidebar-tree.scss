@@ -43,6 +43,10 @@
       top: 0;
       transition: width 100ms ease-in-out;
       max-width: 100%;
+
+      &.click-to-expand {
+        cursor: pointer;
+      }
     }
 
     .left-sidebar-wrap-inner {

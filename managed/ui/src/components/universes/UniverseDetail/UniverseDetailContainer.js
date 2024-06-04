@@ -29,9 +29,7 @@ import {
   getAlertsSuccess,
   getAlertsFailure
 } from '../../../actions/customers';
-
 import { openDialog, closeDialog } from '../../../actions/modal';
-
 import {
   fetchUniverseTables,
   fetchUniverseTablesSuccess,
@@ -40,7 +38,12 @@ import {
 } from '../../../actions/tables';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { toast } from 'react-toastify';
-import { compareYBSoftwareVersions, getPrimaryCluster, isVersionStable } from '../../../utils/universeUtilsTyped';
+import {
+  compareYBSoftwareVersions,
+  getPrimaryCluster,
+  isVersionStable
+} from '../../../utils/universeUtilsTyped';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -96,7 +99,7 @@ const mapDispatchToProps = (dispatch) => {
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
     },
-    showLinuxSoftwareUpgradeModal : () => {
+    showLinuxSoftwareUpgradeModal: () => {
       dispatch(openDialog('linuxVersionUpgradeModal'));
     },
     showSoftwareUpgradesNewModal: () => {
@@ -211,7 +214,12 @@ function mapStateToProps(state) {
         const primaryCluster = getPrimaryCluster(
           state.universe.currentUniverse.data.universeDetails.clusters
         );
+
         const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
+        const isReleasesEnabled =
+          state?.customer?.runtimeConfigs?.data?.configEntries?.find(
+            (config) => config.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
+          )?.value === 'true';
         // Display the number of upgrades available in the respective track
         // regardless of skipVersionCheck runtime flag
         // If current version belongs to the stable track, see available upgrades only in the stable track
@@ -219,38 +227,46 @@ function mapStateToProps(state) {
         const isCurrentVersionStable = isVersionStable(currentVersion);
         if (currentVersion) {
           let supportedSoftwareVersions;
-          const softwareVersions = state.universe.supportedReleases?.data;
+          const softwareVersions = isReleasesEnabled
+            ? state.customer?.dbVersionsWithMetadata
+            : state.universe.supportedReleases?.data;
           if (isCurrentVersionStable) {
-            supportedSoftwareVersions = softwareVersions?.filter(
-              (version) => isVersionStable(version))?.toSorted((versionA, versionB) =>
-                compareYBSoftwareVersions({
-                  versionA: versionB,
-                  versionB: versionA, options: {
-                    suppressFormatError: true,
-                    requireOrdering: true
-                  }
-                }
-                )) ?? [];
+            supportedSoftwareVersions =
+              softwareVersions
+                ?.filter((version) => isVersionStable(version))
+                ?.toSorted((versionA, versionB) =>
+                  compareYBSoftwareVersions({
+                    versionA: versionB,
+                    versionB: versionA,
+                    options: {
+                      suppressFormatError: true,
+                      requireOrdering: true
+                    }
+                  })
+                ) ?? [];
           } else {
-            supportedSoftwareVersions = softwareVersions?.filter(
-              (version) => !isVersionStable(version))?.toSorted((versionA, versionB) =>
-                compareYBSoftwareVersions({
-                  versionA: versionB,
-                  versionB: versionA,
-                  options: {
-                    suppressFormatError: true,
-                    requireOrdering: true
-                  }
-                }
-                )) ?? [];
+            supportedSoftwareVersions =
+              softwareVersions
+                ?.filter((version) => !isVersionStable(version))
+                ?.toSorted((versionA, versionB) =>
+                  compareYBSoftwareVersions({
+                    versionA: versionB,
+                    versionB: versionA,
+                    options: {
+                      suppressFormatError: true,
+                      requireOrdering: true
+                    }
+                  })
+                ) ?? [];
           }
-          // supportedSoftwareVersions contain versions of the same track, 
+          // supportedSoftwareVersions contain versions of the same track,
           // compareYBSoftwareVersions function will work with newer releases as well
           const matchIndex = supportedSoftwareVersions.findIndex(
-            (version) => compareYBSoftwareVersions({
-              versionA: currentVersion,
-              versionB: version
-            }) >= 0
+            (version) =>
+              compareYBSoftwareVersions({
+                versionA: currentVersion,
+                versionB: version
+              }) >= 0
           );
           return matchIndex === -1 ? 0 : matchIndex;
         }

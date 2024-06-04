@@ -52,7 +52,6 @@ class TransactionLoaderContext {
 
   virtual TransactionStatusResolver& AddStatusResolver() = 0;
   virtual const std::string& LogPrefix() const = 0;
-  virtual void CompleteLoad(const std::function<void()>& functor) = 0;
   virtual void LoadTransaction(
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,

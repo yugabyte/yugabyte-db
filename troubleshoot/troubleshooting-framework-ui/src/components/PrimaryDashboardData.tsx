@@ -138,7 +138,7 @@ export const PrimaryDashboardData = ({
   }, [filterDuration]);
 
   const handleResolve = (id: string, isResolved: boolean) => {
-    const anomalyListCopy = JSON.parse(JSON.stringify(anomalyData));
+    const anomalyListCopy = JSON.parse(JSON.stringify(filteredAnomalyList));
     const selectedAnomaly = anomalyListCopy?.find((anomaly: Anomaly) => anomaly.uuid === id);
     if (selectedAnomaly) {
       selectedAnomaly.isResolved = isResolved;

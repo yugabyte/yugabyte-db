@@ -45,6 +45,7 @@ CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
 -- Don't add (costs off) to EXPLAIN to be able to see when disable_cost=1.0e10
 -- is added.
+set yb_enable_bitmapscan = on;
 set enable_seqscan = on;
 set enable_indexscan = on;
 set enable_indexonlyscan = on;
@@ -152,3 +153,4 @@ RESET track_functions;
 -- cleanup
 RESET foo;
 RESET plpgsql.extra_foo_warnings;
+RESET yb_enable_bitmapscan;

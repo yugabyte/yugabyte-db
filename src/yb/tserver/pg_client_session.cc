@@ -66,7 +66,7 @@
 using std::string;
 using namespace std::chrono_literals;
 
-DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
+DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, true,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
                     "whether the DDL operation was committed or aborted");
 
@@ -81,12 +81,11 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
     "Where sequence values are cached for both existing and new sequences. Valid values are "
     "\"connection\" and \"server\"");
 
-DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, false,
+DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
                     "If set, DDL transactions will wait for DDL verification to complete before "
                     "returning to the client. ");
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
@@ -626,17 +625,18 @@ Status PgClientSession::CreateTable(
 Status PgClientSession::CreateDatabase(
     const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
     rpc::RpcContext* context) {
+  std::optional<HybridTime> clone_time;
+  if (req.clone_time() != 0) {
+    clone_time = HybridTime::FromMicros(req.clone_time());
+  }
   return client().CreateNamespace(
-      req.database_name(),
-      YQL_DATABASE_PGSQL,
-      "" /* creator_role_name */,
+      req.database_name(), YQL_DATABASE_PGSQL, "" /* creator_role_name */,
       GetPgsqlNamespaceId(req.database_oid()),
-      req.source_database_oid() != kPgInvalidOid
-          ? GetPgsqlNamespaceId(req.source_database_oid()) : "",
+      req.source_database_oid() != kPgInvalidOid ? GetPgsqlNamespaceId(req.source_database_oid())
+                                                 : "",
       req.next_oid(),
       VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction(), context->GetClientDeadline())),
-      req.colocated(),
-      context->GetClientDeadline());
+      req.colocated(), context->GetClientDeadline(), req.source_database_name(), clone_time);
 }
 
 Status PgClientSession::DropDatabase(
@@ -768,7 +768,8 @@ Status PgClientSession::CreateReplicationSlot(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
-      snapshot_option, context->GetClientDeadline(), &consistent_snapshot_time));
+      req.output_plugin_name(), snapshot_option,
+      context->GetClientDeadline(), &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
   resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
@@ -843,7 +844,10 @@ Status PgClientSession::RollbackToSubTransaction(
     const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  DCHECK_GE(req.sub_transaction_id(), 0);
+  RSTATUS_DCHECK_GE(
+      req.sub_transaction_id(), kMinSubTransactionId,
+      InvalidArgument,
+      Format("Expected sub_transaction_id to be >= $0", kMinSubTransactionId));
 
   /*
    * Currently we do not support a transaction block that has both DDL and DML statements (we
@@ -907,7 +911,10 @@ Status PgClientSession::RollbackToSubTransaction(
   //  YBCRollbackToSubTransaction() is called for sub-txn id 11.
 
   if (req.has_options()) {
-    DCHECK_GE(req.options().active_sub_transaction_id(), 0);
+    RSTATUS_DCHECK_GE(
+        req.options().active_sub_transaction_id(), kMinSubTransactionId,
+        InvalidArgument,
+        Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(req.options().active_sub_transaction_id());
   }
 
@@ -942,7 +949,7 @@ Status PgClientSession::SetActiveSubTransaction(
          Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
-  DCHECK_GE(req.sub_transaction_id(), 0);
+  DCHECK_GE(req.sub_transaction_id(), kMinSubTransactionId);
   transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
@@ -1068,7 +1075,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   auto& options = *data->req.mutable_options();
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     if (options.has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(options.ash_metadata(), /* use_hex */ false);
+      wait_state->UpdateMetadataFromPB(options.ash_metadata());
       wait_state->set_session_id(id_);
     }
   }
@@ -1311,7 +1318,10 @@ PgClientSession::SetupSession(
   session.SetDeadline(deadline);
 
   if (transaction) {
-    DCHECK_GE(options.active_sub_transaction_id(), 0);
+    RSTATUS_DCHECK_GE(
+        options.active_sub_transaction_id(), kMinSubTransactionId,
+        InvalidArgument,
+        Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
     RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }

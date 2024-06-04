@@ -27,6 +27,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
@@ -1369,6 +1370,49 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY NOTHING"));
   ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
+}
+
+TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
+  // Setup test data.
+  const auto kNonColocatedTableName = "test";
+  const auto kColocatedTableName = "colo_test";
+  const auto kDatabaseName = "testdb";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int PRIMARY KEY, b int) WITH (colocation = false) SPLIT INTO 3 TABLETS",
+      kNonColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kColocatedTableName));
+
+  // Verify that skip_table_tombstone_check=true for non-colocated user tables.
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kNonColocatedTableName));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  for (const auto& peer : tablet_peers) {
+    ASSERT_TRUE(peer->tablet_metadata()->primary_table_info()->skip_table_tombstone_check);
+  }
+
+  // Verify that skip_table_tombstone_check=true for colocated user tables.
+  table_id = ASSERT_RESULT(GetTableIDFromTableName(kColocatedTableName));
+  tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr colocated_tablet_peer = nullptr;
+  for (const auto& peer : tablet_peers) {
+    if (peer->shared_tablet()->regular_db() && peer->tablet_metadata()->colocated()) {
+      colocated_tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(colocated_tablet_peer, nullptr);
+  ASSERT_TRUE(ASSERT_RESULT(
+      colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
+      ->skip_table_tombstone_check);
+
+  // Verify that skip_table_tombstone_check=false for pg system tables.
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
+  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  ASSERT_FALSE(ASSERT_RESULT(
+      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(table_id))
+      ->skip_table_tombstone_check);
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -909,9 +909,8 @@ public class AWSUtil implements CloudUtil {
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
     }
-    InputStream ois = object.getObjectContent();
     byte[] data = new byte[bytesToRead];
-    try {
+    try (InputStream ois = object.getObjectContent()) {
       ois.read(data);
     } catch (IOException e) {
       throw new PlatformServiceException(

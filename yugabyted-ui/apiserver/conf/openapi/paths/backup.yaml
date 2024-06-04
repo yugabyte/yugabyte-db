@@ -39,4 +39,4 @@
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
-        $r
+        $ref: '../responses/_index.yaml#/ApiError'

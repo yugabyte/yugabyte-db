@@ -109,6 +109,8 @@ typedef struct
 
 extern PGDLLIMPORT WalSndCtlData *WalSndCtl;
 
+extern uint64_t YbWalSndTotalTimeInYBDecodeMicros;
+extern uint64_t YbWalSndTotalTimeInReorderBufferMicros;
 extern uint64_t YbWalSndTotalTimeInSendingMicros;
 
 extern void WalSndSetState(WalSndState state);
