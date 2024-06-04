@@ -29,7 +29,7 @@ Download the application and provide settings specific to your deployment:
 1. Clone the repository.
 
    ```sh
-   git clone https://github.com/YugabyteDB-Samples/yugabytedb-localai-programming-language-search.git
+   git clone https://github.com/YugabyteDB-Samples/ollama-news-archive.git
    ```
 
 1. Install the application dependencies.
@@ -169,8 +169,20 @@ curl "localhost:3000/api/search?q=olympic gold medal&category=SPORTS"
         }
     ]
 }
-
 ```
+
+3. Run the UI and visit http://localhost:5173 to search the news archives.
+
+```sh
+npm run dev
+```
+
+```output
+  VITE ready in 138 ms
+  ➜  Local:   http://localhost:5173/
+```
+
+![YugaNews Archives UI](/images/tutorials/ai/ai-ollama/yuganews_archives.png "YugaNews Archives UI")
 
 ## Review the application
 
