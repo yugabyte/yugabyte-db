@@ -101,8 +101,11 @@
 /* Represents byte size for the point value (includes x and y) */
 #define WKB_BYTE_SIZE_POINT 16
 
-/* Radius of earth in meters for spherical calculations */
-static const int32 RADIUS_OF_EARTH_M = 6378100;
+/*
+ * Radius of earth in meters according to NASA docs for spherical calculations.
+ * ref - https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html
+ */
+static const float8 RADIUS_OF_EARTH_M = 6378.137 * 1000;
 
 /*
  * Radius of earth in meters for spherical calculations
