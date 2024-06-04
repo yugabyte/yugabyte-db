@@ -1338,4 +1338,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " bundle, without propagating it to the in-use Universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> dbAuditLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.audit_logging_enabled",
+          ScopeType.GLOBAL,
+          "Enable DB Audit Logging",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable DB audit logging on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -187,7 +187,7 @@ if [ "${use_network_manager_dispatcher}" = true ]; then
 else
     if [ "$cloud" = "gcp" ]; then
         # Set script variables (already set for AWS).
-        new_ip_address="\${IP4_ADDRESS_0%%/*}"
+        new_ip_address="\${new_ip_address:-$\{IP4_ADDRESS_0%%/*}}"
         new_network_number="\${route_targets[1]}"
         new_routers="\${route_targets[0]}"
         new_subnet_mask="\$prefix"

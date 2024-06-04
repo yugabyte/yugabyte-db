@@ -19,7 +19,7 @@ import org.junit.runner.RunWith;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.yb.client.TestUtils;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
@@ -50,7 +50,9 @@ public class TestYbBackup extends BaseYbBackupTest {
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
-    backupDir = new JSONObject(output).getString("snapshot_url");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
     session.execute("insert into test_tbl (i, j, k, l, m, n) values (2, 2, 2, 1, 1, 1);");
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks6");
 
@@ -97,8 +99,9 @@ public class TestYbBackup extends BaseYbBackupTest {
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
-    backupDir = new JSONObject(output).getString("snapshot_url");
-
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
     assertQuery("select count(*) from " + DEFAULT_TEST_KEYSPACE + ".test_json_tbl;",
                 "Row[2000]");
     session.execute("insert into test_json_tbl (h, j) " +
@@ -139,8 +142,10 @@ public class TestYbBackup extends BaseYbBackupTest {
     session.execute("alter table test_tbl drop a;");
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-        "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
-    backupDir = new JSONObject(output).getString("snapshot_url");
+    "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
     session.execute("insert into test_tbl (h, b) values (9999, 8.9)");
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks1");
@@ -172,7 +177,9 @@ public class TestYbBackup extends BaseYbBackupTest {
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
-    backupDir = new JSONObject(output).getString("snapshot_url");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
     session.execute("alter table test_tbl drop a;");
     session.execute("insert into test_tbl (h, b) values (9999, 8.9)");
 

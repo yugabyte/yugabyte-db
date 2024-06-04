@@ -323,3 +323,55 @@
         checkOnlyPermission: false
     x-yba-api-since: 2.20.2.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: startSoftwareUpgrade
+    summary: Upgrade YugabyteDB version
+    description: Queues a task to perform a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseSoftwareUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeSoftware
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview

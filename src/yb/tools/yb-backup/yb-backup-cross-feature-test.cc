@@ -1921,6 +1921,11 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
 };
 
 Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {
+  // Start Yb Controllers for backup/restore.
+  if (UseYbController()) {
+    CHECK_OK(cluster_->StartYbControllerServers());
+  }
+
   // Setup required tables.
   auto conn = VERIFY_RESULT(Connect());
   const int num_rows = 5;
