@@ -1330,4 +1330,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " 5 minutes.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> dbAuditLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.audit_logging_enabled",
+          ScopeType.GLOBAL,
+          "Enable DB Audit Logging",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable DB audit logging on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
