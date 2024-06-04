@@ -18,7 +18,7 @@ Exporting cluster metrics may incur additional costs for network transfer in a c
 
 ## Prerequisites
 
-Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
+Create an integration configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
 
 ## Export cluster metrics
 
@@ -26,7 +26,7 @@ To enable metrics export for a cluster, do the following:
 
 1. On the cluster **Settings** tab, select **Export Metrics**.
 1. Click **Export Metrics**.
-1. Select the [export configuration](../managed-integrations/) to use.
+1. Select the [export configuration](../managed-integrations/) for the tool you want to export to.
 1. Click **Export Metrics**.
 
 To modify the metrics export configuration, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose a different Export Configuration.

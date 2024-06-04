@@ -23,7 +23,7 @@ Exporting logs may incur additional costs for network transfer in a cloud region
 
 ## Prerequisites
 
-Create an integration. An integration defines the settings and login information for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
+Create an integration configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Integrations](../managed-integrations).
 
 ## Recommendations
 
@@ -38,7 +38,7 @@ To enable database query logging for a cluster, do the following:
 1. On the cluster **Settings** tab, select **Database Query Logging**.
 1. Click **Enable Database Query Logging**.
 1. Set the [logging settings](#logging-settings).
-1. Select the [export configuration](../managed-integrations/) to use.
+1. Select the [Log export configuration](../managed-integrations/) for the tool you want to export to.
 1. Click **Enable YSQL Query Logging**.
 
 YugabyteDB Managed begins the (rolling) restart.

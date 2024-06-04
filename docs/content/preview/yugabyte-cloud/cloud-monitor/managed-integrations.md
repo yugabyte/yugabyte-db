@@ -14,10 +14,10 @@ type: docs
 
 You can export cluster metrics and logs to third-party tools for analysis and customization. Exporting data is a two-stage process:
 
-1. Create an integration. An integration defines the settings and login information for the tool that you want to export to.
-1. Use the integration to export data from a cluster. Once created, you can export metrics and logs from clusters. While the connection is active, metrics or logs are automatically streamed to the tool.
+1. Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export to.
+1. Use the configuration to export data from a cluster. While the connection is active, metrics or logs are automatically streamed to the tool.
 
-Currently, YugabyteDB Managed supports the following tools:
+Currently, you can export data to the following tools:
 
 - [Datadog](https://docs.datadoghq.com/)
 - [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
@@ -29,7 +29,7 @@ For information on how to export metrics and logs from a cluster using an integr
 
 ## Configure integrations
 
-Create and manage integrations on the **Integrations** page.
+Create and manage export configurations on the **Integrations** page.
 
 ![Integrations](/images/yb-cloud/managed-integrations.png)
 
@@ -37,7 +37,7 @@ The page lists the configured and available third-party integrations.
 
 ### Manage integrations
 
-You can add, edit, and delete integration configurations. You can't delete a configuration that is assigned to a cluster.
+You can add, edit, and delete export configurations for the following tools. You can't delete a configuration that is assigned to a cluster.
 
 {{< tabpane text=true >}}
 
@@ -48,7 +48,7 @@ The Datadog integration requires the following:
 - Datadog account
 - Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/)
 
-To create an integration configuration, do the following:
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, click **Configure** for the Datadog provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
@@ -67,7 +67,7 @@ The Grafana Cloud integration requires the following:
 - Grafana Cloud account and stack. For best performance and lower data transfer costs, deploy your stack in the region closest to your cluster. For a list of supported regions, see the [Grafana Cloud documentation](https://grafana.com/docs/grafana-cloud/account-management/regional-availability/).
 - Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/) in the Grafana documentation.
 
-To create an integration configuration, do the following:
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, click **Configure** for the Grafana Cloud provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
@@ -88,7 +88,7 @@ The Sumo Logic integration requires the following:
 - [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
 - To use the dashboard template, [install the YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account.
 
-To create an integration configuration, do the following:
+To create an export configuration, do the following:
 
 1. On the **Integrations** page, click **Configure** for the Sumo Logic provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
