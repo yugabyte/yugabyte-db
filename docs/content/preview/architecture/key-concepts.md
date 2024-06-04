@@ -153,12 +153,10 @@ Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteD
 
 ## Smart driver
 
-Application drivers that are designed for distributed databases, providing built-in support for the following:
+A smart driver in the context of YugabyteDB is essentially a PostgreSQL driver with additional "smart" features that leverage the distributed nature of YugabyteDB. These smart drivers intelligently distribute application connections across the nodes and regions of a YugabyteDB cluster, eliminating the need for external load balancers. This results in balanced connections that provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
-- Cluster aware - Smart drivers perform automatic uniform connection load balancing. After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers.
-- Topology aware - If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections.
-
-Smart drivers extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. {{<link "../../drivers-orms/smart-drivers/">}}
+Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware. They keep track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
+. {{<link "../../drivers-orms/smart-drivers/">}}
 
 ## Tablet
 
