@@ -180,7 +180,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     *          soft    nproc     12000
     ```
 
-1. If running on a virtual machine, execute the following to tune kernel settings:
+1. Execute the following to tune kernel settings:
 
     1. Configure the parameter `vm.swappiness` as follows:
 
