@@ -157,9 +157,7 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        createForm.dbScoped != null
-            ? createForm.dbScoped
-            : confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled);
+        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
     if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
       throw new PlatformServiceException(
           BAD_REQUEST,

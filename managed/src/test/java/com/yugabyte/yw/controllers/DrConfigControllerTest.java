@@ -50,8 +50,6 @@ public class DrConfigControllerTest extends FakeDBApplication {
   private RuntimeConfGetter confGetter;
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
-  // @Mock Config mockConfig;
-
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
         Json.parse(
@@ -94,12 +92,13 @@ public class DrConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  // Runtime config `yb.xcluster.db_scoped.enabled` = true and db scoped parameter is passed in
+  // as true for request body.
   public void testCreateDbScopedSuccess() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.enabled", "true");
-    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", true);
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     Result result =
