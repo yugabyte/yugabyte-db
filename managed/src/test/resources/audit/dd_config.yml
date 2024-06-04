@@ -12,9 +12,11 @@ extensions:
 processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: ddsource, value: yugabyte}
+    - {action: upsert, key: service, value: yb-otel-collector}
+    - {action: upsert, key: host, value: test-node}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
-    - {action: upsert, key: host.name, value: test-node}
 receivers:
   filelog/ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
     attributes: {audit_log_type: ysql}
