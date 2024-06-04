@@ -2227,7 +2227,7 @@ class YBBackup:
                 cmd],
                 num_retry=num_retries,
                 env=k8s_details.env_config,
-                stderr=subprocess.PIPE)
+                redirect_stderr=subprocess.PIPE)
         elif not self.args.no_ssh:
             ssh_key_path = self.args.ssh_key_path
             if self.ip_to_ssh_key_map:
