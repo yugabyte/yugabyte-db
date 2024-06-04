@@ -84,6 +84,7 @@ DECLARE_int32(retryable_request_range_time_limit_secs);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int64(db_write_buffer_size);
@@ -1029,6 +1030,7 @@ class QLStressDynamicCompactionPriorityTest : public QLStressTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 160_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_write_buffer_number) = 2;
     QLStressTest::SetUp();
   }
 

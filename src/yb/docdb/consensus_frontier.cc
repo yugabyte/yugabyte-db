@@ -157,17 +157,23 @@ void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
   op_id_ = OpId::FromPB(pb);
 }
 
-std::string ConsensusFrontier::ToString() const {
-  auto global_ht = GlobalFilter();
-  std::string filter = Format("Global filter: $0, ", global_ht);
-  filter += "Cotables filter: [";
-  IterateCotablesFilter(hybrid_time_filter_.AsSlice(), [&filter](uint32_t db_oid, uint64_t ht) {
-    filter += Format("$0:$1, ", db_oid, HybridTime(ht));
+std::string RenderCotablesFilter(Slice input) {
+  std::string result = "[";
+  IterateCotablesFilter(input, [&result](uint32_t db_oid, uint64_t ht) {
+    if (result.size() > 1) {
+      result += ", ";
+    }
+    result += Format("$0:$1", db_oid, HybridTime(ht));
   });
-  filter += "]";
-  return filter + YB_CLASS_TO_STRING(
+  result += "]";
+  return result;
+}
+
+std::string ConsensusFrontier::ToString() const {
+  return YB_CLASS_TO_STRING(
       op_id, hybrid_time, history_cutoff, max_value_level_ttl_expiration_time,
-      primary_schema_version, cotable_schema_versions);
+      primary_schema_version, cotable_schema_versions, (global_filter, AsString(GlobalFilter())),
+      (cotables_filter, RenderCotablesFilter(hybrid_time_filter_.AsSlice())));
 }
 
 void ConsensusFrontier::SetCoTablesFilter(
