@@ -1327,7 +1327,7 @@ public class DrConfigController extends AuthenticatedController {
       String promQuery =
           String.format(
               "%s{export_type=\"master_export\",universe_uuid=\"%s\","
-                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s / 1000",
+                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s",
               XClusterConfigTaskBase.TXN_XCLUSTER_SAFETIME_LAG_NAME,
               targetUniverse.getUniverseUUID().toString(),
               targetUniverse.getMasterLeaderHostText(),
