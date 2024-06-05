@@ -121,7 +121,7 @@ You can enable [follower reads](#follower-reads) to serve reads from non-preferr
 
 ## Primary cluster
 
-A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously. {{<link "../docdb-replication/replication/">}}
+A primary cluster can perform both writes and reads, unlike a [read replica cluster](#read-replica-cluster), which can only serve reads. A [universe](#universe) can have only one primary cluster. Replication between [nodes](#node) in a primary cluster is performed synchronously.
 
 ## Raft
 
@@ -166,6 +166,10 @@ YugabyteDB splits a table into multiple small pieces called tablets for data dis
 Tablets are also referred as shards.
 {{</tip>}}
 
+## Tablet follower
+
+See [Tablet leader](#tablet-leader).
+
 ## Tablet leader
 
 In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas are called followers.
@@ -184,7 +188,7 @@ The [YB-TServer](../yb-tserver) service is responsible for maintaining and manag
 
 ## Universe
 
-A YugabyteDB universe comprises one primary cluster and zero or more read replica clusters that collectively function as a resilient and scalable distributed database.
+A YugabyteDB universe comprises one [primary cluster](#primary-cluster) and zero or more [read replica clusters](#read-replica-cluster) that collectively function as a resilient and scalable distributed database.
 
 {{<note>}}
 Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a universe can contain one or more [clusters](#cluster).
