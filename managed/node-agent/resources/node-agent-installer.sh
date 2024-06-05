@@ -234,13 +234,16 @@ modify_selinux() {
       # altered with chcon goes back to default when restorecon is run.
       # It should not even try to reach out to the repo.
       sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
-    else
-      if command -v yum >/dev/null 2>&1; then
-        sudo yum install -y policycoreutils-python-utils
-      elif command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -y
-        sudo apt-get install -y semanage-utils
+    elif command -v yum >/dev/null 2>&1; then
+      # Install the semanage package directly.
+      sudo yum install -y policycoreutils-python-utils
+      if ! command -v semanage >/dev/null 2>&1; then
+        # Search and install the package that provides semanage.
+        sudo yum install -y /usr/sbin/semanage
       fi
+    elif command -v apt-get >/dev/null 2>&1; then
+      sudo apt-get update -y
+      sudo apt-get install -y semanage-utils
     fi
   fi
   # Check if semanage was installed in the previous steps.
@@ -254,6 +257,10 @@ modify_selinux() {
       sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
     sudo restorecon -ir "$NODE_AGENT_HOME"
+  else
+    # Let it proceed as there can be policies to allow.
+    echo "Command semanage does not exist. Defaulting to using chcon"
+    sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
   fi
   set -e
 }
