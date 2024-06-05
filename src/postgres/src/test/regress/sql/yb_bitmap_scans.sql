@@ -265,6 +265,18 @@ INSERT INTO test_false VALUES (1, 1), (2, 2);
 /*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
 
 --
+-- #21930: test recheck conditions on text columns
+--
+CREATE TABLE test_recheck_text(a TEXT);
+INSERT INTO test_recheck_text(a) VALUES ('i');
+CREATE INDEX ON test_recheck_text(a ASC);
+
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+/*+ BitmapScan(t) */
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+
+--
 -- test recheck index conditions
 --
 create table recheck_test (col int);
