@@ -12,9 +12,9 @@ rightNav:
   hideH3: true
 ---
 
-YugabyteDB sustains efficiency and maintains linear growth as we augment the cluster with more nodes, each node contributing its full processing power to the collective performance. With an efficiency score of around 99.7%, it signifies that nearly every CPU cycle is effectively utilized for transaction processing, with minimal overhead.
+YugabyteDB sustains efficiency and maintains linear growth as a cluster is augumented with more nodes, each node contributing its full processing power to the collective performance. With an efficiency score of around 99.7%, it signifies that nearly every CPU cycle is effectively utilized for transaction processing, with minimal overhead.
 
-The table below shows how YugabyteDB horizontally scales with the TPC-C workload.
+The following table describes how YugabyteDB horizontally scales with the TPC-C workload.
 
 | Nodes | vCPUs | Warehouses |   TPMC   | Efficiency(%) | Connections | New Order Latency |
 | :---: | :---: | :--------: | :------- | :-----------: | :---------: | :---------------: |
@@ -37,7 +37,7 @@ $ cd tpcc
 
 ## Client machine
 
-The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. These are the recommended instance types for the client machine from different cloud providers.
+The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. Following are the recommended instance types for the client machine from different cloud providers.
 
 | vCPU |    AWS     |      AZURE      |     GCP      |
 | ---- | ---------- | --------------- | ------------ |
@@ -45,7 +45,7 @@ The client machine is where the benchmark is run from. It is recommended you cho
 
 ## Cluster setup
 
-We will use 8vCPU machines for this test. Here are the corresponding instance types from different cloud providers.
+We will use 8vCPU machines for this test. Following are the corresponding instance types from different cloud providers.
 
 | vCPU |     AWS     |      AZURE       |      GCP      |
 | ---- | ----------- | ---------------- | ------------- |
@@ -69,10 +69,10 @@ IPS=127.0.0.1,127.0.0.2,127.0.0.3
 {{<nav/panel name="cloud">}}
 {{<setup/cloud>}}
 {{<warning title="Adding nodes">}}
-For the horizontal scale test, set the Fault-tolerance level to **None** so that you can add a single node to the cluster.
+For the horizontal scale test, set the fault tolerance level to **None** so that you can add a single node to the cluster.
 {{</warning>}}
 
-Store the IP addresses/public address of the cluster in a shell variable to be in the further commands.
+Store the IP addresses/public address of the cluster in a shell variable to be used in further commands.
 
 ```bash
 IPS=<cluster-name/IP>
@@ -86,31 +86,31 @@ IPS=<cluster-name/IP>
 
 1. Initialize the database needed for the benchmark by following the instructions specific to your cluster.
 
-    Set up the TPC-C database schema with the following command.
+    Set up the TPC-C database schema with the following command:
 
     ```sh
     $ ./tpccbenchmark --create=true --nodes=${IPS}
     ```
 
-    Populate the above-created database with data needed for the benchmark with the following command.
+    Populate the above-created database with data needed for the benchmark using the following command:
 
     ```sh
-    $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000  --loaderthreads 20
+    $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000 --loaderthreads 20
     ```
 
-1. Run the benchmark
+1. Run the benchmark using the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=2000 --num-connections=200
     ```
 
-1. Gather the results
+1. Gather the results.
 
     | Nodes | vCPUs | Warehouses |   TPMC   | Efficiency(%) | Connections | New Order Latency |
     | :---: | :---: | :--------: | :------- | :-----------: | :---------: | :---------------: |
     |   3   |  24   |    500     | 25646.4  |     99.71     |     200     |     54.21 ms      |
 
-1. Cleanup the test run
+1. Cleanup the test run using the following command:
 
     ```sh
     $ ./tpccbenchmark --clear=true --nodes=${IPS} --warehouses=2000
@@ -138,35 +138,35 @@ Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-cluster
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-Re-run the test using these instructions.
+Re-run the test using the following instructions.
 
 1. Initialize the database needed for the benchmark by following the instructions specific to your cluster.
 
-    Set up the TPC-C database schema with the following command.
+    Set up the TPC-C database schema with the following command:
 
     ```sh
     $ ./tpccbenchmark --create=true --nodes=${IPS}
     ```
 
-    Populate the above-created database with data needed for the benchmark with the following command.
+    Populate the above-created database with data needed for the benchmark with the following command:
 
     ```sh
     $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2666  --loaderthreads 20
     ```
 
-1. Run the benchmark
+1. Run the benchmark using the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=2666 --num-connections=266
     ```
 
-1. Gather the results
+1. Gather the results.
 
     | Nodes | vCPUs | Warehouses |   TPMC   | Efficiency(%) | Connections | New Order Latency |
     | :---: | :---: | :--------: | :------- | :-----------: | :---------: | :---------------: |
     |   4   |  32   |    1000    | 34212.57 |     99.79     |     266     |     53.92 ms      |
 
-1. Cleanup the test run
+1. Cleanup the test run using the following command:
 
     ```sh
     $ ./tpccbenchmark --clear=true --nodes=${IPS} --warehouses=2000
@@ -194,43 +194,43 @@ Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-cluster
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-Re-run the test using these instructions.
+Re-run the test using the following instructions.
 
 1. Initialize the database needed for the benchmark by following the instructions specific to your cluster.
 
-    Set up the TPC-C database schema with the following command.
+    Set up the TPC-C database schema with the following command:
 
     ```sh
     $ ./tpccbenchmark --create=true --nodes=${IPS}
     ```
 
-    Populate the above-created database with data needed for the benchmark with the following command.
+    Populate the above-created database with data needed for the benchmark with the following command:
 
     ```sh
     $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=3333  --loaderthreads 20
     ```
 
-1. Run the benchmark from 2 clients
+1. Run the benchmark from two clients as follows:
 
-    On client 1, run
+    On client 1, run the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=1500 --start-warehouse-id=1 --total-warehouses=3333 --num-connections=333
     ```
 
-    On client 2, run
+    On client 2, run the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=1833 --start-warehouse-id=1501 --total-warehouses=3333 --num-connections=333
     ```
 
-1. Gather the results
+1. Gather the results.
 
     | Nodes | vCPUs | Warehouses |   TPMC   | Efficiency(%) | Connections | New Order Latency |
     | :---: | :---: | :--------: | :------- | :-----------: | :---------: | :---------------: |
     |   5   |  40   |    2000    | 42772.6  |     99.79     |     333     |     51.01 ms      |
 
-1. Cleanup the test run
+1. Cleanup the test run using the following command:
 
     ```sh
     $ ./tpccbenchmark --clear=true --nodes=${IPS} --warehouses=2000
@@ -262,39 +262,39 @@ Re-run the test using these instructions.
 
 1. Initialize the database needed for the benchmark by following the instructions specific to your cluster.
 
-    Set up the TPC-C database schema with the following command.
+    Set up the TPC-C database schema with the following command:
 
     ```sh
     $ ./tpccbenchmark --create=true --nodes=${IPS}
     ```
 
-    Populate the above-created database with data needed for the benchmark with the following command.
+    Populate the above-created database with data needed for the benchmark with the following command:
 
     ```sh
-    $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=4000  --loaderthreads 20
+    $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=4000 --loaderthreads 20
     ```
 
-1. Run the benchmark from 2 clients
+1. Run the benchmark from two clients as follows:
 
-    On client 1, run
+    On client 1, run the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=2000 --start-warehouse-id=1 --total-warehouses=4000 --num-connections=200
     ```
 
-    On client 2, run
+    On client 2, run the following command:
 
     ```sh
     $ ./tpccbenchmark --execute=true --warmup-time-secs=300 --nodes=${IPS} --warehouses=2000 --start-warehouse-id=2001 --total-warehouses=4000 --num-connections=200
     ```
 
-1. Gather the results
+1. Gather the results.
 
     | Nodes | vCPUs | Warehouses |   TPMC   | Efficiency(%) | Connections | New Order Latency |
     | :---: | :---: | :--------: | :------- | :-----------: | :---------: | :---------------: |
     |   6   |  48   |    4000    | 51296.9  |     99.72     |     400     |     62.09 ms      |
 
-1. Cleanup the test run
+1. Cleanup the test run the following command:
 
     ```sh
     $ ./tpccbenchmark --clear=true --nodes=${IPS} --warehouses=2000
@@ -302,4 +302,4 @@ Re-run the test using these instructions.
 
 ## Conclusion
 
-You can easily notice that with the addition of new nodes, the YugabyteDB cluster can handle more transactions per minute. This linear scalability and high efficiency underscore YugabyteDB's architectural strengths: its ability to distribute workloads evenly across nodes, manage resources optimally, and handle the increased concurrency and data volume that come with cluster growth.
+You can notice that with the addition of new nodes, the YugabyteDB cluster can handle more transactions per minute. This linear scalability and high efficiency underscore YugabyteDB's architectural strengths: its ability to distribute workloads evenly across nodes, manage resources optimally, and handle the increased concurrency and data volume that come with cluster growth.
