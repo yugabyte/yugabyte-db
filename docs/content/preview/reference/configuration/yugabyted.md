@@ -396,7 +396,6 @@ For example, to create a new read replica cluster, execute the following command
 
 ```sh
 ./bin/yugabyted configure_read_replica new --rf=1 --data_placement_constraint=cloud1.region1.zone1
-
 ```
 
 ##### new flags
@@ -419,14 +418,14 @@ Use the sub-command `yugabyted configure_read_replica modify` to modify an exist
 
 For example, modify a read replica cluster using the following commands.
 
-- Modify the replication factor of the existing read replica cluster:
+Modify the replication factor of the existing read replica cluster:
 
 ```sh
 ./bin/yugabyted configure_read_replica modify --rf=2
 
 ```
 
-- Modify the replication factor and also specify the replication constraint:
+Modify the replication factor and also specify the replication constraint:
 
 ```sh
 ./bin/yugabyted configure_read_replica modify --rf=2 --data_placement_constraint=cloud1.region1.zone1,cloud2.region2.zone2
@@ -596,9 +595,7 @@ Use the `yugabyted finalize_upgrade` command to finalize and upgrade the YSQL ca
 Usage: yugabyted finalize_upgrade [flags]
 ```
 
-Example:
-
-Finalize the upgrade process after upgrading all the nodes of the YugabyteDB cluster to the new version:
+For example, finalize the upgrade process after upgrading all the nodes of the YugabyteDB cluster to the new version as follows:
 
 ```sh
 yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
