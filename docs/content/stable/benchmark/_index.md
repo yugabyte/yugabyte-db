@@ -37,53 +37,30 @@ To test performance using sysbench, see [Sysbench](sysbench-ysql/).
 
 ## Learn More
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="key-value-workload-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Key-value workload</div>
-      </div>
-      <div class="body">
-        Test performance with key-value workloads.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Key-value workload"
+    body="Test performance with key-value workloads."
+    href="key-value-workload-ycql/"
+    icon="/images/section_icons/explore/high_performance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="large-datasets-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Large datasets</div>
-      </div>
-      <div class="body">
-        Test performance with large datasets.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Large datasets"
+    body="Test performance with large datasets."
+    href="large-datasets-ycql/"
+    icon="/images/section_icons/explore/high_performance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="scalability/">
-        <div class="head">
-          <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-          <div class="title">Scalability</div>
-        </div>
-        <div class="body">
-          Test throughput scalability.
-        </div>
-      </a>
-    </div>
+  {{<index/item
+    title="Scalability"
+    body="Test throughput scalability."
+    href="scalability/"
+    icon="/images/section_icons/explore/high_performance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="resilience/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Resilience</div>
-      </div>
-      <div class="body">
-        Test resilience under failure conditions created by the Jepsen test suite.
-      </div>
-    </a>
-  </div>
-</div>
+  {{<index/item
+    title="Resilience"
+    body="Test resilience under failure conditions created by the Jepsen test suite."
+    href="resilience/"
+    icon="/images/section_icons/explore/high_performance.png">}}
+
+{{</index/block>}}
