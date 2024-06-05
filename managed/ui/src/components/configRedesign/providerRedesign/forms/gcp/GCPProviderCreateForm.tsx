@@ -46,7 +46,7 @@ import {
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
-import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, destVpcIdRegex } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { CreateInfraProvider } from '../../InfraProvider';
@@ -121,7 +121,12 @@ const VALIDATION_SCHEMA = object().shape({
   destVpcId: string().when('vpcSetupType', {
     is: (vpcSetupType: VPCSetupType) =>
       ([VPCSetupType.EXISTING, VPCSetupType.NEW] as VPCSetupType[]).includes(vpcSetupType),
-    then: string().required('Custom GCE Network is required.')
+    then: string()
+      .required('Custom GCE Network is required.')
+      .matches(
+        destVpcIdRegex,
+        'Network name cannot contain uppercase letters or special characters other than "-"'
+      )
   }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
     is: KeyPairManagement.SELF_MANAGED,
