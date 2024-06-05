@@ -18,7 +18,7 @@ Benchmarking is the process of evaluating the performance and capabilities of a 
 [TPC-C](http://www.tpc.org/tpcc/) is a widely recognized benchmark for testing the performance of transactional database systems. It simulates a complex OLTP (Online Transaction Processing) workload that involves a mix of different transactions like order creation, payment processing, and stock level checking. Benchmarking YugabyteDB using TPC-C helps assess its ability to handle a high volume of concurrent transactions and maintain consistency and integrity.
 
 {{<lead link="tpcc/">}}
-To test performance for concurrent transactions with TPC-C, see [TPC-C](tpcc/)
+To test performance for concurrent transactions with TPC-C, see [TPC-C](tpcc/).
 {{</lead>}}
 
 ## YCSB (Yahoo Cloud Serving Benchmark)
@@ -26,7 +26,7 @@ To test performance for concurrent transactions with TPC-C, see [TPC-C](tpcc/)
 [YCSB](https://github.com/brianfrankcooper/YCSB/wiki) is designed to evaluate the performance of databases under various read and write workloads, ranging from mostly read-heavy to write-heavy. Using YCSB, you can assess how well YugabyteDB handles different data access patterns and query loads, which is crucial for applications with diverse usage requirements.
 
 {{<lead link="ycsb-ysql/">}}
-To test performance using the Yahoo Cloud Serving Benchmark, see [YCSB](ycsb-ysql/)
+To test performance using the Yahoo Cloud Serving Benchmark, see [YCSB](ycsb-ysql/).
 {{</lead>}}
 
 ## sysbench
@@ -34,7 +34,7 @@ To test performance using the Yahoo Cloud Serving Benchmark, see [YCSB](ycsb-ysq
 [sysbench](https://github.com/akopytov/sysbench) is a versatile benchmarking tool that covers a wide range of database workloads, including CPU, memory, disk I/O, and database operations. It helps measure the system's performance, stability, and scalability under different stress conditions, enabling you to identify potential bottlenecks and weaknesses.
 
 {{<lead link="sysbench-ysql/">}}
-To test performance using sysbench, see [Sysbench](sysbench-ysql/)
+To test performance using sysbench, see [Sysbench](sysbench-ysql/).
 {{</lead>}}
 
 ## Learn More
