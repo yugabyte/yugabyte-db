@@ -30,11 +30,13 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -91,7 +93,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -128,7 +130,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -278,6 +280,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    TestHelper.updateUniverseVersion(xClusterUniv, "2.17.0.0-b1");
+    RuntimeConfigEntry.upsert(xClusterUniv, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig xClusterConfig1 =
         XClusterConfig.create(
             "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
@@ -301,6 +305,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     }
 
     Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
+    TestHelper.updateUniverseVersion(xClusterUniv2, "2.17.0.0-b1");
+    RuntimeConfigEntry.upsert(xClusterUniv2, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig.create(
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
