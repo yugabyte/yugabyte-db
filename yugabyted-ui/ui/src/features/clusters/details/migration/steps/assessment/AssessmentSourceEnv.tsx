@@ -39,9 +39,9 @@ interface MigrationSourceEnvProps {
   memory: string;
   disk: string;
   connectionCount: string;
-  tableSize: string;
-  indexSize: string;
-  totalSize: string;
+  tableSize: string | number;
+  indexSize: string | number;
+  totalSize: string | number;
   rowCount: string;
 }
 
@@ -124,13 +124,13 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
               <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceDB")}
               </Typography>
-              <YBButton
+              {/* <YBButton
                 variant="ghost"
                 startIcon={<CaretRightIcon />}
                 onClick={() => setShowSourceObjects(true)}
               >
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
-              </YBButton>
+              </YBButton> */}
             </Box>
 
             <Grid container spacing={4}>
@@ -139,7 +139,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.tableSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {tableSize}
+                  {typeof tableSize === "number" ? `${tableSize} GB` : tableSize}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -156,7 +156,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {totalSize}
+                  {typeof totalSize === "number" ? `${totalSize} GB` : totalSize}
                 </Typography>
               </Grid>
               <Grid item xs={6}>
@@ -164,7 +164,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.indexSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {indexSize}
+                  {typeof indexSize === "number" ? `${indexSize} GB` : indexSize}
                 </Typography>
               </Grid>
             </Grid>

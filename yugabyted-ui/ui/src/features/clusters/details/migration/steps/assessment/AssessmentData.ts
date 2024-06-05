@@ -19,7 +19,7 @@ export const newMigration = {
         "Recommended instance with 16 vCPU and 64 GB memory could fit 7 objects with size 73 GB as colocated. Rest 3 objects of size 281 GB can be imported as sharded tables.",
       clusterSize: {
         nodeCount: "15",
-        vcpuPerNode: "16",
+        vCpuPerNode: "16",
         memoryPerNode: "64 GB",
         optSelectConnPerNode: "40",
         optInsertConnPerNode: "48",

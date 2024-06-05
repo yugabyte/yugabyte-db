@@ -1,15 +1,6 @@
-import React, { FC, Fragment, useMemo } from "react";
-import {
-  Box,
-  Divider,
-  Paper,
-  TableCell,
-  TableRow,
-  Typography,
-  makeStyles,
-} from "@material-ui/core";
+import React, { FC, useMemo } from "react";
+import { Box, Divider, Paper, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBButton, YBTable } from "@app/components";
 import {
   Bar,
   BarChart,
@@ -23,15 +14,8 @@ import {
   YAxis,
 } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
-import clsx from "clsx";
-import ExpandIcon from "@app/assets/expand.svg";
-import CollpaseIcon from "@app/assets/collapse.svg";
-import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import PlusIcon from "@app/assets/plus_icon.svg";
-import MinusIcon from "@app/assets/minus_icon.svg";
-import { MigrationRefactoringSidePanel } from "./AssessmentRefactoringSidePanel";
-
-const ENABLE_MORE_DETAILS = false;
+import type { RecommendedRefactoringGraph, UnsupportedSqlInfo } from "@app/api/src";
+import { MigrationAssessmentRefactoringTable } from "./AssessmentRefactoringTable";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -56,248 +40,40 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
   },
-  arrowComponent: {
-    textAlign: "end",
-    cursor: "pointer",
-    "& svg": {
-      marginTop: theme.spacing(0.25),
-    },
-  },
-  tableCell: {
-    padding: theme.spacing(1, 2),
-    maxWidth: 120,
-    wordBreak: "break-word",
-  },
-  rowTableCell: {
-    borderBottom: "unset",
-  },
-  w10: {
-    width: "10px",
-  },
-  innerTable: {
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.background.default,
-    marginLeft: theme.spacing(5),
-    "& .MuiPaper-root": {
-      backgroundColor: "transparent !important",
-    },
-  },
-  innerTableParent: {
-    padding: theme.spacing(0.5, 0, 1, 0),
-  },
 }));
 
-export type RefactoringDataItems = ReadonlyArray<{
-  datatype: string;
-  objects: ReadonlyArray<{
-    filePath: string;
-    sql: string;
-    type: string;
-    ack?: boolean;
-  }>;
-}>;
-
 interface MigrationAssessmentRefactoringProps {
-  sqlObjects: ReadonlyArray<{
-    ObjectType: string;
-    TotalCount: number;
-    ObjectNames: string;
-  }>;
-  unsupportedDataTypes: null | ReadonlyArray<{
-    DataType: string;
-    ObjectNames: string[];
-  }>;
-  unsupportedFeatures: null | ReadonlyArray<{
-    FeatureName: string;
-    ObjectNames: string[];
-  }>;
+  sqlObjects: RecommendedRefactoringGraph | undefined;
+  unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
+  unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
+  unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
 }
-
-const getRowCellComponent = (
-  displayedRows: RefactoringDataItems,
-  expanded: boolean[],
-  classes: ReturnType<typeof useStyles>
-) => {
-  const { t } = useTranslation();
-
-  const innerColumns = [
-    {
-      name: "objecttype",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.objectType"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
-      },
-    },
-    {
-      name: "fileDirectory",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.fileDirectory"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
-      },
-    },
-    {
-      name: "totalObjects",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.totalObjects"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
-      },
-    },
-    {
-      name: "acknowledgedObjects",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.acknowledgedObjects"),
-      options: {
-        customBodyRenderLite: (dataIndex: number) =>
-          `${innerData[dataIndex].acknowledgedObjects} / ${innerData[dataIndex].totalObjects}`,
-        setCellHeaderProps: () => ({ style: { padding: "6px 16px" } }),
-        setCellProps: () => ({ style: { padding: "6px 16px" } }),
-      },
-    },
-  ];
-
-  const innerData = [
-    {
-      objecttype: "View",
-      fileDirectory: "/home/nikhil/tradex/schema/views/view.sql",
-      totalObjects: 7,
-      acknowledgedObjects: 2,
-    },
-    {
-      objecttype: "Table",
-      fileDirectory: "/home/nikhil/tradex/schema/tables/table.sql",
-      totalObjects: 6,
-      acknowledgedObjects: 0,
-    },
-  ];
-
-  const rowCellComponent = (data: any, dataIndex: number) => {
-    return (
-      <Fragment key={`row-fragment-${data}`}>
-        <TableRow>
-          {data.map((val: any, index: number) => (
-            <TableCell
-              key={`row-${dataIndex}-body-cell-${index}`}
-              className={clsx(
-                classes.tableCell,
-                expanded[dataIndex] && classes.rowTableCell,
-                index === 0 && classes.w10
-              )}
-            >
-              {typeof val === "function" ? val(dataIndex) : val}
-            </TableCell>
-          ))}
-        </TableRow>
-        {expanded[dataIndex] && (
-          <TableRow>
-            <TableCell colSpan={4} className={classes.innerTableParent}>
-              <Box className={classes.innerTable}>
-                <YBTable
-                  data={innerData}
-                  columns={innerColumns}
-                  options={{
-                    pagination: false,
-                  }}
-                />
-              </Box>
-            </TableCell>
-          </TableRow>
-        )}
-      </Fragment>
-    );
-  };
-  return rowCellComponent;
-};
-
-const ArrowComponent = (classes: ReturnType<typeof useStyles>, onClick: () => void) => () => {
-  return (
-    <Box className={classes.arrowComponent} onClick={onClick}>
-      <ArrowRightIcon />
-    </Box>
-  );
-};
 
 export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringProps> = ({
   sqlObjects,
   unsupportedDataTypes,
   unsupportedFeatures,
+  unsupportedFunctions,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const featureOverview = useMemo(
-    () =>
-      unsupportedFeatures?.map((item) => ({
-        objectCount: item.ObjectNames.length,
-        feature: item.FeatureName,
-      })) ?? [],
-    [unsupportedFeatures]
-  );
+  const graphData = useMemo(() => {
+    if (!sqlObjects) {
+      return [];
+    }
 
-  const [selectedDataType, setSelectedDataType] = React.useState<RefactoringDataItems[number]>();
-  const onSelectDataType = (dataIndex: number) => {
-    setSelectedDataType(suggestionsErrors[dataIndex]);
-  };
-
-  const [expandedSuggestions, setExpandedSuggestions] = React.useState<boolean[]>([]);
-
-  const refactoringOverviewColumns = [
-    ...(ENABLE_MORE_DETAILS
-      ? [
-          {
-            name: "",
-            label: "",
-            options: {
-              sort: false,
-              customBodyRenderLite: (dataIndex: number) => (
-                <Box
-                  px={1}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => {
-                    const newExpandedSuggestions = [...expandedSuggestions];
-                    newExpandedSuggestions[dataIndex] = !expandedSuggestions[dataIndex];
-                    setExpandedSuggestions(newExpandedSuggestions);
-                  }}
-                >
-                  {expandedSuggestions[dataIndex] ? <MinusIcon /> : <PlusIcon />}
-                </Box>
-              ),
-            },
-          },
-        ]
-      : []),
-    {
-      name: "feature",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "objectCount",
-      label: t("clusterDetail.voyager.planAndAssess.refactoring.objectCount"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    ...(ENABLE_MORE_DETAILS
-      ? [
-          {
-            name: "",
-            label: "",
-            options: {
-              sort: false,
-              customBodyRenderLite: (dataIndex: number) =>
-                ArrowComponent(classes, () => onSelectDataType(dataIndex))(),
-              setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-            },
-          },
-        ]
-      : []),
-  ];
+    return Object.entries(sqlObjects).map(([key, value]) => {
+      return {
+        objectType: key
+          .replace(/^_+|_+$/g, "")
+          .trim()
+          .toUpperCase(),
+        automaticDDLImport: value?.automatic ?? 0,
+        manualRefactoring: value?.manual ?? 0,
+      };
+    });
+  }, [sqlObjects]);
 
   return (
     <Paper>
@@ -314,23 +90,32 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         </Box>
 
         <Box my={4}>
-          <ResponsiveContainer width="100%" height={sqlObjects.length * 45}>
+          <ResponsiveContainer width="100%" height={graphData.length * 80}>
             <BarChart
-              data={[...sqlObjects]}
+              data={graphData}
               layout="vertical"
               margin={{
                 right: 30,
-                left: 30,
+                left: 50,
               }}
               barSize={16}
               barCategoryGap={34}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" />
-              <YAxis type="category" dataKey="ObjectType" />
+              <YAxis type="category" dataKey="objectType" textAnchor="start" dx={-90} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="TotalCount" fill="#2FB3FF" stackId="stack" isAnimationActive={false}>
-                <LabelList dataKey="TotalCount" position="right" style={{ fill: "black" }} />
+              <Bar
+                dataKey="automaticDDLImport"
+                fill="#2FB3FF"
+                stackId="stack"
+                isAnimationActive={false}
+              >
+                <LabelList
+                  dataKey="automaticDDLImport"
+                  position="insideRight"
+                  style={{ fill: "black" }}
+                />
               </Bar>
               <Bar
                 dataKey="manualRefactoring"
@@ -363,11 +148,10 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                         listStyleType: "none",
                         display: "flex",
                         gap: "20px",
-                        paddingTop: "10px",
                         paddingLeft: "70px",
                       }}
                     >
-                      {payload.map((entry, index) => (
+                      {payload.map((entry) => (
                         <li
                           key={entry.value}
                           style={{ display: "flex", alignItems: "center", gap: "10px" }}
@@ -380,9 +164,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                               backgroundColor: entry.color,
                             }}
                           />
-                          <div style={{ color: "#4E5F6D" }}>
-                            {index === 0 ? "Automatic DDL Import" : formatter(entry.value)}
-                          </div>
+                          <div style={{ color: "#4E5F6D" }}>{formatter(entry.value)}</div>
                         </li>
                       ))}
                     </ul>
@@ -401,51 +183,21 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           </Typography>
         </Box>
 
-        <Box position="relative">
-          <YBTable
-            data={featureOverview}
-            columns={refactoringOverviewColumns}
-            options={{
-              customRowRender: ENABLE_MORE_DETAILS
-                ? getRowCellComponent(featureOverview, expandedSuggestions, classes)
-                : undefined,
-              pagination: true,
-            }}
-            withBorder
+        <Box display="flex" flexDirection="column" gridGap={20}>
+          <MigrationAssessmentRefactoringTable
+            data={unsupportedDataTypes}
+            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType")}
           />
-
-          {ENABLE_MORE_DETAILS && (
-            <Box display="flex" justifyContent="end" position="absolute" right={10} top={6}>
-              <YBButton
-                variant="ghost"
-                startIcon={
-                  expandedSuggestions.filter((s) => s).length < featureOverview.length ? (
-                    <ExpandIcon />
-                  ) : (
-                    <CollpaseIcon />
-                  )
-                }
-                onClick={() => {
-                  setExpandedSuggestions(
-                    new Array(featureOverview.length).fill(
-                      expandedSuggestions.filter((s) => s).length < featureOverview.length
-                    )
-                  );
-                }}
-              >
-                {expandedSuggestions.filter((s) => s).length < featureOverview.length
-                  ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
-                  : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
-              </YBButton>
-            </Box>
-          )}
+          <MigrationAssessmentRefactoringTable
+            data={unsupportedFeatures}
+            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature")}
+          />
+          <MigrationAssessmentRefactoringTable
+            data={unsupportedFunctions}
+            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction")}
+          />
         </Box>
       </Box>
-
-      <MigrationRefactoringSidePanel
-        data={selectedDataType}
-        onClose={() => setSelectedDataType(undefined)}
-      />
     </Paper>
   );
 };
@@ -460,9 +212,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
           <Typography>{label}</Typography>
         </Box>
         <Box color={payload[0].color}>Automatic DDL Import: {payload[0].value}</Box>
-        <Box color={payload[1]?.color ?? "#FFA400"}>
-          Manual Refactoring: {payload[1]?.value ?? 0}
-        </Box>
+        <Box color={payload[1].color}>Manual Refactoring: {payload[1].value}</Box>
       </Box>
     );
   }

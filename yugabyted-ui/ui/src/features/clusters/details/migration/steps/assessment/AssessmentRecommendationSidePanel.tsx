@@ -3,6 +3,7 @@ import { Box, Divider, Grid, MenuItem, Paper, Typography, makeStyles } from "@ma
 import { useTranslation } from "react-i18next";
 import { YBInput, YBModal, YBSelect, YBTable } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
+import type { Migration } from "../../MigrationOverview";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -43,34 +44,42 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationRecommendationSidePanel {
   open: boolean;
   onClose: () => void;
-  data: any;
+  migration: Migration;
 }
 
 export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePanel> = ({
   open,
   onClose,
-  data,
+  migration,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const recommendationData = useMemo(() => {
-    const colocatedTables = data.ColocatedTables.map((tableName: string) => ({
-      tableName,
-      diskSize: "?? GB",
-      schemaRecommendation: "Colocated",
-    }));
-
-    const shardedTables = data.ShardedTables.map((tableName: string) => ({
-      tableName,
-      diskSize: "?? GB",
-      schemaRecommendation: "Sharded",
-    }));
-
-    return [...colocatedTables, ...shardedTables].sort((a: any, b: any) =>
-      a.tableName.localeCompare(b.tableName)
-    );
-  }, [data]);
+  const recommendationData = useMemo(
+    () => [
+      {
+        tableName: "table-01",
+        diskSize: "16.2 GB",
+        schemaRecommendation: "Colocated",
+      },
+      {
+        tableName: "table-02",
+        diskSize: "12.2 GB",
+        schemaRecommendation: "Sharded",
+      },
+      {
+        tableName: "table-03",
+        diskSize: "5.6 GB",
+        schemaRecommendation: "Colocated",
+      },
+      {
+        tableName: "table-04",
+        diskSize: "3.1 GB",
+        schemaRecommendation: "Sharded",
+      },
+    ],
+    []
+  );
 
   const recommendationObjects = useMemo(
     () => ({

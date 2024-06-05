@@ -34,11 +34,13 @@ const ComplexityComponent = (complexity: string) => {
 interface MigrationAssessmentSummaryProps {
   complexity: string;
   estimatedMigrationTime: string | number;
+  summary: string;
 }
 
 export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = ({
   complexity,
   estimatedMigrationTime,
+  summary,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -84,7 +86,7 @@ export const MigrationAssessmentSummary: FC<MigrationAssessmentSummaryProps> = (
           </Box>
         </Box>
 
-        <Box mt={2}>{t("clusterDetail.voyager.planAndAssess.summary.description")}</Box>
+        <Box mt={2}>{summary}</Box>
       </Box>
     </Paper>
   );

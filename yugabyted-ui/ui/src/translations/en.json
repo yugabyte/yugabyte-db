@@ -912,7 +912,7 @@
             "heading": "Summary",
             "migrationComplexity": "Migration Complexity",
             "estimatedMigrationTime": "Estimated Migration Time",
-            "description": "Less than 500 database objects, can be fully automated. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras id ligula at turpis consectetur imperdiet et quis metus. Donec ac fringilla ligula. Morbi et augue a lacus semper tempus ut ullamcorper ex."
+            "unavailable": "Summary unavailable"
           },
           "sourceEnv": {
             "heading": "Source Environment",
@@ -982,6 +982,8 @@
             "totalObjects": "Total Objects",
             "acknowledgedObjects": "Acknowledged Objects",
             "unsupportedDataType": "Unsupported Data Type",
+            "unsupportedFeature": "Unsupported Feature",
+            "unsupportedFunction": "Unsupported Function",
             "objectCount": "Object Count",
             "expandAll": "Expand All",
             "collapseAll": "Collapse All",
