@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
@@ -219,6 +220,7 @@ public class MainModule extends AbstractModule {
     bind(AccessKeyRotationUtil.class).asEagerSingleton();
     bind(GcpEARServiceUtil.class).asEagerSingleton();
     bind(YbcUpgrade.class).asEagerSingleton();
+    bind(XClusterSyncScheduler.class).asEagerSingleton();
     bind(PerfAdvisorScheduler.class).asEagerSingleton();
     bind(PermissionUtil.class).asEagerSingleton();
     bind(RoleUtil.class).asEagerSingleton();

@@ -37,13 +37,7 @@ To view the latency and throughput on the universe while the workload is running
 
 Add a node to the universe with the same flags, as follows:
 
-```sh
-./bin/yugabyted start \
-                --advertise_address=127.0.0.4 \
-                --base_dir=/tmp/ybd4 \
-                --cloud_location=aws.us-east.us-east-1a \
-                --join=127.0.0.1
-```
+{{<setup/local numnodes="1" masterip="127.0.0.1" ips="127.0.0.4" dirnum="4" locations="aws.us-east.us-east-1a" alias="no" instructions="no" destroy="no" dataplacement="no" status="no">}}
 
 Now you should have four nodes.
 
@@ -63,10 +57,7 @@ Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the n
 
 Remove the recently added node from the universe, as follows:
 
-```sh
-./bin/yugabyted stop \
-                  --base_dir=/tmp/ybd4
-```
+{{%cluster/cmd op="stop" nodes="4"%}}
 
 ## Observe linear scale-in
 

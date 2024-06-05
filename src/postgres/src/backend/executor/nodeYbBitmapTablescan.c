@@ -46,7 +46,6 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	YbTBMIterateResult *ybtbmres;
 	HeapScanDesc scandesc;
 	ExprContext *econtext;
-	MemoryContext oldcontext;
 	YbScanDesc ybScan;
 
 	/*
@@ -131,11 +130,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		/* We have yb_fetch_row_limit rows fetched, get them one by one */
 		while (true)
 		{
-			/* capture all fetch allocations in the short-lived context */
-			oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			ybFetchNext(ybScan->handle, slot,
 						RelationGetRelid(node->ss.ss_currentRelation));
-			MemoryContextSwitchTo(oldcontext);
 
 			if (ybtbmres)
 				++ybtbmres->index;

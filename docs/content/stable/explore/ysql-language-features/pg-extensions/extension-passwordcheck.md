@@ -18,7 +18,7 @@ The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) Postg
 To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
---ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
+--ysql_pg_conf_csv=shared_preload_libraries=passwordcheck
 ```
 
 Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
@@ -40,7 +40,7 @@ You can customize the following passwordcheck parameters:
 For example, the following flag changes the minimum and maximum passwordcheck lengths:
 
 ```sh
---ysql_pg_conf_csv="shared_preload_libraries=passwordcheck,passwordcheck.minimum_length=10,passwordcheck.maximum_length=18"
+--ysql_pg_conf_csv=shared_preload_libraries=passwordcheck,passwordcheck.minimum_length=10,passwordcheck.maximum_length=18
 ```
 
 ## Example

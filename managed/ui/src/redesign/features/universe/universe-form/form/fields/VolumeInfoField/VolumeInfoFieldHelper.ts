@@ -6,7 +6,8 @@ import {
   PLACEMENTS_FIELD,
   TOTAL_NODES_FIELD,
   INSTANCE_TYPE_FIELD,
-  DEVICE_INFO_FIELD
+  DEVICE_INFO_FIELD,
+  PROVIDER_FIELD
 } from '../../../utils/constants';
 import {
   CloudType,
@@ -220,6 +221,7 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   const { setValue } = useFormContext<UniverseFormData>();
 
   //watchers
+  const provider = useWatch({ name: PROVIDER_FIELD });
   const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
   const placements = useWatch({ name: PLACEMENTS_FIELD });
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
@@ -233,7 +235,7 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   });
 
   useUpdateEffect(() => {
-    if (isEditMode) {
+    if (isEditMode && provider.code !== CloudType.kubernetes) {
       if (isNonEmptyArray(updateOptions) && updateOptions.includes(UpdateActions.UPDATE)) {
       setNumVolumesDisable(true);
       setVolumeSizeDisable(true);

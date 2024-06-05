@@ -333,6 +333,10 @@ public class XClusterConfig extends Model {
     return typeAsCommonType;
   }
 
+  public static List<XClusterConfig> getAllXClusterConfigs() {
+    return find.query().findList();
+  }
+
   public XClusterTableConfig getTableById(String tableId) {
     Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
     if (!tableConfig.isPresent()) {
@@ -586,12 +590,27 @@ public class XClusterConfig extends Model {
     updateReplicationSetupDone(tableIds, true /* replicationSetupDone */);
   }
 
+  /**
+   * Synchronizes the tables in the xCluster config with the provided table and index table IDs.
+   * Adds any missing tables and removes any extra tables.
+   *
+   * @param tableIds The set of table IDs to synchronize.
+   * @param indexTableIds The set of index table IDs to synchronize.
+   */
   @Transactional
-  public void syncTables(Set<String> tableIds) {
-    addTablesIfNotExist(tableIds);
+  public void syncTables(Set<String> tableIds, Set<String> indexTableIds) {
+    addTablesIfNotExist(tableIds, null, false);
+    addTablesIfNotExist(indexTableIds, null, true);
+    tableIds.addAll(indexTableIds);
     removeExtraTables(tableIds);
   }
 
+  /**
+   * Removes any extra tables from the xCluster config that are not in the provided set of table
+   * IDs.
+   *
+   * @param tableIds The set of table IDs to keep in the xCluster config.
+   */
   @Transactional
   public void removeExtraTables(Set<String> tableIds) {
     Set<String> extraTableIds =

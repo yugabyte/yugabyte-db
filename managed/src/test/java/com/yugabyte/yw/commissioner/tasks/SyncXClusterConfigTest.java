@@ -13,9 +13,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
@@ -39,14 +42,17 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.CommonTypes;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
@@ -69,6 +75,10 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
   private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
   private YBClient mockClient;
+  private String exampleTable1Name;
+  private String exampleTable2Name;
+  private String namespace1Name;
+  private String namespace1Id;
 
   @Before
   @Override
@@ -91,6 +101,11 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     exampleTableID2 = "000030af000030008000000000004001";
     exampleTableID3 = "000030af000030008000000000004002";
 
+    exampleTable1Name = "exampleTable1";
+    exampleTable2Name = "exampleTable2";
+    namespace1Name = "ycql-namespace1";
+    namespace1Id = UUID.randomUUID().toString();
+
     exampleTables = new HashSet<>();
     exampleTables.add(exampleTableID1);
     exampleTables.add(exampleTableID2);
@@ -106,6 +121,43 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
         .thenReturn(mockClient);
+  }
+
+  public void initClientGetTablesList(CommonTypes.TableType tableType) {
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
+    // Adding table 1.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table1TableInfoBuilder.setTableType(tableType);
+    table1TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID1));
+    table1TableInfoBuilder.setName(exampleTable1Name);
+    table1TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table1TableInfoBuilder.build());
+    // Adding table 2.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table2TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table2TableInfoBuilder.setTableType(tableType);
+    table2TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID2));
+    table2TableInfoBuilder.setName(exampleTable2Name);
+    table2TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table2TableInfoBuilder.build());
+
+    try {
+      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+      when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+          .thenReturn(mockListTablesResponse);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   private TaskInfo submitTask(Universe targetUniverse) {
@@ -171,6 +223,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     List<Tuple<XClusterConfigCreateFormData, Boolean>> xClusterConfigInfoList =
         Collections.singletonList(new Tuple<>(createFormData, false));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
     assertNotNull(taskInfo);
@@ -200,6 +253,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     List<Tuple<XClusterConfigCreateFormData, Boolean>> xClusterConfigInfoList =
         Collections.singletonList(new Tuple<>(createFormData, false));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     HighAvailabilityConfig.create("test-cluster-key");
 
@@ -248,6 +302,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     xClusterConfigInfoList.add(new Tuple<>(expectedConfig2, true));
     xClusterConfigInfoList.add(new Tuple<>(expectedConfig3, false));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
     assertNotNull(taskInfo);
@@ -301,6 +356,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     List<Tuple<XClusterConfigCreateFormData, Boolean>> xClusterConfigInfoList =
         Collections.singletonList(new Tuple<>(createFormData, true));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
     assertNotNull(taskInfo);
@@ -333,6 +389,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     List<Tuple<XClusterConfigCreateFormData, Boolean>> xClusterConfigInfoList =
         Collections.singletonList(new Tuple<>(createFormData, true));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
     assertNotNull(taskInfo);
@@ -365,6 +422,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     List<Tuple<XClusterConfigCreateFormData, Boolean>> xClusterConfigInfoList =
         Collections.singletonList(new Tuple<>(createFormData, false));
     setupMockClusterConfig(xClusterConfigInfoList, null);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
     assertNotNull(taskInfo);

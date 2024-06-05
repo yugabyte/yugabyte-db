@@ -446,7 +446,7 @@ INSTANTIATE_TEST_CASE_P(
 // export_snapshot command (not the new command) to serve as ground truth.
 // 4. Create more tables.
 // 5. Generate snapshotInfo from schedule using the time t.
-// 6. Assert the output of 5 and 3 are the same.
+// 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
@@ -471,9 +471,16 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
   auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
-      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
-          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+      mini_cluster()
+          ->mini_master()
+          ->catalog_manager_impl()
+          .GenerateSnapshotInfoFromScheduleForClone(
+              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
   // 6.
+  // Clear PITR related fields from ground_truth as these fields are cleared when generating
+  // snapshotInfo as of time.
+  ground_truth.mutable_entry()->clear_schedule_id();
+  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
@@ -510,9 +517,14 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
   auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
-      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
-          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
-  // 6. Assert the output of 5 and 3 are the same.
+      mini_cluster()
+          ->mini_master()
+          ->catalog_manager_impl()
+          .GenerateSnapshotInfoFromScheduleForClone(
+              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+  // 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
+  ground_truth.mutable_entry()->clear_schedule_id();
+  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
@@ -526,10 +538,13 @@ class PgCloneTest : public PostgresMiniClusterTest {
   void SetUp() override {
     PostgresMiniClusterTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
     ASSERT_OK(CreateMasterBackupProxy());
   }
 
-  Status CloneAndWait(const master::CloneNamespaceRequestPB& clone_req) {
+  Status CloneAndWaitForState(
+      const master::CloneNamespaceRequestPB& clone_req,
+      master::SysCloneStatePB::State clone_state) {
     rpc::RpcController controller;
     controller.set_timeout(120s);
     master::CloneNamespaceResponsePB clone_resp;
@@ -554,8 +569,7 @@ class PgCloneTest : public PostgresMiniClusterTest {
               done_resp.entries_size() == 1, IllegalState,
               Format("Expected 1 clone entry, got $0", done_resp.entries_size()));
           auto state = done_resp.entries(0).aggregate_state();
-          return state == master::SysCloneStatePB::RESTORED ||
-                 state == master::SysCloneStatePB::ABORTED;
+          return state == clone_state;
         },
         120s, "Wait for clone to finish"));
 
@@ -620,13 +634,12 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Clone)) {
   *req.mutable_source_namespace() = source_namespace;
   req.set_restore_ht(ht1.ToUint64());
   req.set_target_namespace_name(kTargetNamespaceName1);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
 
-  ASSERT_OK(CloneAndWait(req));
+  ASSERT_OK(CloneAndWaitForState(req, master::SysCloneStatePB::RESTORED));
 
   req.set_restore_ht(ht2.ToUint64());
   req.set_target_namespace_name(kTargetNamespaceName2);
-  ASSERT_OK(CloneAndWait(req));
+  ASSERT_OK(CloneAndWaitForState(req, master::SysCloneStatePB::RESTORED));
 
   // Verify source rows are unchanged.
   auto rows = ASSERT_RESULT((source_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
@@ -671,7 +684,6 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
   ASSERT_OK(source_conn.ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
   // Perform the first clone operation to ht1
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
   ASSERT_OK(source_conn.ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       ht1.GetPhysicalValueMicros()));
@@ -694,6 +706,54 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
   auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
   rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_VECTORS_EQ(rows, kRows);
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
+  // Clone to a time before a schema change happened.
+  // Writes some data before time t and alter the table schema after t and add some data according
+  // to the new schema. Verifies that the cloning as of t creates a clone with the correct schema
+  // and only the first row.
+  auto conn = ASSERT_RESULT(Connect());
+  const std::tuple<int32_t, int32_t> kRow = {1, 10};
+  const std::tuple<int32_t, int32_t, int32_t> kRowNewSchema = {2, 20, 200};
+  const auto kTimeout = MonoDelta::FromSeconds(30);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
+
+  // Create a snapshot schedule.
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      master_backup_proxy().get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
+      kTimeout));
+  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy().get(), schedule_id, kTimeout));
+
+  // Write a row.
+  auto source_conn = ASSERT_RESULT(ConnectToDB(kSourceNamespaceName));
+  ASSERT_OK(source_conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(source_conn.ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
+
+  // Write a second row after recording the hybrid time.
+  auto ht = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
+
+  ASSERT_OK(source_conn.ExecuteFormat("ALTER TABLE t1 ADD COLUMN c1 INT"));
+  ASSERT_OK(source_conn.ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1, $2)", std::get<0>(kRowNewSchema), std::get<1>(kRowNewSchema),
+      std::get<2>(kRowNewSchema)));
+  CloneNamespaceRequestPB req;
+  NamespaceIdentifierPB source_namespace;
+  source_namespace.set_name(kSourceNamespaceName);
+  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  *req.mutable_source_namespace() = source_namespace;
+  req.set_restore_ht(ht.ToUint64());
+  req.set_target_namespace_name(kTargetNamespaceName1);
+
+  ASSERT_OK(CloneAndWaitForState(req, master::SysCloneStatePB::RESTORED));
+
+  // Verify clone only has the first row.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRow);
 }
 
 }  // namespace master

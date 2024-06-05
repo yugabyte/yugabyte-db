@@ -149,6 +149,23 @@ public class XClusterTableConfig extends Model {
     return Optional.of(xClusterTableConfig);
   }
 
+  /**
+   * Retrieves an XClusterTableConfig object based on the provided tableId.
+   *
+   * @param tableId The unique identifier of the table.
+   * @return An Optional containing the XClusterTableConfig object if found, or an empty Optional if
+   *     not found.
+   */
+  public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
+    XClusterTableConfig xClusterTableConfig =
+        find.query().fetch("tables").where().eq("table_id", tableId).findOne();
+    if (xClusterTableConfig == null) {
+      log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
+      return Optional.empty();
+    }
+    return Optional.of(xClusterTableConfig);
+  }
+
   @JsonGetter("backupUuid")
   UUID getBackupUuid() {
     if (getBackup() == null) {

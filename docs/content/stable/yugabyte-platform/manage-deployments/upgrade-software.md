@@ -16,21 +16,21 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 {{< note title="Upgrading YugabyteDB on deprecated operating systems" >}}
 
-If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade to the next major YugabyteDB release. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
+If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade to the next major YugabyteDB release. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
 
 {{< /note >}}
 
 When performing a database upgrade, do the following:
 
-1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
+1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](../../../releases/yba-releases/).
+    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, refer to [Compatibility with YugabyteDB](../../../releases/yba-releases/#compatibility-with-yugabytedb).
 
-1. [Review major changes in previous YugabyteDB releases](../upgrade-software-prepare/). Depending on the upgrade you are planning, you may need to make changes to your automation or upgrade your Linux operating system.
+1. [Prepare to upgrade a universe](../upgrade-software-prepare/). Depending on the upgrade you are planning, you may need to make changes to your automation or upgrade your Linux operating system.
 
-1. [View and import releases](../upgrade-software-install/#view-and-import-releases). Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available and, if necessary, import the release into YugabyteDB Anywhere.
+1. [View and import releases](../ybdb-releases/). Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available in YugabyteDB Anywhere and, if necessary, import the release.
 
-1. [Upgrade the universe](../upgrade-software-install/#upgrade-a-universe). Perform a rolling upgrade on a live universe deployment.
+1. [Upgrade the universe](../upgrade-software-install/). Perform a rolling upgrade on a live universe deployment.
 
 {{<index/block>}}
 
@@ -38,6 +38,12 @@ When performing a database upgrade, do the following:
     title="Prepare to upgrade"
     body="Review changes that may affect your automation."
     href="../upgrade-software-prepare/"
+    icon="/images/section_icons/quick_start/install.png">}}
+
+  {{<index/item
+    title="Manage releases"
+    body="View and import the latest releases of YugabyteDB."
+    href="../ybdb-releases/"
     icon="/images/section_icons/quick_start/install.png">}}
 
   {{<index/item

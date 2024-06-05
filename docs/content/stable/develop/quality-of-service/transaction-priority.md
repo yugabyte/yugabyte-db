@@ -3,7 +3,7 @@ title: Transaction priorities
 headerTitle: Transaction priorities
 linkTitle: Transaction priorities
 description: Transaction priorities in YugabyteDB.
-headcontent: Transaction priorities in YugabyteDB.
+headcontent: Transaction priorities in YugabyteDB
 menu:
   stable:
     name: Transaction priorities
