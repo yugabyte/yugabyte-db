@@ -2,14 +2,11 @@ import React, { FC } from "react";
 import { Box, LinearProgress, makeStyles, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
-import {
-  useGetMigrationAssessmentInfoQuery,
-} from "@app/api/src";
+import { useGetMigrationAssessmentInfoQuery } from "@app/api/src";
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
 import { MigrationSourceEnv } from "./AssessmentSourceEnv";
 import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
 import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
-import { newMigration } from "./AssessmentData";
 import { GenericFailure } from "@app/components";
 
 const useStyles = makeStyles((theme) => ({
@@ -88,7 +85,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         </Typography>
         {/* {newMigrationAPI?.completedTime && (
           <Typography variant="body1" className={classes.label}>
-            {newMigration.completedTime}
+            {newMigrationAPI.completedTime}
           </Typography>
         )} */}
       </Box>
@@ -105,14 +102,9 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         <>
           <MigrationAssessmentSummary
             complexity={
-              newMigrationAPI?.summary?.migration_complexity ||
-              migration.complexity ||
-              newMigration.summary.complexity
+              newMigrationAPI?.summary?.migration_complexity || migration.complexity || "N/A"
             }
-            estimatedMigrationTime={
-              newMigrationAPI?.summary?.estimated_migration_time ||
-              newMigration.Sizing.SizingRecommendation.EstimatedTimeInMinForImport
-            }
+            estimatedMigrationTime={newMigrationAPI?.summary?.estimated_migration_time || "N/A"}
             summary={
               newMigrationAPI?.summary?.summary ||
               t("clusterDetail.voyager.planAndAssess.summary.unavailable")
@@ -120,78 +112,56 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
           />
 
           <MigrationSourceEnv
-            vcpu={newMigrationAPI?.source_environment?.total_vcpu ?? newMigration.sourceEnv.vcpu}
-            memory={
-              newMigrationAPI?.source_environment?.total_memory ?? newMigration.sourceEnv.memory
-            }
-            disk={
-              newMigrationAPI?.source_environment?.total_disk_size ?? newMigration.sourceEnv.disk
-            }
-            connectionCount={
-              newMigrationAPI?.source_environment?.no_of_connections ??
-              newMigration.sourceEnv.connectionCount
-            }
-            tableSize={
-              newMigrationAPI?.source_database?.table_size ?? newMigration.sourceEnv.tableSize
-            }
-            rowCount={
-              newMigrationAPI?.source_database?.table_row_count?.toString() ??
-              newMigration.sourceEnv.rowCount
-            }
-            totalSize={
-              newMigrationAPI?.source_database?.total_table_size ?? newMigration.sourceEnv.totalSize
-            }
-            indexSize={
-              newMigrationAPI?.source_database?.total_index_size ?? newMigration.sourceEnv.indexSize
-            }
+            vcpu={newMigrationAPI?.source_environment?.total_vcpu ?? "N/A"}
+            memory={newMigrationAPI?.source_environment?.total_memory ?? "N/A"}
+            disk={newMigrationAPI?.source_environment?.total_disk_size ?? "N/A"}
+            connectionCount={newMigrationAPI?.source_environment?.no_of_connections ?? "N/A"}
+            tableSize={newMigrationAPI?.source_database?.table_size ?? "N/A"}
+            rowCount={newMigrationAPI?.source_database?.table_row_count?.toString() ?? "N/A"}
+            totalSize={newMigrationAPI?.source_database?.total_table_size ?? "N/A"}
+            indexSize={newMigrationAPI?.source_database?.total_index_size ?? "N/A"}
           />
 
           <MigrationAssessmentRecommendation
             migration={migration}
             recommendation={
-              newMigrationAPI?.target_recommendations?.recommendation_summary ??
-              newMigration.recommendation.description
+              newMigrationAPI?.target_recommendations?.recommendation_summary ?? "N/A"
             }
             nodeCount={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation?.num_nodes ??
-              newMigration.recommendation.clusterSize.nodeCount
+              "N/A"
             }
             vCpuPerNode={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation
-                ?.vcpu_per_node ?? newMigration.recommendation.clusterSize.vCpuPerNode
+                ?.vcpu_per_node ?? "N/A"
             }
             memoryPerNode={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation
-                ?.memory_per_node ?? newMigration.recommendation.clusterSize.memoryPerNode
+                ?.memory_per_node ?? "N/A"
             }
             optimalSelectConnPerNode={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation
-                ?.connections_per_node ??
-              newMigration.recommendation.clusterSize.optSelectConnPerNode
+                ?.connections_per_node ?? "N/A"
             }
             optimalInsertConnPerNode={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation
-                ?.inserts_per_node ?? newMigration.recommendation.clusterSize.optInsertConnPerNode
+                ?.inserts_per_node ?? "N/A"
             }
             colocatedTableCount={
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
-                ?.no_of_colocated_tables ??
-              newMigration.recommendation.schemaRecommendation.colocatedTables
+                ?.no_of_colocated_tables ?? "N/A"
             }
             shardedTableCount={
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
-                ?.no_of_sharded_tables ??
-              newMigration.recommendation.schemaRecommendation.shardedTables
+                ?.no_of_sharded_tables ?? "N/A"
             }
             colocatedTotalSize={
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
-                ?.total_size_colocated_tables ??
-              newMigration.recommendation.schemaRecommendation.colocatedSize
+                ?.total_size_colocated_tables ?? "N/A"
             }
             shardedTotalSize={
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
-                ?.total_size_sharded_tables ??
-              newMigration.recommendation.schemaRecommendation.shardedSize
+                ?.total_size_sharded_tables ?? "N/A"
             }
           />
 
