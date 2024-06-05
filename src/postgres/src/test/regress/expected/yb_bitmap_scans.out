@@ -1431,5 +1431,31 @@ SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
      0
 (1 row)
 
+--
+-- #21793: test row compare expressions
+--
+CREATE TABLE test_crash_row_comp (a integer);
+INSERT INTO test_crash_row_comp VALUES (1);
+CREATE INDEX on test_crash_row_comp(a ASC);
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_crash_row_comp t (actual rows=1 loops=1)
+   Recheck Cond: ((ROW(a, a) <= ROW(10, 1)) OR (a IS NULL))
+   ->  BitmapOr (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on test_crash_row_comp_a_idx (actual rows=1 loops=1)
+               Index Cond: (ROW(a, a) <= ROW(10, 1))
+         ->  Bitmap Index Scan on test_crash_row_comp_a_idx (actual rows=0 loops=1)
+               Index Cond: (a IS NULL)
+(7 rows)
+
+/*+ BitmapScan(t) */
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+ a
+---
+ 1
+(1 row)
+
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;
