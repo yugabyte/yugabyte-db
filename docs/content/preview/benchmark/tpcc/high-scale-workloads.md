@@ -18,6 +18,7 @@ Workloads in TPC-C are defined by the number of warehouses the benchmark run wil
 ## Get TPC-C binaries
 
 First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands:
+First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands:
 
 ```sh
 $ wget https://github.com/yugabyte/tpcc/releases/latest/download/tpcc.tar.gz
@@ -233,7 +234,7 @@ You can then run the workload against the database from each client:
 {{% /tab %}}
 {{</tabpane >}}
 
-## Benchmark Results
+## Benchmark results
 
 {{<tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
@@ -377,7 +378,7 @@ The output after merging should look similar to the following:
 
 In our testing, YugabyteDB was able to process 1M tpmC with 150,000 warehouses at an efficiency of 99.8% on an RF3 cluster of 75 48vCPU/96GB machines with a total data size of 50TB.
 
-To accomplish this feat, a lot of new features had to be implemented and existing features optimized. Some are listed here.
+To accomplish this feat, numerous new features had to be implemented and existing ones optimized such as the following:
 
 - The number of RPCs made was reduced to reduce CPU usage.
 - Fine-grained locking was implemented.
@@ -388,7 +389,7 @@ To accomplish this feat, a lot of new features had to be implemented and existin
 - Transaction retries.
 
 {{<note>}}
-The 150K warehouses benchmark was run on v2.11.
+The 150K warehouses benchmark was run on [v2.11](../../releases/ybdb-releases/end-of-life/v2.11/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
