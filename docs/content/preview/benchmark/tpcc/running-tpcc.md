@@ -1,6 +1,6 @@
 ---
 title: Running the TPC-C performance benchmark
-headerTitle: Running the TPC-C performance benchmark
+headerTitle: Run the TPC-C performance benchmark
 linkTitle: Run benchmark
 headcontent: Detailed steps to run the TPCC benchmark
 menu:
@@ -13,20 +13,20 @@ rightNav:
   hideH3: true
 ---
 
-To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster specification (size and instance type) depending on your estimated IOPS, estimated data size and expected latency.
+To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster specification (size and instance type) depending on your estimated IOPS, estimated data size, and expected latency.
 
 You can use the following table for reference.
 
-|   Cluster   | Data set size (GB) | DB IOPS  | Recommended workload (warehouses) | Results - tpmc | Results - efficiency | Results - latency |
+|   Cluster   | Data set size (GB) | DB IOPS  | Recommended workload (warehouses) | <br>tpmC | Results<br>efficiency | <br>Latency |
 | ----------- | ------------------ | -------- | --------------------------------- | -------------- | -------------------- | ----------------- |
 | 3 x 2vCPUs  | 39.90              | 1875.77  | 500                               | 6415.7         | 99.78                | 64.08             |
 | 3 x 4vCPUs  | 75.46              | 3736.53  | 1000                              | 12829.93       | 99.77                | 73.97             |
 | 3 x 8vCPUs  | 141.40             | 7488.01  | 2000                              | 25646.4        | 99.71                | 54.21             |
-| 3 x 16vCPUs | 272.24             | 14987.79 | 4000                              | 51343.5        | 99.81                | 39.46             |
+| 3&nbsp;x&nbsp;16vCPUs | 272.24             | 14987.79 | 4000                              | 51343.5        | 99.81                | 39.46             |
 
 ## Instance types
 
-The following table lists the recommended instance types on different cloud providers for the above-listed vCPU count.
+The following table lists the recommended instance types on different cloud providers based on vCPU count.
 
 | vCPU |     AWS     |       AZURE       |            GCP             |
 | ---- | ----------- | ----------------- | -------------------------- |
@@ -35,7 +35,7 @@ The following table lists the recommended instance types on different cloud prov
 | 8    | m6i.2xlarge | Standard_D8ds_v5  | n2-standard-8              |
 | 16   | m6i.4xlarge | Standard_D16ds_v5 | n2&#8209;standard&#8209;16 |
 
-After you have decided the instance type of the cluster that you need, follow the instructions below to run the TPC-C workload.
+After you have decided the instance type of the cluster that you need, use the following instructions to run the TPC-C workload.
 
 ## Get TPC-C binaries
 
@@ -49,7 +49,7 @@ $ cd tpcc
 
 ## Client machine
 
-The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. These are the recommended instance types for the client machine from different cloud providers.
+The client machine is where the benchmark is run from. An 8vCPU machine with at least 16GB memory is recommended. The following instance types are recommended for the client machine.
 
 | vCPU |    AWS     |      AZURE      |     GCP      |
 | ---- | ---------- | --------------- | ------------ |
@@ -65,8 +65,9 @@ The client machine is where the benchmark is run from. It is recommended you cho
 <!-- local cluster setup instructions -->
 {{<setup/local>}}
 
+Store the IP addresses of the nodes in a shell variable for use in further commands.
+
 ```bash
-# Store the IP addresses of the nodes in a shell variable to be in the further commands.
 IPS=127.0.0.1,127.0.0.2,127.0.0.3
 ```
 
@@ -77,13 +78,13 @@ IPS=127.0.0.1,127.0.0.2,127.0.0.3
 
 {{<warning title="Set up connection options correctly">}}
 
-- When running the client machine outside the VPC, enable "Public Access" for the cluster. Also, make sure your client's IP is added to the **Allow list**.
-- Add the username (admin) and password from the credential file that you downloaded when you set up your cluster in YB Managed to the [workload_all.xml](#configure-connection-parameters) file.
+- When running the client machine outside the VPC, enable Public Access for the cluster. Also, make sure your client's IP is added to the **IP allow list**.
+- Add the username (admin) and password from the credential file that you downloaded when you set up your cluster to the [workload_all.xml](#configure-connection-parameters) file.
 - Make sure you add the full path of the location of the SSL certificate of your cluster in the `sslCert` tag in the [workload_all.xml](#configure-connection-parameters) file.
 - If you are planning to do a horizontal scale test, set the fault tolerance level to **None** so that you can add a single node to the cluster.
 {{</warning>}}
 
-Store the IP addresses/public address of the cluster in a shell variable to be used in further commands.
+Store the IP addresses/public address of the cluster in a shell variable for use in further commands.
 
 ```bash
 IPS=<cluster-name/IP>
@@ -118,7 +119,7 @@ Set up the TPC-C database schema with the following command:
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command:
+Populate the database with data needed for the benchmark with the following command:
 
 ```sh
 $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=500 --loaderthreads 48
@@ -134,7 +135,7 @@ Set up the TPC-C database schema with the following command:
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command:
+Populate the database with data needed for the benchmark with the following command:
 
 ```sh
 $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000 --loaderthreads 48
@@ -150,7 +151,7 @@ Set up the TPC-C database schema with the following command:
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command:
+Populate the database with data needed for the benchmark with the following command:
 
 ```sh
 $ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000 --loaderthreads 48
@@ -166,7 +167,7 @@ Set up the TPC-C database schema with the following command:
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-To populate the above-created database with data needed for the benchmark use two client machines. Run the following load commands on each of the machines respectively.
+To populate the database with data needed for the benchmark, use two client machines. Run the following load commands on each of the machines respectively.
 
 | Client | Command |
 | -----: | :------ |
@@ -292,4 +293,4 @@ On a 16vCPU cluster, 51,343 tpmC was achieved with 99.81% efficiency keeping the
 
 ## Conclusion
 
-The TPC-C benchmark provides a rigorous and comprehensive method for evaluating the performance of OLTP systems, focusing on throughput, response time, and data consistency. Such results will help you decide if YugabyteDB is the right database for your high-throughput, transaction-heavy applications.
+The TPC-C benchmark provides a rigorous and comprehensive method for evaluating the performance of OLTP systems, focusing on throughput, response time, and data consistency. The results will help you decide if YugabyteDB is the right database for your high-throughput, transaction-heavy applications.

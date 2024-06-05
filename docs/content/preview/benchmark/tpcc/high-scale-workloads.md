@@ -18,7 +18,6 @@ Workloads in TPC-C are defined by the number of warehouses the benchmark run wil
 ## Get TPC-C binaries
 
 First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands:
-First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands:
 
 ```sh
 $ wget https://github.com/yugabyte/tpcc/releases/latest/download/tpcc.tar.gz
@@ -28,7 +27,7 @@ $ cd tpcc
 
 ## Client machine
 
-The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. The following instance types are recommended for the client machine.
+The client machine is where the benchmark is run from. An 8vCPU machine with at least 16GB memory is recommended. The following instance types are recommended for the client machine.
 
 | vCPU |    AWS     |      AZURE      |     GCP      |
 | ---- | ---------- | --------------- | ------------ |
@@ -80,7 +79,7 @@ IPS=<cluster-name/IP>
 {{<tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
 
-Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster.
+Before starting the workload, you need to load the data. Replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
@@ -118,7 +117,7 @@ Tune the `--loaderthreads` parameter for higher parallelism during the load, bas
 {{% /tab %}}
 {{% tab header="1,000 warehouses" lang="1k-wh" %}}
 
-Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster.
+Before starting the workload, you need to load the data first. Replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
@@ -139,15 +138,15 @@ Tune the `--loaderthreads` parameter for higher parallelism during the load, bas
 
 Before starting the workload, you need to load the data. In addition, you need to ensure that you exported a list of all IP addresses of all the nodes involved.
 
-For 10k warehouses, you would need ten clients of type `c5.4xlarge` to drive the benchmark. For multiple clients, you need to perform three steps.
+For 10k warehouses, you would need ten clients of type `c5.4xlarge` to drive the benchmark. For multiple clients, you need to perform the following steps.
 
-First, you create the database and the corresponding tables. Execute the following command from one of the clients:
+First, create the database and the corresponding tables. Execute the following command from one of the clients:
 
 ```sh
 ./tpccbenchmark  --nodes=$IPS  --create=true
 ```
 
-After the database and tables are created, you can load the data from all ten clients:
+After the database and tables are created, load the data from all ten clients:
 
 | Client | Command |
 | -----: | :------ |
@@ -216,6 +215,7 @@ Before starting the execution, you have to move all the tablet leaders out of th
 ```
 
 Make sure that the IP addresses used in the execution phase don't include the `master-leader-ip`.
+
 You can then run the workload against the database from each client:
 
 | Client | Command |
@@ -279,13 +279,13 @@ After the execution is completed, the TPM-C number along with the efficiency is 
 
 **Latencies**:
 
-* **New Order** Avg: 68.265 msecs, p99: 574.339 msecs
-* **Payment** Avg: 19.969 msecs, p99: 475.311 msecs
-* **OrderStatus** Avg: 13.821 msecs, p99: 571.414 msecs
-* **Delivery** Avg: 67.384 msecs, p99: 724.67 msecs
-* **StockLevel** Avg: 114.032 msecs, p99: 263.849 msecs
+- **New Order** Avg: 68.265 msecs, p99: 574.339 msecs
+- **Payment** Avg: 19.969 msecs, p99: 475.311 msecs
+- **OrderStatus** Avg: 13.821 msecs, p99: 571.414 msecs
+- **Delivery** Avg: 67.384 msecs, p99: 724.67 msecs
+- **StockLevel** Avg: 114.032 msecs, p99: 263.849 msecs
 
-Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
+After the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
 
 ```output
 04:54:54,560 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000866600, measuredRequests=85196) = 47.33108832382159 requests/sec reqs/sec
@@ -337,7 +337,7 @@ When the execution is completed, the TPM-C number along with the efficiency is d
 
 When the execution is completed, you need to copy the `csv` files from each of the nodes to one of the nodes and run `merge-results` to display the merged results.
 
-After copying the `csv` files to a directory such as `results-dir`, you can merge the results as follows:
+After copying the `csv` files to a directory such as `results-dir`, merge the results as follows:
 
 ```sh
 ./tpccbenchmark --merge-results=true --dir=results-dir --warehouses=10000
@@ -378,7 +378,7 @@ The output after merging should look similar to the following:
 
 In our testing, YugabyteDB was able to process 1M tpmC with 150,000 warehouses at an efficiency of 99.8% on an RF3 cluster of 75 48vCPU/96GB machines with a total data size of 50TB.
 
-To accomplish this feat, numerous new features had to be implemented and existing ones optimized such as the following:
+To accomplish this feat, numerous new features had to be implemented and existing ones optimized, including the following:
 
 - The number of RPCs made was reduced to reduce CPU usage.
 - Fine-grained locking was implemented.
