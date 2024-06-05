@@ -34,7 +34,7 @@ SELECT hypopg_reset();
 
 -- Create INCLUDE index
 SELECT COUNT(*) AS NB
-FROM hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val)');
+FROM hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val, "Id2")');
  nb 
 ----
   1
@@ -50,8 +50,8 @@ WHERE e ~ 'Index Only Scan.*<\d+>btree_hypo.*';
 
 -- Deparse the index DDL
 SELECT hypopg_get_indexdef(indexrelid) FROM hypopg();
-                    hypopg_get_indexdef                     
-------------------------------------------------------------
- CREATE INDEX ON public.hypo USING btree (id) INCLUDE (val)
+                        hypopg_get_indexdef                        
+-------------------------------------------------------------------
+ CREATE INDEX ON public.hypo USING btree (id) INCLUDE (val, "Id2")
 (1 row)
 

@@ -1,4 +1,4 @@
-.. title:: HypoPG: Hypothetical indexes for PostgreSQL 
+.. title:: HypoPG: Hypothetical indexes for PostgreSQL
 
 HypoPG
 ======
