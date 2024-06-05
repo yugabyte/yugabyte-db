@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -421,22 +422,13 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
     const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
-  google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB> options;
-  auto record_type_option = options.Add();
-  record_type_option->set_key(cdc::kRecordType);
-  record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-  auto record_format_option = options.Add();
-  record_format_option->set_key(cdc::kRecordFormat);
-  record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
-
   return CreateStreamsInternal(
-      table_ids, SysCDCStreamEntryPB::INITIATED, options, /*transactional=*/true, epoch);
+      table_ids, SysCDCStreamEntryPB::INITIATED, cdc::StreamModeTransactional::kTrue, epoch);
 }
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
     const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
-    const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
-    bool transactional, const LeaderEpoch& epoch) {
+    cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch) {
   SCHECK(
       state == SysCDCStreamEntryPB::ACTIVE || state == SysCDCStreamEntryPB::INITIATED,
       InvalidArgument, "Stream state must be either ACTIVE or INITIATED");
@@ -457,7 +449,8 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
     metadata.add_table_id(table_id);
     metadata.set_transactional(transactional);
 
-    metadata.mutable_options()->CopyFrom(options);
+    // We use a static set of options for all xCluster streams.
+    *metadata.mutable_options() = client::GetXClusterStreamOptions();
     metadata.set_state(state);
 
     RecordOutboundStream(stream, table_id);
@@ -875,10 +868,8 @@ std::vector<CDCStreamInfoPtr> XClusterSourceManager::GetStreamsForTable(
 }
 
 Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
-    const TableId& table_id, bool transactional,
-    const std::optional<SysCDCStreamEntryPB::State>& initial_state,
-    const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
-    const LeaderEpoch& epoch) {
+    const TableId& table_id, cdc::StreamModeTransactional transactional,
+    const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch) {
   auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
 
   RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
@@ -886,7 +877,7 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
 
   const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;
   auto create_context =
-      VERIFY_RESULT(CreateStreamsInternal({table_id}, state, options, transactional, epoch));
+      VERIFY_RESULT(CreateStreamsInternal({table_id}, state, transactional, epoch));
   RSTATUS_DCHECK_EQ(
       create_context->streams_.size(), 1, IllegalState,
       "Unexpected Expected number of streams created");

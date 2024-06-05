@@ -39,6 +39,7 @@
 #include <utility>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
@@ -115,6 +116,8 @@ using std::make_shared;
 using std::shared_ptr;
 using std::vector;
 using std::string;
+using yb::client::internal::RemoteTabletServer;
+using yb::client::internal::RemoteTabletServerPtr;
 using yb::rpc::ServiceIf;
 
 using namespace std::literals;
@@ -699,15 +702,51 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
   // from the master and compare it with information stored here. Based on this information, we
   // can only send diff updates CQL clients about whether a node came up or went down.
-  live_tservers_.assign(heartbeat_resp.tservers().begin(), heartbeat_resp.tservers().end());
+  live_tservers_.clear();
+  for (const auto& ts_info_pb : heartbeat_resp.tservers()) {
+    const auto& ts_uuid = ts_info_pb.tserver_instance().permanent_uuid();
+    live_tservers_[ts_uuid] = ts_info_pb;
+    if (!remote_tservers_.contains(ts_uuid)) {
+      remote_tservers_[ts_uuid] = std::make_shared<RemoteTabletServer>(ts_info_pb);
+    }
+  }
+  // Prune handles to the TServers that are no longer alive.
+  std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(lock_) {
+    return !live_tservers_.contains(remote_ts_pair.first);
+  });
   return Status::OK();
 }
 
-Status TabletServer::GetLiveTServers(
-    std::vector<master::TSInformationPB> *live_tservers) const {
-  std::lock_guard l(lock_);
-  *live_tservers = live_tservers_;
+Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
+  SharedLock l(lock_);
+  live_tservers->reserve(live_tservers_.size());
+  for (const auto& [_, ts_info_pb] : live_tservers_) {
+    live_tservers->push_back(ts_info_pb);
+  }
   return Status::OK();
+}
+
+Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers() const {
+  SharedLock l(lock_);
+  std::vector<RemoteTabletServerPtr> remote_tservers;
+  remote_tservers.reserve(remote_tservers_.size());
+  for (auto& [_, remote_ts_ptr] : remote_tservers_) {
+    remote_tservers.push_back(DCHECK_NOTNULL(remote_ts_ptr));
+  }
+  return remote_tservers;
+}
+
+Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers(
+    const std::unordered_set<std::string>& ts_uuids) const {
+  SharedLock l(lock_);
+  std::vector<RemoteTabletServerPtr> remote_tservers;
+  remote_tservers.reserve(ts_uuids.size());
+  for (auto& ts_uuid : ts_uuids) {
+    auto remote_ts = FindPtrOrNull(remote_tservers_, ts_uuid);
+    SCHECK(remote_ts, NotFound, Format("Unable to find TServer connection info with id ", ts_uuid));
+    remote_tservers.push_back(remote_ts);
+  }
+  return remote_tservers;
 }
 
 Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
@@ -732,7 +771,7 @@ void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
 }
 
 std::string TabletServer::cluster_uuid() const {
-  std::lock_guard l(lock_);
+  SharedLock l(lock_);
   return cluster_uuid_;
 }
 
@@ -814,7 +853,7 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const GetTserverCatalogVersionInfoRequestPB& req,
     GetTserverCatalogVersionInfoResponsePB *resp) const {
-  std::lock_guard l(lock_);
+  SharedLock l(lock_);
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {

@@ -8,6 +8,7 @@ import api.v2.models.EncryptionInTransitSpec;
 import api.v2.models.NodeDetails;
 import api.v2.models.NodeDetails.MasterStateEnum;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YcqlSpec;
@@ -28,6 +29,7 @@ import org.mapstruct.DecoratedWith;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.control.DeepClone;
@@ -86,6 +88,10 @@ public interface UniverseDefinitionTaskParamsMapper {
   @InheritInverseConfiguration(name = "toV2UniverseCreateSpec")
   UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec);
+
+  UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
+      UniverseEditSpec universeEditSpec,
+      @MappingTarget UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams);
 
   @Mapping(target = "universeUuid", source = "universeUUID")
   @Mapping(target = "updatingTaskUuid", source = "updatingTaskUUID")

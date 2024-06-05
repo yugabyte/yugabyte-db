@@ -281,7 +281,8 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	/* transaction streaming - two-phase commit */
 	cb->stream_prepare_cb = pgoutput_stream_prepare_txn;
 
-	cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+	if (IsYugaByteEnabled())
+		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
 }
 
 static void

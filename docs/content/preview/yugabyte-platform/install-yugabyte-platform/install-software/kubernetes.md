@@ -141,9 +141,15 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}` command and copying the specific section to your own values file.
 
-### Disable the creation of an internal service account
+### Customize the creation of an internal service account
 
-By default, the YBA Helm chart creates an internal service account with a ClusterRoleBinding that allows for scraping of kubelet metrics and the creation of new namespaces for YugabyteDB deployments. To disable this behavior, you can set the `rbac.create` value to false. Note that, when this value is disabled, YugabyteDB Anywhere must be [configured with a pre-created namespace](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones) and will also be unable to scrape certain resource metrics like CPU and memory usage for YugabyteDB pods.
+By default, the Helm chart will attempt to create a service account that has certain ClusterRoles listed [here](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166). These roles are used to do the following:
+
+1. Enable YBA to collect resource metrics such as CPU and memory from the Kubernetes nodes.
+1. Create YugabyteDB deployments in new namespaces.
+
+To customize this behavior and potentially lose some of the functionality above, you can set the `serviceAccount` value to a pre-existing service account that you've already created. It is recommended that you atleast grant this service account the cluster roles listed in the "required to scrape" section of the [rbac configuration file](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166), along with a namespace admin role. To completely disable this behavior, set the `rbac.create` value to false. Note that without the ability to create new namespaces, YugabyteDB Anywhere must be [configured with a pre-created namespace](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones). 
+
 
 ### Specify custom container registry
 

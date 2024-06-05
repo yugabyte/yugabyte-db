@@ -632,12 +632,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreStopError) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
-
-    // Check that installed MASTER software version is consistent.
-    createSoftwareInstallTasks(
-        nodeSet, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
-
     if (currentNode.masterState != MasterState.Configured) {
+      // Check that installed MASTER software version is consistent.
+      createSoftwareInstallTasks(
+          nodeSet, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
+
       // TODO Configuration subtasks may be skipped if it is already a master.
       // Update master configuration on the node.
       createConfigureServerTasks(
@@ -1017,6 +1016,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .userIntent
                 .deviceInfo
                 .numVolumes;
+      }
+
+      if (StringUtils.isNotEmpty(node.machineImage)) {
+        params.machineImage = node.machineImage;
       }
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());

@@ -73,11 +73,13 @@ METRIC_DEFINE_counter(server, xcluster_consumer_poll_failure_count,
     "Number of poll failures encountered by XClusterConsumer. Poll failures are "
     "errors applying changes to the target cluster.");
 
-DEFINE_NON_RUNTIME_int32(cdc_consumer_handler_thread_pool_size, 0,
+DEPRECATE_FLAG(int32, cdc_consumer_handler_thread_pool_size, "05_2024");
+
+DEFINE_NON_RUNTIME_int32(xcluster_consumer_thread_pool_size, 0,
     "Override the max thread pool size for XClusterConsumerHandler, which is used by "
     "XClusterPoller. If set to 0, then the thread pool will use the default size (number of "
     "cpus on the system).");
-TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
+TAG_FLAG(xcluster_consumer_thread_pool_size, advanced);
 
 DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
@@ -220,8 +222,8 @@ Status XClusterConsumer::Init() {
   RETURN_NOT_OK(yb::Thread::Create(
       "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, this, &run_trigger_poll_thread_));
   ThreadPoolBuilder cdc_consumer_thread_pool_builder("XClusterConsumerHandler");
-  if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
-    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
+  if (FLAGS_xcluster_consumer_thread_pool_size > 0) {
+    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_xcluster_consumer_thread_pool_size);
   }
 
   return cdc_consumer_thread_pool_builder.Build(&thread_pool_);

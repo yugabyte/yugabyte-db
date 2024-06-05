@@ -1349,7 +1349,12 @@ create_yb_bitmap_table_path(PlannerInfo *root,
 
 	pathnode->bitmapqual = bitmapqual;
 
-	cost_yb_bitmap_table_scan(&pathnode->path, root, rel,
+	if (yb_enable_base_scans_cost_model)
+		yb_cost_bitmap_table_scan(&pathnode->path, root, rel,
+								  pathnode->path.param_info,
+								  bitmapqual, loop_count);
+	else
+		cost_bitmap_heap_scan(&pathnode->path, root, rel,
 							  pathnode->path.param_info,
 							  bitmapqual, loop_count);
 
@@ -1405,7 +1410,11 @@ create_bitmap_and_path(PlannerInfo *root,
 	pathnode->bitmapquals = bitmapquals;
 
 	/* this sets bitmapselectivity as well as the regular cost fields: */
-	cost_bitmap_and_node(pathnode, root);
+	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model &&
+		pathnode->path.parent->is_yb_relation)
+		yb_cost_bitmap_and_node(pathnode, root);
+	else
+		cost_bitmap_and_node(pathnode, root);
 
 	return pathnode;
 }
@@ -1459,7 +1468,11 @@ create_bitmap_or_path(PlannerInfo *root,
 	pathnode->bitmapquals = bitmapquals;
 
 	/* this sets bitmapselectivity as well as the regular cost fields: */
-	cost_bitmap_or_node(pathnode, root);
+	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model &&
+		pathnode->path.parent->is_yb_relation)
+		yb_cost_bitmap_or_node(pathnode, root);
+	else
+		cost_bitmap_or_node(pathnode, root);
 
 	return pathnode;
 }

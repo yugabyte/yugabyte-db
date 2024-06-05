@@ -1042,6 +1042,7 @@ stmt:
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
+			| CreateAmStmt
 			| CreateCastStmt
 			| CreateDomainStmt
 			| CreateEventTrigStmt
@@ -1140,7 +1141,6 @@ stmt:
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -6250,7 +6250,6 @@ row_security_cmd:
 
 CreateAmStmt: CREATE ACCESS METHOD name TYPE_P am_type HANDLER handler_name
 				{
-					parser_ybc_not_support(@1, "CREATE ACCESS METHOD");
 					CreateAmStmt *n = makeNode(CreateAmStmt);
 
 					n->amname = $4;
@@ -7377,7 +7376,7 @@ object_type_name:
 		;
 
 drop_type_name:
-			ACCESS METHOD	{ parser_ybc_not_support(@1, "DROP ACCESS METHOD"); $$ = OBJECT_ACCESS_METHOD; }
+			ACCESS METHOD							{ $$ = OBJECT_ACCESS_METHOD; }
 			| EVENT TRIGGER							{ $$ = OBJECT_EVENT_TRIGGER; }
 			| EXTENSION								{ $$ = OBJECT_EXTENSION; }
 			| FOREIGN DATA_P WRAPPER				{ $$ = OBJECT_FDW; }
@@ -7385,7 +7384,11 @@ drop_type_name:
 			| PUBLICATION							{ $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
-			| TABLEGROUP							{ $$ = OBJECT_YBTABLEGROUP; }
+			| TABLEGROUP
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					$$ = OBJECT_YBTABLEGROUP;
+				}
 		;
 
 /* object types attached to a table */

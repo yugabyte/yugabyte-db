@@ -148,15 +148,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     ...sourceXClusterConfigUuids,
     ...targetXClusterConfigUuids
   ];
-  // The unsafe cast is needed due to issue with useQueries typing
-  // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
-  const xClusterConfigQueries = useQueries(
-    universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: xClusterQueryKey.detail(uuid),
-      queryFn: () => fetchXClusterConfig(uuid),
-      enabled: currentUniverseQuery.data?.universeDetails !== undefined
-    }))
-  ) as UseQueryResult<XClusterConfig>[];
 
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
@@ -573,7 +564,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             isDrInterface={true}
             allowedTasks={allowedTasks}
             drConfig={drConfig}
-            configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
             xClusterConfig={xClusterConfig}

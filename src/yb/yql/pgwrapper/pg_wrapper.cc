@@ -284,6 +284,8 @@ DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
 
+DEFINE_test_flag(bool, enable_pg_cron, false, "Enables the pg_cron extension");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -447,6 +449,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+
+  if (FLAGS_TEST_enable_pg_cron) {
+    metricsLibs.push_back("pg_cron");
+  }
 
   vector<string> lines;
   string line;

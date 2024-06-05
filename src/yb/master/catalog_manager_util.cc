@@ -565,5 +565,9 @@ int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement
                                            : FLAGS_replication_factor;
 }
 
+const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader) {
+  return blacklist_leader ? pb.leader_blacklist() : pb.server_blacklist();
+}
+
 } // namespace master
 } // namespace yb

@@ -482,6 +482,10 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info) {
   return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
 }
 
+uint8_t YBCGetQueryIdForCatalogRequests() {
+  return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

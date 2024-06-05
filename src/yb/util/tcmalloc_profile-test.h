@@ -17,15 +17,15 @@
 #include <thread>
 
 #include <gflags/gflags_declare.h>
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/server/pprof-path-handlers_util.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tcmalloc_profile.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

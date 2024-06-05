@@ -68,9 +68,6 @@ yb_tbm_create(long maxbytes)
 
 	ybtbm->ybctid_set = YBCBitmapCreateSet();
 
-	/* TODO(#20576 or #20573): This defaults to INT_MAX for now */
-	ybtbm->maxentries = (int) yb_tbm_calculate_entries(maxbytes);
-
 	return ybtbm;
 }
 
@@ -137,9 +134,6 @@ yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	if (b->nentries == 0)
 		return;
 
-	size_t total_bytes = a->bytes_consumed + b->bytes_consumed;
-	size_t total_length = a->nentries + b->nentries;
-
 	size_t added_size = YBCBitmapUnionSet(a->ybctid_set, b->ybctid_set);
 	pfree(b);
 
@@ -147,12 +141,6 @@ yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 		return;
 
 	a->nentries = YBCBitmapGetSetSize(a->ybctid_set);
-
-	/*
-	 * Update the estimate of a's consumed bytes assuming an equal proportion of
-	 * each a and b.
-	 */
-	a->bytes_consumed = total_bytes * total_length / a->nentries;
 }
 
 /*
@@ -186,8 +174,8 @@ yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 	 * Update the estimate of a's consumed bytes assuming an equal proportion of
 	 * each a and b.
 	 */
-	a->bytes_consumed = a->nentries == 0 ? 0
-		: total_bytes * total_length / a->nentries;
+	a->bytes_consumed = total_length == 0 ? 0
+		: total_bytes * a->nentries / total_length;
 }
 
 /*
@@ -290,12 +278,14 @@ size_t yb_tbm_get_average_bytes(YbTIDBitmap *ybtbm)
 /*
  * yb_tbm_calculate_entries
  *
- * Estimate number of hashtable entries we can have within maxbytes.
+ * Estimate number of ybctids we can store within maxbytes.
  */
 long
-yb_tbm_calculate_entries(double maxbytes)
+yb_tbm_calculate_entries(double maxbytes, int32 ybctid_width)
 {
-	/* TODO (tim) */
-
-	return INT_MAX;
+	/*
+	 * Estimate 3 pointers per element of the unordered_set
+	 * (based on https://stackoverflow.com/a/37177838)
+	 */
+	return maxbytes / (ybctid_width + (3 * sizeof(int *)));
 }

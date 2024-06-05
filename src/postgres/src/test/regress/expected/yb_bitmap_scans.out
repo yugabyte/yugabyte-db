@@ -276,59 +276,6 @@ SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (uni
     8009 |       5 |       9 |        9
 (9 rows)
 
--- test respecting row limits
-SET yb_fetch_row_limit = 5;
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 4 OR thousand >= 998;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- YB Bitmap Table Scan on tenk1 (actual rows=60 loops=1)
-   Storage Table Read Requests: 12
-   Storage Table Rows Scanned: 60
-   ->  BitmapOr (actual rows=60 loops=1)
-         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=40 loops=1)
-               Index Cond: (thousand < 4)
-               Storage Index Read Requests: 8
-               Storage Index Rows Scanned: 40
-         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=20 loops=1)
-               Index Cond: (thousand >= 998)
-               Storage Index Read Requests: 4
-               Storage Index Rows Scanned: 20
- Storage Read Requests: 24
- Storage Rows Scanned: 120
- Storage Write Requests: 0
- Storage Flush Requests: 0
-(16 rows)
-
---
--- test respecting size limits
---
-SET yb_fetch_row_limit = 0;
-SET yb_fetch_size_limit = '135kB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 500 OR hundred >= 75;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- YB Bitmap Table Scan on tenk1 (actual rows=6250 loops=1)
-   Storage Table Read Requests: 3
-   Storage Table Rows Scanned: 6250
-   ->  BitmapOr (actual rows=6250 loops=1)
-         ->  Bitmap Index Scan on tenk1_thous_tenthous (actual rows=5000 loops=1)
-               Index Cond: (thousand < 500)
-               Storage Index Read Requests: 2
-               Storage Index Rows Scanned: 5000
-         ->  Bitmap Index Scan on tenk1_hundred (actual rows=2500 loops=1)
-               Index Cond: (hundred >= 75)
-               Storage Index Read Requests: 1
-               Storage Index Rows Scanned: 2500
- Storage Read Requests: 6
- Storage Rows Scanned: 13750
- Storage Write Requests: 0
- Storage Flush Requests: 0
-(16 rows)
-
-RESET yb_fetch_row_limit;
-RESET yb_fetch_size_limit;
 --
 -- test exceeding work_mem
 --
@@ -1455,11 +1402,12 @@ CREATE DATABASE colo WITH colocation = true;
 SET yb_explain_hide_non_deterministic_fields = true;
 SET enable_bitmapscan = true;
 SET yb_enable_bitmapscan = true;
-CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT);
+CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT, v varchar);
 CREATE INDEX ON pk_colo(a ASC);
-INSERT INTO pk_colo SELECT i, i FROM generate_series(1, 1000) i;
+CREATE INDEX ON pk_colo(v ASC);
+INSERT INTO pk_colo SELECT i, i, i::text FROM generate_series(1, 1000) i;
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
                                QUERY PLAN
 ------------------------------------------------------------------------
  YB Bitmap Table Scan on pk_colo (actual rows=1 loops=1)
@@ -1475,28 +1423,33 @@ SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
                Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
- Storage Read Requests: 3
- Storage Rows Scanned: 4
+         ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=1 loops=1)
+               Index Cond: ((v)::text = '123'::text)
+               Storage Table Rows Scanned: 1
+               Storage Index Read Requests: 1
+               Storage Index Rows Scanned: 1
+ Storage Read Requests: 4
+ Storage Rows Scanned: 6
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(17 rows)
+(22 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
-  k  |  a
------+-----
- 123 | 123
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
+  k  |  a  |  v
+-----+-----+-----
+ 123 | 123 | 123
 (1 row)
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
-                                       QUERY PLAN
------------------------------------------------------------------------------------------
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
+                                                                       QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=10 loops=1)
    Sort Key: k
    Sort Method: quicksort
    ->  YB Bitmap Table Scan on pk_colo (actual rows=10 loops=1)
-         Storage Filter: (((k < 10) AND ((k % 2) = 1)) OR ((a > 990) AND ((a % 2) = 1)))
+         Storage Filter: (((k < 10) AND ((k % 2) = 1)) OR ((a > 990) AND ((a % 2) = 1)) OR (((v)::text ~~ '999%'::text) AND ((v)::text ~~ '%5'::text)))
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 10
          ->  BitmapOr (actual rows=10 loops=1)
@@ -1511,39 +1464,45 @@ SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR
                      Storage Table Rows Scanned: 10
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 10
- Storage Read Requests: 3
- Storage Rows Scanned: 39
+               ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=0 loops=1)
+                     Index Cond: (((v)::text >= '999'::text) AND ((v)::text < '99:'::text))
+                     Storage Index Filter: ((v)::text ~~ '%5'::text)
+                     Storage Table Rows Scanned: 1
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 1
+ Storage Read Requests: 4
+ Storage Rows Scanned: 41
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(23 rows)
+(29 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
-  k  |  a
------+-----
-   1 |   1
-   3 |   3
-   5 |   5
-   7 |   7
-   9 |   9
- 991 | 991
- 993 | 993
- 995 | 995
- 997 | 997
- 999 | 999
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
+  k  |  a  |  v
+-----+-----+-----
+   1 |   1 | 1
+   3 |   3 | 3
+   5 |   5 | 5
+   7 |   7 | 7
+   9 |   9 | 9
+ 991 | 991 | 991
+ 993 | 993 | 993
+ 995 | 995 | 995
+ 997 | 997 | 997
+ 999 | 999 | 999
 (10 rows)
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
+SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
                                   QUERY PLAN
-------------------------------------------------------------------------------
- Sort (actual rows=6 loops=1)
+-------------------------------------------------------------------------------
+ Sort (actual rows=18 loops=1)
    Sort Key: k
    Sort Method: quicksort
-   ->  YB Bitmap Table Scan on pk_colo (actual rows=6 loops=1)
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=18 loops=1)
          Storage Table Read Requests: 1
-         Storage Table Rows Scanned: 6
-         ->  BitmapOr (actual rows=6 loops=1)
+         Storage Table Rows Scanned: 18
+         ->  BitmapOr (actual rows=18 loops=1)
                ->  Bitmap Index Scan on pk_colo_pkey (actual rows=4 loops=1)
                      Index Cond: (k < 5)
                      Storage Table Read Requests: 1
@@ -1553,35 +1512,52 @@ SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
                      Storage Table Rows Scanned: 2
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 2
- Storage Read Requests: 3
- Storage Rows Scanned: 14
+               ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=13 loops=1)
+                     Index Cond: ((v)::text < '11'::text)
+                     Storage Table Rows Scanned: 13
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 13
+ Storage Read Requests: 4
+ Storage Rows Scanned: 52
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(25 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
- k | a
----+---
- 1 | 1
- 2 | 2
- 3 | 3
- 4 | 4
- 7 | 7
- 8 | 8
-(6 rows)
+SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
+  k   |  a   |  v
+------+------+------
+    1 |    1 | 1
+    2 |    2 | 2
+    3 |    3 | 3
+    4 |    4 | 4
+    7 |    7 | 7
+    8 |    8 | 8
+   10 |   10 | 10
+  100 |  100 | 100
+  101 |  101 | 101
+  102 |  102 | 102
+  103 |  103 | 103
+  104 |  104 | 104
+  105 |  105 | 105
+  106 |  106 | 106
+  107 |  107 | 107
+  108 |  108 | 108
+  109 |  109 | 109
+ 1000 | 1000 | 1000
+(18 rows)
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
                                   QUERY PLAN
 ------------------------------------------------------------------------------
- Sort (actual rows=3 loops=1)
+ Sort (actual rows=4 loops=1)
    Sort Key: k
    Sort Method: quicksort
-   ->  YB Bitmap Table Scan on pk_colo (actual rows=3 loops=1)
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=4 loops=1)
          Storage Table Read Requests: 1
-         Storage Table Rows Scanned: 3
-         ->  BitmapOr (actual rows=3 loops=1)
+         Storage Table Rows Scanned: 4
+         ->  BitmapOr (actual rows=4 loops=1)
                ->  Bitmap Index Scan on pk_colo_pkey (actual rows=2 loops=1)
                      Index Cond: (k = ANY ('{123,124}'::integer[]))
                      Storage Table Read Requests: 1
@@ -1591,45 +1567,53 @@ SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
                      Storage Table Rows Scanned: 2
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 2
- Storage Read Requests: 3
- Storage Rows Scanned: 9
+               ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=2 loops=1)
+                     Index Cond: ((v)::text = ANY ('{122,125}'::text[]))
+                     Storage Table Rows Scanned: 2
+                     Storage Index Read Requests: 1
+                     Storage Index Rows Scanned: 2
+ Storage Read Requests: 4
+ Storage Rows Scanned: 14
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(20 rows)
+(25 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
-  k  |  a
------+-----
- 122 | 122
- 123 | 123
- 124 | 124
-(3 rows)
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
+  k  |  a  |  v
+-----+-----+-----
+ 122 | 122 | 122
+ 123 | 123 | 123
+ 124 | 124 | 124
+ 125 | 125 | 125
+(4 rows)
 
 -- test count
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
                                   QUERY PLAN
 ------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
-   ->  YB Bitmap Table Scan on pk_colo (actual rows=3 loops=1)
-         ->  BitmapOr (actual rows=3 loops=1)
+   ->  YB Bitmap Table Scan on pk_colo (actual rows=4 loops=1)
+         ->  BitmapOr (actual rows=4 loops=1)
                ->  Bitmap Index Scan on pk_colo_pkey (actual rows=2 loops=1)
                      Index Cond: (k = ANY ('{123,124}'::integer[]))
                ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=2 loops=1)
                      Index Cond: (a = ANY ('{122,123}'::integer[]))
-(7 rows)
+               ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=2 loops=1)
+                     Index Cond: ((v)::text = ANY ('{122,125}'::text[]))
+(9 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
  count
 -------
-     3
+     4
 (1 row)
 
 -- test non-existent results
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
                                   QUERY PLAN
 ------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -1639,10 +1623,12 @@ SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
                      Index Cond: (k = 2000)
                ->  Bitmap Index Scan on pk_colo_a_idx (actual rows=0 loops=1)
                      Index Cond: (a < 0)
-(7 rows)
+               ->  Bitmap Index Scan on pk_colo_v_idx (actual rows=0 loops=1)
+                     Index Cond: ((v)::text = 'nonexistent'::text)
+(9 rows)
 
 /*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
  count
 -------
      0

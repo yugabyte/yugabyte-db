@@ -462,20 +462,18 @@ public class TestClusterBase extends BaseCQLTest {
 
       // Wait for some tablets to get moved from blacklisted tservers.
       TestUtils.waitFor(() -> {
-        final long moveRemaining = client.getLoadMoveCompletion().getRemaining();
-        final long moveTotal = client.getLoadMoveCompletion().getTotal();
-        LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
-        return moveRemaining < moveTotal;
+        final GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
+        LOG.info("Move remaining: {} out of total: {}",
+                 response.getRemaining(), response.getTotal());
+        return response.getRemaining() < response.getTotal();
       }, CLUSTER_MOVE_TIMEOUT_MS);
-
-      assertLessThan(client.getLoadMoveCompletion().getRemaining(),
-          client.getLoadMoveCompletion().getTotal());
 
       HostAndPort leaderHostPort = client.getLeaderMasterHostAndPort();
       removeMaster(leaderHostPort);
 
-      long totalAfterKillMaster = client.getLoadMoveCompletion().getTotal();
-      long remainingAfterKillMaster = client.getLoadMoveCompletion().getRemaining();
+      final GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
+      long totalAfterKillMaster = response.getTotal();
+      long remainingAfterKillMaster = response.getRemaining();
 
       // TODO(sanket): We should ideally ensure here that there has been at least
       // one TS HB to the new leader master otherwise remaining load could be 0.
@@ -497,17 +495,13 @@ public class TestClusterBase extends BaseCQLTest {
     // Wait for the move to complete.
     TestUtils.waitFor(() -> {
       verifyExpectedLiveTServers(2 * NUM_TABLET_SERVERS);
-      final double moveCompletion = client.getLoadMoveCompletion().getPercentCompleted();
-      LOG.info("Move completion percent: " + moveCompletion);
-      final long moveRemaining = client.getLoadMoveCompletion().getRemaining();
-      final long moveTotal = client.getLoadMoveCompletion().getTotal();
-      LOG.info("Move remaining: " + moveRemaining + " - out of - total: ", moveTotal);
-      return moveCompletion >= 100 && moveRemaining == 0 && moveTotal > 0;
+      final GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
+      LOG.info("Move completion percent: {}", response.getPercentCompleted());
+      LOG.info("Move remaining: {} out of total: {}",
+               response.getRemaining(), response.getTotal());
+      return response.getPercentCompleted() >= 100 && response.getRemaining() == 0
+        && response.getTotal() > 0;
     }, CLUSTER_MOVE_TIMEOUT_MS);
-
-    assertEquals(100, (int) client.getLoadMoveCompletion().getPercentCompleted());
-    assertEquals(0, client.getLoadMoveCompletion().getRemaining());
-    assertLessThan((long)0, client.getLoadMoveCompletion().getTotal());
 
     // Wait for the partition metadata to refresh.
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);

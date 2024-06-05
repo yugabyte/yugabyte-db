@@ -138,7 +138,7 @@ public class UniverseCRUDHandler {
 
   @Inject CertificateHelper certificateHelper;
 
-  private enum OpType {
+  public enum OpType {
     CONFIGURE,
     CREATE,
     UPDATE
@@ -350,7 +350,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  private void checkGeoPartitioningParameters(
+  public void checkGeoPartitioningParameters(
       Customer customer, UniverseDefinitionTaskParams taskParams, OpType op) {
 
     UUID defaultRegionUUID = PlacementInfoUtil.getDefaultRegion(taskParams);
@@ -543,6 +543,15 @@ public class UniverseCRUDHandler {
     }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      // Multiple layers of check as cloud info can be null in unit tests
+      if (provider.getDetails().getCloudInfo() != null
+          && provider.getDetails().getCloudInfo().kubernetes != null
+          && provider.getDetails().getCloudInfo().kubernetes.isKubernetesOperatorControlled
+          && !taskParams.isKubernetesOperatorControlled) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "cannot use operator controlled provider to create a universe without the operator");
+      }
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
@@ -556,7 +565,9 @@ public class UniverseCRUDHandler {
       }
       validateRegionsAndZones(provider, c);
       // Configure the defaultimageBundle in case not specified.
-      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
+      if (c.userIntent.imageBundleUUID == null
+          && provider.getCloudCode().imageBundleSupported()
+          && !cloudEnabled) {
         if (provider.getImageBundles().size() > 0) {
           List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
           if (bundles.size() > 0) {
@@ -1063,7 +1074,7 @@ public class UniverseCRUDHandler {
   }
 
   /** Merge node exporter related information from current universe details to the task params */
-  private void mergeNodeExporterInfo(Universe u, UniverseDefinitionTaskParams taskParams) {
+  public void mergeNodeExporterInfo(Universe u, UniverseDefinitionTaskParams taskParams) {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
@@ -1116,7 +1127,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  private void notHelm2LegacyOrBadRequest(Universe u) {
+  public void notHelm2LegacyOrBadRequest(Universe u) {
     Map<String, String> universeConfig = u.getConfig();
     if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
       throw new PlatformServiceException(
@@ -1129,7 +1140,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  private UUID checkValidRootCA(UUID rootCA) {
+  public UUID checkValidRootCA(UUID rootCA) {
     if (!CertificateInfo.isCertificateValid(rootCA)) {
       String errMsg =
           String.format(
@@ -1495,7 +1506,7 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
-  static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
+  public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
@@ -2058,7 +2069,7 @@ public class UniverseCRUDHandler {
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
-  private void checkHelmChartExists(String ybSoftwareVersion) {
+  public void checkHelmChartExists(String ybSoftwareVersion) {
     try {
       kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {

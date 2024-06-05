@@ -81,21 +81,6 @@ SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (uni
 /*+ Set(enable_bitmapscan false) */
 SELECT unique1, unique2, hundred, thousand FROM tenk1 WHERE unique1 <= 1 OR (unique2 BETWEEN 4 and 6) OR ((hundred IN (64, 66) AND thousand < 200 AND unique1 < 1000)) ORDER BY unique1;
 
--- test respecting row limits
-SET yb_fetch_row_limit = 5;
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 4 OR thousand >= 998;
-
---
--- test respecting size limits
---
-SET yb_fetch_row_limit = 0;
-SET yb_fetch_size_limit = '135kB';
-/*+ BitmapScan(tenk1) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM tenk1 WHERE thousand < 500 OR hundred >= 75;
-RESET yb_fetch_row_limit;
-RESET yb_fetch_size_limit;
-
 --
 -- test exceeding work_mem
 --
@@ -361,41 +346,42 @@ SET yb_explain_hide_non_deterministic_fields = true;
 SET enable_bitmapscan = true;
 SET yb_enable_bitmapscan = true;
 
-CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT);
+CREATE TABLE pk_colo (k INT PRIMARY KEY, a INT, v varchar);
 CREATE INDEX ON pk_colo(a ASC);
-INSERT INTO pk_colo SELECT i, i FROM generate_series(1, 1000) i;
+CREATE INDEX ON pk_colo(v ASC);
+INSERT INTO pk_colo SELECT i, i, i::text FROM generate_series(1, 1000) i;
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k = 123 OR a = 123;
+SELECT * FROM pk_colo WHERE k = 123 OR a = 123 OR v = '123';
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) ORDER BY k;
+SELECT * FROM pk_colo WHERE (k < 10 AND k % 2 = 1) OR (a > 990 AND a % 2 = 1) OR (v LIKE '999%' AND v LIKE '%5') ORDER BY k;
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
+SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k < 5 OR a BETWEEN 7 AND 8 ORDER BY k;
+SELECT * FROM pk_colo WHERE k < 5 OR (a BETWEEN 7 AND 8) OR v < '11' ORDER BY k;
 
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, DIST, COSTS OFF)
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
 /*+ BitmapScan(pk_colo) */
-SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) ORDER BY k;
+SELECT * FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125') ORDER BY k;
 
 -- test count
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
 /*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123);
+SELECT COUNT(*) FROM pk_colo WHERE k IN (123, 124) OR a IN (122, 123) OR v IN ('122', '125');
 
 -- test non-existent results
 /*+ BitmapScan(pk_colo) */ EXPLAIN (ANALYZE, COSTS OFF)
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
 /*+ BitmapScan(pk_colo) */
-SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0;
+SELECT COUNT(*) FROM pk_colo WHERE k = 2000 OR a < 0 OR v = 'nonexistent';
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

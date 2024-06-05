@@ -468,8 +468,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
       } else {
         LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
         // If an RPC does not have the aux/method information, it shouldn't have progressed much.
-        if (entry.has_wait_status_code_as_string()) {
-          ASSERT_EQ(entry.wait_status_code_as_string(), "OnCpu_Passive");
+        if (entry.has_wait_state_code_as_string()) {
+          ASSERT_EQ(entry.wait_state_code_as_string(), "OnCpu_Passive");
         }
         ++calls_without_aux_info_details;
       }

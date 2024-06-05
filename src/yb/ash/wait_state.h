@@ -31,7 +31,6 @@
 #include "yb/util/uuid.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_bool(TEST_export_wait_state_names);
 
 #define SET_WAIT_STATUS_TO(ptr, code) \
   if ((ptr)) (ptr)->set_code(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
@@ -185,9 +184,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
 // fixed query-ids to identify these background tasks.
 YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForLogAppender, 1))
-  (kQueryIdForFlush)
-  (kQueryIdForCompaction)
-  (kQueryIdForRaftUpdateConsensus)
+  ((kQueryIdForFlush, 2))
+  ((kQueryIdForCompaction, 3))
+  ((kQueryIdForRaftUpdateConsensus, 4))
+  ((kQueryIdForCatalogRequests, 5))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -367,13 +367,13 @@ class WaitStateInfo {
   }
 
   template <class PB>
-  void ToPB(PB* pb) EXCLUDES(mutex_) {
+  void ToPB(PB* pb, bool export_wait_state_names) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
-    pb->set_wait_status_code(yb::to_underlying(code));
-    if (FLAGS_TEST_export_wait_state_names) {
-      pb->set_wait_status_code_as_string(yb::ToString(code));
+    pb->set_wait_state_code(yb::to_underlying(code));
+    if (export_wait_state_names) {
+      pb->set_wait_state_code_as_string(yb::ToString(code));
     }
     aux_info_.ToPB(pb->mutable_aux_info());
   }

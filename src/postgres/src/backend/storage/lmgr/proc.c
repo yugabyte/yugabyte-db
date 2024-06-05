@@ -469,12 +469,15 @@ InitProcess(void)
 
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
-	MyProc->yb_ash_metadata.query_id = 0;
+	/*
+	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
+	 * once it's calculated
+	 */
+	MyProc->yb_ash_metadata.query_id = YBCGetQueryIdForCatalogRequests();
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
-	MyProc->yb_is_ash_metadata_set = false;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -622,7 +625,6 @@ InitAuxiliaryProcess(void)
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
 	pg_atomic_write_u64(&MyProc->waitStart, 0);
-	MyProc->yb_is_ash_metadata_set = false;
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;

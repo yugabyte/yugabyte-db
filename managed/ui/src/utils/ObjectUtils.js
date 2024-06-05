@@ -331,7 +331,6 @@ export function timeFormatXAxis(dataArray, timezone = null) {
       for (let idx = 0; idx < dataArray[counter].x.length; idx++) {
         dataArray[counter].x[idx] = timeFormatterISO8601(
           dataArray[counter].x[idx],
-          undefined,
           timezone
         );
       }

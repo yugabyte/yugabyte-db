@@ -1037,7 +1037,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-availability) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-availability).
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1045,9 +1045,15 @@ To learn about the packed row feature, see [Packed rows in DocDB](../../../archi
 
 Whether packed row is enabled for YSQL.
 
-Default: `false`
+Default: `true`
 
 Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
 
 ##### --ysql_packed_row_size_limit
 
@@ -1068,12 +1074,6 @@ Default: `false`
 Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
 
 Default: `0`
-
-##### --ysql_enable_packed_row_for_colocated_table
-
-Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
-
-Default: `false`
 
 ## Change data capture (CDC) flags
 

@@ -14,6 +14,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
@@ -1078,6 +1079,13 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAlterRoleConfiguration() throws Exception {
+
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE test_role LOGIN");
 
@@ -2907,6 +2915,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testMembershipRevokedInsideGroup() throws Exception {
+
+    // The test fails with Connection Manager enabled as the role GUC variable
+    // is replayed at the beginning of every transaction boundary. This test
+    // requires that the role GUC variable is not changed even after revoking
+    // membership from a role group in order to succeed, which would not be the
+    // case when Connection Manager is enabled.
+    assumeFalse(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
       statement1.execute("CREATE ROLE test_role LOGIN");

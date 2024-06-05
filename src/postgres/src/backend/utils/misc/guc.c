@@ -4681,6 +4681,17 @@ static struct config_int ConfigureNamesInt[] =
 		yb_check_toast_catcache_threshold, NULL, NULL
 	},
 
+	{
+		{"yb_parallel_range_size", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Approximate size of parallel range for DocDB relation scans"),
+			NULL,
+			GUC_UNIT_BYTE
+		},
+		&yb_parallel_range_size,
+		1024 * 1024, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL

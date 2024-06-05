@@ -14,6 +14,10 @@
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
@@ -31,6 +35,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_mock_tablet_hosts_all_transactions);
 DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(TEST_skip_returning_old_transactions);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 
 using namespace std::literals;
@@ -793,6 +798,34 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   ASSERT_OK(status_future_read_req.get());
 }
 
+TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
+  constexpr int kMinTxnAgeMs = 1;
+  // All distributed txns returned as part of pg_locks should have the host node uuid set.
+  const auto kPgLocksQuery =
+      Format("SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks "
+             "WHERE NOT fastpath AND ybdetails->>'node' IS NULL");
+  const auto table = "foo";
+  const auto key = "1";
+
+  // Sets up a table, and launches a transaction acquiring for share lock on the key.
+  auto session = ASSERT_RESULT(Init(table, key));
+  // Launch a fast path transaction that ends up being blocked on the above transaction.
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.ExecuteFormat("UPDATE $0 SET v=v+1 WHERE k=$1", table, key);
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+
+  // Try simulating GetLockStatus requests to tablets querying for fast path transactions alone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_returning_old_transactions) = true;
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+
+  ASSERT_OK(session.conn->CommitTransaction());
+  ASSERT_OK(status_future.get());
+}
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;
@@ -944,6 +977,65 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   }
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
+  const auto kPgLocksQuery = "SELECT count(*) FROM pg_locks";
+  const size_t num_tservers = cluster_->num_tablet_servers();
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
+
+  // Create a connection and acquire a few locks.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+
+  SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  // Add a new tserver to the cluster and wait for it to become "live".
+  ASSERT_OK(cluster_->AddTabletServer());
+  const auto& mini_ts_1 = cluster_->mini_tablet_server(0);
+  ASSERT_OK(WaitFor([&] {
+    std::vector<master::TSInformationPB> tservers;
+    if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
+      return false;
+    }
+    return tservers.size() == num_tservers + 1;
+  }, 5s * kTimeMultiplier, "Failed to learn about new tserver from master"));
+
+  // Move replicas off to the new tserver.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(0));
+  WaitForLoadBalanceCompletion();
+
+  // Assert that the pg_locks query returns correct results after the add node operation.
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  ASSERT_OK(cluster_->ClearBlacklist());
+  // Move replicas back to the old tserver
+  ASSERT_OK(cluster_->AddTServerToBlacklist(1));
+  WaitForLoadBalanceCompletion();
+
+  // Stop the new tserver, and restart the master so that the recently dead TS isn't
+  // invoved in the master <-> tserver heartbeats.
+  cluster_->mini_tablet_server(1)->server()->Shutdown();
+  ASSERT_OK(cluster_->mini_master()->Restart());
+  ASSERT_OK(WaitFor([&] {
+    std::vector<master::TSInformationPB> tservers;
+    if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
+      return false;
+    }
+    return tservers.size() == num_tservers;
+  }, 5s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
+
+  // Assert that the pg_locks query returns correct results after the remove node operation.
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
 }
 
 } // namespace pgwrapper

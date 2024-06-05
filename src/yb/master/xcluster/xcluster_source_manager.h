@@ -73,10 +73,8 @@ class XClusterSourceManager {
   Status DoProcessHiddenTablets() EXCLUDES(retained_hidden_tablets_mutex_);
 
   Result<xrepl::StreamId> CreateNewXClusterStreamForTable(
-      const TableId& table_id, bool transactional,
-      const std::optional<SysCDCStreamEntryPB::State>& initial_state,
-      const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
-      const LeaderEpoch& epoch);
+      const TableId& table_id, cdc::StreamModeTransactional transactional,
+      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch);
 
  protected:
   XClusterSourceManager(
@@ -188,8 +186,7 @@ class XClusterSourceManager {
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
-      const google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB>& options,
-      bool transactional, const LeaderEpoch& epoch);
+      cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch);
 
   // Checkpoint the xCluster stream to the given location. Invokes callback with true if bootstrap
   // is required, and false is bootstrap is not required.

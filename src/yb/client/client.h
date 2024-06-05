@@ -597,19 +597,6 @@ class YBClient {
 
   // CDC Stream related methods.
 
-  // Create a new CDC stream.
-  Result<xrepl::StreamId> CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      bool active = true,
-      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
-
-  void CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
-      CreateCDCStreamCallback callback);
-
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
@@ -1015,11 +1002,6 @@ class YBClient {
   const CloudInfoPB& cloud_info() const;
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
-
-  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
-  // null if none is found.
-  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
-      const std::string& permanent_uuid);
 
   void AddMetaCacheInfo(JsonWriter* writer);
 

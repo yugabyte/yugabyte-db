@@ -904,7 +904,6 @@ YBInitPostgresBackend(
 		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
 		YBCPgAshConfig ash_config;
 		ash_config.metadata = &MyProc->yb_ash_metadata;
-		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
 		ash_config.yb_enable_ash = &yb_enable_ash;
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
@@ -962,17 +961,37 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return;
 
-	HandleYBStatus(YBCPgCommitTransaction());
+	HandleYBStatus(YBCPgCommitPlainTransaction());
 }
 
 void
 YBCAbortTransaction()
 {
-	if (!IsYugaByteEnabled())
+	if (!IsYugaByteEnabled() || !YBTransactionsEnabled())
 		return;
 
-	if (YBTransactionsEnabled())
-		HandleYBStatus(YBCPgAbortTransaction());
+	/*
+	 * If a DDL operation during a DDL txn fails, the txn will be aborted before
+	 * we get here. However if there are failures afterwards (i.e. during
+	 * COMMIT or catalog version increment), then we might get here as part of
+	 * top level error recovery in PostgresMain() with the DDL txn state still
+	 * set in pggate. Clean it up in that case.
+	 */
+	 YBCStatus status = YBCPgClearSeparateDdlTxnMode();
+
+	/*
+	 * Aborting a transaction is likely to fail only when there are issues
+	 * communicating with the tserver. Close the backend connection in such
+	 * scenarios to avoid a recursive loop of aborting again and again as part
+	 * of error handling in PostgresMain() because of the error faced during
+	 * abort.
+	 */
+	if (unlikely(status))
+		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
+
+	status = YBCPgAbortPlainTransaction();
+	if (unlikely(status))
+		elog(FATAL, "Failed to abort DML transaction: %s", YBCMessageAsCString(status));
 }
 
 void
@@ -1516,6 +1535,7 @@ bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
+int yb_parallel_range_size = 1024 * 1024;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -4252,12 +4272,15 @@ assign_yb_read_time(const char* newval, void *extra)
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
 	yb_read_time = value_ull;
 	yb_is_read_time_ht = is_ht_unit;
-	ereport(NOTICE,
-			(errmsg("yb_read_time should be set with caution."),
-			 errdetail("No DDL operations should be performed while it is set and "
-			 		   "it should not be set to a timestamp before a DDL "
-					   "operation has been performed. It doesn't have well defined semantics"
-					   " for normal transactions and is only to be used after consultation")));
+	if (!am_walsender)
+	{
+		ereport(NOTICE,
+				(errmsg("yb_read_time should be set with caution."),
+				errdetail("No DDL operations should be performed while it is set and "
+						"it should not be set to a timestamp before a DDL "
+						"operation has been performed. It doesn't have well defined semantics"
+						" for normal transactions and is only to be used after consultation")));
+	}
 }
 
 void

@@ -9,6 +9,7 @@ CREATE TABLE pcustomer (
     pc_phone text,
     pc_email text,
     pc_acctbalance numeric(15,2)) WITH (colocation = true);
+CREATE INDEX on pcustomer(pc_phone ASC);
 INSERT INTO pcustomer
 SELECT i, -- pc_id
        'Customer #' || i::text, -- pc_name
@@ -41,6 +42,13 @@ SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
 SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
 
 COMMIT;
+
+-- backward scan
+set enable_sort to false;
+EXPLAIN (costs off)
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
+reset enable_sort;
 
 DROP TABLE pcustomer;
 

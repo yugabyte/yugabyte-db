@@ -93,6 +93,7 @@ static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
 static Oid *YBCGetTableOids(List *tables);
+static void YBCRefreshReplicaIdentities();
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
@@ -170,11 +171,24 @@ YBCGetTables(List *publication_names)
 
 	Assert(IsTransactionState());
 
-	yb_publications =
-		YBGetPublicationsByNames(publication_names, false /* missing_ok */);
+	if (publication_names != NIL)
+	{
+		yb_publications =
+			YBGetPublicationsByNames(publication_names, false /* missing_ok */);
 
-	tables = yb_pg_get_publications_tables(yb_publications);
-	list_free(yb_publications);
+		tables = yb_pg_get_publications_tables(yb_publications);
+		list_free(yb_publications);
+	}
+	else
+	{
+		/*
+		 * When the plugin does not provide a publication list, we assume that
+		 * it targets all the tables present in the database and it uses
+		 * publish_via_partition_root = false (default).
+		 */
+		tables = GetAllTablesPublicationRelations(false /* pubviaroot */);
+	}
+
 
 	return tables;
 }
@@ -230,7 +244,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
-			// Get tables in publication and call UpdatePublicationTableList
+			/* Get tables in publication and call UpdatePublicationTableList. */
 			tables = YBCGetTables(publication_names);
 			table_oids = YBCGetTableOids(tables);
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
@@ -239,6 +253,9 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			pfree(table_oids);
 			list_free(tables);
 			AbortCurrentTransaction();
+
+			// Refresh the replica identities.
+			YBCRefreshReplicaIdentities();
 
 			needs_publication_table_list_refresh = false;
 		}
@@ -529,4 +546,28 @@ YBCGetTableOids(List *tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
 	
 	return table_oids;
+}
+
+static void 
+YBCRefreshReplicaIdentities()
+{
+	YBCReplicationSlotDescriptor 	*yb_replication_slot;
+	int							 	replica_identity_idx = 0;
+
+	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
+
+	for (replica_identity_idx = 0;
+	 replica_identity_idx <
+	 yb_replication_slot->replica_identities_count;
+	 replica_identity_idx++)
+	{
+		YBCPgReplicaIdentityDescriptor *desc =
+			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		YBCPgReplicaIdentityDescriptor *value =
+			hash_search(MyReplicationSlot->data.yb_replica_identities,
+						&desc->table_oid, HASH_ENTER, NULL);
+		value->table_oid = desc->table_oid;
+		value->identity_type = desc->identity_type;
+	}
 }
