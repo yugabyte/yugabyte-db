@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, Divider, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
+import { Box, Divider, makeStyles, Typography, useTheme } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
 import { MigrationTiles } from "./MigrationTiles";
 import { MigrationStep } from "./MigrationStep";

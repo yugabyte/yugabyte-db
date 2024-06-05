@@ -53,10 +53,10 @@ interface MigrationAssessmentProps {
 }
 
 export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
-  heading,
+  /* heading, */
   migration,
-  onRefetch,
-  onStepChange,
+  /* onRefetch,
+  onStepChange, */
   isFetching = false,
 }) => {
   const classes = useStyles();
@@ -86,11 +86,11 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         <Typography variant="h4" className={classes.heading}>
           {t("clusterDetail.voyager.planAndAssess.heading")}
         </Typography>
-        {newMigrationAPI && "completedTime" in newMigrationAPI && newMigrationAPI.completedTime && (
+        {/* {newMigrationAPI?.completedTime && (
           <Typography variant="body1" className={classes.label}>
             {newMigration.completedTime}
           </Typography>
-        )}
+        )} */}
       </Box>
 
       {isErrorMigrationAssessmentInfo && <GenericFailure />}

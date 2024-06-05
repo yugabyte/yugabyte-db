@@ -1,8 +1,7 @@
 import React, { FC } from "react";
 import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBButton, YBTooltip } from "@app/components";
-import CaretRightIcon from "@app/assets/Drilldown.svg";
+import { YBTooltip } from "@app/components";
 import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 import type { Migration } from "../../MigrationOverview";
 

@@ -3,7 +3,6 @@ import { Box, Divider, MenuItem, TablePagination, Typography, makeStyles } from 
 import { useTranslation } from "react-i18next";
 import { YBAccordion, YBCodeBlock, YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
-import type { RefactoringDataItems } from "./AssessmentRefactoring";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
 const useStyles = makeStyles((theme) => ({
@@ -48,7 +47,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface MigrationRefactoringSidePanelProps {
-  data: RefactoringDataItems[number] | undefined;
+  data: any | undefined;
   onClose: () => void;
 }
 
@@ -67,7 +66,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
 
   const filteredData = useMemo(() => {
     const searchQuery = search.toLowerCase().trim();
-    return data?.objects.filter((obj) =>
+    return data?.objects.filter((obj: any) =>
       (selectedAck ? obj.ack === (selectedAck === "Acknowledged") : true) && search
         ? obj.filePath.toLowerCase().includes(searchQuery) ||
           obj.sql.toLowerCase().includes(searchQuery)
@@ -75,9 +74,9 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
     );
   }, [data, search, selectedAck]);
 
-  const filteredPaginatedData = useMemo(() => {
+  /* const filteredPaginatedData = useMemo(() => {
     return filteredData?.slice(page * perPage, page * perPage + perPage);
-  }, [filteredData, page, perPage]);
+  }, [filteredData, page, perPage]); */
 
   return (
     <YBModal

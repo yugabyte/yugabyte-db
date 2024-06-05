@@ -161,7 +161,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const mockData = React.useMemo(
+  /* const mockData = React.useMemo(
     () => ({
       migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001d",
       overall_status: "in-progress",
@@ -206,7 +206,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
       ],
     }),
     []
-  );
+  ); */
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
 

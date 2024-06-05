@@ -1,5 +1,5 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, MenuItem, Typography, makeStyles, useTheme } from "@material-ui/core";
+import { Box, Divider, Grid, MenuItem, Typography, makeStyles } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
@@ -96,15 +96,14 @@ interface MigrationListProps {
 
 export const MigrationList: FC<MigrationListProps> = ({
   migrationData: migrationDataProp,
-  onSelectMigration,
+  /* onSelectMigration, */
   hasError,
   onRefresh,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const theme = useTheme();
 
-  const migrationData = migrationDataProp ?? [];
+  // const migrationData = migrationDataProp ?? [];
 
   const migrationNewData = [
     {

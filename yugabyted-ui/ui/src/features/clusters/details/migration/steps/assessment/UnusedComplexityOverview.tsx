@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, LinearProgress, makeStyles, useTheme } from "@material-ui/core";
+import { Box, LinearProgress, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
 import { GenericFailure, YBButton, YBInput, YBTable } from "@app/components";
@@ -47,14 +47,14 @@ interface MigrationComplexityOverviewProps {
 }
 
 export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> = ({
-  heading,
-  migration,
+  /* heading,
+  migration, */
   onRefetch,
   isFetching = false,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const theme = useTheme();
+  /* const theme = useTheme(); */
 
   const [searchQuery, setSearchQuery] = React.useState<string>("");
 

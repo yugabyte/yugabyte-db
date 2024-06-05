@@ -50,7 +50,7 @@ interface MigrationRecommendationSidePanel {
 export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePanel> = ({
   open,
   onClose,
-  migration,
+  /* migration, */
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();

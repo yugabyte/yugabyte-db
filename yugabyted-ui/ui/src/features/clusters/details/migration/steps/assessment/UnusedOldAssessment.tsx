@@ -72,7 +72,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const mockData: MigrationAssesmentInfo = React.useMemo(
+  /* const mockData: MigrationAssesmentInfo = React.useMemo(
     () => ({
       assesment_status: true,
       complexity_overview: [
@@ -87,7 +87,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
       top_errors: [],
     }),
     []
-  );
+  ); */
 
   const assessmentAPI = React.useMemo(() => {
     const assessmentData = (data as MigrationAssesmentInfo) || {};

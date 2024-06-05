@@ -1,10 +1,10 @@
 import React, { FC, useMemo } from "react";
-import { Box, makeStyles } from "@material-ui/core";
+import { Box } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBTable } from "@app/components";
 import type { UnsupportedSqlInfo } from "@app/api/src";
 
-const ENABLE_MORE_DETAILS = false;
+/* const ENABLE_MORE_DETAILS = false;
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -36,7 +36,7 @@ const useStyles = makeStyles((theme) => ({
   innerTableParent: {
     padding: theme.spacing(0.5, 0, 1, 0),
   },
-}));
+})); */
 
 interface MigrationAssessmentRefactoringTableProps {
   data: UnsupportedSqlInfo[] | undefined;
@@ -152,7 +152,7 @@ export const MigrationAssessmentRefactoringTable: FC<MigrationAssessmentRefactor
   tableHeader,
   data,
 }) => {
-  const classes = useStyles();
+  /* const classes = useStyles(); */
   const { t } = useTranslation();
 
   const tableData = useMemo(() => {
