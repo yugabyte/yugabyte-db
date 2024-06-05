@@ -6854,6 +6854,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
       if (!res.ok() || res.get() == TransactionId::Nil()) {
         continue;
       }
+      VLOG(3) << "Cleanup deleted table " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
@@ -13374,6 +13375,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     WARN_NOT_OK(
         res, "Failed to get current DDL transaction for table " + table->ToString());
     if (res.ok() && res.get() != TransactionId::Nil()) {
+      VLOG(3) << "Check table deleted " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
   }), "Failed to submit update table task");

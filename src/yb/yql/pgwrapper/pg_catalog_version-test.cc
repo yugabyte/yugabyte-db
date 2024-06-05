@@ -1463,11 +1463,13 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
             const auto max_index = static_cast<int>(ddlLists.size() - 1);
             const size_t random_index = RandomUniformInt(0, max_index);
             // Run the DDLs in the current randomly selected DDL list.
+            int k = 0;
             for (const auto& query : ddlLists[random_index]) {
               auto ddlQuery = Format(query, table_name);
-              LOG(INFO) << "Executing (" << i << "," << j << ") "
+              LOG(INFO) << "Executing (" << i << "," << j << "," << k << ") "
                         << db_name << ":" << table_name << " ddl: " << ddlQuery;
               ASSERT_OK(conn_test.Execute(ddlQuery));
+              ++k;
             }
           }
         }
