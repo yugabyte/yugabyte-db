@@ -13,7 +13,9 @@ rightNav:
   hideH3: true
 ---
 
-To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster spec (size and instance type) depending on your estimated IOPS, estimated data size and expected latency. You can use the table below for reference.
+To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster specification (size and instance type) depending on your estimated IOPS, estimated data size and expected latency.
+
+You can use the following table for reference.
 
 |   Cluster   | Data set size (GB) | DB IOPS  | Recommended workload (warehouses) | Results - tpmc | Results - efficiency | Results - latency |
 | ----------- | ------------------ | -------- | --------------------------------- | -------------- | -------------------- | ----------------- |
@@ -24,7 +26,7 @@ To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster 
 
 ## Instance types
 
-Here are the recommended instance types on different cloud providers for the above-listed vCPU count.
+The following table lists the recommended instance types on different cloud providers for the above-listed vCPU count.
 
 | vCPU |     AWS     |       AZURE       |            GCP             |
 | ---- | ----------- | ----------------- | -------------------------- |
@@ -33,7 +35,7 @@ Here are the recommended instance types on different cloud providers for the abo
 | 8    | m6i.2xlarge | Standard_D8ds_v5  | n2-standard-8              |
 | 16   | m6i.4xlarge | Standard_D16ds_v5 | n2&#8209;standard&#8209;16 |
 
-Once you have decided on the instance type of the cluster that you need, you can follow the instructions below to run the TPC-C workload.
+After you have decided the instance type of the cluster that you need, follow the instructions below to run the TPC-C workload.
 
 ## Get TPC-C binaries
 
@@ -74,13 +76,14 @@ IPS=127.0.0.1,127.0.0.2,127.0.0.3
 {{<setup/cloud>}}
 
 {{<warning title="Set up connection options correctly">}}
+
 - When running the client machine outside the VPC, enable "Public Access" for the cluster. Also, make sure your client's IP is added to the **Allow list**.
-- Add the username (admin) and password from the credential file that you downloaded when you set up your cluster in YB Managed onto the [workload_all.xml](#configure-connection-parameters).
-- Make sure you add the full path of the location of the SSL certificate of your cluster in the `sslCert` tag in the [workload_all.xml](#configure-connection-parameters).
-- If you are planning to do a horizontal scale test, set the Fault-tolerance level to **None** so that you can add a single node to the cluster.
+- Add the username (admin) and password from the credential file that you downloaded when you set up your cluster in YB Managed to the [workload_all.xml](#configure-connection-parameters) file.
+- Make sure you add the full path of the location of the SSL certificate of your cluster in the `sslCert` tag in the [workload_all.xml](#configure-connection-parameters) file.
+- If you are planning to do a horizontal scale test, set the fault tolerance level to **None** so that you can add a single node to the cluster.
 {{</warning>}}
 
-Store the IP addresses/public address of the cluster in a shell variable to be in the further commands.
+Store the IP addresses/public address of the cluster in a shell variable to be used in further commands.
 
 ```bash
 IPS=<cluster-name/IP>
@@ -92,7 +95,7 @@ IPS=<cluster-name/IP>
 
 ## Configure connection parameters
 
-If needed, options like username, password, port etc can be set up using the configuration file at `config/workload_all.xml`.
+If needed, options like username, password, port, and so on, can be set up using the configuration file `config/workload_all.xml`.
 
 ```xml
 <port>5433</port>
@@ -109,61 +112,61 @@ Initialize the database needed for the benchmark by following the instructions s
 
 {{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
 
-Set up the TPC-C database schema with the following command.
+Set up the TPC-C database schema with the following command:
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command.
+Populate the above-created database with data needed for the benchmark with the following command:
 
 ```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=500  --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=500 --loaderthreads 48
 ```
 
 {{% /tab %}}
 
 {{% tab header="3 x 4vCPUs" lang="4vcpu" %}}
 
-Set up the TPC-C database schema with the following command.
+Set up the TPC-C database schema with the following command:
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command.
+Populate the above-created database with data needed for the benchmark with the following command:
 
 ```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000  --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000 --loaderthreads 48
 ```
 
 {{% /tab %}}
 
 {{% tab header="3 x 8vCPUs" lang="8vcpu" %}}
 
-Set up the TPC-C database schema with the following command.
+Set up the TPC-C database schema with the following command:
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-Populate the above-created database with data needed for the benchmark with the following command.
+Populate the above-created database with data needed for the benchmark with the following command:
 
 ```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000  --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000 --loaderthreads 48
 ```
 
 {{% /tab %}}
 
 {{% tab header="3 x 16vCPUs" lang="16vcpu" %}}
 
-Set up the TPC-C database schema with the following command.
+Set up the TPC-C database schema with the following command:
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-To populate the above-created database with data needed for the benchmark use 2 client machines. Run the following load commands on each of the machines respectively.
+To populate the above-created database with data needed for the benchmark use two client machines. Run the following load commands on each of the machines respectively.
 
 | Client | Command |
 | -----: | :------ |
@@ -218,7 +221,7 @@ Run the following commands on each of the client machines respectively.
 | 2  | ./tpccbenchmark --execute=true --nodes=$IPS --warehouses=2000 --start-warehouse-id=2001 --total-warehouses=4000  --num-connections=200  --warmup-time-secs=270 |
 
 {{<note>}}
-Since we specified **initial-delay-secs**, to ensure that the tests start together, we adjust that time in the warmup phase.
+As **initial-delay-secs** is specified, to ensure that the tests start together, the time was adjusted in the warmup phase.
 {{</note>}}
 
 {{% /tab %}}
