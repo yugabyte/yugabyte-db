@@ -2,7 +2,7 @@
 title: Testing high scale workloads of TPC-C benchmark
 headerTitle: Testing high scale workloads of TPC-C benchmark
 linkTitle: Testing high scale workloads
-headcontent: Understand how YugabyteDB performs with high scale workloads of the TPC-C benchmark.
+headcontent: Understand how YugabyteDB performs with high scale workloads
 menu:
   preview:
     identifier: tpcc-high-scale
@@ -13,11 +13,11 @@ rightNav:
   hideH3: true
 ---
 
-Workloads in TPC-C are defined by the no.of warehouses the benchmark run will simulate. We will explore how YugabyteDb performs as the number of warehouses is increased.
+Workloads in TPC-C are defined by the number of warehouses the benchmark run will simulate. We will explore how YugabyteDb performs as the number of warehouses is increased.
 
 ## Get TPC-C binaries
 
-First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands.
+First, you need the benchmark binaries. To download the TPC-C binaries, run the following commands:
 
 ```sh
 $ wget https://github.com/yugabyte/tpcc/releases/latest/download/tpcc.tar.gz
@@ -27,7 +27,7 @@ $ cd tpcc
 
 ## Client machine
 
-The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. These are the recommended instance types for the client machine from different cloud providers.
+The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. The following instance types are recommended for the client machine.
 
 | vCPU |    AWS     |      AZURE      |     GCP      |
 | ---- | ---------- | --------------- | ------------ |
@@ -35,7 +35,7 @@ The client machine is where the benchmark is run from. It is recommended you cho
 
 ## Cluster setup
 
-Here are the recommended instance types on different cloud providers for this test.
+The following cloud provider instance types are recommended for this test.
 
 | vCPU |     AWS     |       AZURE       |      GCP      |
 | ---- | ----------- | ----------------- | ------------- |
@@ -53,8 +53,9 @@ Here are the recommended instance types on different cloud providers for this te
 
 </details>
 
+Store the IP addresses of the nodes in a shell variable for use in further commands.
+
 ```bash
-# Store the IP addresses of the nodes in a shell variable to be in the further commands.
 IPS=127.0.0.1,127.0.0.2,127.0.0.3
 ```
 
@@ -63,7 +64,7 @@ IPS=127.0.0.1,127.0.0.2,127.0.0.3
 {{<nav/panel name="cloud">}}
 {{<setup/cloud>}}
 
-Store the IP addresses/public address of the cluster in a shell variable to be in the further commands.
+Store the IP addresses/public address of the cluster in a shell variable for use in further commands.
 
 ```bash
 IPS=<cluster-name/IP>
@@ -97,7 +98,7 @@ The loading time for ten warehouses on a cluster with 3 nodes of type 16vCPU is 
 {{% /tab %}}
 {{% tab header="100 warehouses" lang="100-wh" %}}
 
-Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader-threads value of 48 was optimal.
+Before starting the workload, you need to load the data. Replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
@@ -116,7 +117,7 @@ Tune the `--loaderthreads` parameter for higher parallelism during the load, bas
 {{% /tab %}}
 {{% tab header="1,000 warehouses" lang="1k-wh" %}}
 
-Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node 16vCPU cluster, loader threads value of 48 was optimal.
+Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}

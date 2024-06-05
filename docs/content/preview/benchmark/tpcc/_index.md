@@ -47,7 +47,7 @@ To see how effectively YugabyteDB handles the TPC-C workload while scaling out, 
 YugabyteDB's robust performance in the TPC-C benchmark, particularly when scaled to a high number of warehouses, serves as a compelling testament to its prowess in handling high-volume transaction processing workloads. By excelling in this industry-standard test, which simulates complex, concurrent transactions across a vast, distributed dataset, YugabyteDB has effectively demonstrated its ability to manage the intense demands of large-scale OLTP environments.
 
 {{<lead link="high-scale-workloads/">}}
-To see how well YUgabyteDB handles extremely high workloads, see [Testing high scale workloads](high-scale-workloads/)
+To see how well YugabyteDB handles extremely high workloads, see [Testing high scale workloads](high-scale-workloads/).
 {{</lead>}}
 
 ## Max scale tested
@@ -63,5 +63,5 @@ The 150K warehouses benchmark was run on [v2.11](../../releases/ybdb-releases/en
 |    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | c5d.12xlarge&nbsp;(48) |
 
 {{<lead link="high-scale-workloads/">}}
-To know more about this accomplishment, see [Largest workloads](./high-scale-workloads/#largest-benchmark).
+To know more about this accomplishment, see [Largest benchmark](./high-scale-workloads/#largest-benchmark).
 {{</lead>}}
