@@ -46,7 +46,7 @@ import {
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
-import { ACCEPTABLE_CHARS, destVpcIdRegex } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, VPC_ID_REGEX } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { CreateInfraProvider } from '../../InfraProvider';
@@ -124,7 +124,7 @@ const VALIDATION_SCHEMA = object().shape({
     then: string()
       .required('Custom GCE Network is required.')
       .matches(
-        destVpcIdRegex,
+        VPC_ID_REGEX,
         'Network name cannot contain uppercase letters or special characters other than "-"'
       )
   }),
