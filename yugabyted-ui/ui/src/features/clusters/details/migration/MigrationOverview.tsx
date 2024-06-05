@@ -67,16 +67,15 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  // DATO
   const {
-    data: migrationDataListo,
+    data: migrationDataList,
     isLoading: isLoadingMigrationTasks,
     isFetching: isFetchingMigrationTasks,
     refetch: refetchMigrationTasks,
-    isError: isErrorMigrationTaskso,
+    isError: isErrorMigrationTasks,
   } = useGetVoyagerMigrationTasksQuery({});
 
-  const migrationDataList: typeof migrationDataListo = React.useMemo(
+  const mockData: typeof migrationDataList = React.useMemo(
     () => ({
       migrations: [
         {
@@ -107,8 +106,6 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
     }),
     []
   );
-
-  const isErrorMigrationTasks = false;
 
   const refetch = React.useCallback(() => {
     refetchMigrationTasks();

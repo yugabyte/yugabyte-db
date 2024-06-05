@@ -153,16 +153,15 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
-  // DATO
   const {
-    data: dato,
+    data: data,
     isFetching: isFetchingAPI,
-    isError: isErrorMigrationSchemaTaskso,
+    isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const data = React.useMemo(
+  const mockData = React.useMemo(
     () => ({
       migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001d",
       overall_status: "in-progress",
@@ -208,8 +207,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     }),
     []
   );
-
-  const isErrorMigrationSchemaTasks = false;
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
 

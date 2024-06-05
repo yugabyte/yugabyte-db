@@ -54,7 +54,6 @@ interface MigrationAssessmentProps {
   isFetching?: boolean;
 }
 
-/* DATO: Delete me old assessment */
 export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   heading,
   migration,
@@ -65,16 +64,15 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
-  // DATO
   const {
-    data: dato,
+    data,
     isFetching: isFetchingAPI,
-    isError: isErrorMigrationAssessmentDetailso,
+    isError: isErrorMigrationAssessmentDetails,
   } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const data: MigrationAssesmentInfo = React.useMemo(
+  const mockData: MigrationAssesmentInfo = React.useMemo(
     () => ({
       assesment_status: true,
       complexity_overview: [
@@ -90,8 +88,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     }),
     []
   );
-
-  const isErrorMigrationAssessmentDetails = false;
 
   const assessmentAPI = React.useMemo(() => {
     const assessmentData = (data as MigrationAssesmentInfo) || {};

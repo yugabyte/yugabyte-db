@@ -63,11 +63,10 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
-  // DATO
   /* const {
-    data: dato,
+    data,
     isFetching: isFetchingAPI,
-    isError: isErrorMigrationAssessmentDetailso,
+    isError: isErrorMigrationAssessmentDetails,
   } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   }); */

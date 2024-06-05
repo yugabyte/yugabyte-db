@@ -46,7 +46,6 @@ interface MigrationComplexityOverviewProps {
   isFetching?: boolean;
 }
 
-/* DATO NOT USED */
 export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> = ({
   heading,
   migration,
