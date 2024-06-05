@@ -62,13 +62,19 @@ To set the maintenance exclusion period for a cluster:
 
 ## What to expect during maintenance
 
-Yugabyte performs rolling maintenance and upgrades on [fault tolerant](../../cloud-basics/create-clusters-overview/#fault-tolerance) clusters with zero downtime. However, the cluster is still subject to the following:
+The impact of maintenance on a cluster depends on its topology and [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance).
 
-- Dropped connections - Connections to the stopped node are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
+### Fault tolerance none
+
+For any cluster with fault tolerance of none (for example, single node and sandbox clusters), the cluster will be briefly unavailable while the node is patched and then restarted.
+
+### Fault tolerant clusters
+
+Yugabyte performs rolling maintenance and upgrades on fault tolerant clusters with zero downtime. However, the cluster is still subject to the following:
+
+- Dropped connections - Connections to the stopped node are dropped. For example, if you have a multi-region cluster with 3 nodes across 3 regions, each region in the cluster will be briefly unavailable as each node is patched and restarted as the rolling update progresses. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
 - Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.
 - May not be [highly available](../../../explore/fault-tolerance/) - During maintenance, one node is always offline. Depending on the fault tolerance of the cluster, an outage of an additional fault domain could result in downtime.
-
-Clusters with no fault tolerance (including your Sandbox) will briefly be unavailable.
 
 ## Critical maintenance
 
