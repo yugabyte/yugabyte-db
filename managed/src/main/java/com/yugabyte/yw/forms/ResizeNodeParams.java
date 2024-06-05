@@ -362,7 +362,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
           return true;
         }
-        if (!currentDeviceInfo.storageType.isIopsProvisioning()) {
+        if (currentDeviceInfo.storageType == null
+            || !currentDeviceInfo.storageType.isIopsProvisioning()) {
           errorConsumer.accept(
               "Disk IOPS provisioning is not allowed for storage type: "
                   + currentDeviceInfo.storageType);
@@ -391,7 +392,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
           return true;
         }
-        if (!currentDeviceInfo.storageType.isThroughputProvisioning()) {
+        if (currentDeviceInfo.storageType == null
+            || !currentDeviceInfo.storageType.isThroughputProvisioning()) {
           errorConsumer.accept(
               "Disk Throughput provisioning is not allowed for storage type: "
                   + currentDeviceInfo.storageType);

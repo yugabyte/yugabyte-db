@@ -3962,6 +3962,42 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  @Test
+  public void testChangeEphemeralDevice() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+    createInstanceType(provider.getUuid(), "i3.instance");
+    createInstanceType(provider.getUuid(), "c3.large");
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.deviceInfo = new DeviceInfo();
+              userIntent.deviceInfo.volumeSize = 100;
+              userIntent.deviceInfo.numVolumes = 1;
+              userIntent.deviceInfo.storageClass = "standart";
+              userIntent.instanceType = "i3.instance";
+              u.setUniverseDetails(details);
+            });
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.userAZSelected = false;
+    params.getPrimaryCluster().userIntent.instanceType = "c3.large";
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    assertEquals(6, params.nodeDetailsSet.size());
+  }
+
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {
     Map<UUID, Integer> counts = new HashMap<>(azUuidToNumNodes);
     for (NodeInstance nodeInstance : NodeInstance.getAll()) {
