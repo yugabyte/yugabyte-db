@@ -180,6 +180,16 @@ VoyagerAssesmentResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+VoyagerAssessmentResponseV2:
+  description: Response for migration assessment page
+  content:
+    application/json:
+      schema:
+        title: API for migration assessment page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrationAssessmentReport'
 ConnectionsResponse:
   description: YSQL connection manager stats
   content:
@@ -197,6 +207,7 @@ PITRScheduleListResponse:
   content:
     application/json:
       schema:
+        title: PITR Schedule Response
         type: object
         properties:
           schedules:
@@ -211,6 +222,7 @@ BackupDetailsListResponse:
   content:
     application/json:
       schema:
+        title: Backup Details
         type: object
         properties:
           backup:
@@ -225,6 +237,7 @@ RestoreDetailsListResponse:
   content:
     application/json:
       schema:
+        title: Restore Details
         type: object
         properties:
           restore:

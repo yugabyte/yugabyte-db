@@ -2,6 +2,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -94,6 +95,7 @@ public class DrConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
+  private final XClusterSyncScheduler xClusterSyncScheduler;
 
   @Inject
   public DrConfigController(
@@ -104,7 +106,8 @@ public class DrConfigController extends AuthenticatedController {
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
-      AutoFlagUtil autoFlagUtil) {
+      AutoFlagUtil autoFlagUtil,
+      XClusterSyncScheduler xClusterSyncScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -113,6 +116,7 @@ public class DrConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
+    this.xClusterSyncScheduler = xClusterSyncScheduler;
   }
 
   /**
@@ -157,9 +161,7 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     boolean isDbScoped =
-        createForm.dbScoped != null
-            ? createForm.dbScoped
-            : confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled);
+        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
     if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -923,7 +925,11 @@ public class DrConfigController extends AuthenticatedController {
       XClusterConfigTaskBase.setReplicationStatus(this.xClusterUniverseService, xClusterConfig);
     }
 
-    DrConfigGetResp resp = new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
+    XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterSyncScheduler.syncXClusterConfig(activeXClusterConfig);
+    activeXClusterConfig.refresh();
+
+    DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
     return PlatformResults.withData(resp);
   }
 

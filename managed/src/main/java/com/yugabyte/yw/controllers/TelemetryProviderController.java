@@ -52,6 +52,7 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
         telemetryProviderService.getOrBadRequest(customerUUID, providerUUID);
@@ -72,6 +73,7 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listTelemetryProviders(UUID customerUUID) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
     List<TelemetryProvider> providers =
         telemetryProviderService.list(customerUUID).stream()
@@ -99,6 +101,7 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
     if (provider.getUuid() != null) {
@@ -128,6 +131,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   })
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Check if telemetry provider exists.

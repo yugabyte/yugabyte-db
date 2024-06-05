@@ -180,7 +180,7 @@ First, you create the database and the corresponding tables. Execute the followi
 ./tpccbenchmark  --nodes=$IPS  --create=true
 ```
 
-Once the database and tables are created, you can load the data from all ten clients:
+After the database and tables are created, you can load the data from all ten clients:
 
 | Client | Command |
 | -----: | :------ |
@@ -195,9 +195,9 @@ Once the database and tables are created, you can load the data from all ten cli
 | 9  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=8001 --total-warehouses=10000 --loaderthreads 48 |
 | 10 | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=9001 --total-warehouses=10000 --loaderthreads 48 |
 
-Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
+Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified, 48 threads, is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
 
-Once the loading is completed, execute the following command to enable the foreign keys that were disabled to aid the loading times:
+When the loading is completed, execute the following command to enable the foreign keys that were disabled to aid the loading times:
 
 ```sh
 ./tpccbenchmark  --nodes=$IPS  --enable-foreign-keys=true
@@ -285,13 +285,13 @@ You can then run the workload against the database from each client:
 
 **Latencies**:
 
-* **New Order** Avg: 66.286 msecs, p99: 212.47 msecs
-* **Payment** Avg: 17.406 msecs, p99: 186.884 msecs
-* **OrderStatus** Avg: 7.308 msecs, p99: 86.974 msecs
-* **Delivery** Avg: 66.986 msecs, p99: 185.919 msecs
-* **StockLevel** Avg: 98.32 msecs, p99: 192.054 msecs
+- **New Order** Avg: 66.286 ms, p99: 212.47 ms
+- **Payment** Avg: 17.406 ms, p99: 186.884 ms
+- **OrderStatus** Avg: 7.308 ms, p99: 86.974 ms
+- **Delivery** Avg: 66.986 ms, p99: 185.919 ms
+- **StockLevel** Avg: 98.32 ms, p99: 192.054 ms
 
-Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
+After the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
 
 ```output
 21:09:23,588 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000263504, measuredRequests=8554) = 4.752221526539232 requests/sec reqs/sec
@@ -349,13 +349,13 @@ Once the execution is completed, the TPM-C number along with the efficiency is p
 
 **Latencies**:
 
-* **New Order** Avg: 325.378 msecs, p99: 3758.859 msecs
-* **Payment** Avg: 277.539 msecs, p99: 12667.048 msecs
-* **OrderStatus** Avg: 174.173 msecs, p99: 4968.783 msecs
-* **Delivery** Avg: 310.19 msecs, p99: 5259.951 msecs
-* **StockLevel** Avg: 652.827 msecs, p99: 8455.325 msecs
+- **New Order** Avg: 325.378 ms, p99: 3758.859 ms
+- **Payment** Avg: 277.539 ms, p99: 12667.048 ms
+- **OrderStatus** Avg: 174.173 ms, p99: 4968.783 ms
+- **Delivery** Avg: 310.19 ms, p99: 5259.951 ms
+- **StockLevel** Avg: 652.827 ms, p99: 8455.325 ms
 
-Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
+When the execution is completed, the TPM-C number along with the efficiency is displayed, as follows:
 
 ```output
 17:18:58,728 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000716759, measuredRequests=842216) = 467.8975914612168 requests/sec reqs/sec
@@ -375,7 +375,7 @@ Once the execution is completed, the TPM-C number along with the efficiency is p
 
 When the execution is completed, you need to copy the `csv` files from each of the nodes to one of the nodes and run `merge-results` to display the merged results.
 
-Once you copied the `csv` files to a directory such as `results-dir`, you can merge the results as follows:
+After copying the `csv` files to a directory such as `results-dir`, you can merge the results as follows:
 
 ```sh
 ./tpccbenchmark --merge-results=true --dir=results-dir --warehouses=10000
@@ -389,11 +389,11 @@ Once you copied the `csv` files to a directory such as `results-dir`, you can me
 
 **Latencies**:
 
-* **New Order** Avg: 114.639 msecs, p99: 852.183 msecs
-* **Payment** Avg: 114.639 msecs, p99 : 852.183 msecs
-* **OrderStatus** Avg: 20.86 msecs, p99: 49.31 msecs
-* **Delivery** Avg: 117.473 msecs, p99: 403.404 msecs
-* **StockLevel** Avg: 340.232 msecs, p99: 1022.881 msecs
+- **New Order** Avg: 114.639 ms, p99: 852.183 ms
+- **Payment** Avg: 114.639 ms, p99 : 852.183 ms
+- **OrderStatus** Avg: 20.86 ms, p99: 49.31 ms
+- **Delivery** Avg: 117.473 ms, p99: 403.404 ms
+- **StockLevel** Avg: 340.232 ms, p99: 1022.881 ms
 
 The output after merging should look similar to the following:
 

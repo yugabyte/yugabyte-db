@@ -61,7 +61,7 @@ import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, RG_REGEX, UUID_REGEX } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
@@ -137,7 +137,12 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  azuClientId: string().required('Azure Client ID is required.'),
+  azuClientId: string()
+    .required('Azure Client ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
   azuClientSecret: mixed().test({
     test: (value, context) => {
       if (
@@ -151,9 +156,24 @@ const VALIDATION_SCHEMA = object().shape({
     },
     message: 'Azure Client Secret is required.'
   }),
-  azuRG: string().required('Azure Resource Group is required.'),
-  azuSubscriptionId: string().required('Azure Subscription ID is required.'),
-  azuTenantId: string().required('Azure Tenant ID is required.'),
+  azuRG: string()
+    .required('Azure Resource Group is required.')
+    .matches(
+      RG_REGEX,
+      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+    ),
+  azuSubscriptionId: string()
+    .required('Azure Subscription ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
+  azuTenantId: string()
+    .required('Azure Tenant ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
     is: true,
     then: mixed().oneOf(
@@ -180,7 +200,17 @@ const VALIDATION_SCHEMA = object().shape({
       )
     )
   }),
-  regions: array().min(1, 'Provider configurations must contain at least one region.')
+  regions: array().min(1, 'Provider configurations must contain at least one region.'),
+  azuNetworkRG: string()
+    .matches(
+      RG_REGEX,
+      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+    ),
+  azuNetworkSubscriptionId: string()
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    )
 });
 
 const FORM_NAME = 'AZUProviderEditForm';

@@ -19,7 +19,9 @@ import static play.test.Helpers.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -39,8 +41,6 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   private String authToken;
   private Users user;
   private TelemetryProviderService telemetryProviderService;
-  private TelemetryProviderServiceTest telemetryProviderServiceTest;
-  private TelemetryProvider telemetryProvider;
   private TelemetryProviderController telemetryProviderController;
 
   @InjectMocks private TelemetryProviderController controller;
@@ -50,6 +50,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
 
     telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
     telemetryProviderController = app.injector().instanceOf(TelemetryProviderController.class);
@@ -80,7 +81,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   @Test
   public void testCreateTelemetryProvider() {
     TelemetryProvider provider =
-        telemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
+        TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
@@ -97,7 +98,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteTelemetryProvider() {
     TelemetryProvider provider =
-        telemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
+        TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
     telemetryProviderService.save(provider);
 
     Result result =

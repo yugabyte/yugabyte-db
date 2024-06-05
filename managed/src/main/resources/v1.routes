@@ -543,6 +543,8 @@ GET   /metadata/version/:version/list_gflags                                   c
 POST  /metadata/version/:version/validate_gflags                               com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.validateGFlags(version: String, request: Request)
 GET   /metadata/version/:version/gflag                                         com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.getGFlagMetadata(version: String, name: String ?= "", server: String ?= "")
 
+GET   /metadata/version/:version/gflag_groups                                  com.yugabyte.yw.controllers.GFlagGroupsController.getGFlagGroups(version: String, group ?= "")
+
 # Helm Overrides Validation API
 POST    /customers/:cUUID/validate_kubernetes_overrides                        com.yugabyte.yw.controllers.KubernetesOverridesController.validateKubernetesOverrides(cUUID: java.util.UUID, request: Request)
 
@@ -633,6 +635,13 @@ GET /customers/:cUUID/telemetry_provider/:intUUID                              c
 GET /customers/:cUUID/telemetry_provider                                       com.yugabyte.yw.controllers.TelemetryProviderController.listTelemetryProviders(cUUID: java.util.UUID)
 POST /customers/:cUUID/telemetry_provider                                      com.yugabyte.yw.controllers.TelemetryProviderController.createTelemetryProvider(cUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/telemetry_provider/:intUUID                           com.yugabyte.yw.controllers.TelemetryProviderController.deleteTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID, request: Request)
+
+# Troubleshooting Platform APIs
+GET /customers/:cUUID/troubleshooting_platform/:tpUUID                        com.yugabyte.yw.controllers.TroubleshootingPlatformController.getTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID)
+GET /customers/:cUUID/troubleshooting_platform                                com.yugabyte.yw.controllers.TroubleshootingPlatformController.listTroubleshootingPlatforms(cUUID: java.util.UUID)
+POST /customers/:cUUID/troubleshooting_platform                               com.yugabyte.yw.controllers.TroubleshootingPlatformController.createTroubleshootingPlatform(cUUID: java.util.UUID, request: Request)
+PUT /customers/:cUUID/troubleshooting_platform/:tpUUID                        com.yugabyte.yw.controllers.TroubleshootingPlatformController.editTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
+DELETE /customers/:cUUID/troubleshooting_platform/:tpUUID                     com.yugabyte.yw.controllers.TroubleshootingPlatformController.deleteTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
 
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)

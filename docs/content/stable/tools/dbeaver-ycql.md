@@ -75,6 +75,6 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ![DBeaver](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
-## What's next
+## What's Next
 
-For sample data to explore YCQL using DBeaver, see [JSON support](../../explore/ycql-language/jsonb-ycql/).
+For sample data to explore YCQL using DBeaver, see [JSON support](../../explore/ycql-language/jsonb-ycql/#root).

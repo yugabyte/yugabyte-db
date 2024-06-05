@@ -53,7 +53,7 @@ public class DrConfigCreateForm {
       value = "WARNING: This is a preview API that could change. Whether to enable db scoped DR",
       hidden = true)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
-  public Boolean dbScoped;
+  public Boolean dbScoped = false;
 
   @Valid
   @ApiModelProperty(

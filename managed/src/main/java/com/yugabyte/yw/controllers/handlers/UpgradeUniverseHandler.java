@@ -470,6 +470,7 @@ public class UpgradeUniverseHandler {
 
   public UUID modifyAuditLoggingConfig(
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 

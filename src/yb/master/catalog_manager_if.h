@@ -216,7 +216,7 @@ class CatalogManagerIf {
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
   virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-      GenerateSnapshotInfoFromSchedule(
+  GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 

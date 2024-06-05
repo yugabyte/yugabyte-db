@@ -504,6 +504,7 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
 
     auto& tserver_flags = mini_cluster_opt_.extra_tserver_flags;
     tserver_flags.push_back(Format("--db_write_buffer_size=$0", kSplitThreshold));
+    tserver_flags.push_back("--rocksdb_max_write_buffer_number=2");
     // Lower SST block size to have multiple entries in index and be able to detect a split key.
     tserver_flags.push_back(Format(
         "--db_block_size_bytes=$0", std::min(FLAGS_db_block_size_bytes, kSplitThreshold / 8)));

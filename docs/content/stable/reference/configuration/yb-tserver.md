@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -208,6 +208,117 @@ Default: `2`
 Stop attempting to log to disk if the disk is full.
 
 Default: `false`
+
+##### --callhome_enabled
+
+Disable callhome diagnostics.
+
+Default: `true`
+
+
+## Memory division flags
+
+These flags are used to determine how the RAM of a node is split between
+the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including Postgres and a [master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+
+{{< warning title="Warning" >}}
+
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and master if present leaves enough memory on the node for Postgres, and any required other processes like monitoring agents plus the memory needed by the kernel.
+
+{{< /warning >}}
+
+
+### Flags controlling the defaults for the other memory division flags
+
+The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and master.
+
+##### --use_memory_defaults_optimized_for_ysql
+
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+
+Default: `false`
+
+If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
+
+If these defaults are used for both TServer and master, then a node's available memory is partitioned as follows:
+
+| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
+| :--- | ---: | ---: | ---: | ---: |
+| TServer %  | 45% | 48% | 57% | 60% |
+| master %   | 20% | 15% | 10% | 10% |
+| Postgres % | 25% | 27% | 28% | 27% |
+| other %    | 10% | 10% |  5% |  3% |
+
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Managed](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
+
+The defaults for the master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+
+| flag | default |
+| :--- | :--- |
+| --db_block_cache_size_percentage | 32 |
+| --tablet_overhead_size_percentage | 10 |
+
+The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+
+Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
+
+| total node GiB | max number of tablet replicas | max number of Postgres connections |
+| ---: | ---: | ---: |
+|   4 |    240 |  30 |
+|   8 |    530 |  65 |
+|  16 |  1,250 | 130 |
+|  32 |  2,700 | 225 |
+|  64 |  5,500 | 370 |
+| 128 | 11,000 | 550 |
+| 256 | 22,100 | 730 |
+
+These values are approximate because different kernels use different amounts of memory, leaving different amounts of memory for the TServer and thus the per-tablet overhead TServer component.
+
+Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
+
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
+
+
+### Flags controlling the split of memory among processes
+
+Note that in general these flags will have different values for TServer and master processes.
+
+##### --memory_limit_hard_bytes
+
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+
+Default: `0`
+
+##### --default_memory_limit_to_ram_ratio
+
+The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+Default: `0.85` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+
+
+### Flags controlling the split of memory within a TServer
+
+##### --db_block_cache_size_bytes
+
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+
+Default: `-1`
+
+##### --db_block_cache_size_percentage
+
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+
+Default: `50` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+
+##### --tablet_overhead_size_percentage
+
+Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
+
+Each tablet replica generally requires 700 MiB of this memory.
+
+Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
 
 ## Raft flags
 
@@ -468,6 +579,18 @@ For more details, see [clusters in colocated tables](../../../architecture/docdb
 
 Default: `false`
 
+##### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support.
+
+Default: `0` for no limit.
+
+##### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+
 ## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters:
@@ -654,9 +777,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `READ COMMITTED`<sup>$</sup>
+Default: `READ COMMITTED` {{<badge/ea>}}
 
-<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -788,22 +911,6 @@ Default: `false`
 
 Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
 
-### YEDIS
-
-The following flags support the use of the YEDIS API:
-
-##### --redis_proxy_bind_address
-
-Specifies the bind address for the YEDIS API.
-
-Default: `0.0.0.0:6379`
-
-##### --redis_proxy_webserver_port
-
-Specifies the port for monitoring YEDIS metrics.
-
-Default: `11000`
-
 ## Performance flags
 
 Use the following two flags to select the SSTable compression type:
@@ -909,14 +1016,13 @@ Default: `5`
 
 Number of bits to use for sharding the block cache. The maximum permissible value is 19.
 
-Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on.)
+Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
 
 {{< note title="Note" >}}
 
 Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
-
 
 ## Network compression flags
 
@@ -1054,17 +1160,23 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-maturity) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-maturity).
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
+To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
-Default: `false`
+Default: `true`
 
 Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
 
 ##### --ysql_packed_row_size_limit
 
@@ -1074,7 +1186,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1086,19 +1198,13 @@ Packed row size limit for YCQL. The default value is 0 (use block size as limit)
 
 Default: `0`
 
-##### --ysql_enable_packed_row_for_colocated_table
-
-Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
-
-Default: `false`
-
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1236,6 +1342,32 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Concurrency control flags
+
+To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+
+##### --enable_wait_queues
+
+When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
+
+Default: `true`
+
+##### --disable_deadlock_detection
+
+When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
+{{< /warning >}}
+
+##### --wait_queue_poll_interval_ms
+
+If `enable_wait_queues=true`, this controls the rate at which each tablet's wait queue polls transaction coordinators for the status of transactions which are blocking contentious resources.
+
+Default: `100`
+
 ## Metric export flags
 
 ##### --export_help_and_type_in_prometheus_metrics
@@ -1253,13 +1385,165 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Catalog flags
+
+Catalog flags are currently in [Early Access](/preview/releases/versioning/#feature-maturity).
+
+##### ysql_catalog_preload_additional_table_list
+
+Specifies the names of catalog tables (such as `pg_operator`, `pg_proc`, and `pg_amop`) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `""`
+
+If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is also specified, the union of the above specified catalog tables and `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` is preloaded.
+
+##### ysql_catalog_preload_additional_tables
+
+When enabled, the postgres backend processes preload the `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` catalog tables. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `false`
+
+If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
+
+##### ysql_enable_read_request_caching
+
+Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+Default: `true`
+
+##### ysql_minimal_catalog_caches_preload
+
+Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
+
+Default: `false`
+
+##### ysql_use_relcache_file
+
+Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
+
+Default: `true`
+
+##### ysql_yb_toast_catcache_threshold
+
+Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
+
+To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+Default: -1 (disabled). Minimum: 128 bytes.
+
+##### ysql_enable_db_catalog_version_mode
+
+Enable the per database catalog version mode. A DDL statement that
+affects the current database can only increment catalog version for
+that database.
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
+they execute the next statement. However, when per database catalog version mode is
+enabled, multiple DDL statements can be concurrently executed if each DDL only
+affects its current database and is executed in a separate database. Existing
+connections only need to refresh their catalog caches if they are connected to
+the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
+
+{{< /note >}}
+
+If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
+
+1. Shut down the cluster.
+
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(false);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+To re-enable the per database catalog version mode using the following steps:
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(true);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+1. Shut down the cluster.
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+
+##### enable_heartbeat_pg_catalog_versions_cache
+
+Whether to enable the use of heartbeat catalog versions cache for the
+`pg_yb_catalog_version` table which can help to reduce the number of reads
+from the table. This is beneficial when there are many databases and/or
+many yb-tservers in the cluster.
+
+Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
+
+Default: `false`
+
+{{< note title="Important" >}}
+
+Each yb-tserver regularly sends a heartbeat request to the yb-master
+leader. As part of the heartbeat response, yb-master leader reads all the rows
+in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
+response. As there is one row in the table `pg_yb_catalog_version` for each
+database, the cost of reading `table pg_yb_catalog_version` becomes more
+expensive when the number of yb-tservers, or the number of databases goes up.
+
+{{< /note >}}
+
+## DDL atomicity flags
+
+DDL atomicity flags are currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+
+##### ysql_yb_ddl_rollback_enabled
+
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+
+Default: true
+
+{{< note title="Important" >}}
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table.
+(for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
+<br>Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
+automatically to prevent metadata corruption.
+{{< /note >}}
+
+##### report_ysql_ddl_txn_status_to_master
+
+If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+
+Default: true
+
+{{< note title="Important" >}}
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.<br> This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+{{< /note >}}
+
+##### ysql_ddl_transaction_wait_for_ddl_verification
+
+If set, DDL transactions will wait for DDL verification to complete before returning to the client.
+
+Default: true
+
+{{< note title="Important" >}}
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.<br>
+When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
+{{< /note >}}
+
 ## Advanced flags
 
 ##### backfill_index_client_rpc_timeout_ms
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
-Default: 1 day
+Default: 86400000 (1 day)
 
 ##### backfill_index_timeout_grace_margin_ms
 
@@ -1366,6 +1650,18 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+##### enable_bitmapscan
+
+{{<badge/tp>}} Enables or disables the query planner's use of bitmap-scan plan types.
+
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
+
+Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bitmap is bounded by work_mem. If there are n bitmaps, it means we may use n * work_mem memory.
+
+Bitmap scans are only supported for LSM indexes.
+
+Default: false
+
 ##### yb_bnl_batch_size
 
 Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
@@ -1378,9 +1674,21 @@ Enable or disable the query planner's use of Batched Nested Loop Join.
 
 Default: true
 
+##### yb_enable_base_scans_cost_model
+
+{{<badge/ea>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+
+Default: false
+
+##### yb_enable_optimizer_statistics
+
+{{<badge/ea>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+Default: false
+
 ##### yb_fetch_size_limit
 
-Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+{{<badge/ea>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -1390,11 +1698,17 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<badge/ea>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 
 Default: 1024
+
+##### yb_use_hash_splitting_by_default
+
+When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+
+Default: true
 
 ##### default_transaction_isolation
 

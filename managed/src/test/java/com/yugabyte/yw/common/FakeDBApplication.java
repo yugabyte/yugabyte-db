@@ -11,6 +11,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
@@ -92,6 +93,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
   public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
+  public XClusterSyncScheduler mockXClusterSyncScheduler = mock(XClusterSyncScheduler.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -166,6 +168,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
+        .overrides(bind(XClusterSyncScheduler.class).toInstance(mockXClusterSyncScheduler))
         .build();
   }
 

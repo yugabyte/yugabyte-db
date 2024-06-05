@@ -70,6 +70,7 @@ The following commands are available:
 
 - [start](#start)
 - [configure](#configure)
+- [configure_read_replica](#configure-read-replica)
 - [cert](#cert)
 - [stop](#stop)
 - [destroy](#destroy)
@@ -78,12 +79,15 @@ The following commands are available:
 - [collect_logs](#collect-logs)
 - [connect](#connect)
 - [demo](#demo)
+- [backup](#backup)
+- [restore](#restore)
+- [finalize_upgrade](#finalize-upgrade)
 
 -----
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads in your local environment.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
 
 Note that to use encryption in transit, OpenSSL must be installed on the nodes.
 
@@ -153,12 +157,21 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Enable or disable the webserver UI (available at <http://localhost:15433>). Default: `true`
 
 --secure
-: Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
+: Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
 : Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
 : When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
+
+--read_replica *read_replica_node*
+: Use this flag to start a read replica node.
+
+--backup_daemon *backup-daemon-process*
+: Enable or disable the backup daemon with yugabyted start. Default : `false`
+
+--enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
+: Enable PostgreSQL compatibility features. Default: `false`
 
 #### Advanced flags
 
@@ -211,7 +224,7 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 #### Deprecated flags
 
 --daemon *bool*
-: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`.
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Use [--background](#flags) instead. Default: `true`.
 
 --listen *bind-ip*
 : The IP address or localhost name to which yugabyted will listen.
@@ -237,6 +250,8 @@ The following subcommands are available for `yugabyted configure` command:
 
 - [data_placement](#data-placement)
 - [encrypt_at_rest](#encrypt-at-rest)
+- [point_in_time_recovery](#point-in-time-recovery)
+- [admin_operation](#admin-operation)
 
 #### data_placement
 
@@ -314,6 +329,152 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 
 --log_dir *log-directory*
 : : The log directory for the yugabyted server.
+
+
+#### point_in_time_recovery
+
+Use the `yugabyted configure point_in_time_recovery` subcommand to configure a snapshot schedule for a specific database.
+
+Examples:
+
+- Enable point-in-time recovery for a database:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --enable --retention <retention_period> --database <database_name>
+```
+
+- Disable point-in-time recovery for a database:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --disable --database <database_name> 
+```
+
+- Display point-in-time schedules configured on the cluster:
+
+```sh
+./bin/yugabyted configure point_in_time_recovery --status 
+```
+
+#### admin_operation
+
+Use the `yugabyted admin_operation` command to run a yb-admin command on the YugabyteDB cluster.
+
+For example, get the YugabyteDB universe configuration:
+
+```sh
+./bin/yugabyted configure admin_operation --command 'get_universe_config'
+```
+
+#### Flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server.
+
+--command *yb-admin-command*
+: Specify the yb-admin command to be executed on the YugabyteDB cluster.
+
+--master_addresses *master-addresses*
+: Comma-separated list of current masters of the YugabyteDB cluster.
+
+-----
+
+### configure_read_replica
+
+Use the `yugabyted configure_read_replica` command to configure, modify, or delete a read replica cluster.
+
+#### Syntax
+
+```text
+Usage: yugabyted configure_read_replica [command] [flags]
+```
+
+#### Commands
+
+The following subcommands are available for the `yugabyted configure_read_replica` command:
+
+- [new](#new)
+- [modify](#modify)
+- [delete](#delete)
+
+#### new
+
+Use the subcommand `yugabyted configure_read_replica new` to configure a new read replica cluster.
+
+For example, to create a new read replica cluster, execute the following command:
+
+```sh
+./bin/yugabyted configure_read_replica new --rf=1 --data_placement_constraint=cloud1.region1.zone1
+
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--rf *read-replica-replication-factor*
+: Replication factor for the read replica cluster.
+
+--data_placement_constraint *read-replica-constraint-value*
+: Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format cloud.region.zone.
+
+#### modify
+
+Use the subcommand `yugabyted configure_read_replica modify` to modify an exisitng read replica cluster.
+
+For example, modify a read replica cluster using the following commands.
+
+- Modify the replication factor of the existing read replica cluster:
+
+```sh
+./bin/yugabyted configure_read_replica modify --rf=2
+
+```
+
+- Modify the replication factor and also specify the replication constraint:
+
+```sh
+./bin/yugabyted configure_read_replica modify --rf=2 --data_placement_constraint=cloud1.region1.zone1,cloud2.region2.zone2
+
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--rf *read-replica-replication-factor*
+: Replication factor for the read replica cluster.
+
+--data_placement_constraint *read-replica-constraint-value*
+: Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format cloud.region.zone.
+
+#### delete
+
+Use the subcommand `yugabyted configure_read_replica delete` to delete an existing read replica cluster.
+
+For example, delete a read replica cluster using the following command:
+
+```sh
+./bin/yugabyted configure_read_replica delete
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
 
 -----
 
@@ -599,6 +760,149 @@ Use the `yuagbyted demo destroy` subcommand to shut down the yugabyted single-no
 --log_dir *log-directory*
 : The log directory for the yugabyted server to connect to or destroy.
 
+### backup
+
+Use the `yugabyted backup` command to take a backup of a YugabyteDB database into a network file storage directory or public cloud object storage.
+
+Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+
+#### Syntax
+
+```text
+Usage: yugabyted backup [flags]
+```
+
+Examples:
+
+- Take a backup into AWS S3 bucket:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name]
+```
+
+- Take a backup into Network file storage:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=/nfs-dir
+```
+
+- Determine the status of a backup task:
+
+```sh
+./bin/yugabyted backup --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name] --status
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--cloud_storage_uri *cloud_storage_location*
+: Cloud location to store the backup data files.
+
+--database *database*
+: YSQL Database to be backed up to cloud storage.
+
+--keyspace *keyspace*
+: YCQL Keyspace to be backed up to cloud storage.
+
+--status
+: Check the status of the backup task.
+
+### restore
+
+Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
+
+Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
+
+#### Syntax
+
+```text
+Usage: yugabyted restore [flags]
+```
+
+Examples:
+
+- Restore a database from AWS S3 bucket:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name]
+```
+
+- Restore a database from a network file storage directory:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=/nfs-dir
+```
+
+- Restore the database to a point in time in history:
+
+```sh
+./bin/yugabyted restore --database yugabyte --recover_to_point_in_time '2024-01-29 9:30:00 PM'
+```
+Note: To be able to restore to a point in time, PITR scheduling has to be enabled on the database using `yugabyted configure point_in_time_recovery`.
+
+- Determine the status of a restore task:
+
+```sh
+./bin/yugabyted restore --database=yb-demo-northwind --cloud_storage_uri=s3://[bucket_name] --status
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--cloud_storage_uri *cloud_storage_location*
+: Cloud location to store the backup data files.
+
+--database *database*
+: YSQL Database to be backed up to cloud storage.
+
+--keyspace *keyspace*
+: YCQL Keyspace to be backed up to cloud storage.
+
+--recover_to_point_in_time *pitr*
+: Restore to the specified point-in-time with timestamp enclosed in single quotes.
+
+--status
+: Check the status of the backup task.
+
+### finalize_upgrade
+
+Use the `yugabyted finalize_upgrade` command to finalize and upgrade the YSQL catalog to the new version and complete the upgrade process.
+
+#### Syntax
+
+```text
+Usage: yugabyted finalize_upgrade [flags]
+```
+
+Examples:
+
+- Finalize the upgrade process after upgrading all the nodes of the YugabyteDB cluster to the new version:
+
+```sh
+yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
+```
+
+#### flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--upgrade_ysql_timeout *upgrade_timeout_in_ms*
+: Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
+
 -----
 
 ## Environment variables
@@ -716,16 +1020,12 @@ To destroy a local single-node cluster, use the [destroy](#destroy) command as f
 
 To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the base directory path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
 
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
+{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
 If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
@@ -736,14 +1036,14 @@ Create a single-node cluster with a given base directory. Note the need to provi
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) enabled, add the `--secure` flag as follows:
+To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
 When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
@@ -763,9 +1063,9 @@ Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` direct
 Copy the certificates to the respective node's `<base_dir>/certs` directory:
 
 ```sh
-cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node1/certs
-cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node2/certs
-cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node3/certs
+cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
+cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
+cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
 ```
 
 ### Create a local multi-node cluster
@@ -782,7 +1082,7 @@ To create the cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a
     ```
 
@@ -798,11 +1098,11 @@ To create the cluster, do the following:
     ```sh
     ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1b
     ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1c
     ```
 
@@ -1055,7 +1355,7 @@ To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deploye
 ```sh
 ./bin/yugabyted configure encrypt_at_rest \
     --enable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
 To enable encryption at rest in a deployed multi-zone or multi-region cluster, run the following command from any VM:
@@ -1069,7 +1369,7 @@ To disable encryption at rest in a local cluster with encryption at rest enabled
 ```sh
 ./bin/yugabyted configure encrypt_at_rest \
     --disable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
 To disable encryption at rest in a multi-zone or multi-region cluster with this type of encryption enabled, run the following command from any VM:

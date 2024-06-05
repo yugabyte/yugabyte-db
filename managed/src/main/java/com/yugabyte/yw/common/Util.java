@@ -136,7 +136,13 @@ public class Util {
 
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
+  public static final String PG_PARITY_DB_STABLE_VERSION = "2024.1.1.0-b1";
+
+  public static final String PG_PARITY_DB_PREVIEW_VERSION = "2.23.0.0-b416";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
+
+  public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";
 
   public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
 
