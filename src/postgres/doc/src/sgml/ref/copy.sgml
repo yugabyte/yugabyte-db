@@ -1,0 +1,1081 @@
+<!--
+doc/src/sgml/ref/copy.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-copy">
+ <indexterm zone="sql-copy">
+  <primary>COPY</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>COPY</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>COPY</refname>
+  <refpurpose>copy data between a file and a table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+COPY <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
+    FROM { '<replaceable class="parameter">filename</replaceable>' | PROGRAM '<replaceable class="parameter">command</replaceable>' | STDIN }
+    [ [ WITH ] ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
+    [ WHERE <replaceable class="parameter">condition</replaceable> ]
+
+COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ] | ( <replaceable class="parameter">query</replaceable> ) }
+    TO { '<replaceable class="parameter">filename</replaceable>' | PROGRAM '<replaceable class="parameter">command</replaceable>' | STDOUT }
+    [ [ WITH ] ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    FORMAT <replaceable class="parameter">format_name</replaceable>
+    FREEZE [ <replaceable class="parameter">boolean</replaceable> ]
+    DELIMITER '<replaceable class="parameter">delimiter_character</replaceable>'
+    NULL '<replaceable class="parameter">null_string</replaceable>'
+    HEADER [ <replaceable class="parameter">boolean</replaceable> | MATCH ]
+    QUOTE '<replaceable class="parameter">quote_character</replaceable>'
+    ESCAPE '<replaceable class="parameter">escape_character</replaceable>'
+    FORCE_QUOTE { ( <replaceable class="parameter">column_name</replaceable> [, ...] ) | * }
+    FORCE_NOT_NULL ( <replaceable class="parameter">column_name</replaceable> [, ...] )
+    FORCE_NULL ( <replaceable class="parameter">column_name</replaceable> [, ...] )
+    ENCODING '<replaceable class="parameter">encoding_name</replaceable>'
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>COPY</command> moves data between
+   <productname>PostgreSQL</productname> tables and standard file-system
+   files. <command>COPY TO</command> copies the contents of a table
+   <emphasis>to</emphasis> a file, while <command>COPY FROM</command> copies
+   data <emphasis>from</emphasis> a file to a table (appending the data to
+   whatever is in the table already).  <command>COPY TO</command>
+   can also copy the results of a <command>SELECT</command> query.
+  </para>
+
+  <para>
+   If a column list is specified, <command>COPY TO</command> copies only
+   the data in the specified columns to the file.  For <command>COPY
+   FROM</command>, each field in the file is inserted, in order, into the
+   specified column.  Table columns not specified in the <command>COPY
+   FROM</command> column list will receive their default values.
+  </para>
+
+  <para>
+   <command>COPY</command> with a file name instructs the
+   <productname>PostgreSQL</productname> server to directly read from
+   or write to a file. The file must be accessible by the
+   <productname>PostgreSQL</productname> user (the user ID the server
+   runs as) and the name must be specified from the viewpoint of the
+   server. When <literal>PROGRAM</literal> is specified, the server
+   executes the given command and reads from the standard output of the
+   program, or writes to the standard input of the program. The command
+   must be specified from the viewpoint of the server, and be executable
+   by the <productname>PostgreSQL</productname> user.  When
+   <literal>STDIN</literal> or <literal>STDOUT</literal> is
+   specified, data is transmitted via the connection between the
+   client and the server.
+  </para>
+
+  <para>
+    Each backend running <command>COPY</command> will report its progress
+    in the <structname>pg_stat_progress_copy</structname> view. See
+    <xref linkend="copy-progress-reporting"/> for details.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">column_name</replaceable></term>
+     <listitem>
+     <para>
+      An optional list of columns to be copied.  If no column list is
+      specified, all columns of the table except generated columns will be
+      copied.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">query</replaceable></term>
+    <listitem>
+     <para>
+      A <link linkend="sql-select"><command>SELECT</command></link>,
+      <link linkend="sql-values"><command>VALUES</command></link>,
+      <link linkend="sql-insert"><command>INSERT</command></link>,
+      <link linkend="sql-update"><command>UPDATE</command></link>, or
+      <link linkend="sql-delete"><command>DELETE</command></link> command whose results are to be
+      copied.  Note that parentheses are required around the query.
+     </para>
+     <para>
+      For <command>INSERT</command>, <command>UPDATE</command> and
+      <command>DELETE</command> queries a RETURNING clause must be provided,
+      and the target relation must not have a conditional rule, nor
+      an <literal>ALSO</literal> rule, nor an <literal>INSTEAD</literal> rule
+      that expands to multiple statements.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">filename</replaceable></term>
+    <listitem>
+     <para>
+      The path name of the input or output file.  An input file name can be
+      an absolute or relative path, but an output file name must be an absolute
+      path.  Windows users might need to use an <literal>E''</literal> string and
+      double any backslashes used in the path name.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PROGRAM</literal></term>
+    <listitem>
+     <para>
+      A command to execute. In <command>COPY FROM</command>, the input is
+      read from standard output of the command, and in <command>COPY TO</command>,
+      the output is written to the standard input of the command.
+     </para>
+     <para>
+      Note that the command is invoked by the shell, so if you need to pass
+      any arguments to shell command that come from an untrusted source, you
+      must be careful to strip or escape any special characters that might
+      have a special meaning for the shell. For security reasons, it is best
+      to use a fixed command string, or at least avoid passing any user input
+      in it.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>STDIN</literal></term>
+    <listitem>
+     <para>
+      Specifies that input comes from the client application.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>STDOUT</literal></term>
+    <listitem>
+     <para>
+      Specifies that output goes to the client application.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FORMAT</literal></term>
+    <listitem>
+     <para>
+      Selects the data format to be read or written:
+      <literal>text</literal>,
+      <literal>csv</literal> (Comma Separated Values),
+      or <literal>binary</literal>.
+      The default is <literal>text</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FREEZE</literal></term>
+    <listitem>
+     <para>
+      Requests copying the data with rows already frozen, just as they
+      would be after running the <command>VACUUM FREEZE</command> command.
+      This is intended as a performance option for initial data loading.
+      Rows will be frozen only if the table being loaded has been created
+      or truncated in the current subtransaction, there are no cursors
+      open and there are no older snapshots held by this transaction.  It is
+      currently not possible to perform a <command>COPY FREEZE</command> on
+      a partitioned table.
+     </para>
+     <para>
+      Note that all other sessions will immediately be able to see the data
+      once it has been successfully loaded. This violates the normal rules
+      of MVCC visibility and users specifying should be aware of the
+      potential problems this might cause.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DELIMITER</literal></term>
+    <listitem>
+     <para>
+      Specifies the character that separates columns within each row
+      (line) of the file.  The default is a tab character in text format,
+      a comma in <literal>CSV</literal> format.
+      This must be a single one-byte character.
+      This option is not allowed when using <literal>binary</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NULL</literal></term>
+    <listitem>
+     <para>
+      Specifies the string that represents a null value. The default is
+      <literal>\N</literal> (backslash-N) in text format, and an unquoted empty
+      string in <literal>CSV</literal> format. You might prefer an
+      empty string even in text format for cases where you don't want to
+      distinguish nulls from empty strings.
+      This option is not allowed when using <literal>binary</literal> format.
+     </para>
+
+     <note>
+      <para>
+       When using <command>COPY FROM</command>, any data item that matches
+       this string will be stored as a null value, so you should make
+       sure that you use the same string as you used with
+       <command>COPY TO</command>.
+      </para>
+     </note>
+
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>HEADER</literal></term>
+    <listitem>
+     <para>
+      Specifies that the file contains a header line with the names of each
+      column in the file.  On output, the first line contains the column
+      names from the table.  On input, the first line is discarded when this
+      option is set to <literal>true</literal> (or equivalent Boolean value).
+      If this option is set to <literal>MATCH</literal>, the number and names
+      of the columns in the header line must match the actual column names of
+      the table, in order;  otherwise an error is raised.
+      This option is not allowed when using <literal>binary</literal> format.
+      The <literal>MATCH</literal> option is only valid for <command>COPY
+      FROM</command> commands.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>QUOTE</literal></term>
+    <listitem>
+     <para>
+      Specifies the quoting character to be used when a data value is quoted.
+      The default is double-quote.
+      This must be a single one-byte character.
+      This option is allowed only when using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ESCAPE</literal></term>
+    <listitem>
+     <para>
+      Specifies the character that should appear before a
+      data character that matches the <literal>QUOTE</literal> value.
+      The default is the same as the <literal>QUOTE</literal> value (so that
+      the quoting character is doubled if it appears in the data).
+      This must be a single one-byte character.
+      This option is allowed only when using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FORCE_QUOTE</literal></term>
+    <listitem>
+     <para>
+      Forces quoting to be
+      used for all non-<literal>NULL</literal> values in each specified column.
+      <literal>NULL</literal> output is never quoted. If <literal>*</literal> is specified,
+      non-<literal>NULL</literal> values will be quoted in all columns.
+      This option is allowed only in <command>COPY TO</command>, and only when
+      using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FORCE_NOT_NULL</literal></term>
+    <listitem>
+     <para>
+      Do not match the specified columns' values against the null string.
+      In the default case where the null string is empty, this means that
+      empty values will be read as zero-length strings rather than nulls,
+      even when they are not quoted.
+      This option is allowed only in <command>COPY FROM</command>, and only when
+      using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FORCE_NULL</literal></term>
+    <listitem>
+     <para>
+      Match the specified columns' values against the null string, even
+      if it has been quoted, and if a match is found set the value to
+      <literal>NULL</literal>. In the default case where the null string is empty,
+      this converts a quoted empty string into NULL.
+      This option is allowed only in <command>COPY FROM</command>, and only when
+      using <literal>CSV</literal> format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ENCODING</literal></term>
+    <listitem>
+     <para>
+      Specifies that the file is encoded in the <replaceable
+      class="parameter">encoding_name</replaceable>.  If this option is
+      omitted, the current client encoding is used. See the Notes below
+      for more details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WHERE</literal></term>
+    <listitem>
+   <para>
+    The optional <literal>WHERE</literal> clause has the general form
+<synopsis>
+WHERE <replaceable class="parameter">condition</replaceable>
+</synopsis>
+    where <replaceable class="parameter">condition</replaceable> is
+    any expression that evaluates to a result of type
+    <type>boolean</type>.  Any row that does not satisfy this
+    condition will not be inserted to the table.  A row satisfies the
+    condition if it returns true when the actual row values are
+    substituted for any variable references.
+   </para>
+
+   <para>
+    Currently, subqueries are not allowed in <literal>WHERE</literal>
+    expressions, and the evaluation does not see any changes made by the
+    <command>COPY</command> itself (this matters when the expression
+    contains calls to <literal>VOLATILE</literal> functions).
+   </para>
+
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, a <command>COPY</command> command returns a command
+   tag of the form
+<screen>
+COPY <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows copied.
+  </para>
+
+  <note>
+   <para>
+    <application>psql</application> will print this command tag only if the command
+    was not <literal>COPY ... TO STDOUT</literal>, or the
+    equivalent <application>psql</application> meta-command
+    <literal>\copy ... to stdout</literal>.  This is to prevent confusing the
+    command tag with the data that was just printed.
+   </para>
+  </note>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    <command>COPY TO</command> can be used only with plain
+    tables, not views, and does not copy rows from child tables
+    or child partitions.  For example, <literal>COPY <replaceable
+    class="parameter">table</replaceable> TO</literal> copies
+    the same rows as <literal>SELECT * FROM ONLY <replaceable
+    class="parameter">table</replaceable></literal>.
+    The syntax <literal>COPY (SELECT * FROM <replaceable
+    class="parameter">table</replaceable>) TO ...</literal> can be used to
+    dump all of the rows in an inheritance hierarchy, partitioned table,
+    or view.
+   </para>
+
+   <para>
+    <command>COPY FROM</command> can be used with plain, foreign, or
+    partitioned tables or with views that have
+    <literal>INSTEAD OF INSERT</literal> triggers.
+   </para>
+
+   <para>
+    You must have select privilege on the table
+    whose values are read by <command>COPY TO</command>, and
+    insert privilege on the table into which values
+    are inserted by <command>COPY FROM</command>.  It is sufficient
+    to have column privileges on the column(s) listed in the command.
+   </para>
+
+   <para>
+    If row-level security is enabled for the table, the relevant
+    <command>SELECT</command> policies will apply to <literal>COPY
+    <replaceable class="parameter">table</replaceable> TO</literal> statements.
+    Currently, <command>COPY FROM</command> is not supported for tables
+    with row-level security. Use equivalent <command>INSERT</command>
+    statements instead.
+   </para>
+
+   <para>
+    Files named in a <command>COPY</command> command are read or written
+    directly by the server, not by the client application. Therefore,
+    they must reside on or be accessible to the database server machine,
+    not the client. They must be accessible to and readable or writable
+    by the <productname>PostgreSQL</productname> user (the user ID the
+    server runs as), not the client. Similarly,
+    the command specified with <literal>PROGRAM</literal> is executed directly
+    by the server, not by the client application, must be executable by the
+    <productname>PostgreSQL</productname> user.
+    <command>COPY</command> naming a file or command is only allowed to
+    database superusers or users who are granted one of the roles
+    <literal>pg_read_server_files</literal>,
+    <literal>pg_write_server_files</literal>,
+    or <literal>pg_execute_server_program</literal>, since it allows reading
+    or writing any file or running a program that the server has privileges to
+    access.
+   </para>
+
+   <para>
+    Do not confuse <command>COPY</command> with the
+    <application>psql</application> instruction
+    <command><link linkend="app-psql-meta-commands-copy">\copy</link></command>. <command>\copy</command> invokes
+    <command>COPY FROM STDIN</command> or <command>COPY TO
+    STDOUT</command>, and then fetches/stores the data in a file
+    accessible to the <application>psql</application> client. Thus,
+    file accessibility and access rights depend on the client rather
+    than the server when <command>\copy</command> is used.
+   </para>
+
+   <para>
+    It is recommended that the file name used in <command>COPY</command>
+    always be specified as an absolute path. This is enforced by the
+    server in the case of <command>COPY TO</command>, but for
+    <command>COPY FROM</command> you do have the option of reading from
+    a file specified by a relative path. The path will be interpreted
+    relative to the working directory of the server process (normally
+    the cluster's data directory), not the client's working directory.
+   </para>
+
+   <para>
+    Executing a command with <literal>PROGRAM</literal> might be restricted
+    by the operating system's access control mechanisms, such as SELinux.
+   </para>
+
+   <para>
+    <command>COPY FROM</command> will invoke any triggers and check
+    constraints on the destination table. However, it will not invoke rules.
+   </para>
+
+   <para>
+    For identity columns, the <command>COPY FROM</command> command will always
+    write the column values provided in the input data, like
+    the <command>INSERT</command> option <literal>OVERRIDING SYSTEM
+    VALUE</literal>.
+   </para>
+
+   <para>
+    <command>COPY</command> input and output is affected by
+    <varname>DateStyle</varname>. To ensure portability to other
+    <productname>PostgreSQL</productname> installations that might use
+    non-default <varname>DateStyle</varname> settings,
+    <varname>DateStyle</varname> should be set to <literal>ISO</literal> before
+    using <command>COPY TO</command>.  It is also a good idea to avoid dumping
+    data with <varname>IntervalStyle</varname> set to
+    <literal>sql_standard</literal>, because negative interval values might be
+    misinterpreted by a server that has a different setting for
+    <varname>IntervalStyle</varname>.
+   </para>
+
+   <para>
+    Input data is interpreted according to <literal>ENCODING</literal>
+    option or the current client encoding, and output data is encoded
+    in <literal>ENCODING</literal> or the current client encoding, even
+    if the data does not pass through the client but is read from or
+    written to a file directly by the server.
+   </para>
+
+   <para>
+    <command>COPY</command> stops operation at the first error. This
+    should not lead to problems in the event of a <command>COPY
+    TO</command>, but the target table will already have received
+    earlier rows in a <command>COPY FROM</command>. These rows will not
+    be visible or accessible, but they still occupy disk space. This might
+    amount to a considerable amount of wasted disk space if the failure
+    happened well into a large copy operation. You might wish to invoke
+    <command>VACUUM</command> to recover the wasted space.
+   </para>
+
+   <para>
+    <literal>FORCE_NULL</literal> and <literal>FORCE_NOT_NULL</literal> can be used
+    simultaneously on the same column. This results in converting quoted
+    null strings to null values and unquoted null strings to empty strings.
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>File Formats</title>
+
+  <refsect2>
+   <title>Text Format</title>
+
+   <para>
+    When the <literal>text</literal> format is used,
+    the data read or written is a text file with one line per table row.
+    Columns in a row are separated by the delimiter character.
+    The column values themselves are strings generated by the
+    output function, or acceptable to the input function, of each
+    attribute's data type.  The specified null string is used in
+    place of columns that are null.
+    <command>COPY FROM</command> will raise an error if any line of the
+    input file contains more or fewer columns than are expected.
+   </para>
+
+   <para>
+    End of data can be represented by a single line containing just
+    backslash-period (<literal>\.</literal>).  An end-of-data marker is
+    not necessary when reading from a file, since the end of file
+    serves perfectly well; it is needed only when copying data to or from
+    client applications using pre-3.0 client protocol.
+   </para>
+
+   <para>
+    Backslash characters (<literal>\</literal>) can be used in the
+    <command>COPY</command> data to quote data characters that might
+    otherwise be taken as row or column delimiters. In particular, the
+    following characters <emphasis>must</emphasis> be preceded by a backslash if
+    they appear as part of a column value: backslash itself,
+    newline, carriage return, and the current delimiter character.
+   </para>
+
+   <para>
+    The specified null string is sent by <command>COPY TO</command> without
+    adding any backslashes; conversely, <command>COPY FROM</command> matches
+    the input against the null string before removing backslashes.  Therefore,
+    a null string such as <literal>\N</literal> cannot be confused with
+    the actual data value <literal>\N</literal> (which would be represented
+    as <literal>\\N</literal>).
+   </para>
+
+   <para>
+    The following special backslash sequences are recognized by
+    <command>COPY FROM</command>:
+
+   <informaltable>
+    <tgroup cols="2">
+     <thead>
+      <row>
+       <entry>Sequence</entry>
+       <entry>Represents</entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry><literal>\b</literal></entry>
+       <entry>Backspace (ASCII 8)</entry>
+      </row>
+      <row>
+       <entry><literal>\f</literal></entry>
+       <entry>Form feed (ASCII 12)</entry>
+      </row>
+      <row>
+       <entry><literal>\n</literal></entry>
+       <entry>Newline (ASCII 10)</entry>
+      </row>
+      <row>
+       <entry><literal>\r</literal></entry>
+       <entry>Carriage return (ASCII 13)</entry>
+      </row>
+      <row>
+       <entry><literal>\t</literal></entry>
+       <entry>Tab (ASCII 9)</entry>
+      </row>
+      <row>
+       <entry><literal>\v</literal></entry>
+       <entry>Vertical tab (ASCII 11)</entry>
+      </row>
+      <row>
+       <entry><literal>\</literal><replaceable>digits</replaceable></entry>
+       <entry>Backslash followed by one to three octal digits specifies
+       the byte with that numeric code</entry>
+      </row>
+      <row>
+       <entry><literal>\x</literal><replaceable>digits</replaceable></entry>
+       <entry>Backslash <literal>x</literal> followed by one or two hex digits specifies
+       the byte with that numeric code</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </informaltable>
+
+    Presently, <command>COPY TO</command> will never emit an octal or
+    hex-digits backslash sequence, but it does use the other sequences
+    listed above for those control characters.
+   </para>
+
+   <para>
+    Any other backslashed character that is not mentioned in the above table
+    will be taken to represent itself.  However, beware of adding backslashes
+    unnecessarily, since that might accidentally produce a string matching the
+    end-of-data marker (<literal>\.</literal>) or the null string (<literal>\N</literal> by
+    default).  These strings will be recognized before any other backslash
+    processing is done.
+   </para>
+
+   <para>
+    It is strongly recommended that applications generating <command>COPY</command> data convert
+    data newlines and carriage returns to the <literal>\n</literal> and
+    <literal>\r</literal> sequences respectively.  At present it is
+    possible to represent a data carriage return by a backslash and carriage
+    return, and to represent a data newline by a backslash and newline.
+    However, these representations might not be accepted in future releases.
+    They are also highly vulnerable to corruption if the <command>COPY</command> file is
+    transferred across different machines (for example, from Unix to Windows
+    or vice versa).
+   </para>
+
+   <para>
+     All backslash sequences are interpreted after encoding conversion.
+     The bytes specified with the octal and hex-digit backslash sequences must
+     form valid characters in the database encoding.
+   </para>
+
+   <para>
+    <command>COPY TO</command> will terminate each row with a Unix-style
+    newline (<quote><literal>\n</literal></quote>).  Servers running on Microsoft Windows instead
+    output carriage return/newline (<quote><literal>\r\n</literal></quote>), but only for
+    <command>COPY</command> to a server file; for consistency across platforms,
+    <command>COPY TO STDOUT</command> always sends <quote><literal>\n</literal></quote>
+    regardless of server platform.
+    <command>COPY FROM</command> can handle lines ending with newlines,
+    carriage returns, or carriage return/newlines.  To reduce the risk of
+    error due to un-backslashed newlines or carriage returns that were
+    meant as data, <command>COPY FROM</command> will complain if the line
+    endings in the input are not all alike.
+   </para>
+  </refsect2>
+
+  <refsect2>
+   <title>CSV Format</title>
+
+   <para>
+    This format option is used for importing and exporting the Comma
+    Separated Value (<literal>CSV</literal>) file format used by many other
+    programs, such as spreadsheets. Instead of the escaping rules used by
+    <productname>PostgreSQL</productname>'s standard text format, it
+    produces and recognizes the common CSV escaping mechanism.
+   </para>
+
+   <para>
+    The values in each record are separated by the <literal>DELIMITER</literal>
+    character. If the value contains the delimiter character, the
+    <literal>QUOTE</literal> character, the <literal>NULL</literal> string, a carriage
+    return, or line feed character, then the whole value is prefixed and
+    suffixed by the <literal>QUOTE</literal> character, and any occurrence
+    within the value of a <literal>QUOTE</literal> character or the
+    <literal>ESCAPE</literal> character is preceded by the escape character.
+    You can also use <literal>FORCE_QUOTE</literal> to force quotes when outputting
+    non-<literal>NULL</literal> values in specific columns.
+   </para>
+
+   <para>
+    The <literal>CSV</literal> format has no standard way to distinguish a
+    <literal>NULL</literal> value from an empty string.
+    <productname>PostgreSQL</productname>'s <command>COPY</command> handles this by quoting.
+    A <literal>NULL</literal> is output as the <literal>NULL</literal> parameter string
+    and is not quoted, while a non-<literal>NULL</literal> value matching the
+    <literal>NULL</literal> parameter string is quoted.  For example, with the
+    default settings, a <literal>NULL</literal> is written as an unquoted empty
+    string, while an empty string data value is written with double quotes
+    (<literal>""</literal>). Reading values follows similar rules. You can
+    use <literal>FORCE_NOT_NULL</literal> to prevent <literal>NULL</literal> input
+    comparisons for specific columns. You can also use
+    <literal>FORCE_NULL</literal> to convert quoted null string data values to
+    <literal>NULL</literal>.
+   </para>
+
+   <para>
+    Because backslash is not a special character in the <literal>CSV</literal>
+    format, <literal>\.</literal>, the end-of-data marker, could also appear
+    as a data value.  To avoid any misinterpretation, a <literal>\.</literal>
+    data value appearing as a lone entry on a line is automatically
+    quoted on output, and on input, if quoted, is not interpreted as the
+    end-of-data marker.  If you are loading a file created by another
+    application that has a single unquoted column and might have a
+    value of <literal>\.</literal>, you might need to quote that value in the
+    input file.
+   </para>
+
+   <note>
+    <para>
+     In <literal>CSV</literal> format, all characters are significant. A quoted value
+     surrounded by white space, or any characters other than
+     <literal>DELIMITER</literal>, will include those characters. This can cause
+     errors if you import data from a system that pads <literal>CSV</literal>
+     lines with white space out to some fixed width. If such a situation
+     arises you might need to preprocess the <literal>CSV</literal> file to remove
+     the trailing white space, before importing the data into
+     <productname>PostgreSQL</productname>.
+    </para>
+   </note>
+
+   <note>
+    <para>
+     CSV format will both recognize and produce CSV files with quoted
+     values containing embedded carriage returns and line feeds. Thus
+     the files are not strictly one line per table row like text-format
+     files.
+    </para>
+   </note>
+
+   <note>
+    <para>
+     Many programs produce strange and occasionally perverse CSV files,
+     so the file format is more a convention than a standard. Thus you
+     might encounter some files that cannot be imported using this
+     mechanism, and <command>COPY</command> might produce files that other
+     programs cannot process.
+    </para>
+   </note>
+
+  </refsect2>
+
+  <refsect2>
+   <title>Binary Format</title>
+
+   <para>
+    The <literal>binary</literal> format option causes all data to be
+    stored/read as binary format rather than as text.  It is
+    somewhat faster than the text and <literal>CSV</literal> formats,
+    but a binary-format file is less portable across machine architectures and
+    <productname>PostgreSQL</productname> versions.
+    Also, the binary format is very data type specific; for example
+    it will not work to output binary data from a <type>smallint</type> column
+    and read it into an <type>integer</type> column, even though that would work
+    fine in text format.
+   </para>
+
+   <para>
+    The <literal>binary</literal> file format consists
+    of a file header, zero or more tuples containing the row data, and
+    a file trailer.  Headers and data are in network byte order.
+   </para>
+
+   <note>
+    <para>
+     <productname>PostgreSQL</productname> releases before 7.4 used a
+     different binary file format.
+    </para>
+   </note>
+
+   <refsect3>
+    <title>File Header</title>
+
+    <para>
+     The file header consists of 15 bytes of fixed fields, followed
+     by a variable-length header extension area.  The fixed fields are:
+
+    <variablelist>
+     <varlistentry>
+      <term>Signature</term>
+      <listitem>
+       <para>
+11-byte sequence <literal>PGCOPY\n\377\r\n\0</literal> &mdash; note that the zero byte
+is a required part of the signature.  (The signature is designed to allow
+easy identification of files that have been munged by a non-8-bit-clean
+transfer.  This signature will be changed by end-of-line-translation
+filters, dropped zero bytes, dropped high bits, or parity changes.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term>Flags field</term>
+      <listitem>
+       <para>
+32-bit integer bit mask to denote important aspects of the file format. Bits
+are numbered from 0 (<acronym>LSB</acronym>) to 31 (<acronym>MSB</acronym>).  Note that
+this field is stored in network byte order (most significant byte first),
+as are all the integer fields used in the file format.  Bits
+16&ndash;31 are reserved to denote critical file format issues; a reader
+should abort if it finds an unexpected bit set in this range. Bits 0&ndash;15
+are reserved to signal backwards-compatible format issues; a reader
+should simply ignore any unexpected bits set in this range. Currently
+only one flag bit is defined, and the rest must be zero:
+        <variablelist>
+         <varlistentry>
+          <term>Bit 16</term>
+          <listitem>
+           <para>
+            If 1, OIDs are included in the data; if 0, not. Oid system columns
+            are not supported in <productname>PostgreSQL</productname>
+            anymore, but the format still contains the indicator.
+           </para>
+          </listitem>
+         </varlistentry>
+        </variablelist></para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term>Header extension area length</term>
+      <listitem>
+       <para>
+32-bit integer, length in bytes of remainder of header, not including self.
+Currently, this is zero, and the first tuple follows
+immediately.  Future changes to the format might allow additional data
+to be present in the header.  A reader should silently skip over any header
+extension data it does not know what to do with.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+    </para>
+
+    <para>
+The header extension area is envisioned to contain a sequence of
+self-identifying chunks.  The flags field is not intended to tell readers
+what is in the extension area.  Specific design of header extension contents
+is left for a later release.
+    </para>
+
+    <para>
+     This design allows for both backwards-compatible header additions (add
+     header extension chunks, or set low-order flag bits) and
+     non-backwards-compatible changes (set high-order flag bits to signal such
+     changes, and add supporting data to the extension area if needed).
+    </para>
+   </refsect3>
+
+   <refsect3>
+    <title>Tuples</title>
+    <para>
+Each tuple begins with a 16-bit integer count of the number of fields in the
+tuple.  (Presently, all tuples in a table will have the same count, but that
+might not always be true.)  Then, repeated for each field in the tuple, there
+is a 32-bit length word followed by that many bytes of field data.  (The
+length word does not include itself, and can be zero.)  As a special case,
+-1 indicates a NULL field value.  No value bytes follow in the NULL case.
+    </para>
+
+    <para>
+There is no alignment padding or any other extra data between fields.
+    </para>
+
+    <para>
+Presently, all data values in a binary-format file are
+assumed to be in binary format (format code one).  It is anticipated that a
+future extension might add a header field that allows per-column format codes
+to be specified.
+    </para>
+
+    <para>
+To determine the appropriate binary format for the actual tuple data you
+should consult the <productname>PostgreSQL</productname> source, in
+particular the <function>*send</function> and <function>*recv</function> functions for
+each column's data type (typically these functions are found in the
+<filename>src/backend/utils/adt/</filename> directory of the source
+distribution).
+    </para>
+
+    <para>
+If OIDs are included in the file, the OID field immediately follows the
+field-count word.  It is a normal field except that it's not included in the
+field-count.  Note that oid system columns are not supported in current
+versions of <productname>PostgreSQL</productname>.
+    </para>
+   </refsect3>
+
+   <refsect3>
+    <title>File Trailer</title>
+
+    <para>
+     The file trailer consists of a 16-bit integer word containing -1.  This
+     is easily distinguished from a tuple's field-count word.
+    </para>
+
+    <para>
+     A reader should report an error if a field-count word is neither -1
+     nor the expected number of columns.  This provides an extra
+     check against somehow getting out of sync with the data.
+    </para>
+   </refsect3>
+  </refsect2>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   The following example copies a table to the client
+   using the vertical bar (<literal>|</literal>) as the field delimiter:
+<programlisting>
+COPY country TO STDOUT (DELIMITER '|');
+</programlisting>
+  </para>
+
+  <para>
+   To copy data from a file into the <literal>country</literal> table:
+<programlisting>
+COPY country FROM '/usr1/proj/bray/sql/country_data';
+</programlisting>
+  </para>
+
+  <para>
+   To copy into a file just the countries whose names start with 'A':
+<programlisting>
+COPY (SELECT * FROM country WHERE country_name LIKE 'A%') TO '/usr1/proj/bray/sql/a_list_countries.copy';
+</programlisting>
+  </para>
+
+  <para>
+   To copy into a compressed file, you can pipe the output through an external
+   compression program:
+<programlisting>
+COPY country TO PROGRAM 'gzip > /usr1/proj/bray/sql/country_data.gz';
+</programlisting>
+  </para>
+
+  <para>
+   Here is a sample of data suitable for copying into a table from
+   <literal>STDIN</literal>:
+<programlisting>
+AF      AFGHANISTAN
+AL      ALBANIA
+DZ      ALGERIA
+ZM      ZAMBIA
+ZW      ZIMBABWE
+</programlisting>
+   Note that the white space on each line is actually a tab character.
+  </para>
+
+  <para>
+   The following is the same data, output in binary format.
+   The data is shown after filtering through the
+   Unix utility <command>od -c</command>. The table has three columns;
+   the first has type <type>char(2)</type>, the second has type <type>text</type>,
+   and the third has type <type>integer</type>. All the rows have a null value
+   in the third column.
+<programlisting>
+0000000   P   G   C   O   P   Y  \n 377  \r  \n  \0  \0  \0  \0  \0  \0
+0000020  \0  \0  \0  \0 003  \0  \0  \0 002   A   F  \0  \0  \0 013   A
+0000040   F   G   H   A   N   I   S   T   A   N 377 377 377 377  \0 003
+0000060  \0  \0  \0 002   A   L  \0  \0  \0 007   A   L   B   A   N   I
+0000100   A 377 377 377 377  \0 003  \0  \0  \0 002   D   Z  \0  \0  \0
+0000120 007   A   L   G   E   R   I   A 377 377 377 377  \0 003  \0  \0
+0000140  \0 002   Z   M  \0  \0  \0 006   Z   A   M   B   I   A 377 377
+0000160 377 377  \0 003  \0  \0  \0 002   Z   W  \0  \0  \0  \b   Z   I
+0000200   M   B   A   B   W   E 377 377 377 377 377 377
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>COPY</command> statement in the SQL standard.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   version 9.0 and is still supported:
+
+<synopsis>
+COPY <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
+    FROM { '<replaceable class="parameter">filename</replaceable>' | STDIN }
+    [ [ WITH ]
+          [ BINARY ]
+          [ DELIMITER [ AS ] '<replaceable class="parameter">delimiter_character</replaceable>' ]
+          [ NULL [ AS ] '<replaceable class="parameter">null_string</replaceable>' ]
+          [ CSV [ HEADER ]
+                [ QUOTE [ AS ] '<replaceable class="parameter">quote_character</replaceable>' ]
+                [ ESCAPE [ AS ] '<replaceable class="parameter">escape_character</replaceable>' ]
+                [ FORCE NOT NULL <replaceable class="parameter">column_name</replaceable> [, ...] ] ] ]
+
+COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ] | ( <replaceable class="parameter">query</replaceable> ) }
+    TO { '<replaceable class="parameter">filename</replaceable>' | STDOUT }
+    [ [ WITH ]
+          [ BINARY ]
+          [ DELIMITER [ AS ] '<replaceable class="parameter">delimiter_character</replaceable>' ]
+          [ NULL [ AS ] '<replaceable class="parameter">null_string</replaceable>' ]
+          [ CSV [ HEADER ]
+                [ QUOTE [ AS ] '<replaceable class="parameter">quote_character</replaceable>' ]
+                [ ESCAPE [ AS ] '<replaceable class="parameter">escape_character</replaceable>' ]
+                [ FORCE QUOTE { <replaceable class="parameter">column_name</replaceable> [, ...] | * } ] ] ]
+</synopsis>
+
+   Note that in this syntax, <literal>BINARY</literal> and <literal>CSV</literal> are
+   treated as independent keywords, not as arguments of a <literal>FORMAT</literal>
+   option.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   version 7.3 and is still supported:
+
+<synopsis>
+COPY [ BINARY ] <replaceable class="parameter">table_name</replaceable>
+    FROM { '<replaceable class="parameter">filename</replaceable>' | STDIN }
+    [ [USING] DELIMITERS '<replaceable class="parameter">delimiter_character</replaceable>' ]
+    [ WITH NULL AS '<replaceable class="parameter">null_string</replaceable>' ]
+
+COPY [ BINARY ] <replaceable class="parameter">table_name</replaceable>
+    TO { '<replaceable class="parameter">filename</replaceable>' | STDOUT }
+    [ [USING] DELIMITERS '<replaceable class="parameter">delimiter_character</replaceable>' ]
+    [ WITH NULL AS '<replaceable class="parameter">null_string</replaceable>' ]
+</synopsis></para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="copy-progress-reporting"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

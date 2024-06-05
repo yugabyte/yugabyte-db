@@ -1,0 +1,46 @@
+@use '../../../../_style/colors.scss';
+
+.k8s-providers-list {
+  &__cell-subrow {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .btn {
+      min-width: fit-content;
+    }
+  }
+}
+
+.add-zone-form {
+  .divider {
+    top: 0px !important;
+  }
+
+  .issuer-radio-field-c {
+    padding-right: 5px !important;
+    display: flex;
+    width: 100%;
+  }
+
+  .issuer-radio-field {
+    margin-right: 10px;
+  }
+
+  .issuer-row {
+    display: flex;
+    align-items: center;
+    padding-bottom: 8px !important;
+  }
+}
+
+.editor-container{
+  .fetch-kube-config-but{
+    width: auto;
+    margin-top: 10px;
+  }
+}

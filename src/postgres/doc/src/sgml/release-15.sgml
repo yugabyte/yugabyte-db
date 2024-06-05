@@ -1,0 +1,5790 @@
+<!-- doc/src/sgml/release-15.sgml -->
+<!-- See header comment in release.sgml about typical markup -->
+
+ <sect1 id="release-15-2">
+  <title>Release 15.2</title>
+
+  <formalpara>
+  <title>Release date:</title>
+  <para>2023-02-09</para>
+  </formalpara>
+
+  <para>
+   This release contains a variety of fixes from 15.1.
+   For information about new features in major release 15, see
+   <xref linkend="release-15"/>.
+  </para>
+
+  <sect2>
+   <title>Migration to Version 15.2</title>
+
+   <para>
+    A dump/restore is not required for those running 15.X.
+   </para>
+
+   <para>
+    However, if you are upgrading from a version earlier than 15.1,
+    see <xref linkend="release-15-1"/>.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Changes</title>
+
+   <itemizedlist>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [71c37797d] 2023-02-06 11:20:07 +0900
+Branch: REL_15_STABLE [715c345dd] 2023-02-06 11:20:20 +0900
+Branch: REL_14_STABLE [626f2c1d6] 2023-02-06 11:20:23 +0900
+Branch: REL_13_STABLE [45a945ee9] 2023-02-06 11:20:27 +0900
+Branch: REL_12_STABLE [3f7342671] 2023-02-06 11:20:31 +0900
+-->
+     <para>
+      <application>libpq</application> can leak memory contents after
+      GSSAPI transport encryption initiation fails (Jacob Champion)
+     </para>
+
+     <para>
+      A modified server, or an unauthenticated man-in-the-middle, can
+      send a not-zero-terminated error message during setup of GSSAPI
+      (Kerberos) transport encryption.  <application>libpq</application>
+      will then copy that string, as well as following bytes in
+      application memory up to the next zero byte, to its error report.
+      Depending on what the calling application does with the error
+      report, this could result in disclosure of application memory
+      contents.  There is also a small probability of a crash due to
+      reading beyond the end of memory.  Fix by properly zero-terminating
+      the server message.
+      (CVE-2022-41862)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [3f7836ff6] 2023-01-05 14:12:17 -0500
+Branch: REL_15_STABLE [3706cc97a] 2023-01-05 14:12:17 -0500
+Branch: REL_14_STABLE [8cd190e13] 2023-01-05 14:12:17 -0500
+Branch: REL_13_STABLE [ad38e2f89] 2023-01-05 14:12:17 -0500
+Branch: master [3f244d020] 2023-01-15 13:14:52 -0500
+Branch: REL_15_STABLE [a8f7687a0] 2023-01-15 14:06:46 -0500
+Branch: REL_14_STABLE [a8b88c26f] 2023-01-15 14:06:46 -0500
+Branch: REL_13_STABLE [787db4be9] 2023-01-15 14:06:46 -0500
+-->
+     <para>
+      Fix calculation of which <literal>GENERATED</literal> columns need
+      to be updated in child tables during an <command>UPDATE</command> on
+      a partitioned table or inheritance tree (Amit Langote, Tom Lane)
+     </para>
+
+     <para>
+      This fixes failure to update <literal>GENERATED</literal> columns
+      that do not exist in the parent table, or that have different
+      dependencies than are in the parent column's generation expression.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [fe9e658f4] 2023-01-30 10:04:57 +0000
+Branch: REL_15_STABLE [4785af9e6] 2023-01-30 10:07:32 +0000
+-->
+     <para>
+      Fix possible failure of <command>MERGE</command> to compute
+      <literal>GENERATED</literal> columns (Dean Rasheed)
+     </para>
+
+     <para>
+      When the first row-level action of the <command>MERGE</command> was
+      an <literal>UPDATE</literal>, any
+      subsequent <literal>INSERT</literal> actions would fail to
+      compute <literal>GENERATED</literal> columns that were deemed
+      unnecessary to compute for the <literal>UPDATE</literal> action
+      (due to not depending on any of the <literal>UPDATE</literal> target
+      columns).
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [f026c16a2] 2023-01-10 14:17:47 +0000
+Branch: REL_15_STABLE [38255f2d0] 2023-01-10 14:16:27 +0000
+-->
+     <para>
+      Fix <command>MERGE</command>'s check for
+      unreachable <literal>WHEN</literal> clauses (Dean Rasheed)
+     </para>
+
+     <para>
+      A <literal>WHEN</literal> clause following an
+      unconditional <literal>WHEN</literal> clause should be rejected as
+      unreachable, but this case was not always detected.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [7b2ccc5e0] 2022-11-25 13:31:48 +0000
+Branch: REL_15_STABLE [04d61bfe6] 2022-11-25 13:29:51 +0000
+-->
+     <para>
+      Fix <command>MERGE</command>'s rule-detection test (Dean Rasheed)
+     </para>
+
+     <para>
+      <command>MERGE</command> is not supported on tables with rules;
+      but it also failed on tables that once had rules but no longer do.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [6ff5aa129] 2022-11-17 18:56:11 +0100
+Branch: REL_15_STABLE [3d45edcef] 2022-11-17 18:56:11 +0100
+-->
+     <para>
+      In <command>MERGE</command>, don't count a <literal>DO
+      NOTHING</literal> action as a processed tuple (&Aacute;lvaro Herrera)
+     </para>
+
+     <para>
+      This makes the code's behavior match the documentation.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [935277b24] 2022-12-16 13:07:42 -0500
+Branch: REL_15_STABLE [ae98debf7] 2022-12-16 13:07:42 -0500
+Branch: REL_14_STABLE [ea5ae4cae] 2022-12-16 13:07:42 -0500
+-->
+     <para>
+      Allow a <literal>WITH RECURSIVE ... CYCLE</literal> CTE
+      to access its output column (Tom Lane)
+     </para>
+
+     <para>
+      A reference to the <literal>SET</literal> column from within the CTE
+      would fail with <quote>cache lookup failed for type 0</quote>.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Etsuro Fujita <efujita@postgresql.org>
+Branch: master [ffbb7e65a] 2022-11-25 17:45:00 +0900
+Branch: REL_15_STABLE [fc02019c0] 2022-11-25 17:45:01 +0900
+Branch: REL_14_STABLE [e52245228] 2022-11-25 17:45:03 +0900
+Branch: master [4b3e37993] 2022-12-08 16:15:00 +0900
+Branch: REL_15_STABLE [a0bf7a0ec] 2022-12-08 16:15:01 +0900
+Branch: REL_14_STABLE [d43a97ef4] 2022-12-08 16:15:03 +0900
+-->
+     <para>
+      Fix handling of pending inserts when doing a bulk insertion to a
+      foreign table (Etsuro Fujita)
+     </para>
+
+     <para>
+      In some cases pending insertions were not flushed to the FDW soon
+      enough, leading to logical inconsistencies, for
+      example <literal>BEFORE ROW</literal> triggers not seeing rows they
+      should be able to see.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [c9f7f9264] 2023-01-21 13:10:29 -0500
+Branch: REL_15_STABLE [9e4288ce6] 2023-01-21 13:10:29 -0500
+Branch: REL_14_STABLE [70ec756b0] 2023-01-21 13:10:29 -0500
+Branch: REL_13_STABLE [72d611109] 2023-01-21 13:10:29 -0500
+Branch: REL_12_STABLE [a5f3f2fce] 2023-01-21 13:10:30 -0500
+Branch: REL_11_STABLE [6c122edde] 2023-01-21 13:10:30 -0500
+-->
+     <para>
+      Allow <literal>REPLICA IDENTITY</literal>
+      to be set on an index that's not (yet) valid (Tom Lane)
+     </para>
+
+     <para>
+      When <application>pg_dump</application> dumps a partitioned index
+      that's marked <literal>REPLICA IDENTITY</literal>, it generates a
+      command sequence that applies <literal>REPLICA IDENTITY</literal>
+      before the partitioned index has been marked valid, causing restore
+      to fail.  There seems no very good reason to prohibit doing it in
+      that order, so allow it.  The marking will have no effect anyway
+      until the index becomes valid.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [2605643a3] 2022-12-03 12:11:33 +0000
+Branch: REL_15_STABLE [c67204db6] 2022-12-03 12:14:36 +0000
+Branch: REL_14_STABLE [2c7ed9f75] 2022-12-03 12:16:07 +0000
+Branch: REL_13_STABLE [3bed88123] 2022-12-03 12:17:47 +0000
+Branch: REL_12_STABLE [33f600f04] 2022-12-03 12:18:58 +0000
+Branch: REL_11_STABLE [30f9b03a0] 2022-12-03 12:20:02 +0000
+-->
+     <para>
+      Fix handling of <literal>DEFAULT</literal> markers in rules that
+      perform an <command>INSERT</command> from a
+      multi-row <literal>VALUES</literal> list (Dean Rasheed)
+     </para>
+
+     <para>
+      In some cases a <literal>DEFAULT</literal> marker would not get
+      replaced with the proper default-value expression, leading to
+      an <quote>unrecognized node type</quote> error.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alexander Korotkov <akorotkov@postgresql.org>
+Branch: master [3161ae86c] 2023-01-12 18:16:34 +0300
+Branch: REL_15_STABLE [4dc3f94fa] 2023-01-12 18:17:43 +0300
+Branch: REL_14_STABLE [0d9221f1d] 2023-01-12 18:18:04 +0300
+Branch: REL_13_STABLE [2ff3ac3b5] 2023-01-12 18:18:31 +0300
+Branch: REL_12_STABLE [9e24e4781] 2023-01-12 18:19:19 +0300
+-->
+     <para>
+      Reject uses of undefined variables in <type>jsonpath</type>
+      existence checks (Alexander Korotkov, David G. Johnston)
+     </para>
+
+     <para>
+      While <type>jsonpath</type> match operators threw an error for an
+      undefined variable in the path pattern, the existence operators
+      silently treated it as a match.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [b0feda79f] 2022-12-12 16:17:54 -0500
+Branch: REL_15_STABLE [d79b76b10] 2022-12-12 16:17:49 -0500
+Branch: REL_14_STABLE [a18328bb3] 2022-12-12 16:17:49 -0500
+-->
+     <para>
+      Fix <type>jsonb</type> subscripting to cope with toasted subscript
+      values (Tom Lane, David G. Johnston)
+     </para>
+
+     <para>
+      Using a text value fetched directly from a table as
+      a <type>jsonb</type> subscript was likely to fail.
+      Fetches would usually not find any matching element.
+      Assignments could store the value with a garbage key,
+      although keys long enough to cause that problem are probably rare in
+      the field.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+Branch: master [ffcf6f4cf] 2023-01-26 14:52:19 +1300
+Branch: REL_15_STABLE [d9f5345bf] 2023-01-26 14:53:37 +1300
+Branch: REL_14_STABLE [2f65b8468] 2023-01-26 14:54:17 +1300
+Branch: REL_13_STABLE [1a5afe007] 2023-01-26 14:54:39 +1300
+Branch: REL_12_STABLE [b55303792] 2023-01-26 14:55:03 +1300
+Branch: REL_11_STABLE [d95dcc9ab] 2023-01-26 14:55:37 +1300
+-->
+     <para>
+      Fix edge-case data corruption in parallel hash joins (Dmitry Astapov)
+     </para>
+
+     <para>
+      If the final chunk of a large tuple being written out to a temporary
+      file was exactly 32760 bytes, it would be corrupted due to a
+      fencepost bug.  The query would typically fail later with
+      corrupted-data symptoms.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [7e8a80d1f] 2023-01-19 13:13:05 +0900
+Branch: REL_15_STABLE [49e3a5e71] 2023-01-19 13:13:27 +0900
+Branch: REL_14_STABLE [2e21e2857] 2023-01-19 13:13:28 +0900
+Branch: REL_13_STABLE [fed4e92f3] 2023-01-19 13:13:30 +0900
+Branch: REL_12_STABLE [162a48287] 2023-01-19 13:13:32 +0900
+Branch: REL_11_STABLE [0c2f34af7] 2023-01-19 13:13:34 +0900
+-->
+     <para>
+      Honor non-default settings
+      of <varname>checkpoint_completion_target</varname>
+      (Bharath Rupireddy)
+     </para>
+
+     <para>
+      Internal state was not updated after a change
+      in <varname>checkpoint_completion_target</varname>, possibly
+      resulting in performing checkpoint I/O faster or slower than
+      desired, especially if that setting was changed on-the-fly.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [44e9e3426] 2023-01-19 12:23:20 -0500
+Branch: REL_15_STABLE [abe203304] 2023-01-19 12:23:20 -0500
+Branch: REL_14_STABLE [103450724] 2023-01-19 12:23:20 -0500
+Branch: REL_13_STABLE [1b9a0b96a] 2023-01-19 12:23:20 -0500
+Branch: REL_12_STABLE [87591db19] 2023-01-19 12:23:20 -0500
+Branch: REL_11_STABLE [0a269527f] 2023-01-19 12:23:20 -0500
+-->
+     <para>
+      Log the correct ending timestamp
+      in <varname>recovery_target_xid</varname> mode (Tom Lane)
+     </para>
+
+     <para>
+      When ending recovery based on the <varname>recovery_target_xid</varname>
+      setting with <varname>recovery_target_inclusive</varname>
+      = <literal>off</literal>, we printed an incorrect timestamp (always
+      2000-01-01) in the <quote>recovery stopping before
+      ... transaction</quote> log message.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+Branch: master [1561612e3] 2023-01-16 09:44:04 +0100
+Branch: REL_15_STABLE [ac01fa647] 2023-01-16 09:45:03 +0100
+Branch: REL_14_STABLE [f463335e1] 2023-01-16 09:48:09 +0100
+Branch: REL_13_STABLE [cf74b6ead] 2023-01-16 09:54:15 +0100
+-->
+     <para>
+      Improve error reporting for some buffered file read failures
+      (Peter Eisentraut)
+     </para>
+
+     <para>
+      Correctly report a short read, giving the numbers of bytes desired
+      and actually read, instead of reporting an irrelevant error code.
+      Most places got this right already, but some recently-written
+      replication logic did not.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [647fa5005] 2023-01-15 17:32:09 -0500
+Branch: REL_15_STABLE [db9127c58] 2023-01-15 17:32:09 -0500
+-->
+     <para>
+      Remove arbitrary limit on number of elements
+      in <type>int2vector</type> and <type>oidvector</type> (Tom Lane)
+     </para>
+
+     <para>
+      The input functions for these types previously rejected more than
+      100 elements.  With the introduction of the logical replication
+      column list feature, it's necessary to
+      accept <type>int2vector</type>s having up to 1600 columns,
+      otherwise long column lists cause logical-replication failures.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [20432f873] 2022-12-13 14:23:58 -0500
+Branch: REL_15_STABLE [18431ee6f] 2022-12-13 14:23:59 -0500
+Branch: REL_14_STABLE [ae47f8a96] 2022-12-13 14:23:59 -0500
+Branch: REL_13_STABLE [942cc240f] 2022-12-13 14:23:59 -0500
+Branch: REL_12_STABLE [1cca4a75f] 2022-12-13 14:23:59 -0500
+Branch: REL_11_STABLE [f48aa5df4] 2022-12-13 14:23:59 -0500
+-->
+     <para>
+      In extended query protocol, avoid an immediate commit
+      after <command>ANALYZE</command> if we're running a pipeline
+      (Tom Lane)
+     </para>
+
+     <para>
+      If there's not been an explicit <command>BEGIN
+      TRANSACTION</command>, <command>ANALYZE</command> would take it on
+      itself to commit, which should not happen within a pipelined series
+      of commands.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Noah Misch <noah@leadboat.com>
+Branch: master [e52daaabf] 2023-01-21 06:08:00 -0800
+Branch: REL_15_STABLE [b152bb7b2] 2023-01-21 06:08:03 -0800
+Branch: REL_14_STABLE [6900aea67] 2023-01-21 06:08:04 -0800
+Branch: REL_13_STABLE [a9bccffe5] 2023-01-21 06:08:04 -0800
+Branch: REL_12_STABLE [e75b5c855] 2023-01-21 06:08:04 -0800
+Branch: REL_11_STABLE [8f70de7e0] 2023-01-21 06:08:05 -0800
+-->
+     <para>
+      Reject cancel request packets having the wrong length
+      (Andrey Borodin)
+     </para>
+
+     <para>
+      The server would process a cancel request even if its length word
+      was too small.  This led to reading beyond the end of the allocated
+      buffer.  In theory that could cause a segfault, but it seems quite
+      unlikely to happen in practice, since the buffer would have to be
+      very close to the end of memory.  The more likely outcome was a bogus
+      log message about wrong backend PID or cancel code.  Complain about
+      the wrong length, instead.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: David Rowley <drowley@postgresql.org>
+Branch: master [94985c210] 2022-12-10 19:27:20 +1300
+Branch: REL_15_STABLE [04788ee4c] 2022-12-10 19:27:53 +1300
+-->
+     <para>
+      Fix planner preprocessing oversights for window function run-condition
+      expressions (Richard Guo, David Rowley)
+     </para>
+
+     <para>
+      This could lead to planner errors such as <quote>WindowFunc not
+      found in subplan target lists</quote>.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: David Rowley <drowley@postgresql.org>
+Branch: master [a85832722] 2022-12-07 00:09:36 +1300
+Branch: REL_15_STABLE [2a535620c] 2022-12-07 00:10:21 +1300
+-->
+     <para>
+      Fix possible dangling-pointer access during execution of window
+      function run-condition expressions (David Rowley)
+     </para>
+
+     <para>
+      In practice, because the run-condition optimization is only applied
+      to certain window functions that happen to all
+      return <type>int8</type>, this only manifested as a problem on
+      32-bit builds.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [5beb7881f] 2022-12-22 10:35:02 -0500
+Branch: REL_15_STABLE [1a3daa5bb] 2022-12-22 10:35:02 -0500
+Branch: REL_14_STABLE [97431d673] 2022-12-22 10:35:02 -0500
+Branch: REL_13_STABLE [4fceb454f] 2022-12-22 10:35:03 -0500
+Branch: REL_12_STABLE [d572003f7] 2022-12-22 10:35:03 -0500
+Branch: REL_11_STABLE [8cd700cc5] 2022-12-22 10:35:03 -0500
+-->
+     <para>
+      Add recursion and looping defenses in subquery pullup (Tom Lane)
+     </para>
+
+     <para>
+      A contrived query can result in deep recursion and unreasonable
+      amounts of time spent trying to flatten subqueries.  A proper fix
+      for that seems unduly invasive for a back-patch, but we can at least
+      add stack depth checks and an interrupt check to allow the query to
+      be cancelled.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [d69d01ba9] 2022-12-05 12:36:40 -0500
+Branch: REL_15_STABLE [c959f84c2] 2022-12-05 12:36:41 -0500
+Branch: REL_14_STABLE [dc3648f65] 2022-12-05 12:36:41 -0500
+Branch: master [e76913802] 2022-12-04 13:48:12 -0500
+Branch: REL_15_STABLE [834d97c32] 2022-12-04 13:48:12 -0500
+Branch: REL_14_STABLE [ce093aa18] 2022-12-04 13:48:12 -0500
+-->
+     <para>
+      Fix planner issues when combining Memoize nodes with partitionwise
+      joins or parameterized nestloops (Richard Guo)
+     </para>
+
+     <para>
+      These errors could lead to not using Memoize in contexts where it
+      would be useful, or possibly to wrong query plans.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [fe12f2f8f] 2022-12-04 13:17:18 -0500
+Branch: REL_15_STABLE [bf8fd64ff] 2022-12-04 13:17:18 -0500
+Branch: REL_14_STABLE [ec3daeec3] 2022-12-04 13:17:18 -0500
+Branch: REL_13_STABLE [4ebca555c] 2022-12-04 13:17:18 -0500
+Branch: REL_12_STABLE [1ff549e84] 2022-12-04 13:17:18 -0500
+Branch: REL_11_STABLE [2df073313] 2022-12-04 13:17:18 -0500
+-->
+     <para>
+      Fix partitionwise-join code to tolerate failure to produce a plan for
+      each partition (Tom Lane)
+     </para>
+
+     <para>
+      This could result in <quote>could not devise a query plan for the
+      given query</quote> errors.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [9c6ad5eaa] 2022-11-22 14:40:20 -0500
+Branch: REL_15_STABLE [2debceed2] 2022-11-22 14:40:44 -0500
+Branch: REL_14_STABLE [bd06fe4de] 2022-11-22 14:40:45 -0500
+Branch: REL_13_STABLE [6e639267a] 2022-11-22 14:40:45 -0500
+Branch: REL_12_STABLE [ec10b6139] 2022-11-22 14:40:45 -0500
+Branch: REL_11_STABLE [b96a096db] 2022-11-22 14:40:46 -0500
+-->
+     <para>
+      Limit the amount of cleanup work done
+      by <function>get_actual_variable_range</function> (Simon Riggs)
+     </para>
+
+     <para>
+      Planner runs occurring just after deletion of a large number of
+      tuples appearing at the end of an index could expend significant
+      amounts of work setting the <quote>killed</quote> bits for those
+      index entries.  Limit the amount of work done in any one query by
+      giving up on this process after examining 100 heap pages.  All the
+      cleanup will still happen eventually, but without so large a
+      performance hiccup.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andres Freund <andres@anarazel.de>
+Branch: master [cb2e7ddfe] 2022-12-02 18:10:30 -0800
+Branch: REL_15_STABLE [c6a60471a] 2022-12-02 18:07:47 -0800
+-->
+     <para>
+      Prevent the statistics machinery from getting confused when a
+      relation's relkind changes (Andres Freund)
+     </para>
+
+     <para>
+      Converting a table to a view could lead to crashes or assertion
+      failures.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [1dd6700f4] 2022-12-01 11:38:14 -0500
+Branch: REL_15_STABLE [a711b36e5] 2022-12-01 11:38:15 -0500
+Branch: REL_14_STABLE [de0ff6088] 2022-12-01 11:38:15 -0500
+-->
+     <para>
+      Fix under-parenthesized display of <literal>AT TIME ZONE</literal>
+      constructs (Tom Lane)
+     </para>
+
+     <para>
+      This could result in dump/restore failures for rules or views in
+      which an argument of <literal>AT TIME ZONE</literal> is itself an
+      expression.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [8b47ccb62] 2022-11-29 11:46:33 -0500
+Branch: REL_15_STABLE [5dfc2b753] 2022-11-29 11:46:33 -0500
+Branch: REL_14_STABLE [7715a3c24] 2022-11-29 11:46:33 -0500
+-->
+     <para>
+      Prevent clobbering of cached parsetrees for utility statements in
+      SQL functions (Tom Lane, Daniel Gustafsson)
+     </para>
+
+     <para>
+      If a SQL-language function executes the same utility command more
+      than once within a single calling query, it could crash or report
+      strange errors such as <quote>unrecognized node type</quote>.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [5644d6f90] 2022-11-21 17:07:29 -0500
+Branch: REL_15_STABLE [0353db996] 2022-11-21 17:07:07 -0500
+Branch: REL_14_STABLE [1b9c04b13] 2022-11-21 17:07:07 -0500
+Branch: REL_13_STABLE [74670688f] 2022-11-21 17:07:07 -0500
+Branch: REL_12_STABLE [1aed4c4fd] 2022-11-21 17:07:07 -0500
+Branch: REL_11_STABLE [c0eed8891] 2022-11-21 17:07:07 -0500
+-->
+     <para>
+      Ensure that execution of full-text-search queries can be cancelled
+      while they are performing phrase matches (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+Branch: master [edf12e7bb] 2022-12-01 11:49:15 -0800
+Branch: REL_15_STABLE [9377b4f30] 2022-12-01 11:55:59 -0800
+Branch: REL_14_STABLE [47e1224d5] 2022-12-01 11:53:53 -0800
+Branch: REL_13_STABLE [a844052b5] 2022-12-01 11:52:06 -0800
+Branch: REL_12_STABLE [f98c4fb1d] 2022-12-01 11:49:43 -0800
+-->
+     <para>
+      Fix memory leak in hashing strings with nondeterministic collations
+      (Jeff Davis)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [6c6d6ba3e] 2023-01-24 09:25:36 +0530
+Branch: REL_15_STABLE [267135d01] 2023-01-24 09:12:04 +0530
+Branch: REL_14_STABLE [fd270b728] 2023-01-24 09:02:05 +0530
+-->
+     <para>
+      Fix deadlock between <command>DROP DATABASE</command> and logical
+      replication worker process (Hou Zhijie)
+     </para>
+
+     <para>
+      This was caused by an ill-advised choice to block interrupts while
+      creating a logical replication slot in the worker.  In version 15
+      that could lead to an undetected deadlock.  In version 14, no
+      deadlock has been observed, but it's still a bad idea to block
+      interrupts while waiting for network I/O.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andres Freund <andres@anarazel.de>
+Branch: master [bc54ef4ec] 2023-01-23 18:27:42 -0800
+Branch: REL_15_STABLE [704a330a9] 2023-01-23 18:27:45 -0800
+Branch: REL_14_STABLE [0a796b8b3] 2023-01-23 18:27:48 -0800
+Branch: REL_13_STABLE [c5864805b] 2023-01-23 18:27:51 -0800
+Branch: REL_12_STABLE [92fc12787] 2023-01-23 18:27:55 -0800
+Branch: REL_11_STABLE [243373159] 2023-01-23 18:27:58 -0800
+-->
+     <para>
+      Clean up the <application>libpq</application> connection object
+      after a failed replication connection attempt (Andres Freund)
+     </para>
+
+     <para>
+      The previous coding leaked the connection object.  In background
+      code paths that's pretty harmless because the calling process will
+      give up and exit.  But in commands such as <command>CREATE
+      SUBSCRIPTION</command>, such a failure resulted in a small
+      session-lifespan memory leak.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [8242752f9] 2022-11-29 15:43:17 -0500
+Branch: REL_15_STABLE [55fa993d7] 2022-11-29 15:43:17 -0500
+Branch: REL_14_STABLE [06998eab1] 2022-11-29 15:43:17 -0500
+Branch: REL_13_STABLE [6e8ad1152] 2022-11-29 15:43:17 -0500
+Branch: REL_12_STABLE [c4a153d77] 2022-11-29 15:43:17 -0500
+Branch: REL_11_STABLE [a6c9e1db2] 2022-11-29 15:43:17 -0500
+-->
+     <para>
+      In hot-standby servers, reduce processing effort for tracking XIDs
+      known to be active on the primary (Simon Riggs, Michail Nikolaev)
+     </para>
+
+     <para>
+      Insufficiently-aggressive cleanup of the KnownAssignedXids array
+      could lead to poor performance, particularly
+      when <varname>max_connections</varname> is set to a large value on
+      the standby.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [0557e1770] 2022-11-22 10:56:07 +0100
+Branch: REL_15_STABLE [1ad033df1] 2022-11-22 10:56:07 +0100
+Branch: REL_14_STABLE [1b3ed7571] 2022-11-22 10:56:07 +0100
+Branch: REL_13_STABLE [36eeb37cd] 2022-11-22 10:56:07 +0100
+-->
+     <para>
+      Ignore invalidated logical-replication slots while determining
+      oldest catalog xmin (Sirisha Chamarthi)
+     </para>
+
+     <para>
+      A replication slot could prevent cleanup of dead tuples in the
+      system catalogs even after it becomes invalidated due to
+      exceeding <varname>max_slot_wal_keep_size</varname>.  Thus, failure
+      of a replication consumer could lead to indefinitely-large catalog
+      bloat.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [2b6df0546] 2023-01-07 12:17:14 +0530
+Branch: REL_15_STABLE [18b81258a] 2023-01-07 12:04:33 +0530
+Branch: REL_14_STABLE [b2cc5b810] 2023-01-07 11:52:41 +0530
+-->
+     <para>
+      In logical decoding, notify the remote node when a transaction is
+      detected to have crashed (Hou Zhijie)
+     </para>
+
+     <para>
+      After a server restart, we'll re-stream the changes for transactions
+      occurring shortly before the restart.  Some of these transactions
+      probably never completed; when we realize that one didn't we throw
+      away the relevant decoding state locally, but we neglected to tell
+      the subscriber about it.  That led to the subscriber keeping useless
+      streaming files until it's next restarted.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: REL_15_STABLE [898ef41bf] 2022-11-25 09:38:03 +0530
+Branch: REL_14_STABLE [9f2cc1a73] 2022-11-25 09:25:50 +0530
+Branch: REL_13_STABLE [4ec157c15] 2022-11-25 09:15:31 +0530
+Branch: REL_12_STABLE [aa9d916f6] 2022-11-25 09:00:15 +0530
+Branch: REL_11_STABLE [9b788aafd] 2022-11-25 08:56:54 +0530
+-->
+     <para>
+      Fix uninitialized-memory usage in logical decoding (Masahiko Sawada)
+     </para>
+
+     <para>
+      In certain cases, resumption of logical decoding could try to re-use
+      XID data that had already been freed, leading to unpredictable
+      behavior.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [5ad165d2c] 2023-01-12 13:40:33 +0900
+Branch: REL_15_STABLE [6f25e4877] 2023-01-12 13:41:22 +0900
+-->
+     <para>
+      Acquire spinlock while updating shared state during logical decoding
+      context creation (Masahiko Sawada)
+     </para>
+
+     <para>
+      We neglected to acquire the appropriate lock while updating data
+      about two-phase transactions, potentially allowing other processes
+      to see inconsistent data.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [40b149135] 2022-12-02 10:52:58 +0530
+Branch: REL_15_STABLE [ebf87c019] 2022-12-02 11:14:42 +0530
+-->
+     <para>
+      Fix <application>pgoutput</application> replication plug-in to not
+      send columns not listed in a table's replication column list
+      (Hou Zhijie)
+     </para>
+
+     <para>
+      <literal>UPDATE</literal> and <literal>DELETE</literal> events did
+      not pay attention to the configured column list, thus sending more
+      data than expected.  This did not cause a problem when the receiver
+      is our built-in logical replication code, but it might confuse other
+      receivers, and in any case it wasted network bandwidth.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [e848be60b] 2022-11-14 10:43:33 +0530
+Branch: REL_15_STABLE [e49e19181] 2022-11-14 10:32:47 +0530
+Branch: REL_14_STABLE [9693f1900] 2022-11-14 10:22:28 +0530
+Branch: REL_13_STABLE [20c223336] 2022-11-14 10:11:10 +0530
+Branch: REL_12_STABLE [4dccccb37] 2022-11-14 10:01:14 +0530
+Branch: REL_11_STABLE [1703033f8] 2022-11-14 09:52:06 +0530
+-->
+     <para>
+      Avoid rare <quote>failed to acquire cleanup lock</quote> panic
+      during WAL replay of hash-index page split operations (Robert Haas)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+Branch: master [d6a3dbe14] 2022-11-11 12:38:29 -0800
+Branch: REL_15_STABLE [7bf713dd2] 2022-11-11 12:46:11 -0800
+Branch: REL_14_STABLE [f893af496] 2022-11-11 12:46:22 -0800
+Branch: REL_13_STABLE [58a45bb1d] 2022-11-11 12:46:34 -0800
+Branch: REL_12_STABLE [7dd39e9e8] 2022-11-11 12:46:44 -0800
+Branch: REL_11_STABLE [5eaf3e375] 2022-11-11 12:46:52 -0800
+-->
+     <para>
+      Advance a heap page's LSN when setting its all-visible bit during
+      WAL replay (Jeff Davis)
+     </para>
+
+     <para>
+      Failure to do this left the page possibly different on standby
+      servers than the primary, and violated some other expectations about
+      when the LSN changes.  This seems only a theoretical hazard so
+      far as <productname>PostgreSQL</productname> itself is concerned,
+      but it could upset third-party tools.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [b2d479289] 2023-02-03 11:13:34 +0000
+Branch: REL_15_STABLE [4f74741a5] 2023-02-03 11:11:59 +0000
+Branch: REL_14_STABLE [86bfbeab4] 2023-02-03 11:09:15 +0000
+-->
+     <para>
+      Fix <function>int64_div_fast_to_numeric()</function> to work for a
+      wider range of inputs (Dean Rasheed)
+     </para>
+
+     <para>
+      This function misbehaved with some values of its second argument.
+      No such usages exist in core <productname>PostgreSQL</productname>,
+      but it's clearly a hazard for external modules, so repair.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+Branch: master [f1821b58f] 2023-01-13 11:02:12 +1300
+Branch: REL_15_STABLE [8a98523a5] 2023-01-13 11:02:00 +1300
+Branch: REL_14_STABLE [547e60b83] 2023-01-13 10:57:29 +1300
+Branch: REL_13_STABLE [c159b0383] 2023-01-13 10:54:49 +1300
+Branch: REL_12_STABLE [bf388ab82] 2023-01-13 10:54:34 +1300
+Branch: REL_11_STABLE [1b40710a8] 2023-01-13 10:54:20 +1300
+-->
+     <para>
+      Fix latent buffer-overrun problem in <literal>WaitEventSet</literal>
+      logic (Thomas Munro)
+     </para>
+
+     <para>
+      The <function>epoll</function>-based
+      and <function>kqueue</function>-based implementations could ask the
+      kernel for too many events if the size of their internal buffer was
+      different from the size of the caller's output buffer.  That case is
+      not known to occur in released <productname>PostgreSQL</productname>
+      versions, but this error is a hazard for external modules and future
+      bug fixes.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andres Freund <andres@anarazel.de>
+Branch: master [8c954168c] 2022-11-19 12:22:04 -0800
+Branch: REL_15_STABLE [a0d35ebcc] 2022-11-19 12:33:11 -0800
+Branch: REL_14_STABLE [fc4154286] 2022-11-19 12:33:14 -0800
+Branch: REL_13_STABLE [c13667b51] 2022-11-19 12:36:33 -0800
+Branch: REL_12_STABLE [4cbcb7ed8] 2022-11-19 12:36:48 -0800
+Branch: REL_11_STABLE [140c80372] 2022-11-19 12:36:52 -0800
+-->
+     <para>
+      Avoid nominally-undefined behavior when accessing shared memory in
+      32-bit builds (Andres Freund)
+     </para>
+
+     <para>
+      clang's undefined-behavior sanitizer complained about use of a
+      pointer that was less aligned than it should be.  It's very unlikely
+      that this would cause a problem in non-debug builds, but it's worth
+      fixing for testing purposes.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+Branch: master [02699bc1f] 2022-12-30 20:49:50 +0100
+Branch: REL_15_STABLE [c4f64cfab] 2022-12-30 20:49:11 +0100
+Branch: REL_14_STABLE [883dc0214] 2022-12-30 20:47:58 +0100
+-->
+     <para>
+      Fix assertion failure in BRIN minmax-multi opclasses (Tomas Vondra)
+     </para>
+
+     <para>
+      The assertion was overly strict, so this mistake was harmless in
+      non-assert builds.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [51dfaa0b0] 2022-11-29 10:52:44 -0500
+Branch: REL_15_STABLE [556c0b913] 2022-11-29 10:52:44 -0500
+Branch: REL_14_STABLE [0224646be] 2022-11-29 10:52:44 -0500
+Branch: REL_13_STABLE [aca695fb6] 2022-11-29 10:52:44 -0500
+Branch: REL_12_STABLE [bb8d48cb9] 2022-11-29 10:52:44 -0500
+-->
+     <para>
+      Remove faulty assertion in useless-RESULT-RTE optimization logic
+      (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [2fcf685f6] 2022-12-23 10:04:18 +0900
+Branch: REL_15_STABLE [e3897a3a4] 2022-12-23 10:04:30 +0900
+Branch: REL_14_STABLE [7ad458e06] 2022-12-23 10:04:33 +0900
+Branch: REL_13_STABLE [4dbe72d61] 2022-12-23 10:04:34 +0900
+Branch: REL_12_STABLE [7445869e1] 2022-12-23 10:04:36 +0900
+Branch: REL_11_STABLE [df6fea51f] 2022-12-23 10:04:37 +0900
+-->
+     <para>
+      Fix copy-and-paste errors in cache-lookup-failure messages for ACL
+      checks (Justin Pryzby)
+     </para>
+
+     <para>
+      In principle these errors should never be reached.  But if they are,
+      some of them reported the wrong type of object.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+Branch: master [45f5c81ad] 2022-12-12 10:26:48 -0500
+Branch: REL_15_STABLE [8b5ba2f3f] 2022-12-12 10:33:02 -0500
+-->
+     <para>
+      Fix possible corruption of very large tablespace map files
+      in <application>pg_basebackup</application> (Antonin Houska)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [74739d1d3] 2023-01-19 19:32:50 -0500
+Branch: REL_15_STABLE [488e89bf7] 2023-01-19 19:32:47 -0500
+-->
+     <para>
+      Avoid harmless warning from <application>pg_dump</application>
+      in <option>--if-exists</option> mode (Tom Lane)
+     </para>
+
+     <para>
+      If the <literal>public</literal> schema has a non-default owner then
+      use of <application>pg_dump</application>'s <option>--if-exists</option>
+      option resulted in a warning message <quote>warning: could not find
+      where to insert IF EXISTS in statement "-- *not* dropping schema,
+      since initdb creates it"</quote>.  The dump output was okay, though.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [cabfb8241] 2022-12-02 14:24:44 -0500
+Branch: REL_15_STABLE [97299cf99] 2022-12-02 14:24:44 -0500
+Branch: REL_14_STABLE [303b26c1b] 2022-12-02 14:24:44 -0500
+-->
+     <para>
+      Fix <application>psql</application>'s <literal>\sf</literal>
+      and <literal>\ef</literal> commands to handle SQL-language functions
+      that have <acronym>SQL</acronym>-standard function bodies (Tom Lane)
+     </para>
+
+     <para>
+      These commands misidentified the start of the function body when it
+      used new-style syntax.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+Branch: master [e7a59094b] 2023-01-06 11:18:44 +0000
+Branch: REL_15_STABLE [2daf4664c] 2023-01-06 11:16:53 +0000
+Branch: REL_14_STABLE [48599a18d] 2023-01-06 11:15:22 +0000
+Branch: REL_13_STABLE [2ad4abedf] 2023-01-06 11:13:34 +0000
+Branch: REL_12_STABLE [274185d11] 2023-01-06 11:11:51 +0000
+Branch: REL_11_STABLE [c54b88870] 2023-01-06 11:09:56 +0000
+-->
+     <para>
+      Fix tab completion of <command>ALTER
+      FUNCTION/PROCEDURE/ROUTINE</command> ... <command>SET
+      SCHEMA</command> (Dean Rasheed)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [aeaaf520f] 2022-11-21 15:37:10 -0500
+Branch: REL_15_STABLE [b8988cf1d] 2022-11-21 15:37:10 -0500
+-->
+     <para>
+      Update <filename>contrib/pageinspect</filename> to mark its
+      disk-accessing functions as <literal>PARALLEL RESTRICTED</literal>
+      (Tom Lane)
+     </para>
+
+     <para>
+      This avoids possible failure if one of these functions is used to
+      examine a temporary table, since a session's temporary tables are not
+      accessible from parallel workers.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [701c881f7] 2022-12-21 17:51:50 -0500
+Branch: REL_15_STABLE [b87037b37] 2022-12-21 17:51:50 -0500
+Branch: REL_14_STABLE [f489b480f] 2022-12-21 17:51:50 -0500
+Branch: REL_13_STABLE [d35f1d485] 2022-12-21 17:51:50 -0500
+Branch: REL_12_STABLE [c8314d62a] 2022-12-21 17:51:50 -0500
+Branch: REL_11_STABLE [0ff4056b8] 2022-12-21 17:51:50 -0500
+-->
+     <para>
+      Fix <filename>contrib/seg</filename> to not crash or print garbage
+      if an input number has more than 127 digits (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: REL_15_STABLE [576506303] 2022-11-10 10:23:49 -0500
+Branch: REL_14_STABLE [06dca17ad] 2022-11-10 10:23:49 -0500
+Branch: REL_13_STABLE [0942acb73] 2022-11-10 10:23:49 -0500
+Branch: REL_12_STABLE [cf0f465c0] 2022-11-10 10:23:49 -0500
+-->
+     <para>
+      Fix build on Microsoft Visual Studio 2013 (Tom Lane)
+     </para>
+
+     <para>
+      A previous patch supposed that all platforms of interest
+      have <function>snprintf()</function>, but MSVC 2013 isn't quite
+      there yet.  Revert to using <function>sprintf()</function> on that
+      platform.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andrew Dunstan <andrew@dunslane.net>
+Branch: master [341f4e002] 2022-11-25 15:28:38 -0500
+Branch: REL_15_STABLE [fed54fc9a] 2022-11-25 15:37:33 -0500
+Branch: REL_14_STABLE [f76191fd9] 2022-11-25 15:37:33 -0500
+Branch: REL_13_STABLE [9fe5cff14] 2022-11-25 15:37:33 -0500
+Branch: REL_12_STABLE [171c7fffa] 2022-11-25 15:37:34 -0500
+Branch: REL_11_STABLE [ae7c51213] 2022-11-25 15:37:34 -0500
+-->
+     <para>
+      Fix compile failure in building PL/Perl with MSVC when using
+      Strawberry Perl (Andrew Dunstan)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andrew Dunstan <andrew@dunslane.net>
+Branch: master [ccc59a83c] 2022-11-27 09:03:22 -0500
+Branch: REL_15_STABLE [b5d8fd418] 2022-11-27 09:18:14 -0500
+Branch: REL_14_STABLE [f3f70b8de] 2022-11-27 09:18:20 -0500
+Branch: REL_13_STABLE [68d89d80c] 2022-11-27 09:18:32 -0500
+Branch: REL_12_STABLE [85565cbca] 2022-11-27 09:18:40 -0500
+Branch: REL_11_STABLE [724dd5649] 2022-11-27 09:18:46 -0500
+-->
+     <para>
+      Fix mismatch of PL/Perl built with MSVC versus a Perl library built
+      with gcc (Andrew Dunstan)
+     </para>
+
+     <para>
+      Such combinations could previously fail with <quote>loadable library
+      and perl binaries are mismatched</quote> errors.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Andres Freund <andres@anarazel.de>
+Branch: master [388e80132] 2022-12-29 12:47:29 -0800
+Branch: REL_15_STABLE [c6e75e4c2] 2023-01-02 15:49:33 -0800
+Branch: REL_14_STABLE [7b5dec760] 2023-01-02 15:50:00 -0800
+Branch: REL_13_STABLE [ce073d014] 2023-01-02 15:50:33 -0800
+Branch: REL_12_STABLE [f0e13802f] 2023-01-02 15:51:03 -0800
+Branch: REL_11_STABLE [99f8bc335] 2023-01-02 15:51:05 -0800
+-->
+     <para>
+      Suppress compiler warnings from Perl's header files (Andres Freund)
+     </para>
+
+     <para>
+      Our preferred compiler options provoke warnings about constructs
+      appearing in recent versions of Perl's header files.  When using
+      <application>gcc</application>, we can suppress these warnings with
+      a pragma.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: REL_15_STABLE [9a40a0311] 2023-01-20 11:58:12 -0500
+Branch: REL_14_STABLE [21c058648] 2023-01-20 11:58:12 -0500
+Branch: REL_13_STABLE [c78f109b8] 2023-01-20 11:58:12 -0500
+Branch: REL_12_STABLE [6d066d56b] 2023-01-20 11:58:12 -0500
+Branch: REL_11_STABLE [b69e9dfab] 2023-01-20 11:58:12 -0500
+-->
+     <para>
+      Fix <application>pg_waldump</application> to build on compilers that
+      don't discard unused static-inline functions (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [758f44bc3] 2023-01-31 17:36:55 -0500
+Branch: REL_15_STABLE [65f0d9d27] 2023-01-31 17:37:06 -0500
+Branch: REL_14_STABLE [7e6154779] 2023-01-31 17:37:14 -0500
+Branch: REL_13_STABLE [20d9da107] 2023-01-31 17:37:22 -0500
+Branch: REL_12_STABLE [2c95d8776] 2023-01-31 17:37:28 -0500
+Branch: REL_11_STABLE [7ddc428ef] 2023-01-31 17:37:34 -0500
+-->
+     <para>
+      Update time zone data files to <application>tzdata</application>
+      release 2022g for DST law changes in Greenland and Mexico,
+      plus historical corrections for northern Canada, Colombia, and
+      Singapore.
+     </para>
+
+     <para>
+      Notably, a new timezone America/Ciudad_Juarez has been split off
+      from America/Ojinaga.
+     </para>
+    </listitem>
+
+   </itemizedlist>
+
+  </sect2>
+ </sect1>
+
+ <sect1 id="release-15-1">
+  <title>Release 15.1</title>
+
+  <formalpara>
+  <title>Release date:</title>
+  <para>2022-11-10</para>
+  </formalpara>
+
+  <para>
+   This release contains a variety of fixes from 15.0.
+   For information about new features in major release 15, see
+   <xref linkend="release-15"/>.
+  </para>
+
+  <sect2>
+   <title>Migration to Version 15.1</title>
+
+   <para>
+    A dump/restore is not required for those running 15.X.
+   </para>
+
+   <para>
+    However, if you regularly create and drop tables exceeding 1GB,
+    see the first changelog entry below.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Changes</title>
+
+   <itemizedlist>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [0e758ae89] 2022-11-07 11:36:45 -0500
+Branch: REL_15_STABLE [5fe0ab420] 2022-11-07 11:36:45 -0500
+-->
+     <para>
+      Fix failure to remove non-first segments of large tables
+      (Tom Lane)
+     </para>
+
+     <para>
+      <productname>PostgreSQL</productname> splits large tables into
+      multiple files (normally with 1GB per file).  The logic for dropping
+      a table was broken and would miss removing all but the first such
+      file, in two cases: drops of temporary tables and WAL replay of
+      drops of regular tables.  Applications that routinely create
+      multi-gigabyte temporary tables could suffer significant disk space
+      leakage.
+     </para>
+
+     <para>
+      Orphaned temporary-table files are removed during postmaster start,
+      so the mere act of updating to 15.1 is sufficient to clear any
+      leaked temporary-table storage.  However, if you suffered any
+      database crashes while using 15.0, and there might have been
+      large tables dropped just before such crashes, it's advisable
+      to check the database directories for files named according to the
+      pattern
+      <literal><replaceable>NNNN</replaceable>.<replaceable>NN</replaceable></literal>.
+      If there is no matching file named
+      just <literal><replaceable>NNNN</replaceable></literal> (without
+      the <literal>.<replaceable>NN</replaceable></literal> suffix), these
+      files should be removed manually.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [b8f2687fd] 2022-10-11 18:24:14 -0400
+Branch: REL_15_STABLE [07ce67698] 2022-10-11 18:24:14 -0400
+Branch: REL_14_STABLE [3162bd95c] 2022-10-11 18:24:14 -0400
+Branch: REL_13_STABLE [21e042b0b] 2022-10-11 18:24:14 -0400
+Branch: REL_12_STABLE [abc510fa2] 2022-10-11 18:24:15 -0400
+Branch: REL_11_STABLE [addde9bc6] 2022-10-11 18:24:15 -0400
+Branch: REL_10_STABLE [23e2a06ac] 2022-10-11 18:24:15 -0400
+-->
+     <para>
+      Fix handling of <literal>DEFAULT</literal> tokens that appear
+      in a multi-row <literal>VALUES</literal> clause of an
+      <command>INSERT</command> on an updatable view (Tom Lane)
+     </para>
+
+     <para>
+      This oversight could lead to <quote>cache lookup failed for
+      type</quote> errors, or in older branches even to crashes.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [797e313dc] 2022-10-17 12:14:39 -0400
+Branch: REL_15_STABLE [4a41a069e] 2022-10-17 12:14:39 -0400
+Branch: REL_14_STABLE [2f26cec48] 2022-10-17 12:14:39 -0400
+Branch: REL_13_STABLE [b21615d1e] 2022-10-17 12:14:39 -0400
+Branch: REL_12_STABLE [65c1106d8] 2022-10-17 12:14:39 -0400
+Branch: REL_11_STABLE [e9377e3e5] 2022-10-17 12:14:39 -0400
+Branch: REL_10_STABLE [ecf4ce689] 2022-10-17 12:14:39 -0400
+-->
+     <para>
+      Disallow rules named <literal>_RETURN</literal> that are
+      not <literal>ON SELECT</literal> (Tom Lane)
+     </para>
+
+     <para>
+      This avoids confusion between a view's <literal>ON SELECT</literal>
+      rule and any other rules it may have.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [d57534740] 2022-10-16 19:18:08 -0400
+Branch: REL_15_STABLE [d4abb0bc5] 2022-10-16 19:18:08 -0400
+Branch: REL_14_STABLE [8122160ff] 2022-10-16 19:18:08 -0400
+-->
+     <para>
+      Avoid failure in <command>EXPLAIN VERBOSE</command> for a query
+      using <literal>SEARCH BREADTH FIRST</literal> with constant
+      initial values (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [cba4e78f3] 2022-10-15 19:24:26 +0200
+Branch: REL_15_STABLE [16d11d684] 2022-10-15 19:24:26 +0200
+-->
+     <para>
+      Prevent use of <command>MERGE</command> on a partitioned table with
+      foreign-table partitions (&Aacute;lvaro Herrera)
+     </para>
+
+     <para>
+      The case isn't supported, and previously threw an incomprehensible
+      error.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [b0284bfb1] 2022-11-03 20:40:21 +0100
+Branch: REL_15_STABLE [c301e1c0c] 2022-11-03 20:40:21 +0100
+Branch: REL_14_STABLE [18865f4df] 2022-11-03 20:40:21 +0100
+Branch: REL_13_STABLE [41b6e7c9a] 2022-11-03 20:40:21 +0100
+Branch: REL_12_STABLE [ab70b3a52] 2022-11-03 20:40:21 +0100
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [614a406b4] 2022-10-07 19:37:48 +0200
+Branch: REL_15_STABLE Release: REL_15_0 [6083132ab] 2022-10-07 19:37:48 +0200
+Branch: REL_14_STABLE [483d26930] 2022-10-07 19:37:48 +0200
+Branch: REL_13_STABLE [7d520e68e] 2022-10-07 19:37:48 +0200
+Branch: REL_12_STABLE [669803af0] 2022-10-07 19:37:48 +0200
+-->
+     <para>
+      Fix construction of per-partition foreign key constraints while
+      doing <command>ALTER TABLE ATTACH PARTITION</command>
+      (Jehan-Guillaume de Rorthais, &Aacute;lvaro Herrera)
+     </para>
+
+     <para>
+      Previously, incorrect or duplicate constraints could be constructed
+      for the newly-added partition.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [f4857082b] 2022-11-01 14:34:44 -0400
+Branch: REL_15_STABLE [1f1865e90] 2022-11-01 14:34:44 -0400
+-->
+     <para>
+      Fix planner failure with extended statistics on partitioned or
+      inherited tables (Richard Guo, Justin Pryzby)
+     </para>
+
+     <para>
+      Some cases failed with <quote>cache lookup failed for statistics
+      object</quote>.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [56b662523] 2022-10-13 09:31:57 +0900
+Branch: REL_15_STABLE [ca4070f2b] 2022-10-26 09:41:13 +0900
+Branch: REL_14_STABLE [5a30d43fa] 2022-10-26 09:41:18 +0900
+Branch: REL_13_STABLE [594b97509] 2022-10-26 09:41:22 +0900
+Branch: REL_12_STABLE [51c24d9e2] 2022-10-26 09:41:26 +0900
+Branch: REL_11_STABLE [341fba2a6] 2022-10-26 09:41:28 +0900
+Branch: REL_10_STABLE [b02fc7df1] 2022-10-26 09:41:31 +0900
+-->
+     <para>
+      Fix mis-ordering of WAL operations in fast insert path for GIN
+      indexes (Matthias van de Meent, Zhang Mingli)
+     </para>
+
+     <para>
+      This mistake is not known to have any negative consequences within
+      core <productname>PostgreSQL</productname>, but it did cause issues
+      for some extensions.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [16b1fe003] 2022-10-20 08:49:48 +0530
+Branch: REL_15_STABLE [64ff0fe4e] 2022-10-20 09:43:59 +0530
+Branch: REL_14_STABLE [a592ed923] 2022-10-20 09:34:18 +0530
+Branch: REL_13_STABLE [25f7be1ca] 2022-10-20 09:25:13 +0530
+Branch: REL_12_STABLE [1bf4d9206] 2022-10-20 09:16:28 +0530
+Branch: REL_11_STABLE [5f7076cb6] 2022-10-20 09:07:04 +0530
+Branch: REL_10_STABLE [10ed7b9e4] 2022-10-20 08:58:11 +0530
+Branch: REL_15_STABLE [343afa967] 2022-10-21 10:03:35 +0530
+Branch: REL_14_STABLE [4fbe6096b] 2022-10-21 09:52:44 +0530
+Branch: REL_13_STABLE [38dbaaf27] 2022-10-21 09:42:24 +0530
+Branch: REL_12_STABLE [02600886c] 2022-10-21 09:32:21 +0530
+Branch: REL_11_STABLE [216af69ae] 2022-10-21 09:22:20 +0530
+-->
+     <para>
+      Fix bugs in logical decoding when replay starts from a point
+      between the beginning of a transaction and the beginning of its
+      subtransaction (Masahiko Sawada, Kuroda Hayato)
+     </para>
+
+     <para>
+      These errors could lead to assertion failures in debug builds, and
+      otherwise to memory leaks.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [ce20f8b9f] 2022-10-21 12:57:18 +0530
+Branch: REL_15_STABLE [10eaa9750] 2022-10-21 12:43:28 +0530
+Branch: REL_14_STABLE [36fc013fa] 2022-10-21 12:33:47 +0530
+Branch: REL_13_STABLE [1eed947f9] 2022-10-21 12:22:47 +0530
+Branch: REL_12_STABLE [f7f82cf05] 2022-10-21 12:10:11 +0530
+Branch: REL_11_STABLE [5c51afe23] 2022-10-21 12:08:14 +0530
+Branch: REL_10_STABLE [61838d2dd] 2022-10-21 11:54:34 +0530
+Author: Amit Kapila <akapila@postgresql.org>
+Branch: master [f972ec5c2] 2022-08-23 10:20:02 +0530
+Branch: REL_15_STABLE Release: REL_15_0 [42681dffa] 2022-08-23 10:08:43 +0530
+Branch: REL_14_STABLE [6d05d575b] 2022-08-23 09:24:51 +0530
+Branch: REL_13_STABLE [4985a4591] 2022-08-23 09:10:28 +0530
+Branch: REL_12_STABLE [9415873ae] 2022-08-23 08:51:20 +0530
+Branch: REL_11_STABLE [51e9469a4] 2022-08-23 08:42:51 +0530
+Branch: REL_10_STABLE [6b50433e8] 2022-08-23 08:39:31 +0530
+-->
+     <para>
+      Accept interrupts in more places during logical decoding (Amit
+      Kapila, Masahiko Sawada)
+     </para>
+
+     <para>
+      This ameliorates problems with slow shutdown of replication workers.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [be541efbf] 2022-11-02 12:29:39 -0400
+Branch: REL_15_STABLE [414d29a82] 2022-11-02 12:29:39 -0400
+Branch: REL_14_STABLE [a5b7821fc] 2022-11-02 12:29:39 -0400
+Branch: REL_13_STABLE [4d3f7e75c] 2022-11-02 12:29:39 -0400
+-->
+     <para>
+      Prevent attempts to replicate into a foreign-table partition in
+      replication workers (Shi Yu, Tom Lane)
+     </para>
+
+     <para>
+      Although partitioned tables can have foreign tables as partitions,
+      replicating into such a partition isn't currently supported.
+      The logical replication worker process would crash if it was
+      attempted.  Now, an error is thrown.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [dea834938] 2022-11-03 12:02:14 -0400
+Branch: REL_15_STABLE [f2dc7f9e3] 2022-11-03 12:01:57 -0400
+Branch: REL_14_STABLE [2489c38cd] 2022-11-03 12:01:57 -0400
+Branch: REL_13_STABLE [b00f342ea] 2022-11-03 12:01:57 -0400
+Branch: REL_12_STABLE [d9ffccf8d] 2022-11-03 12:01:57 -0400
+Branch: REL_11_STABLE [ed019b5ef] 2022-11-03 12:01:57 -0400
+Branch: REL_10_STABLE [5f3cec77b] 2022-11-03 12:01:57 -0400
+-->
+     <para>
+      Avoid crash after function syntax error in replication workers
+      (Maxim Orlov, Anton Melnikov, Masahiko Sawada, Tom Lane)
+     </para>
+
+     <para>
+      If a syntax error occurred in a SQL-language or PL/pgSQL-language
+      <command>CREATE FUNCTION</command> or <command>DO</command> command
+      executed in a logical replication worker, the worker process would
+      crash with a null pointer dereference or assertion failure.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+Branch: master [9668c4a66] 2022-10-19 14:06:56 +0900
+Branch: REL_15_STABLE [5d2a47a29] 2022-10-19 14:07:01 +0900
+-->
+     <para>
+      Avoid double call of the shutdown callback of an archiver module
+      (Nathan Bossart, Bharath Rupireddy)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [eec346611] 2022-10-17 11:35:23 -0400
+Branch: REL_15_STABLE [2e3326929] 2022-10-17 11:35:23 -0400
+Branch: REL_14_STABLE [8c611602b] 2022-10-17 11:35:23 -0400
+Branch: REL_13_STABLE [62b263bf7] 2022-10-17 11:35:23 -0400
+Branch: REL_12_STABLE [99b6b705d] 2022-10-17 11:35:23 -0400
+-->
+     <para>
+      Add plan-time check for attempted access to a table that has no
+      table access method (Tom Lane)
+     </para>
+
+     <para>
+      This prevents a crash in some catalog-corruption scenarios, for
+      example use of a view whose <literal>ON SELECT</literal> rule is
+      missing.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [18a4a620e] 2022-10-11 18:54:31 -0400
+Branch: REL_15_STABLE [e7b4ff327] 2022-10-11 18:54:31 -0400
+Branch: REL_14_STABLE [b10546ecf] 2022-10-11 18:54:31 -0400
+Branch: REL_13_STABLE [744270137] 2022-10-11 18:54:31 -0400
+Branch: REL_12_STABLE [8f98352b5] 2022-10-11 18:54:31 -0400
+Branch: REL_11_STABLE [6c1de98ba] 2022-10-11 18:54:31 -0400
+Branch: REL_10_STABLE [ab35b9dd7] 2022-10-11 18:54:31 -0400
+-->
+     <para>
+      Prevent postmaster crash when shared-memory state is corrupted
+      (Tom Lane)
+     </para>
+
+     <para>
+      The postmaster process is supposed to survive and initiate a
+      database restart if shared memory becomes corrupted, but one
+      bit of code was being insufficiently cautious about that.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+Branch: master [db1b931a4] 2022-10-14 19:06:26 +0200
+Branch: REL_15_STABLE [27ca0bce5] 2022-10-14 19:06:26 +0200
+Branch: REL_14_STABLE [b8af4166f] 2022-10-14 19:06:26 +0200
+-->
+     <para>
+      In <application>libpq</application>, handle single-row mode
+      correctly when pipelining (Denis Laxalde)
+     </para>
+
+     <para>
+      The single-row flag was not reset at the correct time if pipeline
+      mode was also active.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+Branch: master [2598b76bf] 2022-10-22 09:42:52 +0200
+Branch: REL_15_STABLE [4a6de748d] 2022-10-22 09:41:38 +0200
+-->
+     <para>
+      Fix <application>psql</application>'s exit status when a
+      command-line query is canceled (Peter Eisentraut)
+     </para>
+
+     <para>
+      <literal>psql -c <replaceable>query</replaceable></literal> would
+      exit successfully if the query was canceled.  Fix it to exit with
+      nonzero status, as in other error cases.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+Branch: master [1f0c4fa25] 2022-10-21 08:21:55 -0400
+Branch: REL_15_STABLE [5c013e620] 2022-10-21 08:31:39 -0400
+Branch: REL_14_STABLE [aaad8adb0] 2022-10-21 08:39:48 -0400
+Branch: REL_13_STABLE [0bf2cd160] 2022-10-21 08:45:08 -0400
+Branch: REL_12_STABLE [475e9daf3] 2022-10-21 08:59:26 -0400
+Branch: REL_11_STABLE [38214dabd] 2022-10-21 09:05:57 -0400
+Branch: REL_10_STABLE [ba58266eb] 2022-10-21 09:11:47 -0400
+-->
+     <para>
+      Allow cross-platform tablespace relocation
+      in <application>pg_basebackup</application> (Robert Haas)
+     </para>
+
+     <para>
+      Allow the remote path in <option>--tablespace-mapping</option> to be
+      either a Unix-style or Windows-style absolute path, since the source
+      server could be on a different OS than the local system.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [26ee7fb36] 2022-11-02 11:30:04 -0400
+Branch: REL_15_STABLE [0eede9625] 2022-11-02 11:30:04 -0400
+-->
+     <para>
+      Fix <application>pg_dump</application>'s failure to dump comments
+      attached to some <literal>CHECK</literal> constraints (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [34fa0ddae] 2022-11-04 10:39:52 -0400
+Branch: REL_15_STABLE [2c6d43650] 2022-11-04 10:39:52 -0400
+-->
+     <para>
+      Fix <command>CREATE DATABASE</command> to allow
+      its <literal>oid</literal> parameter to exceed
+      2<superscript>31</superscript> (Tom Lane)
+     </para>
+
+     <para>
+      This oversight prevented <application>pg_upgrade</application> from
+      succeeding when the source installation contained databases with
+      OIDs larger than that.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [495e73c20] 2022-11-01 12:48:01 -0400
+Branch: REL_15_STABLE [8b0a5cf3f] 2022-11-01 12:48:01 -0400
+Branch: REL_14_STABLE [0f2f5645a] 2022-11-01 12:48:01 -0400
+Branch: REL_13_STABLE [a9fdb48b7] 2022-11-01 12:48:01 -0400
+Branch: REL_12_STABLE [ca4c6764b] 2022-11-01 12:48:01 -0400
+Branch: REL_11_STABLE [149e00192] 2022-11-01 12:48:01 -0400
+Branch: REL_10_STABLE [56083ff30] 2022-11-01 12:48:01 -0400
+-->
+     <para>
+      In <application>pg_stat_statements</application>, fix access to
+      already-freed memory (zhaoqigui)
+     </para>
+
+     <para>
+      This occurred if <application>pg_stat_statements</application>
+      tracked a <command>ROLLBACK</command> command issued via extended
+      query protocol.  In debug builds it consistently led to an assertion
+      failure.  In production builds there would often be no visible ill
+      effect; but if the freed memory had already been reused, the likely
+      result would be to store garbage for the query string.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+Branch: master [c2ae01f69] 2022-10-19 22:18:26 +1300
+Branch: REL_15_STABLE [af64846e1] 2022-10-19 22:18:54 +1300
+Branch: REL_14_STABLE [d033f8f8b] 2022-10-19 22:32:14 +1300
+Branch: REL_13_STABLE [cf94cb586] 2022-10-19 22:38:58 +1300
+Branch: REL_12_STABLE [aa34bc4e2] 2022-10-19 22:44:53 +1300
+Branch: REL_11_STABLE [da3a6825e] 2022-10-19 22:49:25 +1300
+-->
+     <para>
+      Fix incompatibilities with LLVM 15 (Thomas Munro, Andres Freund)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [1c72d82c2] 2022-11-02 17:37:29 -0400
+Branch: REL_15_STABLE [a5737e765] 2022-11-02 17:37:26 -0400
+Branch: REL_14_STABLE [058c7b5dd] 2022-11-02 17:37:26 -0400
+Branch: REL_13_STABLE [c479492c0] 2022-11-02 17:37:26 -0400
+Branch: REL_12_STABLE [5ecf836e9] 2022-11-02 17:37:26 -0400
+Branch: REL_11_STABLE [a0f9be1f9] 2022-11-02 17:37:26 -0400
+Branch: REL_10_STABLE [19cefebe7] 2022-11-02 17:37:26 -0400
+-->
+     <para>
+      Allow use of <function>__sync_lock_test_and_set()</function> for
+      spinlocks on any machine (Tom Lane)
+     </para>
+
+     <para>
+      This eases porting to new machine architectures, at least if you're
+      using a compiler that supports this GCC builtin function.
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [717ec1aae] 2022-10-16 15:27:04 -0400
+Branch: REL_15_STABLE [24c4c2617] 2022-10-16 15:27:04 -0400
+Branch: REL_14_STABLE [18e60712d] 2022-10-16 15:27:04 -0400
+Branch: REL_13_STABLE [bc7a40b42] 2022-10-16 15:27:04 -0400
+Branch: REL_12_STABLE [3d7df87c4] 2022-10-16 15:27:04 -0400
+Branch: REL_11_STABLE [6618c276b] 2022-10-16 15:27:04 -0400
+Branch: REL_10_STABLE [02d074e3e] 2022-10-16 15:27:04 -0400
+Branch: REL9_6_STABLE [9bfa043a1] 2022-10-16 15:27:04 -0400
+Branch: REL9_5_STABLE [377b37cf7] 2022-10-16 15:27:04 -0400
+Branch: REL9_4_STABLE [57dfb6ce6] 2022-10-16 15:27:04 -0400
+Branch: REL9_3_STABLE [ee4c44014] 2022-10-16 15:27:04 -0400
+Branch: REL9_2_STABLE [fec443414] 2022-10-16 15:27:04 -0400
+-->
+     <para>
+      Rename symbol <literal>REF</literal> to <literal>REF_P</literal> to
+      avoid compile failure on recent macOS (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [450ee7012] 2022-10-16 11:47:44 -0400
+Branch: REL_15_STABLE [bd4b2926e] 2022-10-16 11:47:44 -0400
+Branch: REL_14_STABLE [6fa431d84] 2022-10-16 11:47:44 -0400
+Branch: REL_13_STABLE [a2acafc7b] 2022-10-16 11:47:44 -0400
+Branch: REL_12_STABLE [d33ac1ec2] 2022-10-16 11:47:44 -0400
+-->
+     <para>
+      Avoid using <function>sprintf</function>, to avoid compile-time
+      deprecation warnings (Tom Lane)
+     </para>
+    </listitem>
+
+    <listitem>
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+Branch: master [e7c7605a7] 2022-11-01 17:08:28 -0400
+Branch: REL_15_STABLE [c3d16eb3d] 2022-11-01 17:08:49 -0400
+Branch: REL_14_STABLE [97bb80b1b] 2022-11-01 17:08:58 -0400
+Branch: REL_13_STABLE [ebf48810b] 2022-11-01 17:09:04 -0400
+Branch: REL_12_STABLE [ec9a000d8] 2022-11-01 17:09:09 -0400
+Branch: REL_11_STABLE [b1cb77bdf] 2022-11-01 17:09:16 -0400
+Branch: REL_10_STABLE [b3326a753] 2022-11-01 17:09:21 -0400
+-->
+     <para>
+      Update time zone data files to <application>tzdata</application>
+      release 2022f for DST law changes in Chile, Fiji, Iran, Jordan,
+      Mexico, Palestine, and Syria, plus historical corrections for Chile,
+      Crimea, Iran, and Mexico.
+     </para>
+
+     <para>
+      Also, the Europe/Kiev zone has been renamed to Europe/Kyiv.
+      Also, the following zones have been merged into nearby,
+      more-populous zones whose clocks have agreed with them since 1970:
+      Antarctica/Vostok, Asia/Brunei,
+      Asia/Kuala_Lumpur, Atlantic/Reykjavik, Europe/Amsterdam,
+      Europe/Copenhagen, Europe/Luxembourg, Europe/Monaco, Europe/Oslo,
+      Europe/Stockholm, Indian/Christmas, Indian/Cocos, Indian/Kerguelen,
+      Indian/Mahe, Indian/Reunion, Pacific/Chuuk, Pacific/Funafuti,
+      Pacific/Majuro, Pacific/Pohnpei, Pacific/Wake and Pacific/Wallis.
+      (This indirectly affects zones that were already links to one of
+      these: Arctic/Longyearbyen, Atlantic/Jan_Mayen, Iceland,
+      Pacific/Ponape, Pacific/Truk, and Pacific/Yap.)  America/Nipigon,
+      America/Rainy_River, America/Thunder_Bay, Europe/Uzhgorod, and
+      Europe/Zaporozhye were also merged into nearby zones after
+      discovering that their claimed post-1970 differences from those
+      zones seem to have been errors.
+      In all these cases, the previous zone name remains as an alias;
+      but the actual data is that of the zone that was merged into.
+     </para>
+
+     <para>
+      These zone mergers result in loss of pre-1970 timezone history for
+      the merged zones, which may be troublesome for applications
+      expecting consistency of <type>timestamptz</type> display.  As an
+      example, the stored value <literal>1944-06-01 12:00 UTC</literal>
+      would previously display as <literal>1944-06-01
+      13:00:00+01</literal> if the Europe/Stockholm zone is selected, but
+      now it will read out as <literal>1944-06-01 14:00:00+02</literal>.
+     </para>
+
+     <para>
+      It is possible to build the time zone data files with options that
+      will restore the older zone data, but that choice also inserts a lot
+      of other old (and typically poorly-attested) zone data, resulting in
+      more total changes from the previous release than accepting these
+      upstream changes does.  <productname>PostgreSQL</productname> has
+      chosen to ship the <productname>tzdb</productname> data
+      as-recommended, and so far as we are aware most major operating
+      system distributions are doing likewise.  However, if these changes
+      cause significant problems for your application, a possible solution
+      is to install a local build of the time zone data files using
+      <productname>tzdb</productname>'s backwards-compatibility options
+      (see their <literal>PACKRATDATA</literal>
+      and <literal>PACKRATLIST</literal> options).
+     </para>
+    </listitem>
+
+   </itemizedlist>
+
+  </sect2>
+ </sect1>
+
+ <sect1 id="release-15">
+  <title>Release 15</title>
+
+  <formalpara>
+   <title>Release date:</title>
+   <para>2022-10-13</para>
+  </formalpara>
+
+  <sect2>
+   <title>Overview</title>
+
+   <para>
+    <productname>PostgreSQL</productname> 15 contains many new features
+    and enhancements, including:
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      Support for the <acronym>SQL</acronym>
+      <link linkend="sql-merge"><command>MERGE</command></link> command.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Selective publication of tables' contents within
+      <link linkend="logical-replication">logical replication</link>
+      publications, through the ability to specify column lists and
+      row filter conditions.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      More options for compression, including support for Zstandard (zstd)
+      compression.  This includes support for performing compression on
+      the server side during
+      <link linkend="app-pgbasebackup"><application>pg_basebackup</application></link>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Support for structured <link linkend="guc-log-destination">server
+      log output</link> using the <acronym>JSON</acronym> format.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Performance improvements, particularly for in-memory and on-disk
+      sorting.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    The above items and other new features of
+    <productname>PostgreSQL</productname> 15 are explained in more detail
+    in the sections below.
+   </para>
+
+  </sect2>
+
+  <sect2>
+
+   <title>Migration to Version 15</title>
+
+    <para>
+     A dump/restore using <xref linkend="app-pg-dumpall"/> or use of
+     <xref linkend="pgupgrade"/> or logical replication is required for
+     those wishing to migrate data from any previous release.  See <xref
+     linkend="upgrading"/> for general information on migrating to new
+     major releases.
+    </para>
+
+    <para>
+     Version 15 contains a number of changes that may affect compatibility
+     with previous releases.  Observe the following incompatibilities:
+    </para>
+
+   <itemizedlist>
+
+<!--
+Author: Noah Misch <noah@leadboat.com>
+2021-09-09 [b073c3ccd] Revoke PUBLIC CREATE from public schema, now owned by pg
+-->
+
+    <listitem>
+     <para>
+      Remove <literal>PUBLIC</literal> creation permission on the <link
+      linkend="ddl-schemas-public"><literal>public</literal> schema</link>
+      (Noah Misch)
+     </para>
+
+     <para>
+      The new default is one of the secure schema usage patterns that <xref
+      linkend="ddl-schemas-patterns"/> has recommended since the security
+      release for CVE-2018-1058.  The change applies to new database
+      clusters and to newly-created databases in existing clusters.
+      Upgrading a cluster or restoring a database dump will preserve
+      <literal>public</literal>'s existing permissions.
+     </para>
+
+     <para>
+      For existing databases, especially those having multiple users,
+      consider revoking <literal>CREATE</literal> permission on
+      the <literal>public</literal> schema to adopt this new default.
+      For new databases having no need to defend against insider threats,
+      granting <literal>CREATE</literal> permission will yield the behavior
+      of prior releases.
+     </para>
+    </listitem>
+
+<!--
+Author: Noah Misch <noah@leadboat.com>
+2021-09-09 [b073c3ccd] Revoke PUBLIC CREATE from public schema, now owned by pg
+-->
+
+    <listitem>
+     <para>
+      Change the owner of the <literal>public</literal> schema to be the
+      new <literal>pg_database_owner</literal> role (Noah Misch)
+     </para>
+
+     <para>
+      This allows each database's owner to have ownership privileges on
+      the <literal>public</literal> schema within their database.
+      Previously it was owned by the bootstrap superuser, so that
+      non-superuser database owners could not do anything with it.
+     </para>
+
+     <para>
+      This change applies to new database clusters and to newly-created
+      databases in existing clusters.
+      Upgrading a cluster or restoring a database dump will preserve
+      <literal>public</literal>'s existing ownership specification.
+     </para>
+    </listitem>
+
+<!--
+Author: Stephen Frost <sfrost@snowman.net>
+2022-04-06 [39969e2a1] Remove exclusive backup mode
+-->
+
+    <listitem>
+     <para>
+      Remove long-deprecated <link linkend="backup-base-backup">exclusive
+      backup mode</link> (David Steele, Nathan Bossart)
+     </para>
+
+     <para>
+      If the database server stops abruptly while in this mode, the
+      server could fail to start.  The non-exclusive backup mode is
+      considered superior for all purposes.  Functions
+      <function>pg_start_backup()</function>/<function>pg_stop_backup()</function>
+      have been renamed to
+      <function>pg_backup_start()</function>/<function>pg_backup_stop()</function>,
+      and the functions <function>pg_backup_start_time()</function>
+      and <function>pg_is_in_backup()</function> have been removed.
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Geoghegan <pg@bowt.ie>
+2022-02-16 [8f388f6f5] Increase hash_mem_multiplier default to 2.0.
+-->
+
+    <listitem>
+     <para>
+      Increase <link
+      linkend="guc-hash-mem-multiplier"><varname>hash_mem_multiplier</varname></link>
+      default to 2.0 (Peter Geoghegan)
+     </para>
+
+     <para>
+      This allows query hash operations to use more
+      <link linkend="guc-work-mem"><varname>work_mem</varname></link>
+      memory than other operations.
+     </para>
+    </listitem>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2022-03-07 [76a29adee] plpython: Remove plpythonu, plpython2u and associated tr
+-->
+
+    <listitem>
+     <para>
+      Remove server-side language <link
+      linkend="plpython"><literal>plpython2u</literal></link> and generic
+      Python language <literal>plpythonu</literal> (Andres Freund)
+     </para>
+
+     <para>
+      Python 2.x is no longer supported.  While the original intent of
+      <literal>plpythonu</literal> was that it could eventually refer
+      to <literal>plpython3u</literal>, changing it now seems more likely
+      to cause problems than solve them, so it's just been removed.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-06 [cbe25dcff] Disallow making an empty lexeme via array_to_tsvector().
+-->
+
+    <listitem>
+     <para>
+      Generate an error if <link
+      linkend="textsearch-functions-table"><function>array_to_tsvector()</function></link>
+      is passed an empty-string array element (Jean-Christophe Arnu)
+     </para>
+
+     <para>
+      This is prohibited because lexemes should never be empty.  Users of
+      previous Postgres releases should verify that no empty lexemes
+      are stored because they can lead to dump/restore failures and
+      inconsistent results.
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-12-06 [e9e63b702] Fix inappropriate uses of PG_GETARG_UINT32()
+-->
+
+    <listitem>
+     <para>
+      Generate an error when <link
+      linkend="functions-string-other"><function>chr()</function></link>
+      is supplied with a negative argument (Peter Eisentraut)
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-15 [2523928b2] Reject change of output-column collation in CREATE OR RE
+-->
+
+    <listitem>
+     <para>
+      Prevent <link linkend="sql-createview"><command>CREATE OR REPLACE
+      VIEW</command></link> from changing the collation of an output column
+      (Tom Lane)
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-01-12 [a18b6d2dc] ecpg: Catch zero-length Unicode identifiers correctly
+-->
+
+    <listitem>
+     <para>
+      Disallow zero-length <link
+      linkend="sql-syntax-identifiers">Unicode identifiers</link>,
+      e.g., <literal>U&amp;""</literal>
+      (Peter Eisentraut)
+     </para>
+
+     <para>
+      Non-Unicode zero-length identifiers were already disallowed.
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-02-16 [2549f0661] Reject trailing junk after numeric literals
+-->
+
+    <listitem>
+     <para>
+      Prevent <link linkend="sql-syntax-constants-numeric">numeric
+      literals</link> from having non-numeric trailing characters (Peter
+      Eisentraut)
+     </para>
+
+     <para>
+      Previously, query text like <literal>123abc</literal> would be
+      interpreted as <literal>123</literal> followed
+      by a separate token <literal>abc</literal>.
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-03-28 [e26114c81] Make JSON path numeric literals more correct
+-->
+
+    <listitem>
+     <para>
+      Adjust <link linkend="datatype-json"><acronym>JSON</acronym></link>
+      numeric literal processing to match the
+      <acronym>SQL</acronym>/<acronym>JSON</acronym>-standard (Peter
+      Eisentraut)
+     </para>
+
+     <para>
+      This accepts numeric formats like <literal>.1</literal> and
+      <literal>1.</literal>, and disallows trailing junk after numeric
+      literals, like <literal>1.type()</literal>.
+     </para>
+    </listitem>
+
+<!--
+Author: Bruce Momjian <bruce@momjian.us>
+2021-08-03 [95ab1e0a9] interval:  round values when spilling to months
+-->
+
+    <listitem>
+     <para>
+      When <link linkend="datatype-datetime"><type>interval</type></link>
+      input provides a fractional value for a unit greater than months,
+      round to the nearest month (Bruce Momjian)
+     </para>
+
+     <para>
+      For example, convert <literal>1.99 years</literal> to <literal>2
+      years</literal>, not <literal>1 year 11 months</literal> as before.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-03 [591e088dd] Fix portability issues in datetime parsing.
+-->
+
+    <listitem>
+     <para>
+      Improve consistency of <type>interval</type> parsing with trailing
+      periods (Tom Lane)
+     </para>
+
+     <para>
+      Numbers with trailing periods were rejected on some platforms.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-19 [a3d6264bb] interval_out() must be marked STABLE, not IMMUTABLE.
+-->
+
+    <listitem>
+     <para>
+      Mark the <type>interval</type> output
+      function as stable, not immutable, since it depends on <link
+      linkend="guc-intervalstyle"><varname>IntervalStyle</varname></link>
+      (Tom Lane)
+     </para>
+
+     <para>
+      This will, for example, cause creation of indexes relying on the
+      text output of <type>interval</type> values to fail.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-28 [54bd1e43c] Handle integer overflow in interval justification functi
+-->
+
+    <listitem>
+     <para>
+      Detect integer overflow in <link
+      linkend="functions-datetime-table">interval justification
+      functions</link> (Joe Koshakow)
+     </para>
+
+     <para>
+      The affected functions are <function>justify_interval()</function>,
+      <function>justify_hours()</function>, and
+      <function>justify_days()</function>.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-08-02 [c034b629c] Change type "char"'s I/O format for non-ASCII characters
+-->
+
+    <listitem>
+     <para>
+      Change the I/O format of type <type>"char"</type> for non-ASCII
+      characters (Tom Lane)
+     </para>
+
+     <para>
+      Bytes with the high bit set are now output as a backslash and three
+      octal digits, to avoid encoding issues.
+     </para>
+    </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-28 [79de9842a] Remove the ability of a role to administer itself.
+-->
+
+    <listitem>
+     <para>
+      Remove the default <link linkend="sql-createrole"><literal>ADMIN
+      OPTION</literal></link> privilege a login role has on its own role
+      membership (Robert Haas)
+     </para>
+
+     <para>
+      Previously, a login role could add/remove members of its own role,
+      even without <literal>ADMIN OPTION</literal> privilege.
+     </para>
+    </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2022-01-07 [a2ab9c06e] Respect permissions within logical replication.
+-->
+
+    <listitem>
+     <para>
+      Allow <link linkend="logical-replication">logical replication</link>
+      to run as the owner of the subscription (Mark Dilger)
+     </para>
+
+     <para>
+      Because row-level security policies are not checked, only superusers,
+      roles with <literal>bypassrls</literal>, and table owners can
+      replicate into tables with row-level security policies.
+     </para>
+    </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2022-01-08 [96a6f11c0] More cleanup of a2ab9c06ea.
+-->
+
+    <listitem>
+     <para>
+      Prevent <command>UPDATE</command> and <command>DELETE</command>
+      <link linkend="logical-replication">logical replication</link>
+      operations on tables where the subscription owner does not have
+      <command>SELECT</command> permission on the table (Jeff Davis)
+     </para>
+
+     <para>
+      <command>UPDATE</command> and <command>DELETE</command> commands
+      typically involve reading the table as well, so require the
+      subscription owner to have table <command>SELECT</command>
+      permission.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-07-27 [48c5c9068] Use the "pg_temp" schema alias in EXPLAIN and related ou
+-->
+
+    <listitem>
+     <para>
+      When <link linkend="sql-explain"><command>EXPLAIN</command></link>
+      references the session's temporary object schema, refer to it as
+      <literal>pg_temp</literal> (Amul Sul)
+     </para>
+
+     <para>
+      Previously the actual schema name was reported, leading to
+      inconsistencies across sessions.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-03-24 [ce95c5437] Fix pg_statio_all_tables view for multiple TOAST indexes
+-->
+
+    <listitem>
+     <para>
+      Fix <link
+      linkend="monitoring-pg-statio-all-tables-view"><structname>pg_statio_all_tables</structname></link>
+      to sum values for the rare case of <acronym>TOAST</acronym> tables
+      with multiple indexes (Andrei Zubkov)
+     </para>
+
+     <para>
+      Previously such cases would show one row for each index.
+     </para>
+    </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-12-01 [75d22069e] Warning on SET of nonexisting setting with a prefix rese
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-27 [2ed8a8cc5] Rethink handling of settings with a prefix reserved by a
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-21 [88103567c] Disallow setting bogus GUCs within an extension's reserv
+-->
+
+    <listitem>
+     <para>
+      Disallow setting <link linkend="runtime-config-custom">custom
+      options</link> that match the name of an installed extension, but
+      are not one of the extension's declared variables
+      (Florin Irion, Tom Lane)
+     </para>
+
+     <para>
+      This change causes any such pre-existing variables to be deleted
+      during extension load, and then prevents new ones from being created
+      later in the session.  The intent is to prevent confusion about
+      whether a variable is associated with an extension or not.
+     </para>
+    </listitem>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2022-04-06 [6f0cf8787] pgstat: remove stats_temp_directory.
+-->
+
+    <listitem>
+     <para>
+      Remove obsolete server variable
+      <varname>stats_temp_directory</varname> (Andres Freund, Kyotaro
+      Horiguchi)
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-28 [3804539e4] Replace random(), pg_erand48(), etc with a better PRNG A
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-12 [d4f109e4a] Doc: update description of random() function.
+-->
+
+    <listitem>
+     <para>
+      Improve the algorithm used to compute <link
+      linkend="functions-math-random-table"><function>random()</function></link>
+      (Fabien Coelho)
+     </para>
+
+     <para>
+      This will cause <function>random()</function>'s results to differ
+      from what was emitted by prior versions, even for the same seed
+      value.
+     </para>
+    </listitem>
+
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-09-23 [bd8ac900d] Remove PQsendQuery support in pipeline mode
+-->
+
+    <listitem>
+     <para>
+      <application>libpq</application>'s <link
+      linkend="libpq-PQsendQuery"><function>PQsendQuery()</function></link>
+      function is no longer supported in pipeline mode (Álvaro Herrera)
+     </para>
+
+     <para>
+      Applications that are using that combination will need to be
+      modified to use <function>PQsendQueryParams()</function> instead.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-09 [376ce3e40] Prefer $HOME when looking up the current user's home dir
+-->
+
+    <listitem>
+     <para>
+      On non-Windows platforms, consult the <envar>HOME</envar> environment
+      variable to find the user's home directory (Anders Kaseorg)
+     </para>
+
+     <para>
+      If <envar>HOME</envar> is empty or unset, fall back to the previous
+      method of checking the <literal>&lt;pwd.h&gt;</literal> database.
+      This change affects <application>libpq</application> (for example,
+      while looking up <filename>~/.pgpass</filename>) as well as various
+      client application programs.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-15 [2a712066d] Remove pg_dump's - -no-synchronized-snapshots switch.
+-->
+
+    <listitem>
+     <para>
+      Remove <link
+      linkend="app-pgdump"><application>pg_dump</application></link>'s
+      <option>--no-synchronized-snapshots</option> option (Tom Lane)
+     </para>
+
+     <para>
+      All still-supported server versions support synchronized snapshots,
+      so there's no longer a need for this option.
+     </para>
+    </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-06-15 [a3ff08e0b] Tweak behavior of psql - -single-transaction depending
+-->
+
+      <listitem>
+       <para>
+        After an error is detected in <link
+        linkend="app-psql"><application>psql</application></link>'s
+        <option>--single-transaction</option> mode, change the
+        final <command>COMMIT</command> command
+        to <command>ROLLBACK</command> only
+        if <varname>ON_ERROR_STOP</varname> is set (Michael Paquier)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-12 [f8abb0f5e] postgres_fdw: suppress casts on constants in limited cas
+-->
+
+    <listitem>
+     <para>
+      Avoid unnecessary casting of constants in queries sent by <link
+      linkend="postgres-fdw">postgres_fdw</link> (Dian Fay)
+     </para>
+
+     <para>
+      When column types are intentionally different between local and
+      remote databases, such casts could cause errors.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-14 [fd2abeb7c] Delete contrib/xml2's legacy implementation of xml_is_we
+-->
+
+    <listitem>
+     <para>
+      Remove <link linkend="xml2">xml2</link>'s
+      <function>xml_is_well_formed()</function> function (Tom Lane)
+     </para>
+
+     <para>
+      This function has been implemented in the core backend since
+      Postgres 9.1.
+     </para>
+    </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-07-06 [955b3e0f9] Allow CustomScan providers to say whether they support p
+-->
+
+    <listitem>
+     <para>
+      Allow <link linkend="custom-scan">custom scan providers</link>
+      to indicate if they support projections (Sven Klemm)
+     </para>
+
+     <para>
+      The default is now that custom scan providers are assumed to not
+      support projections;  those that do will need to be updated for
+      this release.
+     </para>
+    </listitem>
+
+   </itemizedlist>
+
+  </sect2>
+
+  <sect2>
+   <title>Changes</title>
+
+   <para>
+    Below you will find a detailed account of the changes between
+    <productname>PostgreSQL</productname> 15 and the previous major
+    release.
+   </para>
+
+   <sect3>
+    <title>Server</title>
+
+    <itemizedlist>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-02-14 [37851a8b8] Database-level collation version tracking
+-->
+
+     <listitem>
+      <para>
+       Record and check the collation version of each <link
+       linkend="sql-createdatabase">database</link> (Peter Eisentraut)
+      </para>
+
+      <para>
+       This feature is designed to detect collation version
+       changes to avoid index corruption.  Function
+       <function>pg_database_collation_actual_version()</function>
+       reports the underlying operating system collation version, and
+       <command>ALTER DATABASE ...  REFRESH</command> sets the recorded
+       database collation version to match the operating system collation
+       version.
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-03-17 [f2553d430] Add option to use ICU as global locale provider
+-->
+
+     <listitem>
+      <para>
+       Allow <link linkend="locale"><acronym>ICU</acronym></link>
+       collations to be set as the default for clusters and databases
+       (Peter Eisentraut)
+      </para>
+
+      <para>
+       Previously, only <application>libc</application>-based
+       collations could be selected at the cluster and database levels.
+       <acronym>ICU</acronym> collations could only be used via explicit
+       <literal>COLLATE</literal> clauses.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-03-29 [a2c84990b] Add system view pg_ident_file_mappings
+-->
+
+     <listitem>
+      <para>
+       Add system view <link
+       linkend="view-pg-ident-file-mappings"><structname>pg_ident_file_mappings</structname></link>
+       to report <filename>pg_ident.conf</filename> information (Julien
+       Rouhaud)
+      </para>
+     </listitem>
+
+       </itemizedlist>
+
+    <sect4>
+     <title><link linkend="ddl-partitioning">Partitioning</link></title>
+
+     <itemizedlist>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-08-03 [475dbd0b7] Track a Bitmapset of non-pruned partitions in RelOptInfo
+-->
+
+      <listitem>
+       <para>
+        Improve planning time for queries referencing partitioned tables
+        (David Rowley)
+       </para>
+
+       <para>
+        This change helps when only a few of many partitions are relevant.
+       </para>
+      </listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-08-03 [db632fbca] Allow ordered partition scans in more cases
+-->
+
+      <listitem>
+       <para>
+        Allow ordered scans of partitions to avoid sorting in more cases
+        (David Rowley)
+       </para>
+
+       <para>
+        Previously, a partitioned table with a <literal>DEFAULT</literal>
+        partition or a <literal>LIST</literal> partition containing
+        multiple values could not be used for ordered partition scans.
+        Now they can be used if such partitions are pruned during planning.
+       </para>
+      </listitem>
+
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-03-20 [ba9a7e392] Enforce foreign key correctly during cross-partition upd
+-->
+
+      <listitem>
+       <para>
+        Improve foreign key behavior of updates on partitioned tables
+        that move rows between partitions (Amit Langote)
+       </para>
+
+       <para>
+        Previously, such updates ran a delete action on the source
+        partition and an insert action on the target partition.
+        <productname>PostgreSQL</productname> will now run an update action
+        on the partition root, providing cleaner semantics.
+       </para>
+      </listitem>
+
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-04-02 [cfdd03f45] Allow CLUSTER on partitioned tables
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-04-14 [3f19e176a] Have CLUSTER ignore partitions not owned by caller
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="sql-cluster"><command>CLUSTER</command></link>
+        on partitioned tables (Justin Pryzby)
+       </para>
+      </listitem>
+
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2021-07-22 [80ba4bb38] Make ALTER TRIGGER RENAME consistent for partitioned tab
+-->
+
+      <listitem>
+       <para>
+        Fix <link linkend="sql-altertable"><command>ALTER TRIGGER
+        RENAME</command></link> on partitioned tables to properly rename
+        triggers on all partitions (Arne Roland, Álvaro Herrera)
+       </para>
+
+       <para>
+        Also prohibit cloned triggers from being renamed.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>Indexes</title>
+
+     <itemizedlist>
+
+<!--
+Author: Peter Geoghegan <pg@bowt.ie>
+2021-10-02 [2903f1404] Enable deduplication in system catalog indexes.
+-->
+
+      <listitem>
+       <para>
+        Allow btree indexes on system and <link
+        linkend="storage-toast"><acronym>TOAST</acronym></link>
+        tables to efficiently store duplicates (Peter Geoghegan)
+       </para>
+
+       <para>
+        Previously de-duplication was disabled for these types of indexes.
+       </para>
+      </listitem>
+
+<!--
+Author: Alexander Korotkov <akorotkov@postgresql.org>
+2022-02-07 [f1ea98a79] Reduce non-leaf keys overlap in GiST indexes produced by
+-->
+
+      <listitem>
+       <para>
+        Improve lookup performance
+        of <link linkend="gist"><acronym>GiST</acronym></link> indexes
+        that were built using sorting (Aliaksandr Kalenik, Sergei
+        Shoulbakov, Andrey Borodin)
+       </para>
+      </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-02-03 [94aa7cc5f] Add UNIQUE null treatment option
+-->
+
+      <listitem>
+       <para>
+        Allow unique constraints and indexes to treat
+        <literal>NULL</literal> values as not distinct (Peter Eisentraut)
+       </para>
+
+       <para>
+        Previously <literal>NULL</literal> entries were always treated
+        as distinct values, but this can now be changed by creating
+        constraints and indexes using <literal>UNIQUE NULLS NOT
+        DISTINCT</literal>.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-17 [a148f8bc0] Add a planner support function for starts_with().
+-->
+
+      <listitem>
+       <para>
+        Allow the <link
+        linkend="functions-string-other"><literal>^@</literal></link>
+        starts-with operator and the <function>starts_with()</function>
+        function to use btree indexes if using the C collation (Tom Lane)
+       </para>
+
+       <para>
+        Previously these could only use <link
+        linkend="spgist"><acronym>SP-GiST</acronym></link> indexes.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>Optimizer</title>
+
+     <itemizedlist>
+
+<!--
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2022-01-16 [269b532ae] Add stxdinherit flag to pg_statistic_ext_data
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="sql-createstatistics">extended
+        statistics</link> to record statistics for a parent with all its
+        children (Tomas Vondra, Justin Pryzby)
+       </para>
+
+       <para>
+        Regular statistics already tracked parent and
+        parent-plus-all-children statistics separately.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-03-24 [0bd7af082] Invent recursive_worktable_factor GUC to replace hard-wi
+-->
+
+      <listitem>
+       <para>
+        Add server variable <link
+        linkend="guc-recursive-worktable-factor"><varname>recursive_worktable_factor</varname></link>
+        to allow the user to specify the expected size of the working
+        table of a <link linkend="queries-with-recursive">recursive
+        query</link> (Simon Riggs)
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>General Performance</title>
+
+     <itemizedlist>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-07-07 [29f45e299] Use a hash table to speed up NOT IN(values)
+-->
+
+      <listitem>
+       <para>
+        Allow hash lookup for <link
+        linkend="functions-subquery-notin"><literal>NOT IN</literal></link>
+        clauses with many constants (David Rowley, James Coleman)
+       </para>
+
+       <para>
+        Previously the code always sequentially scanned the list of values.
+       </para>
+      </listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-08-22 [22c4e88eb] Allow parallel DISTINCT
+-->
+
+     <listitem>
+      <para>
+       Allow <command>SELECT DISTINCT</command> to be parallelized
+       (David Rowley)
+      </para>
+     </listitem>
+
+<!--
+Author: John Naylor <john.naylor@postgresql.org>
+2021-12-20 [911588a3f] Add fast path for validating UTF-8 text
+-->
+
+      <listitem>
+       <para>
+        Speed up encoding validation of <acronym>UTF</acronym>-8 text
+        by processing 16 bytes at a time
+        (John Naylor, Heikki Linnakangas)
+       </para>
+
+       <para>
+        This will improve text-heavy operations like <link
+        linkend="sql-copy"><command>COPY FROM</command></link>.
+       </para>
+      </listitem>
+
+<!--
+Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
+2021-10-18 [65014000b] Replace polyphase merge algorithm with a simple balanced
+Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
+2021-10-25 [166f94377] Clarify the logic in a few places in the new balanced me
+-->
+
+      <listitem>
+       <para>
+        Improve performance for sorts that exceed <link
+        linkend="guc-work-mem"><varname>work_mem</varname></link>
+        (Heikki Linnakangas)
+       </para>
+
+       <para>
+        When the sort data no longer fits in <varname>work_mem</varname>,
+        switch to a batch sorting algorithm that uses more output streams
+        than before.
+       </para>
+      </listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-07-22 [91e9e89dc] Make nodeSort.c use Datum sorts for single column sorts
+Author: David Rowley <drowley@postgresql.org>
+2022-04-04 [40af10b57] Use Generation memory contexts to store tuples in sorts
+Author: John Naylor <john.naylor@postgresql.org>
+2022-04-02 [697492434] Specialize tuplesort routines for different kinds of abb
+-->
+
+      <listitem>
+       <para>
+        Improve performance and reduce memory consumption of in-memory
+        sorts (Ronan Dunklau, David Rowley, Thomas Munro, John Naylor)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-06-29 [4035cd5d4] Add support for LZ4 with compression of full-page writes
+Author: Michael Paquier <michael@paquier.xyz>
+2022-03-11 [e9537321a] Add support for zstd with compression of full-page write
+-->
+
+      <listitem>
+       <para>
+        Allow <acronym>WAL</acronym> <link
+        linkend="guc-full-page-writes">full page writes</link> to use
+        LZ4 and Zstandard compression (Andrey Borodin, Justin Pryzby)
+       </para>
+
+       <para>
+        This is controlled by the <link
+        linkend="guc-wal-compression"><varname>wal_compression</varname></link>
+        server setting.
+       </para>
+      </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2021-07-19 [2dbe89057] Support direct I/O on macOS.
+-->
+
+      <listitem>
+       <para>
+        Add support for writing <acronym>WAL</acronym>
+        using <link linkend="guc-wal-sync-method">direct I/O</link> on
+        macOS (Thomas Munro)
+       </para>
+
+       <para>
+        This only works if <literal>max_wal_senders = 0</literal>
+        and <literal>wal_level = minimal</literal>.
+       </para>
+      </listitem>
+
+<!--
+Author: Peter Geoghegan <pg@bowt.ie>
+2022-04-03 [0b018faba] Set relfrozenxid to oldest extant XID seen by VACUUM.
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="routine-vacuuming">vacuum</link> to be more
+        aggressive in setting the oldest frozen and multi transaction id
+        (Peter Geoghegan)
+       </para>
+      </listitem>
+
+<!--
+Author: Etsuro Fujita <efujita@postgresql.org>
+2022-04-06 [c2bb02bc2] Allow asynchronous execution in more cases.
+-->
+
+      <listitem>
+       <para>
+        Allow a query referencing multiple <link
+        linkend="ddl-foreign-data">foreign tables</link> to perform
+        parallel foreign table scans in more cases (Andrey Lepikhov,
+        Etsuro Fujita)
+       </para>
+      </listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2022-04-08 [9d9c02ccd] Teach planner and executor about monotonic window funcs
+-->
+
+      <listitem>
+       <para>
+        Improve the performance of <link linkend="functions-window">window
+        functions</link> that use <function>row_number()</function>,
+        <function>rank()</function>, <function>dense_rank()</function> and
+        <function>count()</function>
+        (David Rowley)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-06 [a82a5eee3] Use ISB as a spin-delay instruction on ARM64.
+-->
+
+      <listitem>
+       <para>
+        Improve the performance of spinlocks on high-core-count ARM64
+        systems (Geoffrey Blake)
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>Monitoring</title>
+
+     <itemizedlist>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2021-12-13 [64da07c41] Default to log_checkpoints=on, log_autovacuum_min_durati
+-->
+
+      <listitem>
+       <para>
+        Enable default logging of checkpoints and slow autovacuum
+        operations (Bharath Rupireddy)
+       </para>
+
+       <para>
+        This changes the default of <link
+        linkend="guc-log-checkpoints"><varname>log_checkpoints</varname></link>
+        to <literal>on</literal> and that of <link
+        linkend="guc-log-autovacuum-min-duration"><varname>log_autovacuum_min_duration</varname></link>
+        to 10 minutes.  This will cause even an idle server to generate
+        some log output, which might cause problems on
+        resource-constrained servers without log file rotation.  These
+        defaults should be changed in such cases.
+       </para>
+      </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2021-10-25 [9ce346eab] Report progress of startup operations that take a long t
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2021-11-05 [e543906e2] Document default and changeability of log_startup_progre
+-->
+
+      <listitem>
+       <para>
+        Generate progress messages in the server log during slow server
+        starts (Nitin Jadhav, Robert Haas)
+       </para>
+
+       <para>
+        The messages report the cause of the delay.  The time interval for
+        notification is controlled by the new server variable <link
+        linkend="guc-log-startup-progress-interval"><varname>log_startup_progress_interval</varname></link>.
+       </para>
+      </listitem>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2022-04-06 [5891c7a8e] pgstat: store statistics in shared memory.
+Author: Andres Freund <andres@anarazel.de>
+2022-04-07 [b3abca681] pgstat: Update docs to match the shared memory stats rea
+-->
+
+      <listitem>
+       <para>
+        Store <link linkend="monitoring-stats">cumulative statistics
+        system</link> data in shared memory (Kyotaro Horiguchi, Andres
+        Freund, Melanie Plageman)
+       </para>
+
+       <para>
+        Previously this data was sent to a statistics collector process
+        via <acronym>UDP</acronym> packets, and could only be read by
+        sessions after transferring it via the file system.  There is no
+        longer a separate statistics collector process.
+       </para>
+      </listitem>
+
+<!--
+Author: Peter Geoghegan <pg@bowt.ie>
+2022-02-11 [872770fd6] Add VACUUM instrumentation for scanned pages, relfrozenx
+Author: Peter Geoghegan <pg@bowt.ie>
+2022-03-13 [6e20f4600] VACUUM VERBOSE: tweak scanned_pages logic.
+Author: Peter Geoghegan <pg@bowt.ie>
+2022-04-15 [bdb71dbe8] VACUUM VERBOSE: Show dead items for an empty table.
+-->
+
+      <listitem>
+       <para>
+        Add additional information to <command>VACUUM VERBOSE</command>
+        and autovacuum logging messages (Peter Geoghegan)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-04-08 [efb0ef909] Track I/O timing for temporary file blocks in EXPLAIN (B
+-->
+
+      <listitem>
+       <para>
+        Add <link linkend="sql-explain"><command>EXPLAIN
+        (BUFFERS)</command></link> output for temporary file block I/O
+        (Masahiko Sawada)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-01-17 [dc686681e] Introduce log_destination=jsonlog
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="guc-log-destination">log output</link> in
+        <acronym>JSON</acronym> format (Sehrope Sarkuni, Michael Paquier)
+       </para>
+
+       <para>
+        The new setting is <literal>log_destination = jsonlog</literal>.
+       </para>
+      </listitem>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2021-09-02 [e04267844] Enhance pg_stat_reset_single_table_counters function.
+-->
+
+      <listitem>
+       <para>
+        Allow <link
+        linkend="monitoring-stats-funcs-table"><function>pg_stat_reset_single_table_counters()</function></link>
+        to reset the counters of relations shared across all databases
+        (Sadhuprasad Patro)
+       </para>
+      </listitem>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2021-11-22 [1b06d7bac] Report wait events for local shell commands like archive
+-->
+
+      <listitem>
+       <para>
+        Add <link linkend="wait-event-table">wait events</link> for local
+        shell commands (Fujii Masao)
+       </para>
+
+       <para>
+        The new wait events are used when calling
+        <varname>archive_command</varname>,
+        <varname>archive_cleanup_command</varname>,
+        <varname>restore_command</varname> and
+        <varname>recovery_end_command</varname>.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>Privileges</title>
+
+     <itemizedlist>
+
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+2022-03-22 [7faa5fc84] Add support for security invoker views.
+-->
+
+      <listitem>
+       <para>
+        Allow table accesses done by
+        a <link linkend="sql-createview">view</link> to optionally be
+        controlled by privileges of the view's caller (Christoph Heiss)
+       </para>
+
+       <para>
+        Previously, view accesses were always treated as being done by the
+        view's owner.  That's still the default.
+       </para>
+      </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-28 [7f6772317] Adjust server-side backup to depend on pg_write_server_f
+-->
+
+      <listitem>
+       <para>
+        Allow members of the <link
+        linkend="predefined-roles-table"><literal>pg_write_server_files</literal></link>
+        predefined role to perform server-side base backups (Dagfinn
+        Ilmari Mannsåker)
+       </para>
+
+       <para>
+        Previously only superusers could perform such backups.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-06 [a0ffa885e] Allow granting SET and ALTER SYSTEM privileges on GUC pa
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-07-19 [a2944d872] Fix missed corner cases for grantable permissions on GUC
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="sql-grant"><command>GRANT</command></link>
+        to grant permissions to change individual server variables via
+        <command>SET</command> and <command>ALTER SYSTEM</command>
+        (Mark Dilger)
+       </para>
+
+       <para>
+        The new function <function>has_parameter_privilege()</function>
+        reports on this privilege.
+       </para>
+      </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2021-11-09 [4168a4745] Add pg_checkpointer predefined role for CHECKPOINT comma
+Author: Robert Haas <rhaas@postgresql.org>
+2022-07-05 [d3526e59f] Rename pg_checkpointer predefined role to pg_checkpoint.
+-->
+
+      <listitem>
+       <para>
+        Add predefined role <link
+        linkend="predefined-roles-table"><literal>pg_checkpoint</literal></link>
+        that allows members to run <command>CHECKPOINT</command>
+        (Jeff Davis)
+       </para>
+
+       <para>
+        Previously checkpoints could only be run by superusers.
+       </para>
+      </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2021-10-27 [77ea4f943] Grant memory views to pg_read_all_stats.
+-->
+
+      <listitem>
+       <para>
+        Allow members of the <link
+        linkend="predefined-roles-table"><literal>pg_read_all_stats</literal></link>
+        predefined role to access the views <link
+        linkend="view-pg-backend-memory-contexts"><structname>pg_backend_memory_contexts</structname></link>
+        and <link
+        linkend="view-pg-shmem-allocations"><structname>pg_shmem_allocations</structname></link>
+        (Bharath Rupireddy)
+       </para>
+
+       <para>
+        Previously these views could only be accessed by superusers.
+       </para>
+      </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2021-10-26 [f0b051e32] Allow GRANT on pg_log_backend_memory_contexts().
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="sql-grant"><command>GRANT</command></link>
+        to grant permissions on <link
+        linkend="functions-admin-signal"><function>pg_log_backend_memory_contexts()</function></link>
+        (Jeff Davis)
+       </para>
+
+       <para>
+        Previously this function could only be run by superusers.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title>Server Configuration</title>
+
+     <itemizedlist>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-09-08 [bd1788051] Introduce GUC shared_memory_size
+Author: Michael Paquier <michael@paquier.xyz>
+2021-09-09 [3b231596c] Make shared_memory_size a preset option
+-->
+
+      <listitem>
+       <para>
+        Add server variable <link
+        linkend="guc-shared-memory-size"><varname>shared_memory_size</varname></link>
+        to report the size of allocated shared memory (Nathan Bossart)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-09-21 [43c1c4f65] Introduce GUC shared_memory_size_in_huge_pages
+Author: Michael Paquier <michael@paquier.xyz>
+2022-03-24 [bbd4951b7] doc: Improve postgres command for shared_memory_size_in_
+-->
+
+      <listitem>
+       <para>
+        Add server variable <link
+        linkend="guc-shared-memory-size-in-huge-pages"><varname>shared_memory_size_in_huge_pages</varname></link>
+        to report the number of huge memory pages required (Nathan Bossart)
+       </para>
+
+       <para>
+        This is only supported on Linux.
+       </para>
+      </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2022-07-20 [2103266a3] Process shared_preload_libraries in single-user mode.
+-->
+
+      <listitem>
+       <para>
+        Honor server variable <link
+        linkend="guc-shared-preload-libraries"><varname>shared_preload_libraries</varname></link>
+        in single-user mode (Jeff Davis)
+       </para>
+
+       <para>
+        This change supports use
+        of <varname>shared_preload_libraries</varname> to load custom
+        access methods and WAL resource managers, which would be essential
+        for database access even in single-user mode.
+       </para>
+      </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2022-07-02 [a2b0719cc] Default to dynamic_shared_memory_type=sysv on Solaris.
+-->
+
+      <listitem>
+       <para>
+        On Solaris, make the default setting of <link
+        linkend="guc-dynamic-shared-memory-type"><varname>dynamic_shared_memory_type</varname></link>
+        be <literal>sysv</literal> (Thomas Munro)
+       </para>
+
+       <para>
+        The previous default choice, <literal>posix</literal>, can result
+        in spurious failures on this platform.
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-09-16 [0c39c2920] Support "postgres -C" with runtime-computed GUCs
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="app-postgres"><command>postgres
+        -C</command></link> to properly report runtime-computed values
+        (Nathan Bossart)
+       </para>
+
+       <para>
+        Previously runtime-computed values <link
+        linkend="guc-data-checksums"><varname>data_checksums</varname></link>,
+        <link
+        linkend="guc-wal-segment-size"><varname>wal_segment_size</varname></link>,
+        and <link
+        linkend="guc-data-directory-mode"><varname>data_directory_mode</varname></link>
+        would report values that would not be accurate on the running
+        server.  However, this does not work on a running server.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+   </sect3>
+
+   <sect3>
+    <title>Streaming Replication and Recovery</title>
+
+    <itemizedlist>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-11 [dab298471] Add suport for server-side LZ4 base backup compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-08 [7cf085f07] Add support for zstd base backup compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-30 [51c0d186d] Allow parallel zstd compression when taking a base backu
+-->
+
+     <listitem>
+      <para>
+       Add support for LZ4 and Zstandard compression of server-side <link
+       linkend="backup-base-backup">base backups</link> (Jeevan Ladhe,
+       Robert Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2021-08-02 [7ff23c6d2] Run checkpointer and bgwriter in crash recovery.
+-->
+
+     <listitem>
+      <para>
+       Run the checkpointer and bgwriter processes during crash recovery
+       (Thomas Munro)
+      </para>
+
+      <para>
+       This helps to speed up long crash recoveries.
+      </para>
+     </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2022-04-07 [5dc0418fa] Prefetch data referenced by the WAL, take II.
+-->
+
+     <listitem>
+      <para>
+       Allow <acronym>WAL</acronym> processing to pre-fetch needed file
+       contents (Thomas Munro)
+      </para>
+
+      <para>
+       This is controlled by the server variable <link
+       linkend="guc-recovery-prefetch"><varname>recovery_prefetch</varname></link>.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-03 [5ef1eefd7] Allow archiving via loadable modules.
+-->
+
+     <listitem>
+      <para>
+       Allow archiving via loadable modules (Nathan Bossart)
+      </para>
+
+      <para>
+       Previously, archiving was only done by calling shell commands.
+       The new server variable <link
+       linkend="guc-archive-library"><varname>archive_library</varname></link>
+       can be set to specify a library to be called for archiving.
+      </para>
+     </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2021-07-09 [8e7811e95] Eliminate replication protocol error related to IDENTIFY
+-->
+
+     <listitem>
+      <para>
+       No longer require <link
+       linkend="protocol-replication"><literal>IDENTIFY_SYSTEM</literal></link>
+       to be run before <literal>START_REPLICATION</literal> (Jeff Davis)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+    <sect4>
+     <title><link linkend="logical-replication">Logical Replication</link></title>
+
+     <itemizedlist>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2021-10-27 [5a2832465] Allow publishing the tables of schema.
+Author: Amit Kapila <akapila@postgresql.org>
+2021-12-08 [1a2aaeb0d] Fix changing the ownership of ALL TABLES IN SCHEMA publi
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-09-22 [f256236fb] Remove ALL keyword from TABLES IN SCHEMA for publication
+-->
+
+      <listitem>
+       <para>
+        Allow <link linkend="sql-createpublication">publication</link> of
+        all tables in a schema (Vignesh C, Hou Zhijie, Amit Kapila)
+       </para>
+
+       <para>
+        For example, this syntax is now supported: <literal>CREATE
+        PUBLICATION pub1 FOR TABLES IN SCHEMA s1,s2</literal>.
+        <command>ALTER PUBLICATION</command> supports a similar syntax.
+        Tables added later to the listed schemas will also be replicated.
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2022-02-22 [52e4f0cd4] Allow specifying row filters for logical replication of
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2022-03-17 [5a0796622] Fix row filters with multiple publications
+Author: Amit Kapila <akapila@postgresql.org>
+2022-04-18 [676eeb6dd] Add additional documentation for row filters.
+-->
+
+      <listitem>
+       <para>
+        Allow publication content to be filtered using a
+        <literal>WHERE</literal> clause (Hou Zhijie, Euler Taveira,
+        Peter Smith, Ajin Cherian, Tomas Vondra, Amit Kapila)
+       </para>
+
+       <para>
+        Rows not satisfying the <literal>WHERE</literal> clause are not
+        published.
+       </para>
+      </listitem>
+
+<!--
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2022-03-26 [923def9a5] Allow specifying column lists for logical replication
+-->
+
+      <listitem>
+       <para>
+        Allow publication content to
+        be restricted to specific columns (Tomas Vondra, Álvaro Herrera,
+        Rahila Syed)
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2022-03-22 [208c5d65b] Add ALTER SUBSCRIPTION ... SKIP.
+-->
+
+      <listitem>
+       <para>
+        Allow skipping of transactions on a subscriber using <link
+        linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION
+        ... SKIP</command></link> (Masahiko Sawada)
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2021-06-30 [cda03cfed] Allow enabling two-phase option via replication protocol
+Author: Amit Kapila <akapila@postgresql.org>
+2021-07-14 [a8fd13cab] Add support for prepared transactions to built-in logica
+Author: Amit Kapila <akapila@postgresql.org>
+2021-08-04 [63cf61cde] Add prepare API support for streaming transactions in lo
+-->
+
+      <listitem>
+       <para>
+        Add support for prepared (two-phase) transactions to logical
+        replication (Peter Smith, Ajin Cherian, Amit Kapila, Nikhil
+        Sontakke, Stas Kelvich)
+       </para>
+
+       <para>
+        The new <link
+        linkend="protocol-replication"><literal>CREATE_REPLICATION_SLOT</literal></link>
+        option is called <literal>TWO_PHASE</literal>.
+        <application>pg_recvlogical</application> now supports a new
+        <option>--two-phase</option> option during slot creation.
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2022-03-30 [d5a9d86d8] Skip empty transactions for logical replication.
+-->
+
+      <listitem>
+       <para>
+        Prevent logical replication of empty transactions (Ajin Cherian,
+        Hou Zhijie, Euler Taveira)
+       </para>
+
+       <para>
+        Previously, publishers would send empty transactions to
+        subscribers if subscribed tables were not modified.
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-23 [1922d7c6e] Add SQL functions to monitor the directory contents of r
+-->
+
+      <listitem>
+       <para>
+        Add <acronym>SQL</acronym> functions to monitor the directory
+        contents of logical replication slots (Bharath Rupireddy)
+       </para>
+
+       <para>
+        The new functions are <link
+        linkend="functions-admin-genfile-table"><function>pg_ls_logicalsnapdir()</function></link>,
+        <function>pg_ls_logicalmapdir()</function>, and
+        <function>pg_ls_replslotdir()</function>.  They can be run by
+        members of the predefined <literal>pg_monitor</literal> role.
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2022-03-14 [705e20f85] Optionally disable subscriptions on error.
+-->
+
+      <listitem>
+       <para>
+        Allow subscribers to stop the application of logical replication changes on error
+        (Osumi Takamichi, Mark Dilger)
+       </para>
+
+       <para>
+        This is enabled with the subscriber option <link
+        linkend="sql-createsubscription"><literal>disable_on_error</literal></link>
+        and avoids possible infinite error loops during stream application.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-02 [f3d4019da] Ensure consistent logical replication of datetime and fl
+-->
+
+      <listitem>
+       <para>
+        Adjust subscriber server variables to match the publisher so
+        datetime and float8 values are interpreted consistently (Japin Li)
+       </para>
+
+       <para>
+        Some publishers might be relying on inconsistent behavior.
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2021-11-30 [8d74fc96d] Add a view to show the stats of subscription workers.
+Author: Amit Kapila <akapila@postgresql.org>
+2022-03-01 [7a8507329] Reconsider pg_stat_subscription_workers view.
+-->
+
+      <listitem>
+       <para>
+        Add system view <link
+        linkend="monitoring-pg-stat-subscription-stats"><structname>pg_stat_subscription_stats</structname></link>
+        to report on subscriber activity (Masahiko Sawada)
+       </para>
+
+       <para>
+        The new function <link
+        linkend="monitoring-stats-functions"><function>pg_stat_reset_subscription_stats()</function></link>
+        allows resetting these statistics counters.
+       </para>
+      </listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2021-12-08 [a61bff2bf] De-duplicate the result of pg_publication_tables view.
+-->
+
+      <listitem>
+       <para>
+        Suppress duplicate entries in the <link
+        linkend="view-pg-publication-tables"><structname>pg_publication_tables</structname></link>
+        system view (Hou Zhijie)
+       </para>
+
+       <para>
+        In some cases a partition could appear more than once.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+   </sect3>
+
+   <sect3>
+    <title>Utility Commands</title>
+
+    <itemizedlist>
+
+<!--
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-03-28 [7103ebb7a] Add support for MERGE SQL command
+-->
+
+     <listitem>
+      <para>
+       Add <acronym>SQL</acronym> <link
+       linkend="sql-merge"><command>MERGE</command></link>
+       command to adjust one table to match another (Simon Riggs, Pavan
+       Deolasee, Álvaro Herrera, Amit Langote)
+      </para>
+
+      <para>
+       This is similar to <command>INSERT ... ON CONFLICT</command>
+       but more batch-oriented.
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-01-28 [43f33dc01] Add HEADER support to COPY text format
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-03-30 [072132f04] Add header matching mode to COPY FROM
+-->
+
+     <listitem>
+      <para>
+       Add support for <literal>HEADER</literal> option in <link
+       linkend="sql-copy"><command>COPY</command></link> text format
+       (Rémi Lapeyre)
+      </para>
+
+      <para>
+       The new option causes the column names to be output, and optionally
+       verified on input.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-29 [9c08aea6a] Add new block-by-block strategy for CREATE DATABASE.
+-->
+
+     <listitem>
+      <para>
+       Add new <acronym>WAL</acronym>-logged method for <link
+       linkend="sql-createdatabase">database creation</link> (Dilip Kumar)
+      </para>
+
+      <para>
+       This is the new default method for copying the template database,
+       as it avoids the need for checkpoints during database creation.
+       However, it might be slow if the template database is large, so
+       the old method is still available.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-24 [aa0105141] pg_upgrade: Preserve database OIDs.
+-->
+
+     <listitem>
+      <para>
+       Allow <link linkend="sql-createdatabase"><command>CREATE
+       DATABASE</command></link> to set the database <acronym>OID</acronym>
+       (Shruthi Gowda, Antonin Houska)
+      </para>
+     </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2022-02-12 [4eb217631] Fix DROP {DATABASE,TABLESPACE} on Windows.
+-->
+
+     <listitem>
+      <para>
+       Prevent <link linkend="sql-dropdatabase"><command>DROP
+       DATABASE</command></link>, <link
+       linkend="sql-droptablespace"><command>DROP
+       TABLESPACE</command></link>, and <link
+       linkend="sql-alterdatabase"><command>ALTER DATABASE SET
+       TABLESPACE</command></link> from occasionally failing during
+       concurrent use on Windows (Thomas Munro)
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-12-08 [d6f96ed94] Allow specifying column list for foreign key ON DELETE S
+-->
+
+     <listitem>
+      <para>
+       Allow foreign key <link linkend="ddl-constraints-fk"><literal>ON
+       DELETE SET</literal></link> actions to affect only specified columns
+       (Paul Martinez)
+      </para>
+
+      <para>
+       Previously, all of the columns in the foreign key were always
+       affected.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-07-28 [b0483263d] Add support for SET ACCESS METHOD in ALTER TABLE
+-->
+
+     <listitem>
+      <para>
+       Allow <link linkend="sql-altertable"><command>ALTER
+       TABLE</command></link> to modify a table's <literal>ACCESS
+       METHOD</literal> (Justin Pryzby, Jeff Davis)
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-08-10 [7b565843a] Add call to object access hook at the end of table rewri
+-->
+
+     <listitem>
+      <para>
+       Properly call object access hooks when <link
+       linkend="sql-altertable"><command>ALTER TABLE</command></link>
+       causes table rewrites (Michael Paquier)
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-04-07 [344d62fb9] Unlogged sequences
+-->
+
+     <listitem>
+      <para>
+       Allow creation of unlogged <link
+       linkend="sql-createsequence">sequences</link> (Peter Eisentraut)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-07-22 [c2fa113dd] Close old gap in dependency checks for functions returni
+-->
+
+     <listitem>
+      <para>
+       Track dependencies on individual columns in the results of
+       functions returning composite types (Tom Lane)
+      </para>
+
+      <para>
+       Previously, if a view or rule contained a reference to a specific
+       column within the result of a composite-returning function, that
+       was not noted as a dependency; the view or rule was only considered
+       to depend on the composite type as a whole.  This meant that
+       dropping the individual column would be allowed, causing problems
+       in later use of the view or rule.  The column-level dependency is
+       now also noted, so that dropping such a column will be rejected
+       unless the view is changed or dropped.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Data Types</title>
+
+    <itemizedlist>
+
+<!--
+Author: Dean Rasheed <dean.a.rasheed@gmail.com>
+2021-07-26 [085f931f5] Allow numeric scale to be negative or greater than preci
+-->
+
+     <listitem>
+      <para>
+       Allow the scale of
+       a <link linkend="datatype-numeric"><type>numeric</type></link>
+       value to be negative, or greater than its precision (Dean Rasheed,
+       Tom Lane)
+      </para>
+
+      <para>
+       This allows rounding of values to the left of the decimal point,
+       e.g., <literal>'1234'::numeric(4, -2)</literal> returns 1200.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-02 [e39f99046] Fix overflow hazards in interval input and output conver
+-->
+
+     <listitem>
+      <para>
+       Improve overflow detection when casting values to <link
+       linkend="datatype-datetime">interval</link> (Joe Koshakow)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-08-02 [c034b629c] Change type "char"'s I/O format for non-ASCII characters
+-->
+
+    <listitem>
+     <para>
+      Change the I/O format of type <type>"char"</type> for non-ASCII
+      characters (Tom Lane)
+     </para>
+    </listitem>
+
+<!--
+Author: John Naylor <john.naylor@postgresql.org>
+2021-08-26 [bab982161] Update display widths as part of updating Unicode
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-09-15 [f7e56f1f5] Update Unicode data to Unicode 14.0.0
+-->
+
+     <listitem>
+      <para>
+       Update the display width information of modern Unicode characters,
+       like emojis (Jacob Champion)
+      </para>
+
+      <para>
+       Also update from Unicode 5.0 to 14.0.0.  There is now an automated
+       way to keep Postgres updated with Unicode releases.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Functions</title>
+
+    <itemizedlist>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-03-30 [7ae1619bc] Add range_agg with multirange inputs
+-->
+
+     <listitem>
+      <para>
+       Add multirange input to <link
+       linkend="functions-aggregate-table"><function>range_agg()</function></link>
+       (Paul Jungwirth)
+      </para>
+     </listitem>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2022-02-10 [400fc6b64] Add min() and max() aggregates for xid8.
+-->
+
+     <listitem>
+      <para>
+       Add <link linkend="tutorial-agg"><function>MIN()</function></link>
+       and <function>MAX()</function> aggregates for the <link
+       linkend="datatype-int"><type>xid8</type></link> data type (Ken Kato)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-08-03 [642433707] Add assorted new regexp_xxx SQL functions.
+-->
+
+     <listitem>
+      <para>
+       Add regular expression functions for compatibility with other
+       relational systems (Gilles Darold, Tom Lane)
+      </para>
+
+      <para>
+       The new functions are <link
+       linkend="functions-string-other"><function>regexp_count()</function></link>,
+       <function>regexp_instr()</function>,
+       <function>regexp_like()</function>, and
+       <function>regexp_substr()</function>.  Some new optional arguments
+       were also added to <function>regexp_replace()</function>.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-13 [c5c192d7b] Implement poly_distance().
+-->
+
+     <listitem>
+      <para>
+       Add the ability to compute the distance between <link
+       linkend="datatype-polygon"><type>polygons</type></link> (Tom Lane)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-14 [9dde82899] Support "of", "tzh", and "tzm" format codes.
+-->
+
+     <listitem>
+      <para>
+       Add <link
+       linkend="functions-formatting-table"><function>to_char()</function></link>
+       format codes <literal>of</literal>, <literal>tzh</literal>, and
+       <literal>tzm</literal> (Nitin Jadhav)
+      </para>
+
+      <para>
+       The upper-case equivalents of these were already supported.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-09-06 [388e71af8] Make timetz_zone() stable, and correct a bug for DYNTZ a
+-->
+
+     <listitem>
+      <para>
+       When applying <link
+       linkend="functions-datetime-zoneconvert"><literal>AT
+       TIME ZONE</literal></link> to a <type>time with time zone</type>
+       value, use the transaction start time rather than wall clock time
+       to determine whether DST applies (Aleksander Alekseev, Tom Lane)
+      </para>
+
+      <para>
+       This allows the conversion to be considered stable rather than
+       volatile, and it saves a kernel call per invocation.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-11-06 [cbe25dcff] Disallow making an empty lexeme via array_to_tsvector().
+-->
+
+     <listitem>
+      <para>
+       Ignore NULL array elements in <link
+       linkend="textsearch-functions-table"><function>ts_delete()</function></link> and
+       <function>setweight()</function> functions with array arguments
+       (Jean-Christophe Arnu)
+      </para>
+
+      <para>
+       These functions effectively ignore empty-string array elements
+       (since those could never match a valid lexeme).  It seems
+       consistent to let them ignore NULL elements too, instead of
+       failing.
+      </para>
+     </listitem>
+
+<!--
+Author: David Rowley <drowley@postgresql.org>
+2021-07-09 [ca2e4472b] Teach pg_size_pretty and pg_size_bytes about petabytes
+-->
+
+     <listitem>
+      <para>
+       Add support for petabyte units to <link
+       linkend="functions-admin-dbsize"><function>pg_size_pretty()</function></link>
+       and <function>pg_size_bytes()</function> (David Christensen)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-07-27 [024515cac] In event triggers, use "pg_temp" only for our own temp s
+-->
+
+     <listitem>
+      <para>
+       Change <link
+       linkend="pg-event-trigger-ddl-command-end-functions"><function>pg_event_trigger_ddl_commands()</function></link>
+       to output references to other sessions' temporary schemas using the
+       actual schema name (Tom Lane)
+      </para>
+
+      <para>
+       Previously this function reported all temporary schemas as
+       <literal>pg_temp</literal>, but it's misleading to use that for any
+       but the current session's temporary schema.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title><link linkend="plpgsql">PL/pgSQL</link></title>
+
+    <itemizedlist>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-30 [ccd10a9bf] Tighten enforcement of variable CONSTANT markings in plp
+-->
+
+     <listitem>
+      <para>
+       Fix enforcement of PL/pgSQL variable <literal>CONSTANT</literal>
+       markings (Tom Lane)
+      </para>
+
+      <para>
+       Previously, a variable could be used as a <link
+       linkend="plpgsql-statements-calling-procedure"><command>CALL</command></link>
+       output parameter or refcursor <command>OPEN</command> variable
+       despite being marked <literal>CONSTANT</literal>.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title><link linkend="libpq">libpq</link></title>
+
+    <itemizedlist>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-04-01 [c1932e542] libpq: Allow IP address SANs in server certificates
+-->
+
+     <listitem>
+      <para>
+       Allow <acronym>IP</acronym> address matching against a server
+       certificate's Subject Alternative Name (Jacob Champion)
+      </para>
+     </listitem>
+
+<!--
+Author: Daniel Gustafsson <dgustafsson@postgresql.org>
+2022-03-29 [ebc8b7d44] Enable SSL library detection via PQsslAttribute()
+-->
+
+     <listitem>
+      <para>
+       Allow <function>PQsslAttribute()</function> to report the
+       <acronym>SSL</acronym> library type without requiring a libpq
+       connection (Jacob Champion)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-18 [5987feb70] Make PQcancel use the PGconn's tcp_user_timeout and keep
+-->
+
+     <listitem>
+      <para>
+       Change query cancellations sent by the client to use the same
+       <acronym>TCP</acronym> settings as normal client connections
+       (Jelte Fennema)
+      </para>
+
+      <para>
+       This allows configured <acronym>TCP</acronym> timeouts to apply
+       to query cancel connections.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-18 [ce1e7a2f7] Don't let libpq "event" procs break the state of PGresul
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-18 [2e372869a] Don't let libpq PGEVT_CONNRESET callbacks break a PGconn
+-->
+
+     <listitem>
+      <para>
+       Prevent libpq event callback failures from forcing an error result
+       (Tom Lane)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Client Applications</title>
+
+    <itemizedlist>
+
+<!--
+Author: Tatsuo Ishii <ishii@postgresql.org>
+2022-03-23 [4a39f87ac] Allow pgbench to retry in some cases.
+-->
+
+     <listitem>
+      <para>
+       Allow <link
+       linkend="pgbench"><application>pgbench</application></link> to
+       retry after serialization and deadlock failures (Yugo Nagata,
+       Marina Polyakova)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+     <sect4>
+      <title><xref linkend="app-psql"/></title>
+
+      <itemizedlist>
+
+<!--
+Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
+2021-07-14 [eec57115e] In psql \copy from, send data to server in larger chunks
+-->
+
+      <listitem>
+       <para>
+        Improve performance
+        of <application>psql</application>'s <command>\copy</command>
+        command, by sending data in larger chunks (Heikki Linnakangas)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-07 [3e707fbb4] psql: add \dconfig command to show server's configuratio
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-11 [5e70d8b5d] Tweak the default behavior of psql's \dconfig.
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-13 [139d46ee2] Further tweak the default behavior of psql's \dconfig.
+-->
+
+      <listitem>
+       <para>
+        Add <command>\dconfig</command> command to report server variables
+        (Mark Dilger, Tom Lane)
+       </para>
+
+       <para>
+        This is similar to the server-side <command>SHOW</command>
+        command, but it can process patterns to show multiple variables
+        conveniently.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-20 [33d3eeadb] Add a \getenv command to psql.
+-->
+
+      <listitem>
+       <para>
+        Add <command>\getenv</command> command
+        to assign the value of an environment variable to a
+        <application>psql</application> variable (Tom Lane)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-06 [328dfbdab] Extend psql's \lo_list/\dl to be able to print large obj
+-->
+
+      <listitem>
+       <para>
+        Add <literal>+</literal> option to the
+        <literal>\lo_list</literal> and <literal>\dl</literal> commands to
+        show large-object privileges (Pavel Luzanov)
+       </para>
+      </listitem>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2021-07-13 [7c09d2797] Add PSQL_WATCH_PAGER for psql's \watch command.
+-->
+
+      <listitem>
+       <para>
+        Add a pager option for the <command>\watch</command>
+        command (Pavel Stehule, Thomas Munro)
+       </para>
+
+       <para>
+        This is only supported on Unix and is controlled by the
+        <envar>PSQL_WATCH_PAGER</envar> environment variable.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-01 [83884682f] psql: include intra-query "- -" comments in what's sent t
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-01 [c2f654930] psql: treat "- -" comments between queries as separate hi
+-->
+
+      <listitem>
+       <para>
+        Make <application>psql</application> include intra-query double-hyphen
+        comments in queries sent to the server (Tom Lane, Greg Nancarrow)
+       </para>
+
+       <para>
+        Previously such comments were removed from the query
+        before being sent.  Double-hyphen comments that are before any
+        query text are not sent, and are not recorded as separate
+        <application>psql</application> history entries.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-01 [3d858af07] psql: initialize comment-begin setting to a useful value
+-->
+
+      <listitem>
+       <para>
+        Adjust <application>psql</application> so
+        that <application>Readline</application>'s
+        meta-<literal>#</literal> command will insert a double-hyphen
+        comment marker (Tom Lane)
+       </para>
+
+       <para>
+        Previously a pound marker was inserted, unless the user had taken
+        the trouble to configure a non-default comment marker.
+       </para>
+      </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-04-04 [7844c9918] psql: Show all query results by default
+-->
+
+      <listitem>
+       <para>
+        Make <application>psql</application> output all results when multiple
+        queries are passed to the server at once (Fabien Coelho)
+       </para>
+
+       <para>
+        Previously, only the last query result was displayed.  The old
+        behavior can be restored by setting
+        the <literal>SHOW_ALL_RESULTS</literal> <application>psql</application>
+        variable to <literal>off</literal>.
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-06-15 [a3ff08e0b] Tweak behavior of psql - -single-transaction depending
+-->
+
+      <listitem>
+       <para>
+        After an error is detected
+        in <option>--single-transaction</option> mode, change the
+        final <command>COMMIT</command> command
+        to <command>ROLLBACK</command> only
+        if <varname>ON_ERROR_STOP</varname> is set (Michael Paquier)
+       </para>
+
+       <para>
+        Previously, detection of an error in a <option>-c</option> command
+        or <option>-f</option> script file would lead to
+        issuing <command>ROLLBACK</command> at the end, regardless of the
+        value of <varname>ON_ERROR_STOP</varname>.
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-08-10 [e2ce88b58] Add tab completion for DECLARE .. ASENSITIVE in psql
+Author: Michael Paquier <michael@paquier.xyz>
+2021-08-25 [346511313] Add tab completion for EXPLAIN .. EXECUTE in psql
+Author: Michael Paquier <michael@paquier.xyz>
+2021-08-30 [d3fa87657] Add more tab completion support for ALTER TABLE ADD in p
+Author: Michael Paquier <michael@paquier.xyz>
+2021-08-31 [f2bbadce6] Add tab completion for data types after ALTER TABLE ADD
+Author: Fujii Masao <fujii@postgresql.org>
+2021-09-01 [b0c066297] Improve tab-completion for CREATE PUBLICATION.
+Author: Fujii Masao <fujii@postgresql.org>
+2021-10-05 [0b0d277c3] psql: Improve tab-completion for LOCK TABLE.
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-05 [a5b336b8b] Improve psql tab completion for COMMENT
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-19 [0cd6d3b3c] Improve psql tab completion for transforms, domains and
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-29 [f44ceb46e] Improve psql tab completion for views, FDWs, sequences a
+Author: Michael Paquier <michael@paquier.xyz>
+2021-12-01 [9270778f4] Improve psql tab completion for various DROP commands
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-03 [dfe67c0e8] Tab completion: don't offer valid constraints in VALIDAT
+Author: Fujii Masao <fujii@postgresql.org>
+2022-01-15 [74527c3e0] Add tab-completion for CREATE FOREIGN TABLE.
+Author: Peter Eisentraut <peter@eisentraut.org>
+2022-01-27 [fefce9ef9] psql: Add tab completion for ALTER COLLATION / REFRESH V
+Author: Alvaro Herrera <alvherre@alvh.no-ip.org>
+2022-01-28 [95787e849] Tab-complete ALTER PUBLICATION ADD TABLE with list of ta
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-30 [02b8048ba] psql: improve tab-complete's handling of variant SQL nam
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-01 [020258fbd] Treat case of tab-completion keywords a bit more careful
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-02-09 [f0cd9097c] Further tweaks for psql's new tab-completion logic.
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-03-20 [7fa3db367] psql: handle tab completion of timezone names after "SET
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2022-03-25 [2d2232933] Update tab-completion for CREATE PUBLICATION with sequen
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-04-13 [b5607b074] Fix case sensitivity in psql's tab completion for GUC na
+-->
+
+      <listitem>
+       <para>
+        Improve <application>psql</application>'s tab completion (Shinya
+        Kato, Dagfinn Ilmari Mannsåker, Peter Smith, Koyu Tanigawa,
+        Ken Kato, David Fetter, Haiying Tang, Peter Eisentraut, Álvaro
+        Herrera, Tom Lane, Masahiko Sawada)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-16 [cf0cab868] Remove psql support for server versions preceding 9.2.
+-->
+
+      <listitem>
+       <para>
+        Limit support of <application>psql</application>'s backslash
+        commands to servers running <productname>PostgreSQL</productname>
+        9.2 or later (Tom Lane)
+       </para>
+
+       <para>
+        Remove code that was only used when running with an older server.
+        Commands that do not require any version-specific adjustments
+        compared to 9.2 will still work.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title><link linkend="app-pgdump"><application>pg_dump</application></link></title>
+
+     <itemizedlist>
+
+<!--
+Author: Noah Misch <noah@leadboat.com>
+2021-06-28 [a7a7be1f2] Dump public schema ownership and security labels.
+Author: Noah Misch <noah@leadboat.com>
+2021-06-28 [7ac10f692] Dump COMMENT ON SCHEMA public.
+-->
+
+      <listitem>
+       <para>
+        Make <application>pg_dump</application> dump
+        <literal>public</literal> schema ownership changes and security
+        labels (Noah Misch)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-06 [989596152] Avoid per-object queries in performance-critical paths i
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-06 [be85727a3] Use PREPARE/EXECUTE for repetitive per-object queries in
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-31 [d5e8930f5] pg_dump: minor performance improvements from eliminating
+-->
+
+      <listitem>
+       <para>
+        Improve performance of dumping databases with many objects
+        (Tom Lane)
+       </para>
+
+       <para>
+        This will also improve the performance of <link
+        linkend="pgupgrade"><application>pg_upgrade</application></link>.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-06 [65aaed22a] Account for TOAST data while scheduling parallel dumps.
+-->
+
+      <listitem>
+       <para>
+        Improve parallel <application>pg_dump</application>'s performance
+        for tables with large <acronym>TOAST</acronym> tables (Tom Lane)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-01-17 [215862886] Add support for - -no-table-access-method in pg_{dump,dum
+-->
+
+      <listitem>
+       <para>
+        Add dump/restore option <option>--no-table-access-method</option>
+        to force restore to only use the default table access method
+        (Justin Pryzby)
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-14 [30e7c175b] Remove pg_dump/pg_dumpall support for dumping from pre-9
+-->
+
+      <listitem>
+       <para>
+        Limit support of <application>pg_dump</application> and <link
+        linkend="app-pg-dumpall"><application>pg_dumpall</application></link>
+        to servers running <productname>PostgreSQL</productname> 9.2 or
+        later (Tom Lane)
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+   </sect3>
+
+   <sect3>
+    <title>Server Applications</title>
+
+    <itemizedlist>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-20 [3500ccc39] Support base backup targets.
+-->
+
+     <listitem>
+      <para>
+       Add new <link
+       linkend="app-pgbasebackup"><application>pg_basebackup</application></link>
+       option <option>--target</option> to control the base backup location
+       (Robert Haas)
+      </para>
+
+      <para>
+       The new options are <literal>server</literal> to write the
+       backup locally and <literal>blackhole</literal> to discard the
+       backup (for testing).
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-11 [751b8d23b] pg_basebackup: Allow client-side LZ4 (de)compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-08 [7cf085f07] Add support for zstd base backup compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-24 [0ad803291] Server-side gzip compression.
+-->
+
+     <listitem>
+      <para>
+       Allow <application>pg_basebackup</application> to do server-side
+       gzip, LZ4, and Zstandard compression and client-side LZ4 and
+       Zstandard compression of base backup files (Dipesh Pandit,
+       Jeevan Ladhe)
+      </para>
+
+      <para>
+       Client-side <literal>gzip</literal> compression was already
+       supported.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-28 [d45099425] Allow server-side compression to be used with -Fp.
+-->
+
+     <listitem>
+      <para>
+       Allow <application>pg_basebackup</application> to compress on
+       the server side and decompress on the client side before storage
+       (Dipesh Pandit)
+      </para>
+
+      <para>
+       This is accomplished by specifying compression on the server side
+       and plain output format.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-01-21 [5c649fe15] Extend the options of pg_basebackup to control compressi
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-24 [0ad803291] Server-side gzip compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-25 [e1f860f13] Tidy up a few cosmetic issues related to pg_basebackup.
+-->
+
+     <listitem>
+      <para>
+       Allow <application>pg_basebackup</application>'s
+       <option>--compress</option> option to control the compression
+       location (server or client), compression method, and compression
+       options (Michael Paquier, Robert Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-05 [babbbb595] Add support for LZ4 compression in pg_receivewal
+Author: Michael Paquier <michael@paquier.xyz>
+2022-04-13 [042a923ad] Rework compression options of pg_receivewal
+-->
+
+     <listitem>
+      <para>
+       Add the LZ4 compression method to <link
+       linkend="app-pgreceivewal"><application>pg_receivewal</application></link>
+       (Georgios Kokolatos)
+      </para>
+
+      <para>
+       This is enabled via <literal>--compress=lz4</literal> and requires
+       binaries to be built using <option>--with-lz4</option>.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-11-04 [d62bcc8b0] Rework compression options of pg_receivewal
+-->
+
+     <listitem>
+      <para>
+       Add additional capabilities to
+       <application>pg_receivewal</application>'s
+       <option>--compress</option> option (Georgios Kokolatos)
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-10-26 [f61e1dd2c] Allow pg_receivewal to stream from a slot's restart LSN
+-->
+
+     <listitem>
+      <para>
+       Improve <application>pg_receivewal</application>'s ability to
+       restart at the proper <acronym>WAL</acronym> location (Ronan
+       Dunklau)
+      </para>
+
+      <para>
+       Previously, <application>pg_receivewal</application> would start
+       based on the <acronym>WAL</acronym> file stored in the local archive
+       directory, or at the sending server's current <acronym>WAL</acronym>
+       flush location.  With this change, if the sending server is running
+       Postgres 15 or later, the local archive directory is empty, and
+       a replication slot is specified, the replication slot's restart
+       point will be used.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-04-07 [0d5c38757] Add option - -config-file to pg_rewind
+-->
+
+     <listitem>
+      <para>
+       Add <link
+       linkend="app-pgrewind"><application>pg_rewind</application></link>
+       option <option>--config-file</option> to simplify use when server
+       configuration files are stored outside the data directory (Gunnar
+       Bluth)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+    <sect4>
+     <title><link linkend="pgupgrade"><application>pg_upgrade</application></link></title>
+
+     <itemizedlist>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-02-06 [38bfae365] pg_upgrade: Move all the files generated internally to a
+Author: Michael Paquier <michael@paquier.xyz>
+2022-02-15 [a00849630] Fix thinko with subdirectories generated by pg_upgrade f
+Author: Michael Paquier <michael@paquier.xyz>
+2022-09-13 [f5047c129] Move any remaining files generated by pg_upgrade into an
+-->
+
+      <listitem>
+       <para>
+        Store <application>pg_upgrade</application>'s log and
+        temporary files in a subdirectory of the new cluster called
+        <filename>pg_upgrade_output.d</filename> (Justin Pryzby)
+       </para>
+
+       <para>
+        Previously such files were left in the current directory,
+        requiring manual cleanup.  Now they are automatically removed on
+        successful completion of <application>pg_upgrade</application>.
+       </para>
+      </listitem>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2022-02-21 [27b02e070] pg_upgrade: Don't print progress status when output is n
+-->
+
+      <listitem>
+       <para>
+        Disable default status reporting during
+        <application>pg_upgrade</application> operation if the output is
+        not a terminal (Andres Freund)
+       </para>
+
+       <para>
+        The status reporting output can be enabled for non-tty usage by
+        using <option>--verbose</option>.
+       </para>
+      </listitem>
+
+<!--
+Author: Daniel Gustafsson <dgustafsson@postgresql.org>
+2022-03-24 [26ebb0e28] List offending databases in pg_upgrade datallowconn chec
+-->
+
+      <listitem>
+       <para>
+        Make <application>pg_upgrade</application> report all databases
+        with invalid connection settings (Jeevan Ladhe)
+       </para>
+
+       <para>
+        Previously only the first database with an invalid connection
+        setting was reported.
+       </para>
+      </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-17 [9a974cbcb] pg_upgrade: Preserve relfilenodes and tablespace OIDs.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-24 [aa0105141] pg_upgrade: Preserve database OIDs.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-07-28 [4ab5dae94] Use TRUNCATE to preserve relfilenode for pg_largeobject
+-->
+
+      <listitem>
+       <para>
+        Make <application>pg_upgrade</application> preserve tablespace
+        and database OIDs, as well as relation relfilenode numbers
+        (Shruthi Gowda, Antonin Houska)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-12-18 [3d5ffccb6] Add option -N/- -no-sync to pg_upgrade
+-->
+
+      <listitem>
+       <para>
+        Add a <option>--no-sync</option> option to
+        <application>pg_upgrade</application> (Michael Paquier)
+       </para>
+
+       <para>
+        This is recommended only for testing.
+       </para>
+      </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-14 [e469f0aaf] Remove pg_upgrade support for upgrading from pre-9.2 ser
+-->
+
+      <listitem>
+       <para>
+        Limit support of <application>pg_upgrade</application> to old
+        servers running <productname>PostgreSQL</productname> 9.2 or later
+        (Tom Lane)
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+    <sect4>
+     <title><link linkend="pgwaldump"><application>pg_waldump</application></link></title>
+
+     <itemizedlist>
+
+<!--
+Author: Thomas Munro <tmunro@postgresql.org>
+2022-03-24 [127aea2a6] Add additional filtering options to pg_waldump.
+Author: Thomas Munro <tmunro@postgresql.org>
+2022-03-25 [52b556843] Improve command line options for pg_waldump.
+-->
+
+      <listitem>
+       <para>
+        Allow <application>pg_waldump</application> output to be filtered by
+        relation file node, block number, fork number, and full page images
+        (David Christensen, Thomas Munro)
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-12-02 [f2c52eeba] pg_waldump: Emit stats summary when interrupted by SIGIN
+-->
+
+      <listitem>
+       <para>
+        Make <application>pg_waldump</application> report statistics
+        before an interrupted exit (Bharath Rupireddy)
+       </para>
+
+       <para>
+        For example, issuing a control-C in a terminal running
+        <command>pg_waldump --stats --follow</command> will report the
+        current statistics before exiting.  This does not work on Windows.
+       </para>
+      </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-12-13 [c8b733c4c] Improve description of some WAL records with transaction
+-->
+
+      <listitem>
+       <para>
+        Improve descriptions of some transaction <acronym>WAL</acronym>
+        records reported by <application>pg_waldump</application>
+        (Masahiko Sawada, Michael Paquier)
+       </para>
+      </listitem>
+
+<!--
+Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
+2021-07-01 [c8bf5098c] Allow specifying pg_waldump - -rmgr option multiple times
+-->
+
+      <listitem>
+       <para>
+        Allow <application>pg_waldump</application> to dump information
+        about multiple resource managers (Heikki Linnakangas)
+       </para>
+
+       <para>
+        This is enabled by specifying the <option>--rmgr</option> option
+        multiple times.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+   </sect3>
+
+   <sect3>
+    <title>Documentation</title>
+
+    <itemizedlist>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2021-10-05 [f6b5d05ba] doc: Document pg_encoding_to_char() and pg_char_to_encod
+-->
+
+     <listitem>
+      <para>
+       Add documentation for <link
+       linkend="functions-info-catalog-table"><function>pg_encoding_to_char()</function></link>
+       and <function>pg_char_to_encoding()</function> (Ian Lawrence
+       Barwick)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-10-09 [2ae5d72f0] Doc: improve documentation for ^@ starts-with operator.
+-->
+
+     <listitem>
+      <para>
+       Document the <link
+       linkend="functions-string-other"><literal>^@</literal></link>
+       starts-with operator (Tom Lane)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Source Code</title>
+
+    <itemizedlist>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2021-12-30 [93d973494] ci: Add continuous integration for github repositories v
+-->
+
+     <listitem>
+      <para>
+       Add support for continuous integration testing using cirrus-ci
+       (Andres Freund, Thomas Munro, Melanie Plageman)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-18 [6c417bbcc] Add support for building with ZSTD.
+-->
+
+     <listitem>
+      <para>
+       Add configure option <link
+       linkend="configure-options-features"><option>--with-zstd</option></link>
+       to enable Zstandard builds (Jeevan Ladhe, Robert Haas, Michael
+       Paquier)
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-11-22 [d6d1dfcc9] Add ABI extra field to fmgr magic block
+-->
+
+     <listitem>
+      <para>
+       Add an ABI identifier field to the magic block in loadable
+       libraries, allowing
+       non-community <productname>PostgreSQL</productname> distributions
+       to identify libraries that are not compatible with other builds
+       (Peter Eisentraut)
+      </para>
+
+      <para>
+       An ABI field mismatch will generate an error at load time.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-12-11 [07eee5a0d] Create a new type category for "internal use" types.
+-->
+
+     <listitem>
+      <para>
+       Create a new <link
+       linkend="catalog-pg-type"><structfield>pg_type.typcategory</structfield></link>
+       value for <type>"char"</type> (Tom Lane)
+      </para>
+
+      <para>
+       Some other internal-use-only types have also been assigned to this
+       category.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-18 [cc333f323] Modify pg_basebackup to use a new COPY subprotocol for b
+-->
+
+     <listitem>
+      <para>
+       Add new protocol message <link
+       linkend="protocol-replication-base-backup"><literal>TARGET</literal></link>
+       to specify a new <command>COPY</command> method to be used for base
+       backups (Robert Haas)
+      </para>
+
+      <para>
+       <link
+       linkend="app-pgbasebackup"><application>pg_basebackup</application></link>
+       now uses this method.
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-01-24 [0ad803291] Server-side gzip compression.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-23 [ffd53659c] Replace BASE_BACKUP COMPRESSION_LEVEL option with COMPRE
+-->
+
+     <listitem>
+      <para>
+       Add new protocol message <link
+       linkend="protocol-replication-base-backup"><literal>COMPRESSION</literal></link>
+       and <literal>COMPRESSION_DETAIL</literal> to specify the compression
+       method and options (Robert Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-10 [9cd28c2e5] Remove server support for old BASE_BACKUP command syntax
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-10 [0d4513b61] Remove server support for the previous base backup proto
+-->
+
+     <listitem>
+      <para>
+       Remove server support for old <literal>BASE_BACKUP</literal>
+       command syntax and base backup protocol (Robert Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-15 [e4ba69f3f] Allow extensions to add new backup targets.
+-->
+
+     <listitem>
+      <para>
+       Add support for extensions to set custom backup targets (Robert
+       Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2022-04-06 [5c279a6d3] Custom WAL Resource Managers.
+-->
+
+     <listitem>
+      <para>
+       Allow extensions to define custom <acronym>WAL</acronym>
+       resource managers (Jeff Davis)
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-01-31 [d10e41d42] Introduce pg_settings_get_flags() to find flags associat
+-->
+
+     <listitem>
+      <para>
+       Add function <link
+       linkend="functions-info-catalog-table"><function>pg_settings_get_flags()</function></link>
+       to get the flags of server variables (Justin Pryzby)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-04-08 [8ec569479] Apply PGDLLIMPORT markings broadly.
+-->
+
+     <listitem>
+      <para>
+       On Windows, export all the server's global variables using
+       <literal>PGDLLIMPORT</literal> markers (Robert Haas)
+      </para>
+
+      <para>
+       Previously, only specific variables were accessible to extensions
+       on Windows.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-07-23 [3b474a2e6] Increase minimum supported GNU make version to 3.81.
+-->
+
+     <listitem>
+      <para>
+       Require GNU <application>make</application> version 3.81 or later
+       to build <productname>PostgreSQL</productname> (Tom Lane)
+      </para>
+     </listitem>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-11-05 [db7d1a7b0] pgcrypto: Remove non-OpenSSL support
+-->
+
+     <listitem>
+      <para>
+       Require OpenSSL to build the <link
+       linkend="pgcrypto"><application>pgcrypto</application></link>
+       extension (Peter Eisentraut)
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-10-07 [92e6a98c3] Adjust configure to insist on Perl version &gt;= 5.8.3.
+-->
+
+     <listitem>
+      <para>
+       Require <application>Perl</application>
+       version 5.8.3 or later (Dagfinn Ilmari Mannsåker)
+      </para>
+     </listitem>
+
+<!--
+Author: Andres Freund <andres@anarazel.de>
+2022-02-16 [19252e8ec] plpython: Reject Python 2 during build configuration.
+-->
+
+     <listitem>
+      <para>
+       Require <application>Python</application>
+       version 3.2 or later (Andres Freund)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Additional Modules</title>
+
+    <itemizedlist>
+
+<!--
+Author: Peter Eisentraut <peter@eisentraut.org>
+2021-09-28 [c3b011d99] Support amcheck of sequences
+-->
+
+     <listitem>
+      <para>
+       Allow <link
+       linkend="amcheck"><application>amcheck</application></link> to
+       check sequences (Mark Dilger)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2021-11-05 [bd807be69] amcheck: Add additional TOAST pointer checks.
+-->
+
+     <listitem>
+      <para>
+       Improve <application>amcheck</application> sanity checks for
+       <acronym>TOAST</acronym> tables (Mark Dilger)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-15 [c6306db24] Add 'basebackup_to_shell' contrib module.
+Author: Robert Haas <rhaas@postgresql.org>
+2022-03-30 [26a0c025e] Document basebackup_to_shell.required_role.
+-->
+
+     <listitem>
+      <para>
+       Add new module <application><link
+       linkend="basebackup-to-shell">basebackup_to_shell</link></application>
+       as an example of a custom backup target (Robert Haas)
+      </para>
+     </listitem>
+
+<!--
+Author: Robert Haas <rhaas@postgresql.org>
+2022-02-03 [5ef1eefd7] Allow archiving via loadable modules.
+-->
+
+     <listitem>
+      <para>
+       Add new module <link
+       linkend="basic-archive"><application>basic_archive</application></link>
+       as an example of performing archiving via a library (Nathan Bossart)
+      </para>
+     </listitem>
+
+<!--
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2021-11-06 [57e3c5160] Add bool GiST opclass to btree_gist
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2021-11-08 [e2fbb8837] Fix gist_bool_ops to use gbtreekey2
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2021-12-11 [4c6145b51] Add bool to btree_gist documentation
+-->
+
+     <listitem>
+      <para>
+       Allow <link
+       linkend="btree-gist"><application>btree_gist</application></link>
+       indexes on boolean columns (Emre Hasegeli)
+      </para>
+
+      <para>
+       These can be used for exclusion constraints.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2021-07-12 [127404fbe] pageinspect: Improve page_header() for pages of 32kB
+-->
+
+     <listitem>
+      <para>
+       Fix <link
+       linkend="pageinspect"><application>pageinspect</application></link>'s
+       <function>page_header()</function> to handle 32-kilobyte page sizes
+       (Quan Zongliang)
+      </para>
+
+      <para>
+       Previously, improper negative values could be returned in certain
+       cases.
+      </para>
+     </listitem>
+
+<!--
+Author: Michael Paquier <michael@paquier.xyz>
+2022-04-08 [76cbf7edb] pg_stat_statements: Track I/O timing for temporary file
+-->
+
+     <listitem>
+      <para>
+       Add counters for temporary file block I/O to <link
+       linkend="pgstatstatements"><application>pg_stat_statements</application></link>
+       (Masahiko Sawada)
+      </para>
+     </listitem>
+
+<!--
+Author: Magnus Hagander <magnus@hagander.net>
+2022-04-08 [57d6aea00] Add JIT counters to pg_stat_statements
+-->
+
+     <listitem>
+      <para>
+       Add <acronym>JIT</acronym> counters to pg_stat_statements (Magnus
+       Hagander)
+      </para>
+     </listitem>
+
+<!--
+Author: Jeff Davis <jdavis@postgresql.org>
+2022-04-08 [2258e76f9] Add contrib/pg_walinspect.
+-->
+
+     <listitem>
+      <para>
+       Add new module <link
+       linkend="pgwalinspect"><application>pg_walinspect</application></link>
+       (Bharath Rupireddy)
+      </para>
+
+      <para>
+       This gives <acronym>SQL</acronym>-level output similar to <link
+       linkend="pgwaldump"><application>pg_waldump</application></link>.
+      </para>
+     </listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2022-01-12 [134d97463] Include permissive/enforcing state in sepgsql log messag
+-->
+
+     <listitem>
+      <para>
+       Indicate the permissive/enforcing state in <link
+       linkend="sepgsql"><application>sepgsql</application></link> log
+       messages (Dave Page)
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+    <sect4>
+     <title><link linkend="postgres-fdw"><application>postgres_fdw</application></link></title>
+
+     <itemizedlist>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2021-07-30 [5d44fff01] In postgres_fdw, allow CASE expressions to be pushed to
+-->
+
+      <listitem>
+       <para>
+        Allow postgres_fdw to push down <literal>CASE</literal> expressions
+        (Alexander Pyhalov)
+       </para>
+      </listitem>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2021-09-07 [449ab6350] postgres_fdw: Allow application_name of remote connectio
+Author: Fujii Masao <fujii@postgresql.org>
+2021-12-24 [6e0cb3dec] postgres_fdw: Allow postgres_fdw.application_name to inc
+Author: Fujii Masao <fujii@postgresql.org>
+2022-02-18 [94c49d534] postgres_fdw: Make postgres_fdw.application_name support
+-->
+
+      <listitem>
+       <para>
+        Add server variable
+        <varname>postgres_fdw.application_name</varname> to control the
+        application name of postgres_fdw connections (Hayato Kuroda)
+       </para>
+
+       <para>
+        Previously the remote session's <link
+        linkend="guc-application-name"><varname>application_name</varname></link>
+        could only be set on the remote server or via a
+        <application>postgres_fdw</application> connection specification.
+        <varname>postgres_fdw.application_name</varname> supports some
+        escape sequences for customization, making it easier to tell such
+        connections apart on the remote server.
+       </para>
+      </listitem>
+
+<!--
+Author: Etsuro Fujita <efujita@postgresql.org>
+2022-02-24 [04e706d42] postgres_fdw: Add support for parallel commit.
+-->
+
+      <listitem>
+       <para>
+        Allow parallel commit on <application>postgres_fdw</application>
+        servers (Etsuro Fujita)
+       </para>
+
+       <para>
+        This is enabled with the <literal>CREATE SERVER</literal> option
+        <literal>parallel_commit</literal>.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+    </sect4>
+
+   </sect3>
+
+  </sect2>
+
+  <sect2 id="release-15-acknowledgements">
+   <title>Acknowledgments</title>
+
+   <para>
+    The following individuals (in alphabetical order) have contributed
+    to this release as patch authors, committers, reviewers, testers,
+    or reporters of issues.
+   </para>
+
+   <simplelist>
+    <member>Abhijit Menon-Sen</member>
+    <member>Adam Brusselback</member>
+    <member>Adam Mackler</member>
+    <member>Adrian Ho</member>
+    <member>Ahsan Hadi</member>
+    <member>Ajin Cherian</member>
+    <member>Alastair McKinley</member>
+    <member>Aleksander Alekseev</member>
+    <member>Ales Zeleny</member>
+    <member>Alex Kingsborough</member>
+    <member>Alex Kozhemyakin</member>
+    <member>Alexander Korotkov</member>
+    <member>Alexander Kukushkin</member>
+    <member>Alexander Lakhin</member>
+    <member>Alexander Nawratil</member>
+    <member>Alexander Pyhalov</member>
+    <member>Alexey Borzov</member>
+    <member>Alexey Ermakov</member>
+    <member>Aliaksandr Kalenik</member>
+    <member>Álvaro Herrera</member>
+    <member>Amit Kapila</member>
+    <member>Amit Khandekar</member>
+    <member>Amit Langote</member>
+    <member>Amul Sul</member>
+    <member>Anastasia Lubennikova</member>
+    <member>Anders Kaseorg</member>
+    <member>Andreas Dijkman</member>
+    <member>Andreas Grob</member>
+    <member>Andreas Seltenreich</member>
+    <member>Andrei Zubkov</member>
+    <member>Andres Freund</member>
+    <member>Andrew Alsup</member>
+    <member>Andrew Bille</member>
+    <member>Andrew Dunstan</member>
+    <member>Andrew Gierth</member>
+    <member>Andrew Kesper</member>
+    <member>Andrey Borodin</member>
+    <member>Andrey Lepikhov</member>
+    <member>Andrey Sokolov</member>
+    <member>Andy Fan</member>
+    <member>Anton Melnikov</member>
+    <member>Anton Voloshin</member>
+    <member>Antonin Houska</member>
+    <member>Arjan van de Ven</member>
+    <member>Arne Roland</member>
+    <member>Arthur Zakirov</member>
+    <member>Ashutosh Bapat</member>
+    <member>Ashutosh Sharma</member>
+    <member>Ashwin Agrawal</member>
+    <member>Asif Rehman</member>
+    <member>Asim Praveen</member>
+    <member>Atsushi Torikoshi</member>
+    <member>Aya Iwata</member>
+    <member>Bauyrzhan Sakhariyev</member>
+    <member>Benoit Lobréau</member>
+    <member>Bernd Dorn</member>
+    <member>Bertrand Drouvot</member>
+    <member>Bharath Rupireddy</member>
+    <member>Björn Harrtell</member>
+    <member>Boris Kolpackov</member>
+    <member>Boris Korzun</member>
+    <member>Brad Nicholson</member>
+    <member>Brar Piening</member>
+    <member>Bruce Momjian</member>
+    <member>Bruno da Silva</member>
+    <member>Bryn Llewellyn</member>
+    <member>Carl Sopchak</member>
+    <member>Cary Huang</member>
+    <member>Chapman Flack</member>
+    <member>Chen Jiaoqian</member>
+    <member>Chris Bandy</member>
+    <member>Chris Lowder</member>
+    <member>Christian Quest</member>
+    <member>Christoph Berg</member>
+    <member>Christoph Heiss</member>
+    <member>Christophe Pettus</member>
+    <member>Christopher Painter-Wakefield</member>
+    <member>Claudio Freire</member>
+    <member>Clemens Zeidler</member>
+    <member>Corey Huinker</member>
+    <member>Dag Lem</member>
+    <member>Dagfinn Ilmari Mannsåker</member>
+    <member>Dan Kubb</member>
+    <member>Daniel Cherniy</member>
+    <member>Daniel Gustafsson</member>
+    <member>Daniel Polski</member>
+    <member>Daniel Vérité</member>
+    <member>Daniel Westermann</member>
+    <member>Daniele Varrazzo</member>
+    <member>Daniil Anisimov</member>
+    <member>Danny Shemesh</member>
+    <member>Darafei Praliaskouski</member>
+    <member>Daria Lepikhova</member>
+    <member>Dave Cramer</member>
+    <member>Dave Page</member>
+    <member>David Christensen</member>
+    <member>David Fetter</member>
+    <member>David G. Johnston</member>
+    <member>David Rowley</member>
+    <member>David Steele</member>
+    <member>David Zhang</member>
+    <member>Dean Rasheed</member>
+    <member>Dian Fay</member>
+    <member>Dilip Kumar</member>
+    <member>Dipesh Pandit</member>
+    <member>Dmitry Dolgov</member>
+    <member>Dmitry Koval</member>
+    <member>Dmitry Marakasov</member>
+    <member>Dominique Devienne</member>
+    <member>Dong Wook</member>
+    <member>Drew DeVault</member>
+    <member>Eduard Català</member>
+    <member>Egor Chindyaskin</member>
+    <member>Egor Rogov</member>
+    <member>Ekaterina Kiryanova</member>
+    <member>Elena Indrupskaya</member>
+    <member>Elvis Pranskevichus</member>
+    <member>Emmanuel Quincerot</member>
+    <member>Emre Hasegeli</member>
+    <member>Eric Mutta</member>
+    <member>Erica Zhang</member>
+    <member>Erik Rijkers</member>
+    <member>Erki Eessaar</member>
+    <member>Etsuro Fujita</member>
+    <member>Euler Taveira</member>
+    <member>Fabien Coelho</member>
+    <member>Fabrice Chapuis</member>
+    <member>Fabrice Fontaine</member>
+    <member>Fabrízio de Royes Mello</member>
+    <member>Feike Steenbergen</member>
+    <member>Filip Gospodinov</member>
+    <member>Florin Irion</member>
+    <member>Floris Van Nee</member>
+    <member>Frédéric Yhuel</member>
+    <member>Gabriela Serventi</member>
+    <member>Gaurab Dey</member>
+    <member>Geoff Winkless</member>
+    <member>Geoffrey Blake</member>
+    <member>Georgios Kokolatos</member>
+    <member>Gilles Darold</member>
+    <member>Greg Nancarrow</member>
+    <member>Greg Rychlewski</member>
+    <member>Greg Sabino Mullane</member>
+    <member>Greg Stark</member>
+    <member>Gregory Smith</member>
+    <member>Guillaume Lelarge</member>
+    <member>Gunnar Bluth</member>
+    <member>Gurjeet Singh</member>
+    <member>Haiyang Wang</member>
+    <member>Haiying Tang</member>
+    <member>Hannu Krosing</member>
+    <member>Hans Buschmann</member>
+    <member>Hayato Kuroda</member>
+    <member>Heath Lord</member>
+    <member>Heikki Linnakangas</member>
+    <member>Herwig Goemans</member>
+    <member>Himanshu Upadhyaya</member>
+    <member>Holly Roberts</member>
+    <member>Hou Zhijie</member>
+    <member>Hubert Lubaczewski</member>
+    <member>Ian Barwick</member>
+    <member>Ian Campbell</member>
+    <member>Ibrar Ahmed</member>
+    <member>Ildus Kurbangaliev</member>
+    <member>Ilya Anfimov</member>
+    <member>Itamar Gafni</member>
+    <member>Jacob Champion</member>
+    <member>Jaime Casanova</member>
+    <member>Jakub Wartak</member>
+    <member>James Coleman</member>
+    <member>James Hilliard</member>
+    <member>James Inform</member>
+    <member>Jan Piotrowski</member>
+    <member>Japin Li</member>
+    <member>Jason Harvey</member>
+    <member>Jason Kim</member>
+    <member>Jean-Christophe Arnu</member>
+    <member>Jeevan Ladhe</member>
+    <member>Jeff Davis</member>
+    <member>Jeff Janes</member>
+    <member>Jehan-Guillaume de Rorthais</member>
+    <member>Jelte Fennema</member>
+    <member>Jeremy Evans</member>
+    <member>Jeremy Schneider</member>
+    <member>Jian Guo</member>
+    <member>Jian He</member>
+    <member>Jimmy Yih</member>
+    <member>Jiri Fejfar</member>
+    <member>Jitka Plesníková</member>
+    <member>Joe Conway</member>
+    <member>Joe Wildish</member>
+    <member>Joel Jacobson</member>
+    <member>Joey Bodoia</member>
+    <member>John Naylor</member>
+    <member>Jonathan Katz</member>
+    <member>Josef Simanek</member>
+    <member>Joseph Koshakow</member>
+    <member>Josh Soref</member>
+    <member>Joshua Brindle</member>
+    <member>Juan José Santamaría Flecha</member>
+    <member>Julien Rouhaud</member>
+    <member>Julien Roze</member>
+    <member>Junwang Zhao</member>
+    <member>Jürgen Purtz</member>
+    <member>Justin Pryzby</member>
+    <member>Ken Kato</member>
+    <member>Kevin Burke</member>
+    <member>Kevin Grittner</member>
+    <member>Kevin Humphreys</member>
+    <member>Kevin McKibbin</member>
+    <member>Kevin Sweet</member>
+    <member>Kevin Zheng</member>
+    <member>Klaudie Willis</member>
+    <member>Konstantin Knizhnik</member>
+    <member>Konstantina Skovola</member>
+    <member>Kosei Masumura</member>
+    <member>Kotaro Kawamoto</member>
+    <member>Koyu Tanigawa</member>
+    <member>Kuntal Ghosh</member>
+    <member>Kyotaro Horiguchi</member>
+    <member>Lars Kanis</member>
+    <member>Lauren Fliksteen</member>
+    <member>Laurent Hasson</member>
+    <member>Laurenz Albe</member>
+    <member>Leslie Lemaire</member>
+    <member>Liam Bowen</member>
+    <member>Lingjie Qiang</member>
+    <member>Liu Huailing</member>
+    <member>Louis Jachiet</member>
+    <member>Lukas Fittl</member>
+    <member>Ma Liangzhu</member>
+    <member>Maciek Sakrejda</member>
+    <member>Magnus Hagander</member>
+    <member>Mahendra Singh Thalor</member>
+    <member>Maksim Milyutin</member>
+    <member>Marc Bachmann</member>
+    <member>Marcin Krupowicz</member>
+    <member>Marcus Gartner</member>
+    <member>Marek Szuba</member>
+    <member>Marina Polyakova</member>
+    <member>Mario Emmenlauer</member>
+    <member>Mark Dilger</member>
+    <member>Mark Murawski</member>
+    <member>Mark Wong</member>
+    <member>Markus Wanner</member>
+    <member>Markus Winand</member>
+    <member>Martijn van Oosterhout</member>
+    <member>Martin Jurca</member>
+    <member>Martin Kalcher</member>
+    <member>Martín Marqués</member>
+    <member>Masahiko Sawada</member>
+    <member>Masahiro Ikeda</member>
+    <member>Masao Fujii</member>
+    <member>Masaya Kawamoto</member>
+    <member>Masayuki Hirose</member>
+    <member>Matthias van de Meent</member>
+    <member>Matthijs van der Vleuten</member>
+    <member>Maxim Orlov</member>
+    <member>Maxim Yablokov</member>
+    <member>Melanie Plageman</member>
+    <member>Michael Banck</member>
+    <member>Michael Harris</member>
+    <member>Michael J. Sullivan</member>
+    <member>Michael Meskes</member>
+    <member>Michael Mühlbeyer</member>
+    <member>Michael Paquier</member>
+    <member>Michael Powers</member>
+    <member>Mike Fiedler</member>
+    <member>Mike Oh</member>
+    <member>Mikhail Kulagin</member>
+    <member>Miles Delahunty</member>
+    <member>Naoki Okano</member>
+    <member>Nathan Bossart</member>
+    <member>Nathan Long</member>
+    <member>Nazir Bilal Yavuz</member>
+    <member>Neha Sharma</member>
+    <member>Neil Chen</member>
+    <member>Nicola Contu</member>
+    <member>Nicolas Lutic</member>
+    <member>Nikhil Benesch</member>
+    <member>Nikhil Shetty</member>
+    <member>Nikhil Sontakke</member>
+    <member>Nikita Glukhov</member>
+    <member>Nikolai Berkoff</member>
+    <member>Nikolay Samokhvalov</member>
+    <member>Nikolay Shaplov</member>
+    <member>Nitin Jadhav</member>
+    <member>Noah Misch</member>
+    <member>Noboru Saito</member>
+    <member>Noriyoshi Shinoda</member>
+    <member>Olaf Bohlen</member>
+    <member>Olly Betts</member>
+    <member>Onder Kalaci</member>
+    <member>Oskar Stenberg</member>
+    <member>Otto Kekalainen</member>
+    <member>Paul Guo</member>
+    <member>Paul Jungwirth</member>
+    <member>Paul Martinez</member>
+    <member>Pavan Deolasee</member>
+    <member>Pavel Borisov</member>
+    <member>Pavel Luzanov</member>
+    <member>Pavel Stehule</member>
+    <member>Peter Eisentraut</member>
+    <member>Peter Geoghegan</member>
+    <member>Peter Slavov</member>
+    <member>Peter Smith</member>
+    <member>Petr Jelínek</member>
+    <member>Phil Florent</member>
+    <member>Phil Krylov</member>
+    <member>Pierre-Aurélien Georges</member>
+    <member>Prabhat Sahu</member>
+    <member>Quan Zongliang</member>
+    <member>Rachel Heaton</member>
+    <member>Rahila Syed</member>
+    <member>Rajakavitha Kodhandapani</member>
+    <member>Rajkumar Raghuwanshi</member>
+    <member>Ranier Vilela</member>
+    <member>Rei Kamigishi</member>
+    <member>Reid Thompson</member>
+    <member>Rémi Lapeyre</member>
+    <member>Renan Soares Lopes</member>
+    <member>Richard Guo</member>
+    <member>Richard Wesley</member>
+    <member>RKN Sai Krishna</member>
+    <member>Robert Haas</member>
+    <member>Robert Treat</member>
+    <member>Roberto Mello</member>
+    <member>Robins Tharakan</member>
+    <member>Roger Mason</member>
+    <member>Roman Zharkov</member>
+    <member>Ronan Dunklau</member>
+    <member>Rui Zhao</member>
+    <member>Ryan Kelly</member>
+    <member>Ryo Matsumura</member>
+    <member>Ryohei Takahashi</member>
+    <member>Sadhuprasad Patro</member>
+    <member>Sait Talha Nisanci</member>
+    <member>Sami Imseih</member>
+    <member>Sandeep Thakkar</member>
+    <member>Sebastian Kemper</member>
+    <member>Sehrope Sarkuni</member>
+    <member>Sergei Kornilov</member>
+    <member>Sergei Shoulbakov</member>
+    <member>Sergey Shinderuk</member>
+    <member>Shay Rojansky</member>
+    <member>Shenhao Wang</member>
+    <member>Shi Yu</member>
+    <member>Shinya Kato</member>
+    <member>Shruthi Gowda</member>
+    <member>Simon Perepelitsa</member>
+    <member>Simon Riggs</member>
+    <member>Sirisha Chamarthi</member>
+    <member>Soumyadeep Chakraborty</member>
+    <member>Stan Hu</member>
+    <member>Stas Kelvich</member>
+    <member>Stefen Hillman</member>
+    <member>Stephen Frost</member>
+    <member>Steve Chavez</member>
+    <member>Sumanta Mukherjee</member>
+    <member>Suraj Khamkar</member>
+    <member>Suraj Kharage</member>
+    <member>Sven Klemm</member>
+    <member>Takamichi Osumi</member>
+    <member>Takayuki Tsunakawa</member>
+    <member>Takeshi Ideriha</member>
+    <member>Tatsuhiro Nakamori</member>
+    <member>Tatsuhito Kasahara</member>
+    <member>Tatsuo Ishii</member>
+    <member>Tatsuro Yamada</member>
+    <member>Teja Mupparti</member>
+    <member>Teodor Sigaev</member>
+    <member>Thibaud Walkowiak</member>
+    <member>Thom Brown</member>
+    <member>Thomas McKay</member>
+    <member>Thomas Munro</member>
+    <member>Tim McNamara</member>
+    <member>Timo Stolz</member>
+    <member>Timur Khanjanov</member>
+    <member>Tom Lane</member>
+    <member>Tomas Barton</member>
+    <member>Tomas Vondra</member>
+    <member>Tony Reix</member>
+    <member>Troy Frericks</member>
+    <member>Tushar Ahuja</member>
+    <member>Victor Wagner</member>
+    <member>Victor Yegorov</member>
+    <member>Vignesh C</member>
+    <member>Vik Fearing</member>
+    <member>Vincas Dargis</member>
+    <member>Vitaly Burovoy</member>
+    <member>Vitaly Voronov</member>
+    <member>Vladimir Sitnikov</member>
+    <member>Wang Ke</member>
+    <member>Wei Sun</member>
+    <member>Wei Wang</member>
+    <member>Whale Song</member>
+    <member>Will Mortensen</member>
+    <member>Wolfgang Walther</member>
+    <member>Yanliang Lei</member>
+    <member>Yaoguang Chen</member>
+    <member>Yogendra Suralkar</member>
+    <member>YoungHwan Joo</member>
+    <member>Yugo Nagata</member>
+    <member>Yukun Wang</member>
+    <member>Yura Sokolov</member>
+    <member>Yusuke Egashira</member>
+    <member>Yuzuko Hosoya</member>
+    <member>Zhang Mingli</member>
+    <member>Zhang Wenjie</member>
+    <member>Zhihong Yu</member>
+    <member>Zhiyong Wu</member>
+   </simplelist>
+  </sect2>
+
+ </sect1>

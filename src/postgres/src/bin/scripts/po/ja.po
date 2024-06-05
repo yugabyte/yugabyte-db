@@ -1,0 +1,1262 @@
+# pgscripts.po
+#   Japanese message translation file for scripts
+#
+# Copyright (C) 2011-2022 PostgreSQL Global Development Group
+#
+# This file is distributed under the same license as the PostgreSQL package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: scripts (PostgreSQL 15)\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2022-06-14 20:17+0900\n"
+"PO-Revision-Date: 2022-05-11 14:48+0900\n"
+"Last-Translator: Kyotaro Horiguchi <horikyota.ntt@gmail.com>\n"
+"Language-Team: jpug-doc <jpug-doc@ml.postgresql.jp>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 1.8.13\n"
+
+#: ../../../src/common/logging.c:276
+#, c-format
+msgid "error: "
+msgstr "エラー: "
+
+#: ../../../src/common/logging.c:283
+#, c-format
+msgid "warning: "
+msgstr "警告: "
+
+#: ../../../src/common/logging.c:294
+#, c-format
+msgid "detail: "
+msgstr "詳細: "
+
+#: ../../../src/common/logging.c:301
+#, c-format
+msgid "hint: "
+msgstr "ヒント: "
+
+#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:162
+#, c-format
+msgid "out of memory\n"
+msgstr "メモリ不足です\n"
+
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:154
+#, c-format
+msgid "cannot duplicate null pointer (internal error)\n"
+msgstr "nullポインタを複製できません(内部エラー)。\n"
+
+#: ../../common/username.c:43
+#, c-format
+msgid "could not look up effective user ID %ld: %s"
+msgstr "実効ユーザーID %ldが見つかりませんでした: %s"
+
+#: ../../common/username.c:45
+msgid "user does not exist"
+msgstr "ユーザーが存在しません"
+
+#: ../../common/username.c:60
+#, c-format
+msgid "user name lookup failure: error code %lu"
+msgstr "ユーザー名の検索に失敗: エラーコード%lu"
+
+#: ../../fe_utils/cancel.c:189 ../../fe_utils/cancel.c:238
+msgid "Cancel request sent\n"
+msgstr "キャンセル要求を送信しました\n"
+
+#: ../../fe_utils/cancel.c:190 ../../fe_utils/cancel.c:239
+msgid "Could not send cancel request: "
+msgstr "キャンセル要求を送信できませんでした: "
+
+#: ../../fe_utils/connect_utils.c:49 ../../fe_utils/connect_utils.c:104
+msgid "Password: "
+msgstr "パスワード: "
+
+#: ../../fe_utils/connect_utils.c:91
+#, c-format
+msgid "could not connect to database %s: out of memory"
+msgstr "データベース%sに接続できませんでした: メモリ不足です"
+
+#: ../../fe_utils/connect_utils.c:117 pg_isready.c:146
+#, c-format
+msgid "%s"
+msgstr "%s"
+
+#: ../../fe_utils/option_utils.c:69
+#, c-format
+msgid "invalid value \"%s\" for option %s"
+msgstr "オプション %2$s に対する不正な値\"%1$s\""
+
+#: ../../fe_utils/option_utils.c:76
+#, c-format
+msgid "%s must be in range %d..%d"
+msgstr "%sは%d..%dの範囲でなければなりません"
+
+#: ../../fe_utils/parallel_slot.c:301
+#, c-format
+msgid "too many jobs for this platform"
+msgstr "このプラットフォームではジョブ数が多すぎます"
+
+#: ../../fe_utils/parallel_slot.c:519
+#, c-format
+msgid "processing of database \"%s\" failed: %s"
+msgstr "データベース\"%s\"の処理に失敗しました: %s"
+
+#: ../../fe_utils/print.c:406
+#, c-format
+msgid "(%lu row)"
+msgid_plural "(%lu rows)"
+msgstr[0] "(%lu 行)"
+
+#: ../../fe_utils/print.c:3109
+#, c-format
+msgid "Interrupted\n"
+msgstr "中断されました\n"
+
+#: ../../fe_utils/print.c:3173
+#, c-format
+msgid "Cannot add header to table content: column count of %d exceeded.\n"
+msgstr "テーブルの内容に見出しを追加できませんでした：列数%dが制限を越えています。\n"
+
+#: ../../fe_utils/print.c:3213
+#, c-format
+msgid "Cannot add cell to table content: total cell count of %d exceeded.\n"
+msgstr "テーブルの内容にセルを追加できませんでした：全セル数%dが制限を越えています。\n"
+
+#: ../../fe_utils/print.c:3471
+#, c-format
+msgid "invalid output format (internal error): %d"
+msgstr "出力フォーマットが無効(内部エラー)：%d"
+
+#: ../../fe_utils/query_utils.c:33 ../../fe_utils/query_utils.c:58
+#, c-format
+msgid "query failed: %s"
+msgstr "問い合わせが失敗しました: %s"
+
+#: ../../fe_utils/query_utils.c:34 ../../fe_utils/query_utils.c:59
+#, c-format
+msgid "Query was: %s"
+msgstr "問い合わせ: %s"
+
+#: clusterdb.c:113 clusterdb.c:132 createdb.c:139 createdb.c:158
+#: createuser.c:170 createuser.c:185 dropdb.c:104 dropdb.c:113 dropdb.c:121
+#: dropuser.c:95 dropuser.c:110 dropuser.c:123 pg_isready.c:97 pg_isready.c:111
+#: reindexdb.c:174 reindexdb.c:193 vacuumdb.c:241 vacuumdb.c:260
+#, c-format
+msgid "Try \"%s --help\" for more information."
+msgstr "詳細は\"%s --help\"を実行してください。"
+
+#: clusterdb.c:130 createdb.c:156 createuser.c:183 dropdb.c:119 dropuser.c:108
+#: pg_isready.c:109 reindexdb.c:191 vacuumdb.c:258
+#, c-format
+msgid "too many command-line arguments (first is \"%s\")"
+msgstr "コマンドライン引数が多すぎます。(先頭は\"%s\")"
+
+#: clusterdb.c:148
+#, c-format
+msgid "cannot cluster all databases and a specific one at the same time"
+msgstr "全データベースと特定のデータベースを同時にクラスタ化することはできません"
+
+#: clusterdb.c:151
+#, c-format
+msgid "cannot cluster specific table(s) in all databases"
+msgstr "すべてのデータベースの特定のテーブル(群)はクラスタ化できません"
+
+#: clusterdb.c:215
+#, c-format
+msgid "clustering of table \"%s\" in database \"%s\" failed: %s"
+msgstr "データベース\"%2$s\"のテーブル\"%1$s\"のクラスタ化に失敗しました: %3$s"
+
+#: clusterdb.c:218
+#, c-format
+msgid "clustering of database \"%s\" failed: %s"
+msgstr "データベース\"%s\"のクラスタ化に失敗しました: %s"
+
+#: clusterdb.c:246
+#, c-format
+msgid "%s: clustering database \"%s\"\n"
+msgstr "%s: データベース\"%s\"をクラスタ化しています\n"
+
+#: clusterdb.c:262
+#, c-format
+msgid ""
+"%s clusters all previously clustered tables in a database.\n"
+"\n"
+msgstr "%sはデータベース内で事前にクラスタ化されているすべてのテーブルをクラスタ化します。\n"
+
+#: clusterdb.c:263 createdb.c:283 createuser.c:346 dropdb.c:172 dropuser.c:170
+#: pg_isready.c:226 reindexdb.c:760 vacuumdb.c:964
+#, c-format
+msgid "Usage:\n"
+msgstr "使用方法:\n"
+
+#: clusterdb.c:264 reindexdb.c:761 vacuumdb.c:965
+#, c-format
+msgid "  %s [OPTION]... [DBNAME]\n"
+msgstr "  %s [オプション]... [データベース名]\n"
+
+#: clusterdb.c:265 createdb.c:285 createuser.c:348 dropdb.c:174 dropuser.c:172
+#: pg_isready.c:229 reindexdb.c:762 vacuumdb.c:966
+#, c-format
+msgid ""
+"\n"
+"Options:\n"
+msgstr ""
+"\n"
+"オプション:\n"
+
+#: clusterdb.c:266
+#, c-format
+msgid "  -a, --all                 cluster all databases\n"
+msgstr "  -a, --all                 すべてのデータベースをクラスタ化\n"
+
+#: clusterdb.c:267
+#, c-format
+msgid "  -d, --dbname=DBNAME       database to cluster\n"
+msgstr "  -d, --dbname=DBNAME       クラスタ化するデータベース\n"
+
+#: clusterdb.c:268 createuser.c:352 dropdb.c:175 dropuser.c:173
+#, c-format
+msgid "  -e, --echo                show the commands being sent to the server\n"
+msgstr "  -e, --echo                サーバーへ送信されているコマンドを表示\n"
+
+#: clusterdb.c:269
+#, c-format
+msgid "  -q, --quiet               don't write any messages\n"
+msgstr "  -q, --quiet               メッセージを何も出力しない\n"
+
+#: clusterdb.c:270
+#, c-format
+msgid "  -t, --table=TABLE         cluster specific table(s) only\n"
+msgstr "  -t, --table=テーブル名    指定したテーブル(群)のみをクラスタ化する\n"
+
+#: clusterdb.c:271
+#, c-format
+msgid "  -v, --verbose             write a lot of output\n"
+msgstr "  -v, --verbose             多量のメッセージを出力\n"
+
+#: clusterdb.c:272 createuser.c:364 dropdb.c:178 dropuser.c:176
+#, c-format
+msgid "  -V, --version             output version information, then exit\n"
+msgstr "  -V, --version             バージョン情報を表示して終了\n"
+
+#: clusterdb.c:273 createuser.c:369 dropdb.c:180 dropuser.c:178
+#, c-format
+msgid "  -?, --help                show this help, then exit\n"
+msgstr "  -?, --help                このヘルプを表示して終了\n"
+
+#: clusterdb.c:274 createdb.c:300 createuser.c:370 dropdb.c:181 dropuser.c:179
+#: pg_isready.c:235 reindexdb.c:777 vacuumdb.c:991
+#, c-format
+msgid ""
+"\n"
+"Connection options:\n"
+msgstr ""
+"\n"
+"接続オプション:\n"
+
+#: clusterdb.c:275 createuser.c:371 dropdb.c:182 dropuser.c:180 vacuumdb.c:992
+#, c-format
+msgid "  -h, --host=HOSTNAME       database server host or socket directory\n"
+msgstr "  -h, --host=HOSTNAME       データベースサーバーのホストまたはソケット\n"
+"                            ディレクトリ\n"
+
+#: clusterdb.c:276 createuser.c:372 dropdb.c:183 dropuser.c:181 vacuumdb.c:993
+#, c-format
+msgid "  -p, --port=PORT           database server port\n"
+msgstr "  -p, --port=PORT           データベースサーバーのポート番号\n"
+
+#: clusterdb.c:277 dropdb.c:184 vacuumdb.c:994
+#, c-format
+msgid "  -U, --username=USERNAME   user name to connect as\n"
+msgstr "  -U, --username=USERNAME   このユーザー名で接続する\n"
+
+#: clusterdb.c:278 createuser.c:374 dropdb.c:185 dropuser.c:183 vacuumdb.c:995
+#, c-format
+msgid "  -w, --no-password         never prompt for password\n"
+msgstr "  -w, --no-password         パスワード入力を要求しない\n"
+
+#: clusterdb.c:279 createuser.c:375 dropdb.c:186 dropuser.c:184 vacuumdb.c:996
+#, c-format
+msgid "  -W, --password            force password prompt\n"
+msgstr "  -W, --password            パスワードプロンプトを強制表示する\n"
+
+#: clusterdb.c:280 dropdb.c:187 vacuumdb.c:997
+#, c-format
+msgid "  --maintenance-db=DBNAME   alternate maintenance database\n"
+msgstr "  --maintenance-db=DBNAME   別の保守用データベースを指定する\n"
+
+#: clusterdb.c:281
+#, c-format
+msgid ""
+"\n"
+"Read the description of the SQL command CLUSTER for details.\n"
+msgstr ""
+"\n"
+"詳細は SQL コマンドの CLUSTER の説明を参照してください。\n"
+
+#: clusterdb.c:282 createdb.c:308 createuser.c:376 dropdb.c:188 dropuser.c:185
+#: pg_isready.c:240 reindexdb.c:785 vacuumdb.c:999
+#, c-format
+msgid ""
+"\n"
+"Report bugs to <%s>.\n"
+msgstr ""
+"\n"
+"バグは<%s>に報告してください。\n"
+
+#: clusterdb.c:283 createdb.c:309 createuser.c:377 dropdb.c:189 dropuser.c:186
+#: pg_isready.c:241 reindexdb.c:786 vacuumdb.c:1000
+#, c-format
+msgid "%s home page: <%s>\n"
+msgstr "%s ホームページ: <%s>\n"
+
+#: common.c:107
+#, c-format
+msgid "query returned %d row instead of one: %s"
+msgid_plural "query returned %d rows instead of one: %s"
+msgstr[0] "問い合わせが1行ではなく%d行返しました: %s"
+
+#. translator: abbreviation for "yes"
+#: common.c:131
+msgid "y"
+msgstr "y"
+
+#. translator: abbreviation for "no"
+#: common.c:133
+msgid "n"
+msgstr "n"
+
+#. translator: This is a question followed by the translated options for
+#. "yes" and "no".
+#: common.c:143
+#, c-format
+msgid "%s (%s/%s) "
+msgstr "%s (%s/%s)"
+
+#: common.c:164
+#, c-format
+msgid "Please answer \"%s\" or \"%s\".\n"
+msgstr " \"%s\" または \"%s\" に答えてください\n"
+
+#: createdb.c:165
+#, c-format
+msgid "only one of --locale and --lc-ctype can be specified"
+msgstr "--locale か --lc-ctype のいずれか一方のみを指定してください"
+
+#: createdb.c:167
+#, c-format
+msgid "only one of --locale and --lc-collate can be specified"
+msgstr "--locale か --lc-collate のいずれか一方のみを指定してください"
+
+#: createdb.c:175
+#, c-format
+msgid "\"%s\" is not a valid encoding name"
+msgstr "\"%s\" は有効な符号化方式名ではありません"
+
+#: createdb.c:245
+#, c-format
+msgid "database creation failed: %s"
+msgstr "データベースの生成に失敗しました：%s"
+
+#: createdb.c:264
+#, c-format
+msgid "comment creation failed (database was created): %s"
+msgstr "コメントの生成に失敗(データベースは生成されました): %s"
+
+#: createdb.c:282
+#, c-format
+msgid ""
+"%s creates a PostgreSQL database.\n"
+"\n"
+msgstr ""
+"%sはPostgreSQLデータベースを生成します。\n"
+"\n"
+
+#: createdb.c:284
+#, c-format
+msgid "  %s [OPTION]... [DBNAME] [DESCRIPTION]\n"
+msgstr "  %s [オプション]... [データベース名] [説明]\n"
+
+#: createdb.c:286
+#, c-format
+msgid "  -D, --tablespace=TABLESPACE  default tablespace for the database\n"
+msgstr "  -D, --tablespace=TABLESPACE  データベースのデフォルトテーブルスペース名\n"
+
+#: createdb.c:287 reindexdb.c:766
+#, c-format
+msgid "  -e, --echo                   show the commands being sent to the server\n"
+msgstr "  -e, --echo                   サーバーに送られるコマンドを表示\n"
+
+#: createdb.c:288
+#, c-format
+msgid "  -E, --encoding=ENCODING      encoding for the database\n"
+msgstr "  -E, --encoding=ENCODING      データベースの符号化方式\n"
+
+#: createdb.c:289
+#, c-format
+msgid "  -l, --locale=LOCALE          locale settings for the database\n"
+msgstr "  -l, --locale=LOCALE          データベースのロケール設定\n"
+
+#: createdb.c:290
+#, c-format
+msgid "      --lc-collate=LOCALE      LC_COLLATE setting for the database\n"
+msgstr "      --lc-collate=LOCALE      データベースのLC_COLLATE設定\n"
+
+#: createdb.c:291
+#, c-format
+msgid "      --lc-ctype=LOCALE        LC_CTYPE setting for the database\n"
+msgstr "      --lc-ctype=LOCALE        データベースのLC_CTYPE設定\n"
+
+#: createdb.c:292
+#, c-format
+msgid "      --icu-locale=LOCALE      ICU locale setting for the database\n"
+msgstr "      --icu-locale=LOCALE      データベースのICUロケール設定\n"
+
+#: createdb.c:293
+#, c-format
+msgid ""
+"      --locale-provider={libc|icu}\n"
+"                               locale provider for the database's default collation\n"
+msgstr ""
+"      --locale-provider={libc|icu}\n"
+"                               データベースのデフォルト照合順序のロケール\n"
+"                               プロバイダ\n"
+
+#: createdb.c:295
+#, c-format
+msgid "  -O, --owner=OWNER            database user to own the new database\n"
+msgstr "  -O, --owner=OWNER            新しいデータベースを所有するデータベースユーザー\n"
+
+#: createdb.c:296
+#, c-format
+msgid "  -S, --strategy=STRATEGY      database creation strategy wal_log or file_copy\n"
+msgstr "  -S, --strategy=STRATEGY      データベース生成方法 wal_log または file_copy\n"
+
+#: createdb.c:297
+#, c-format
+msgid "  -T, --template=TEMPLATE      template database to copy\n"
+msgstr "  -T, --template=TEMPLATE      コピーするテンプレートデータベース\n"
+
+#: createdb.c:298 reindexdb.c:775
+#, c-format
+msgid "  -V, --version                output version information, then exit\n"
+msgstr "  -V, --version                バージョン情報を表示して終了\n"
+
+#: createdb.c:299 reindexdb.c:776
+#, c-format
+msgid "  -?, --help                   show this help, then exit\n"
+msgstr "  -?, --help                   このヘルプを表示して終了\n"
+
+#: createdb.c:301 reindexdb.c:778
+#, c-format
+msgid "  -h, --host=HOSTNAME          database server host or socket directory\n"
+msgstr ""
+"  -h, --host=HOSTNAME          データベースサーバーホストまたはソケット\n"
+"                               ディレクトリ\n"
+
+#: createdb.c:302 reindexdb.c:779
+#, c-format
+msgid "  -p, --port=PORT              database server port\n"
+msgstr "  -p, --port=PORT              データベースサーバーのポート番号\n"
+
+#: createdb.c:303 reindexdb.c:780
+#, c-format
+msgid "  -U, --username=USERNAME      user name to connect as\n"
+msgstr "  -U, --username=USERNAME      接続する際のユーザー名\n"
+
+#: createdb.c:304 reindexdb.c:781
+#, c-format
+msgid "  -w, --no-password            never prompt for password\n"
+msgstr "  -w, --no-password            パスワード入力を要求しない\n"
+
+#: createdb.c:305 reindexdb.c:782
+#, c-format
+msgid "  -W, --password               force password prompt\n"
+msgstr "  -W, --password               パスワードプロンプトを強制\n"
+
+#: createdb.c:306 reindexdb.c:783
+#, c-format
+msgid "  --maintenance-db=DBNAME      alternate maintenance database\n"
+msgstr "  --maintenance-db=DBNAME      別の保守用データベースを指定する\n"
+
+#: createdb.c:307
+#, c-format
+msgid ""
+"\n"
+"By default, a database with the same name as the current user is created.\n"
+msgstr ""
+"\n"
+"デフォルトでは、現在のユーザー名と同名のデータベースが生成されます\n"
+
+#: createuser.c:193
+msgid "Enter name of role to add: "
+msgstr "追加したいロール名を入力："
+
+#: createuser.c:208
+msgid "Enter password for new role: "
+msgstr "新しいロールのためのパスワード: "
+
+#: createuser.c:209
+msgid "Enter it again: "
+msgstr "もう一度入力してください："
+
+#: createuser.c:212
+#, c-format
+msgid "Passwords didn't match.\n"
+msgstr "パスワードがマッチしません。\n"
+
+#: createuser.c:220
+msgid "Shall the new role be a superuser?"
+msgstr "新しいロールをスーパーユーザーにしますか？"
+
+#: createuser.c:235
+msgid "Shall the new role be allowed to create databases?"
+msgstr "新しいロールに対してデータベースを作成する権限を与えますか？"
+
+#: createuser.c:243
+msgid "Shall the new role be allowed to create more new roles?"
+msgstr "新しいロールに対して別のロールを作成する権限を与えますか？"
+
+#: createuser.c:278
+#, c-format
+msgid "password encryption failed: %s"
+msgstr "パスワードの暗号化に失敗しました: %s"
+
+#: createuser.c:331
+#, c-format
+msgid "creation of new role failed: %s"
+msgstr "新しいロールの作成に失敗しました: %s"
+
+#: createuser.c:345
+#, c-format
+msgid ""
+"%s creates a new PostgreSQL role.\n"
+"\n"
+msgstr ""
+"%sは新しいPostgreSQLロールを作成します。\n"
+"\n"
+
+#: createuser.c:347 dropuser.c:171
+#, c-format
+msgid "  %s [OPTION]... [ROLENAME]\n"
+msgstr "  %s [オプション]... [ロール名]\n"
+
+#: createuser.c:349
+#, c-format
+msgid "  -c, --connection-limit=N  connection limit for role (default: no limit)\n"
+msgstr "  -c, --connection-limit=N  ロールのコネクション数制限(デフォルト: 制限なし)\n"
+
+#: createuser.c:350
+#, c-format
+msgid "  -d, --createdb            role can create new databases\n"
+msgstr "  -d, --createdb            ロールは新しいデータベースを作成可\n"
+
+#: createuser.c:351
+#, c-format
+msgid "  -D, --no-createdb         role cannot create databases (default)\n"
+msgstr "  -D, --no-createdb         ロールは新しいデータベースを作成不可(デフォルト)\n"
+
+#: createuser.c:353
+#, c-format
+msgid "  -g, --role=ROLE           new role will be a member of this role\n"
+msgstr "  -g, --role=ROLE           新しいロールはこのロールのメンバーにする\n"
+
+#: createuser.c:354
+#, c-format
+msgid ""
+"  -i, --inherit             role inherits privileges of roles it is a\n"
+"                            member of (default)\n"
+msgstr ""
+"  -i, --inherit             ロールがメンバーとなるロール群から権限を継承\n"
+"                            (デフォルト)\n"
+
+#: createuser.c:356
+#, c-format
+msgid "  -I, --no-inherit          role does not inherit privileges\n"
+msgstr "  -I, --no-inherit          権限を継承しない\n"
+
+#: createuser.c:357
+#, c-format
+msgid "  -l, --login               role can login (default)\n"
+msgstr "  -l, --login               ロールはログイン可能(デフォルト)\n"
+
+#: createuser.c:358
+#, c-format
+msgid "  -L, --no-login            role cannot login\n"
+msgstr "  -L, --no-login            ロールはログイン不可\n"
+
+#: createuser.c:359
+#, c-format
+msgid "  -P, --pwprompt            assign a password to new role\n"
+msgstr "  -P, --pwprompt            新しいロールにパスワードを割り当てる\n"
+
+#: createuser.c:360
+#, c-format
+msgid "  -r, --createrole          role can create new roles\n"
+msgstr "  -r, --createrole          ロールは別のロールを作成可\n"
+
+#: createuser.c:361
+#, c-format
+msgid "  -R, --no-createrole       role cannot create roles (default)\n"
+msgstr "  -R, --no-createrole       ロールは別のロールを作成不可(デフォルト)\n"
+
+#: createuser.c:362
+#, c-format
+msgid "  -s, --superuser           role will be superuser\n"
+msgstr "  -s, --superuser           ロールをスーパーユーザーにする\n"
+
+#: createuser.c:363
+#, c-format
+msgid "  -S, --no-superuser        role will not be superuser (default)\n"
+msgstr "  -S, --no-superuser        ロールをスーパーユーザーにしない(デフォルト)\n"
+
+#: createuser.c:365
+#, c-format
+msgid ""
+"  --interactive             prompt for missing role name and attributes rather\n"
+"                            than using defaults\n"
+msgstr "  --interactive             デフォルトを使わず未指定のロール名や属性は入力を促す\n"
+
+#: createuser.c:367
+#, c-format
+msgid "  --replication             role can initiate replication\n"
+msgstr "  --replication             ロールはレプリケーションを初期化可\n"
+
+#: createuser.c:368
+#, c-format
+msgid "  --no-replication          role cannot initiate replication\n"
+msgstr "  --no-replication          ロールはレプリケーションを初期化不可\n"
+
+#: createuser.c:373
+#, c-format
+msgid "  -U, --username=USERNAME   user name to connect as (not the one to create)\n"
+msgstr "  -U, --username=USERNAME   このユーザーとして接続(作成対象ユーザーでは\n"
+"                            ありません)\n"
+
+#: dropdb.c:112
+#, c-format
+msgid "missing required argument database name"
+msgstr "必須の引数であるデータベース名がありません"
+
+#: dropdb.c:127
+#, c-format
+msgid "Database \"%s\" will be permanently removed.\n"
+msgstr "データベース\"%s\"は永久に削除されます。\n"
+
+#: dropdb.c:128 dropuser.c:131
+msgid "Are you sure?"
+msgstr "実行しますか？"
+
+#: dropdb.c:157
+#, c-format
+msgid "database removal failed: %s"
+msgstr "データベースの削除に失敗しました: %s"
+
+#: dropdb.c:171
+#, c-format
+msgid ""
+"%s removes a PostgreSQL database.\n"
+"\n"
+msgstr ""
+"%sはPostgreSQLデータベースを削除します。\n"
+"\n"
+
+#: dropdb.c:173
+#, c-format
+msgid "  %s [OPTION]... DBNAME\n"
+msgstr "  %s [オプション]... [データベース名]\n"
+
+#: dropdb.c:176
+#, c-format
+msgid "  -f, --force               try to terminate other connections before dropping\n"
+msgstr "  -f, --force               削除前に他の接続の終了を試行\n"
+
+#: dropdb.c:177
+#, c-format
+msgid "  -i, --interactive         prompt before deleting anything\n"
+msgstr "  -i, --interactive         何かを削除する前に警告する\n"
+
+#: dropdb.c:179
+#, c-format
+msgid "  --if-exists               don't report error if database doesn't exist\n"
+msgstr "  --if-exists               データベースが存在しない場合にエラーを報告しない\n"
+
+#: dropuser.c:118
+msgid "Enter name of role to drop: "
+msgstr "削除したいロール名を入力："
+
+#: dropuser.c:122
+#, c-format
+msgid "missing required argument role name"
+msgstr "必須の引数であるロール名がありません"
+
+#: dropuser.c:130
+#, c-format
+msgid "Role \"%s\" will be permanently removed.\n"
+msgstr "ロール\"%s\"は永久に削除されます\n"
+
+#: dropuser.c:154
+#, c-format
+msgid "removal of role \"%s\" failed: %s"
+msgstr "ロール\"%s\"の削除に失敗しました: %s"
+
+#: dropuser.c:169
+#, c-format
+msgid ""
+"%s removes a PostgreSQL role.\n"
+"\n"
+msgstr ""
+"%sはPostgreSQLのロールを削除します。\n"
+"\n"
+
+#: dropuser.c:174
+#, c-format
+msgid ""
+"  -i, --interactive         prompt before deleting anything, and prompt for\n"
+"                            role name if not specified\n"
+msgstr ""
+"  -i, --interactive         何かを削除する前に入力を促し、またロール名が指定\n"
+"                            されていない場合はその入力を促す\n"
+
+#: dropuser.c:177
+#, c-format
+msgid "  --if-exists               don't report error if user doesn't exist\n"
+msgstr "  --if-exists               ユーザーが存在しない場合にエラーを報告しない\n"
+
+#: dropuser.c:182
+#, c-format
+msgid "  -U, --username=USERNAME   user name to connect as (not the one to drop)\n"
+msgstr "  -U, --username=USERNAME   このユーザーとして接続(削除対象ユーザーでは\n"
+"                            ありません)\n"
+
+#: pg_isready.c:154
+#, c-format
+msgid "could not fetch default options"
+msgstr "デフォルトのオプションを取り出すことができませんでした"
+
+#: pg_isready.c:203
+#, c-format
+msgid "accepting connections\n"
+msgstr "接続を受け付けています\n"
+
+#: pg_isready.c:206
+#, c-format
+msgid "rejecting connections\n"
+msgstr "接続を拒絶しています\n"
+
+#: pg_isready.c:209
+#, c-format
+msgid "no response\n"
+msgstr "レスポンスがありません\n"
+
+#: pg_isready.c:212
+#, c-format
+msgid "no attempt\n"
+msgstr "施行がありません\n"
+
+#: pg_isready.c:215
+#, c-format
+msgid "unknown\n"
+msgstr "unknown\n"
+
+#: pg_isready.c:225
+#, c-format
+msgid ""
+"%s issues a connection check to a PostgreSQL database.\n"
+"\n"
+msgstr ""
+"%sはPostgreSQLデータベースに対して接続検査を発行します。\n"
+"\n"
+
+#: pg_isready.c:227
+#, c-format
+msgid "  %s [OPTION]...\n"
+msgstr "  %s [OPTION]...\n"
+
+#: pg_isready.c:230
+#, c-format
+msgid "  -d, --dbname=DBNAME      database name\n"
+msgstr "  -d, --dbname=DBNAME      データベース名\n"
+
+#: pg_isready.c:231
+#, c-format
+msgid "  -q, --quiet              run quietly\n"
+msgstr "  -q, --quiet              メッセージを出力せずに実行する\n"
+
+#: pg_isready.c:232
+#, c-format
+msgid "  -V, --version            output version information, then exit\n"
+msgstr "  -V, --version            バージョン情報を表示して終了\n"
+
+#: pg_isready.c:233
+#, c-format
+msgid "  -?, --help               show this help, then exit\n"
+msgstr "  -?, --help               このヘルプを表示して終了\n"
+
+#: pg_isready.c:236
+#, c-format
+msgid "  -h, --host=HOSTNAME      database server host or socket directory\n"
+msgstr "  -h, --host=HOSTNAME      データベースサーバーのホストまたはソケット\n"
+       "                           ディレクトリ\n"
+
+#: pg_isready.c:237
+#, c-format
+msgid "  -p, --port=PORT          database server port\n"
+msgstr "  -p, --port=PORT          データベースサーバーのポート番号\n"
+
+#: pg_isready.c:238
+#, c-format
+msgid "  -t, --timeout=SECS       seconds to wait when attempting connection, 0 disables (default: %s)\n"
+msgstr "  -t, --timeout=SECS       接続試行時の待機秒数、ゼロで無効化(デフォルト: %s)\n"
+
+#: pg_isready.c:239
+#, c-format
+msgid "  -U, --username=USERNAME  user name to connect as\n"
+msgstr "  -U, --username=USERNAME  このユーザー名で接続する\n"
+
+#: reindexdb.c:209
+#, c-format
+msgid "cannot reindex all databases and a specific one at the same time"
+msgstr "全データベースと特定のデータベースは同時に再インデックス化はできません"
+
+#: reindexdb.c:211
+#, c-format
+msgid "cannot reindex all databases and system catalogs at the same time"
+msgstr "全データベースとシステムカタログの両方は同時に再インデックス化はできません"
+
+#: reindexdb.c:213
+#, c-format
+msgid "cannot reindex specific schema(s) in all databases"
+msgstr "全データベースにおける特定のスキーマ(群)の再インデックス化はできません"
+
+#: reindexdb.c:215
+#, c-format
+msgid "cannot reindex specific table(s) in all databases"
+msgstr "全データベースにおける特定のテーブル(群)の再インデックス化はできません"
+
+#: reindexdb.c:217
+#, c-format
+msgid "cannot reindex specific index(es) in all databases"
+msgstr "全データベースにおける特定のインデックス(群)の再作成はできません"
+
+#: reindexdb.c:227
+#, c-format
+msgid "cannot reindex specific schema(s) and system catalogs at the same time"
+msgstr "特定のスキーマ(群)とシステムカタログは同時に再インデックス化はできません"
+
+#: reindexdb.c:229
+#, c-format
+msgid "cannot reindex specific table(s) and system catalogs at the same time"
+msgstr "特定のテーブル(群)とシステムカタログは同時に再インデックス化はできません"
+
+#: reindexdb.c:231
+#, c-format
+msgid "cannot reindex specific index(es) and system catalogs at the same time"
+msgstr "特定のインデックスとシステムカタログは同時に再インデックス化はできません"
+
+#: reindexdb.c:234
+#, c-format
+msgid "cannot use multiple jobs to reindex system catalogs"
+msgstr "システムカタログのインデックス再構築では複数ジョブを使用できません"
+
+#: reindexdb.c:260
+#, c-format
+msgid "cannot use multiple jobs to reindex indexes"
+msgstr "インデックス再構築には複数ジョブを使用できません"
+
+#: reindexdb.c:323 reindexdb.c:330 vacuumdb.c:425 vacuumdb.c:432 vacuumdb.c:439
+#: vacuumdb.c:446 vacuumdb.c:453 vacuumdb.c:460 vacuumdb.c:465 vacuumdb.c:469
+#: vacuumdb.c:473
+#, c-format
+msgid "cannot use the \"%s\" option on server versions older than PostgreSQL %s"
+msgstr "PostgreSQL %2$sよりも古いサーバーバージョンでは\"%1$s\"オプションは使えません"
+
+#: reindexdb.c:369
+#, c-format
+msgid "cannot reindex system catalogs concurrently, skipping all"
+msgstr "システムカタログではインデックスの並行再構築はできません、全てスキップします"
+
+#: reindexdb.c:573
+#, c-format
+msgid "reindexing of database \"%s\" failed: %s"
+msgstr "データベース\"%s\"のインデックス再構築に失敗しました: %s"
+
+#: reindexdb.c:577
+#, c-format
+msgid "reindexing of index \"%s\" in database \"%s\" failed: %s"
+msgstr "データベース\"%2$s\"中にあるインデックス\"%1$s\"の再作成に失敗しました: %3$s"
+
+#: reindexdb.c:581
+#, c-format
+msgid "reindexing of schema \"%s\" in database \"%s\" failed: %s"
+msgstr "データベース\"%2$s\"中にあるスキーマ\"%1$s\"のインデックス再構築に失敗しました: %3$s"
+
+#: reindexdb.c:585
+#, c-format
+msgid "reindexing of system catalogs in database \"%s\" failed: %s"
+msgstr "データベース\"%s\"中のシステムカタログのインデックス再構築に失敗しました: %s"
+
+#: reindexdb.c:589
+#, c-format
+msgid "reindexing of table \"%s\" in database \"%s\" failed: %s"
+msgstr "データベース\"%2$s\"中にあるテーブル\"%1$s\"のインでックス再構築に失敗しました: %3$s"
+
+#: reindexdb.c:742
+#, c-format
+msgid "%s: reindexing database \"%s\"\n"
+msgstr "%s: データベース\"%s\"を再インデックス化しています\n"
+
+#: reindexdb.c:759
+#, c-format
+msgid ""
+"%s reindexes a PostgreSQL database.\n"
+"\n"
+msgstr ""
+"%sはPostgreSQLデータベースを再インデックス化します。\n"
+"\n"
+
+#: reindexdb.c:763
+#, c-format
+msgid "  -a, --all                    reindex all databases\n"
+msgstr "  -a, --all                    全データベースでインデックス再構築を行う\n"
+
+#: reindexdb.c:764
+#, c-format
+msgid "      --concurrently           reindex concurrently\n"
+msgstr "      --concurrently           並行インデックス再構築\n"
+
+#: reindexdb.c:765
+#, c-format
+msgid "  -d, --dbname=DBNAME          database to reindex\n"
+msgstr "  -d, --dbname=DBNAME          インデックス再構築対象のデータベース\n"
+
+#: reindexdb.c:767
+#, c-format
+msgid "  -i, --index=INDEX            recreate specific index(es) only\n"
+msgstr "  -i, --index=INDEX            指定したインデックス(群)のみを再構築\n"
+
+#: reindexdb.c:768
+#, c-format
+msgid "  -j, --jobs=NUM               use this many concurrent connections to reindex\n"
+msgstr "  -j, --jobs=NUM               インデックス再構築にこの数の並列接続を使用\n"
+
+#: reindexdb.c:769
+#, c-format
+msgid "  -q, --quiet                  don't write any messages\n"
+msgstr "  -q, --quiet                  メッセージを一切出力しない\n"
+
+#: reindexdb.c:770
+#, c-format
+msgid "  -s, --system                 reindex system catalogs only\n"
+msgstr "  -s, --system                 システムカタログのインデックスのみを再構築\n"
+
+#: reindexdb.c:771
+#, c-format
+msgid "  -S, --schema=SCHEMA          reindex specific schema(s) only\n"
+msgstr "  -S, --schema=SCHEMA          指定したスキーマ(群)のインデックスのみを再構築\n"
+
+#: reindexdb.c:772
+#, c-format
+msgid "  -t, --table=TABLE            reindex specific table(s) only\n"
+msgstr "  -t, --table=TABLE            指定したテーブル(群)のインデックスを再構築\n"
+
+#: reindexdb.c:773
+#, c-format
+msgid "      --tablespace=TABLESPACE  tablespace where indexes are rebuilt\n"
+msgstr "  -D, --tablespace=TABLESPACE  インデックス再構築先のテーブル空間\n"
+
+#: reindexdb.c:774
+#, c-format
+msgid "  -v, --verbose                write a lot of output\n"
+msgstr "  -v, --verbose                多量のメッセージを出力\n"
+
+#: reindexdb.c:784
+#, c-format
+msgid ""
+"\n"
+"Read the description of the SQL command REINDEX for details.\n"
+msgstr ""
+"\n"
+"詳細はSQLコマンドREINDEXに関する説明を参照してください。\n"
+
+#: vacuumdb.c:267 vacuumdb.c:270 vacuumdb.c:273 vacuumdb.c:276 vacuumdb.c:279
+#: vacuumdb.c:282 vacuumdb.c:285 vacuumdb.c:294
+#, c-format
+msgid "cannot use the \"%s\" option when performing only analyze"
+msgstr "analyzeのみを実行する場合\"%s\"は使えません"
+
+#: vacuumdb.c:297
+#, c-format
+msgid "cannot use the \"%s\" option when performing full vacuum"
+msgstr "完全(full)VACUUMを実行する場合は\"%s\"オプションは使えません"
+
+#: vacuumdb.c:303
+#, c-format
+msgid "cannot use the \"%s\" option with the \"%s\" option"
+msgstr "\"%s\"オプションは\"%s\"と同時には使えません"
+
+#: vacuumdb.c:322
+#, c-format
+msgid "cannot vacuum all databases and a specific one at the same time"
+msgstr "全データベースと特定のデータベースを同時にVACUUMすることはできません"
+
+#: vacuumdb.c:324
+#, c-format
+msgid "cannot vacuum specific table(s) in all databases"
+msgstr "全データベースの特定のテーブル(群)をVACUUMすることはできません"
+
+#: vacuumdb.c:412
+msgid "Generating minimal optimizer statistics (1 target)"
+msgstr "最適化のための情報を最小限生成します(1対象)"
+
+#: vacuumdb.c:413
+msgid "Generating medium optimizer statistics (10 targets)"
+msgstr "最適化のための情報を複数生成します(10対象)"
+
+#: vacuumdb.c:414
+msgid "Generating default (full) optimizer statistics"
+msgstr "最適化のための情報をデフォルト数(全て)生成します"
+
+#: vacuumdb.c:479
+#, c-format
+msgid "%s: processing database \"%s\": %s\n"
+msgstr "%s: データベース\"%s\"の処理中です: %s\n"
+
+#: vacuumdb.c:482
+#, c-format
+msgid "%s: vacuuming database \"%s\"\n"
+msgstr "%s: データベース\"%s\"をVACUUMしています\n"
+
+#: vacuumdb.c:952
+#, c-format
+msgid "vacuuming of table \"%s\" in database \"%s\" failed: %s"
+msgstr "データベース \"%2$s\"のテーブル\"%1$sのVACUUMに失敗しました： %3$s"
+
+#: vacuumdb.c:955
+#, c-format
+msgid "vacuuming of database \"%s\" failed: %s"
+msgstr "データベース\"%s\"のVACUUMに失敗しました: %s"
+
+#: vacuumdb.c:963
+#, c-format
+msgid ""
+"%s cleans and analyzes a PostgreSQL database.\n"
+"\n"
+msgstr "%sはPostgreSQLデータベースのゴミ回収および分析を行います。\n"
+
+#: vacuumdb.c:967
+#, c-format
+msgid "  -a, --all                       vacuum all databases\n"
+msgstr "  -a, --all                       全データベースをVACUUM\n"
+
+#: vacuumdb.c:968
+#, c-format
+msgid "  -d, --dbname=DBNAME             database to vacuum\n"
+msgstr "  -d, --dbname=DBNAME             VACUUMするデータベース名\n"
+
+#: vacuumdb.c:969
+#, c-format
+msgid "      --disable-page-skipping     disable all page-skipping behavior\n"
+msgstr "      --disable-page-skipping     すべてのページスキップ動作を禁止\n"
+
+#: vacuumdb.c:970
+#, c-format
+msgid "  -e, --echo                      show the commands being sent to the server\n"
+msgstr "  -e, --echo                      サーバーに送られるコマンドを表示\n"
+
+#: vacuumdb.c:971
+#, c-format
+msgid "  -f, --full                      do full vacuuming\n"
+msgstr "  -f, --full                      VACUUM FULLを実行\n"
+
+#: vacuumdb.c:972
+#, c-format
+msgid "  -F, --freeze                    freeze row transaction information\n"
+msgstr "  -F, --freeze                    行トランザクション情報を凍結\n"
+
+#: vacuumdb.c:973
+#, c-format
+msgid "      --force-index-cleanup       always remove index entries that point to dead tuples\n"
+msgstr ""
+"      --force-index-cleanup       デッドタプルを指すインデックスエントリを常に\n"
+"                                  除去する\n"
+
+#: vacuumdb.c:974
+#, c-format
+msgid "  -j, --jobs=NUM                  use this many concurrent connections to vacuum\n"
+msgstr "  -j, --jobs=NUM                  バキューム時に指定した同時接続数を使用\n"
+
+#: vacuumdb.c:975
+#, c-format
+msgid "      --min-mxid-age=MXID_AGE     minimum multixact ID age of tables to vacuum\n"
+msgstr ""
+"      --min-mxid-age=MXID_AGE     VACUUM対象とするテーブルの最小のマルチ\n"
+"                                  トランザクションID差分\n"
+
+#: vacuumdb.c:976
+#, c-format
+msgid "      --min-xid-age=XID_AGE       minimum transaction ID age of tables to vacuum\n"
+msgstr ""
+"      --min-xid-age=XID_AGE       VACUUM対象とするテーブルの最小の\n"
+"                                  トランザクションID差分\n"
+
+#: vacuumdb.c:977
+#, c-format
+msgid "      --no-index-cleanup          don't remove index entries that point to dead tuples\n"
+msgstr ""
+"      --no-index-cleanup          デッドタプルを指すインデックスエントリを\n"
+"                                  削除しない\n"
+
+#: vacuumdb.c:978
+#, c-format
+msgid "      --no-process-toast          skip the TOAST table associated with the table to vacuum\n"
+msgstr ""
+"      --no-process-toast          テーブルに関連づくTOASTテーブルのVACUUMを\n"
+"                                  スキップ\n"
+
+#: vacuumdb.c:979
+#, c-format
+msgid "      --no-truncate               don't truncate empty pages at the end of the table\n"
+msgstr "      --no-truncate               テーブル終端の空ページの切り詰めを行わない\n"
+
+#: vacuumdb.c:980
+#, c-format
+msgid "  -P, --parallel=PARALLEL_WORKERS use this many background workers for vacuum, if available\n"
+msgstr ""
+"  -P, --parallel=PARALLEL_WORKERS 可能であればVACUUMで指定の数のバックグラウンド\n"
+"                                  ワーカーを使用\n"
+
+#: vacuumdb.c:981
+#, c-format
+msgid "  -q, --quiet                     don't write any messages\n"
+msgstr "  -q, --quiet                     メッセージを出力しない\n"
+
+#: vacuumdb.c:982
+#, c-format
+msgid "      --skip-locked               skip relations that cannot be immediately locked\n"
+msgstr "      --skip-locked               直ちにロックできなかったリレーションをスキップ\n"
+
+#: vacuumdb.c:983
+#, c-format
+msgid "  -t, --table='TABLE[(COLUMNS)]'  vacuum specific table(s) only\n"
+msgstr "  -t, --table='TABLE[(COLUMNS)]'  指定したテーブル(複数可)のみをVACUUM\n"
+
+#: vacuumdb.c:984
+#, c-format
+msgid "  -v, --verbose                   write a lot of output\n"
+msgstr "  -v, --verbose                   多量のメッセージを出力\n"
+
+#: vacuumdb.c:985
+#, c-format
+msgid "  -V, --version                   output version information, then exit\n"
+msgstr "  -V, --version                   バージョン情報を表示して終了\n"
+
+#: vacuumdb.c:986
+#, c-format
+msgid "  -z, --analyze                   update optimizer statistics\n"
+msgstr "  -z, --analyze                   最適化用統計情報を更新\n"
+
+#: vacuumdb.c:987
+#, c-format
+msgid "  -Z, --analyze-only              only update optimizer statistics; no vacuum\n"
+msgstr "  -Z, --analyze-only              最適化用統計情報のみ更新; バキュームは行わない\n"
+
+#: vacuumdb.c:988
+#, c-format
+msgid ""
+"      --analyze-in-stages         only update optimizer statistics, in multiple\n"
+"                                  stages for faster results; no vacuum\n"
+msgstr ""
+"      --analyze-in-stages         高速化のため最適化用統計情報のみを複数段階で\n"
+"                                  更新; VACUUMは行わない\n"
+
+#: vacuumdb.c:990
+#, c-format
+msgid "  -?, --help                      show this help, then exit\n"
+msgstr "  -?, --help                      このヘルプを表示して終了\n"
+
+#: vacuumdb.c:998
+#, c-format
+msgid ""
+"\n"
+"Read the description of the SQL command VACUUM for details.\n"
+msgstr ""
+"\n"
+"詳細はSQLコマンドのVACUUMの説明を参照してください。\n"
+
+#~ msgid "  --version                 output version information, then exit\n"
+#~ msgstr "  --version                バージョン情報を表示して終了します\n"
+
+#~ msgid "pg_strdup: cannot duplicate null pointer (internal error)\n"
+#~ msgstr "pg_strdup: nullポインタを複製できません(内部エラー)。\n"
+
+#~ msgid "  --help                    show this help, then exit\n"
+#~ msgstr "  --help                    ヘルプを表示して終了します\n"
+
+#~ msgid "  --help                       show this help, then exit\n"
+#~ msgstr "  --help                       ヘルプを表示して終了\n"
+
+#~ msgid "  --version                       output version information, then exit\n"
+#~ msgstr "  --version                       バージョン情報を表示して終了します\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "If one of -d, -D, -r, -R, -s, -S, and ROLENAME is not specified, you will\n"
+#~ "be prompted interactively.\n"
+#~ msgstr ""
+#~ "\n"
+#~ "-d, -D, -r, -R, -s, -S でロール名が指定されない場合、ロール名をその場で入力できます\n"
+
+#~ msgid "  --help                          show this help, then exit\n"
+#~ msgstr "  --help                          ヘルプを表示して終了します\n"
+
+#~ msgid "%s: out of memory\n"
+#~ msgstr "%s: メモリ不足です\n"
+
+#~ msgid "  --version                    output version information, then exit\n"
+#~ msgstr "  --version                   バージョン情報を表示して終了\n"
+
+#~ msgid "%s: still %s functions declared in language \"%s\"; language not removed\n"
+#~ msgstr "%s: まだ関数%sが言語\"%s\"内で宣言されています。言語は削除されません\n"
+
+#~ msgid "%s: cannot use the \"freeze\" option when performing only analyze\n"
+#~ msgstr "%s: analyze のみを実行する場合 \"freeze\" は使えません\n"
+
+#~ msgid "%s: could not get current user name: %s\n"
+#~ msgstr "%s: 現在のユーザー名を取得できませんでした: %s\n"
+
+#~ msgid "%s: could not obtain information about current user: %s\n"
+#~ msgstr "%s: 現在のユーザーに関する情報を取得できませんでした: %s\n"
+
+#~ msgid "minimum multixact ID age must be at least 1"
+#~ msgstr "最小マルチトランザクションID差分は1以上でなくてはなりません"
+
+#~ msgid "minimum transaction ID age must be at least 1"
+#~ msgstr "最小トランザクションID差分は1以上でなければなりません"
+
+#~ msgid "parallel vacuum degree must be a non-negative integer"
+#~ msgstr "並列VACUUMの並列度は非負の整数でなければなりません"
+
+#~ msgid "number of parallel jobs must be at least 1"
+#~ msgstr "並列ジョブの数は最低でも1以上でなければなりません"
+
+#~ msgid "invalid value for --connection-limit: %s"
+#~ msgstr "--connection-limit に対する不正な値: %s"
+
+#~ msgid "could not connect to database %s: %s"
+#~ msgstr "データベース%sに接続できませんでした: %s"
+
+#~ msgid "Try \"%s --help\" for more information.\n"
+#~ msgstr "詳細は\"%s --help\"を実行してください。\n"
+
+#~ msgid "Could not send cancel request: %s"
+#~ msgstr "キャンセル要求を送信できませんでした: %s"
+
+#~ msgid "fatal: "
+#~ msgstr "致命的エラー: "

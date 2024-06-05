@@ -1,0 +1,173 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_serializable_txn s2_serializable_txn s1_update s2_update s1_commit s2_commit s1_select
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s1_repeatable_read_txn s2_repeatable_read_txn s1_update s2_update s1_commit s2_commit s1_select
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s2_enable_retries s1_read_committed_txn s2_read_committed_txn s1_update s2_update s1_commit s2_commit s1_select
+step s2_enable_retries: SET yb_max_query_layer_retries = 60;
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s1_serializable_txn s1_update s2_update s1_commit s1_select
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1;
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              10             30             40
+
+starting permutation: s1_repeatable_read_txn s1_update s2_update s1_commit s1_select
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1;
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              10             30             40
+
+starting permutation: s2_enable_retries s1_read_committed_txn s1_update s2_update s1_commit s1_select
+step s2_enable_retries: SET yb_max_query_layer_retries = 60;
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
+step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s1_serializable_txn s2_serializable_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_case: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s1_repeatable_read_txn s2_repeatable_read_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_case: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s2_enable_retries s1_read_committed_txn s2_read_committed_txn s1_update_case s2_update_case s1_commit s2_commit s1_select
+step s2_enable_retries: SET yb_max_query_layer_retries = 60;
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_case: <... completed>
+step s2_commit: COMMIT;
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30
+
+starting permutation: s1_serializable_txn s1_update_case s2_update_case s1_commit s1_select
+step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              10             30             40
+
+starting permutation: s1_repeatable_read_txn s1_update_case s2_update_case s1_commit s1_select
+step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s1_commit: COMMIT;
+ERROR:  current transaction is expired or aborted
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              10             30             40
+
+starting permutation: s2_enable_retries s1_read_committed_txn s1_update_case s2_update_case s1_commit s1_select
+step s2_enable_retries: SET yb_max_query_layer_retries = 60;
+step s1_read_committed_txn: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_update_case:
+  UPDATE t SET v1 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+
+step s2_update_case:
+  UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_case: <... completed>
+step s1_select: select *, v1 + v2 from t;
+k              v1             v2             ?column?
+
+1              30             0              30

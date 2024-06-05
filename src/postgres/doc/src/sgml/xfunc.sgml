@@ -1,0 +1,3638 @@
+<!-- doc/src/sgml/xfunc.sgml -->
+
+ <sect1 id="xfunc">
+  <title>User-Defined Functions</title>
+
+  <indexterm zone="xfunc">
+   <primary>function</primary>
+   <secondary>user-defined</secondary>
+  </indexterm>
+
+  <para>
+   <productname>PostgreSQL</productname> provides four kinds of
+   functions:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      query language functions (functions written in
+      <acronym>SQL</acronym>) (<xref linkend="xfunc-sql"/>)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      procedural language functions (functions written in, for
+      example, <application>PL/pgSQL</application> or <application>PL/Tcl</application>)
+      (<xref linkend="xfunc-pl"/>)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      internal functions (<xref linkend="xfunc-internal"/>)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      C-language functions (<xref linkend="xfunc-c"/>)
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   Every kind
+   of  function  can take base types, composite types, or
+   combinations of these as arguments (parameters). In addition,
+   every kind of function can return a base type or
+   a composite type.  Functions can also be defined to return
+   sets of base or composite values.
+  </para>
+
+  <para>
+   Many kinds of functions can take or return certain pseudo-types
+   (such as polymorphic types), but the available facilities vary.
+   Consult the description of each kind of function for more details.
+  </para>
+
+  <para>
+   It's easiest to define <acronym>SQL</acronym>
+   functions, so we'll start by discussing those.
+   Most of the concepts presented for <acronym>SQL</acronym> functions
+   will carry over to the other types of functions.
+  </para>
+
+  <para>
+   Throughout this chapter, it can be useful to look at the reference
+   page of the <link linkend="sql-createfunction"><command>CREATE
+   FUNCTION</command></link> command to
+   understand the examples better.  Some examples from this chapter
+   can be found in <filename>funcs.sql</filename> and
+   <filename>funcs.c</filename> in the <filename>src/tutorial</filename>
+   directory in the <productname>PostgreSQL</productname> source
+   distribution.
+  </para>
+  </sect1>
+
+  <sect1 id="xproc">
+   <title>User-Defined Procedures</title>
+
+  <indexterm zone="xproc">
+   <primary>procedure</primary>
+   <secondary>user-defined</secondary>
+  </indexterm>
+
+   <para>
+    A procedure is a database object similar to a function.
+    The key differences are:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       Procedures are defined with
+       the <link linkend="sql-createprocedure"><command>CREATE
+       PROCEDURE</command></link> command, not <command>CREATE
+       FUNCTION</command>.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Procedures do not return a function value; hence <command>CREATE
+       PROCEDURE</command> lacks a <literal>RETURNS</literal> clause.
+       However, procedures can instead return data to their callers via
+       output parameters.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       While a function is called as part of a query or DML command, a
+       procedure is called in isolation using
+       the <link linkend="sql-call"><command>CALL</command></link> command.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       A procedure can commit or roll back transactions during its
+       execution (then automatically beginning a new transaction), so long
+       as the invoking <command>CALL</command> command is not part of an
+       explicit transaction block.  A function cannot do that.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Certain function attributes, such as strictness, don't apply to
+       procedures.  Those attributes control how the function is
+       used in a query, which isn't relevant to procedures.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    The explanations in the following sections about how to define
+    user-defined functions apply to procedures as well, except for the
+    points made above.
+   </para>
+
+   <para>
+    Collectively, functions and procedures are also known
+    as <firstterm>routines</firstterm><indexterm><primary>routine</primary></indexterm>.
+    There are commands such as <link linkend="sql-alterroutine"><command>ALTER ROUTINE</command></link>
+    and <link linkend="sql-droproutine"><command>DROP ROUTINE</command></link> that can operate on functions and
+    procedures without having to know which kind it is.  Note, however, that
+    there is no <literal>CREATE ROUTINE</literal> command.
+   </para>
+  </sect1>
+
+  <sect1 id="xfunc-sql">
+   <title>Query Language (<acronym>SQL</acronym>) Functions</title>
+
+   <indexterm zone="xfunc-sql">
+    <primary>function</primary>
+    <secondary>user-defined</secondary>
+    <tertiary>in SQL</tertiary>
+   </indexterm>
+
+   <para>
+    SQL functions execute an arbitrary list of SQL statements, returning
+    the result of the last query in the list.
+    In the simple (non-set)
+    case, the first row of the last query's result will be returned.
+    (Bear in mind that <quote>the first row</quote> of a multirow
+    result is not well-defined unless you use <literal>ORDER BY</literal>.)
+    If the last query happens
+    to return no rows at all, the null value will be returned.
+   </para>
+
+   <para>
+    Alternatively, an SQL function can be declared to return a set (that is,
+    multiple rows) by specifying the function's return type as <literal>SETOF
+    <replaceable>sometype</replaceable></literal>, or equivalently by declaring it as
+    <literal>RETURNS TABLE(<replaceable>columns</replaceable>)</literal>.  In this case
+    all rows of the last query's result are returned.  Further details appear
+    below.
+   </para>
+
+   <para>
+    The body of an SQL function must be a list of SQL
+    statements separated by semicolons.  A semicolon after the last
+    statement is optional.  Unless the function is declared to return
+    <type>void</type>, the last statement must be a <command>SELECT</command>,
+    or an <command>INSERT</command>, <command>UPDATE</command>, or <command>DELETE</command>
+    that has a <literal>RETURNING</literal> clause.
+   </para>
+
+    <para>
+     Any collection of commands in the  <acronym>SQL</acronym>
+     language can be packaged together and defined as a function.
+     Besides <command>SELECT</command> queries, the commands can include data
+     modification queries (<command>INSERT</command>,
+     <command>UPDATE</command>, and <command>DELETE</command>), as well as
+     other SQL commands. (You cannot use transaction control commands, e.g.,
+     <command>COMMIT</command>, <command>SAVEPOINT</command>, and some utility
+     commands, e.g.,  <literal>VACUUM</literal>, in <acronym>SQL</acronym> functions.)
+     However, the final command
+     must be a <command>SELECT</command> or have a <literal>RETURNING</literal>
+     clause that returns whatever is
+     specified as the function's return type.  Alternatively, if you
+     want to define an SQL function that performs actions but has no
+     useful value to return, you can define it as returning <type>void</type>.
+     For example, this function removes rows with negative salaries from
+     the <literal>emp</literal> table:
+
+<screen>
+CREATE FUNCTION clean_emp() RETURNS void AS '
+    DELETE FROM emp
+        WHERE salary &lt; 0;
+' LANGUAGE SQL;
+
+SELECT clean_emp();
+
+ clean_emp
+-----------
+
+(1 row)
+</screen>
+    </para>
+
+    <para>
+     You can also write this as a procedure, thus avoiding the issue of the
+     return type.  For example:
+<screen>
+CREATE PROCEDURE clean_emp() AS '
+    DELETE FROM emp
+        WHERE salary &lt; 0;
+' LANGUAGE SQL;
+
+CALL clean_emp();
+</screen>
+     In simple cases like this, the difference between a function returning
+     <type>void</type> and a procedure is mostly stylistic.  However,
+     procedures offer additional functionality such as transaction control
+     that is not available in functions.  Also, procedures are SQL standard
+     whereas returning <type>void</type> is a PostgreSQL extension.
+    </para>
+
+    <note>
+     <para>
+      The entire body of an SQL function is parsed before any of it is
+      executed.  While an SQL function can contain commands that alter
+      the system catalogs (e.g., <command>CREATE TABLE</command>), the effects
+      of such commands will not be visible during parse analysis of
+      later commands in the function.  Thus, for example,
+      <literal>CREATE TABLE foo (...); INSERT INTO foo VALUES(...);</literal>
+      will not work as desired if packaged up into a single SQL function,
+      since <structname>foo</structname> won't exist yet when the <command>INSERT</command>
+      command is parsed.  It's recommended to use <application>PL/pgSQL</application>
+      instead of an SQL function in this type of situation.
+     </para>
+   </note>
+
+   <para>
+    The syntax of the <command>CREATE FUNCTION</command> command requires
+    the function body to be written as a string constant.  It is usually
+    most convenient to use dollar quoting (see <xref
+    linkend="sql-syntax-dollar-quoting"/>) for the string constant.
+    If you choose to use regular single-quoted string constant syntax,
+    you must double single quote marks (<literal>'</literal>) and backslashes
+    (<literal>\</literal>) (assuming escape string syntax) in the body of
+    the function (see <xref linkend="sql-syntax-strings"/>).
+   </para>
+
+   <sect2 id="xfunc-sql-function-arguments">
+    <title>Arguments for <acronym>SQL</acronym> Functions</title>
+
+   <indexterm>
+    <primary>function</primary>
+    <secondary>named argument</secondary>
+   </indexterm>
+
+    <para>
+     Arguments of an SQL function can be referenced in the function
+     body using either names or numbers.  Examples of both methods appear
+     below.
+    </para>
+
+    <para>
+     To use a name, declare the function argument as having a name, and
+     then just write that name in the function body.  If the argument name
+     is the same as any column name in the current SQL command within the
+     function, the column name will take precedence.  To override this,
+     qualify the argument name with the name of the function itself, that is
+     <literal><replaceable>function_name</replaceable>.<replaceable>argument_name</replaceable></literal>.
+     (If this would conflict with a qualified column name, again the column
+     name wins.  You can avoid the ambiguity by choosing a different alias for
+     the table within the SQL command.)
+    </para>
+
+    <para>
+     In the older numeric approach, arguments are referenced using the syntax
+     <literal>$<replaceable>n</replaceable></literal>: <literal>$1</literal> refers to the first input
+     argument, <literal>$2</literal> to the second, and so on.  This will work
+     whether or not the particular argument was declared with a name.
+    </para>
+
+    <para>
+     If an argument is of a composite type, then the dot notation,
+     e.g., <literal><replaceable>argname</replaceable>.<replaceable>fieldname</replaceable></literal> or
+     <literal>$1.<replaceable>fieldname</replaceable></literal>, can be used to access attributes of the
+     argument.  Again, you might need to qualify the argument's name with the
+     function name to make the form with an argument name unambiguous.
+    </para>
+
+    <para>
+     SQL function arguments can only be used as data values,
+     not as identifiers.  Thus for example this is reasonable:
+<programlisting>
+INSERT INTO mytable VALUES ($1);
+</programlisting>
+but this will not work:
+<programlisting>
+INSERT INTO $1 VALUES (42);
+</programlisting>
+    </para>
+
+    <note>
+     <para>
+      The ability to use names to reference SQL function arguments was added
+      in <productname>PostgreSQL</productname> 9.2.  Functions to be used in
+      older servers must use the <literal>$<replaceable>n</replaceable></literal> notation.
+     </para>
+    </note>
+   </sect2>
+
+   <sect2 id="xfunc-sql-base-functions">
+    <title><acronym>SQL</acronym> Functions on Base Types</title>
+
+    <para>
+     The simplest possible <acronym>SQL</acronym> function has no arguments and
+     simply returns a base type, such as <type>integer</type>:
+
+<screen>
+CREATE FUNCTION one() RETURNS integer AS $$
+    SELECT 1 AS result;
+$$ LANGUAGE SQL;
+
+-- Alternative syntax for string literal:
+CREATE FUNCTION one() RETURNS integer AS '
+    SELECT 1 AS result;
+' LANGUAGE SQL;
+
+SELECT one();
+
+ one
+-----
+   1
+</screen>
+    </para>
+
+    <para>
+     Notice that we defined a column alias within the function body for the result of the function
+     (with  the  name <literal>result</literal>),  but this column alias is not visible
+     outside the function.  Hence,  the  result  is labeled <literal>one</literal>
+     instead of <literal>result</literal>.
+    </para>
+
+    <para>
+     It is almost as easy to define <acronym>SQL</acronym> functions
+     that take base types as arguments:
+
+<screen>
+CREATE FUNCTION add_em(x integer, y integer) RETURNS integer AS $$
+    SELECT x + y;
+$$ LANGUAGE SQL;
+
+SELECT add_em(1, 2) AS answer;
+
+ answer
+--------
+      3
+</screen>
+    </para>
+
+    <para>
+     Alternatively, we could dispense with names for the arguments and
+     use numbers:
+
+<screen>
+CREATE FUNCTION add_em(integer, integer) RETURNS integer AS $$
+    SELECT $1 + $2;
+$$ LANGUAGE SQL;
+
+SELECT add_em(1, 2) AS answer;
+
+ answer
+--------
+      3
+</screen>
+    </para>
+
+    <para>
+     Here is a more useful function, which might be used to debit a
+     bank account:
+
+<programlisting>
+CREATE FUNCTION tf1 (accountno integer, debit numeric) RETURNS numeric AS $$
+    UPDATE bank
+        SET balance = balance - debit
+        WHERE accountno = tf1.accountno;
+    SELECT 1;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     A user could execute this function to debit account 17 by $100.00 as
+     follows:
+
+<programlisting>
+SELECT tf1(17, 100.0);
+</programlisting>
+    </para>
+
+    <para>
+     In this example, we chose the name <literal>accountno</literal> for the first
+     argument, but this is the same as the name of a column in the
+     <literal>bank</literal> table.  Within the <command>UPDATE</command> command,
+     <literal>accountno</literal> refers to the column <literal>bank.accountno</literal>,
+     so <literal>tf1.accountno</literal> must be used to refer to the argument.
+     We could of course avoid this by using a different name for the argument.
+    </para>
+
+    <para>
+     In practice one would probably like a more useful result from the
+     function than a constant 1, so a more likely definition
+     is:
+
+<programlisting>
+CREATE FUNCTION tf1 (accountno integer, debit numeric) RETURNS numeric AS $$
+    UPDATE bank
+        SET balance = balance - debit
+        WHERE accountno = tf1.accountno;
+    SELECT balance FROM bank WHERE accountno = tf1.accountno;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     which adjusts the balance and returns the new balance.
+     The same thing could be done in one command using <literal>RETURNING</literal>:
+
+<programlisting>
+CREATE FUNCTION tf1 (accountno integer, debit numeric) RETURNS numeric AS $$
+    UPDATE bank
+        SET balance = balance - debit
+        WHERE accountno = tf1.accountno
+    RETURNING balance;
+$$ LANGUAGE SQL;
+</programlisting>
+    </para>
+
+    <para>
+     If the final <literal>SELECT</literal> or <literal>RETURNING</literal>
+     clause in an <acronym>SQL</acronym> function does not return exactly
+     the function's declared result
+     type, <productname>PostgreSQL</productname> will automatically cast
+     the value to the required type, if that is possible with an implicit
+     or assignment cast.  Otherwise, you must write an explicit cast.
+     For example, suppose we wanted the
+     previous <function>add_em</function> function to return
+     type <type>float8</type> instead.  It's sufficient to write
+
+<programlisting>
+CREATE FUNCTION add_em(integer, integer) RETURNS float8 AS $$
+    SELECT $1 + $2;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     since the <type>integer</type> sum can be implicitly cast
+     to <type>float8</type>.
+     (See <xref linkend="typeconv"/> or <xref linkend="sql-createcast"/>
+     for more about casts.)
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-composite-functions">
+    <title><acronym>SQL</acronym> Functions on Composite Types</title>
+
+    <para>
+     When writing functions with arguments of composite types, we must not
+     only specify which argument we want but also the desired attribute
+     (field) of that argument.  For example, suppose that
+     <type>emp</type> is a table containing employee data, and therefore
+     also the name of the composite type of each row of the table.  Here
+     is a function <function>double_salary</function> that computes what someone's
+     salary would be if it were doubled:
+
+<screen>
+CREATE TABLE emp (
+    name        text,
+    salary      numeric,
+    age         integer,
+    cubicle     point
+);
+
+INSERT INTO emp VALUES ('Bill', 4200, 45, '(2,1)');
+
+CREATE FUNCTION double_salary(emp) RETURNS numeric AS $$
+    SELECT $1.salary * 2 AS salary;
+$$ LANGUAGE SQL;
+
+SELECT name, double_salary(emp.*) AS dream
+    FROM emp
+    WHERE emp.cubicle ~= point '(2,1)';
+
+ name | dream
+------+-------
+ Bill |  8400
+</screen>
+    </para>
+
+    <para>
+     Notice the use of the syntax <literal>$1.salary</literal>
+     to select one field of the argument row value.  Also notice
+     how the calling <command>SELECT</command> command
+     uses <replaceable>table_name</replaceable><literal>.*</literal> to select
+     the entire current row of a table as a composite value.  The table
+     row can alternatively be referenced using just the table name,
+     like this:
+<screen>
+SELECT name, double_salary(emp) AS dream
+    FROM emp
+    WHERE emp.cubicle ~= point '(2,1)';
+</screen>
+     but this usage is deprecated since it's easy to get confused.
+     (See <xref linkend="rowtypes-usage"/> for details about these
+     two notations for the composite value of a table row.)
+    </para>
+
+    <para>
+     Sometimes it is handy to construct a composite argument value
+     on-the-fly.  This can be done with the <literal>ROW</literal> construct.
+     For example, we could adjust the data being passed to the function:
+<screen>
+SELECT name, double_salary(ROW(name, salary*1.1, age, cubicle)) AS dream
+    FROM emp;
+</screen>
+    </para>
+
+    <para>
+     It is also possible to build a function that returns a composite type.
+     This is an example of a function
+     that returns a single <type>emp</type> row:
+
+<programlisting>
+CREATE FUNCTION new_emp() RETURNS emp AS $$
+    SELECT text 'None' AS name,
+        1000.0 AS salary,
+        25 AS age,
+        point '(2,2)' AS cubicle;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     In this example we have specified each of  the  attributes
+     with  a  constant value, but any computation
+     could have been substituted for these constants.
+    </para>
+
+    <para>
+     Note two important things about defining the function:
+
+     <itemizedlist>
+      <listitem>
+       <para>
+        The select list order in the query must be exactly the same as
+        that in which the columns appear in the composite type.
+        (Naming the columns, as we did above,
+        is irrelevant to the system.)
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        We must ensure each expression's type can be cast to that of
+        the corresponding column of the composite type.
+        Otherwise we'll get errors like this:
+<screen>
+<computeroutput>
+ERROR:  return type mismatch in function declared to return emp
+DETAIL:  Final statement returns text instead of point at column 4.
+</computeroutput>
+</screen>
+        As with the base-type case, the system will not insert explicit
+        casts automatically, only implicit or assignment casts.
+       </para>
+      </listitem>
+     </itemizedlist>
+    </para>
+
+    <para>
+     A different way to define the same function is:
+
+<programlisting>
+CREATE FUNCTION new_emp() RETURNS emp AS $$
+    SELECT ROW('None', 1000.0, 25, '(2,2)')::emp;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     Here we wrote a <command>SELECT</command> that returns just a single
+     column of the correct composite type.  This isn't really better
+     in this situation, but it is a handy alternative in some cases
+     &mdash; for example, if we need to compute the result by calling
+     another function that returns the desired composite value.
+     Another example is that if we are trying to write a function that
+     returns a domain over composite, rather than a plain composite type,
+     it is always necessary to write it as returning a single column,
+     since there is no way to cause a coercion of the whole row result.
+    </para>
+
+    <para>
+     We could call this function directly either by using it in
+     a value expression:
+
+<screen>
+SELECT new_emp();
+
+         new_emp
+--------------------------
+ (None,1000.0,25,"(2,2)")
+</screen>
+
+     or by calling it as a table function:
+
+<screen>
+SELECT * FROM new_emp();
+
+ name | salary | age | cubicle
+------+--------+-----+---------
+ None | 1000.0 |  25 | (2,2)
+</screen>
+
+     The second way is described more fully in <xref
+     linkend="xfunc-sql-table-functions"/>.
+    </para>
+
+    <para>
+     When you use a function that returns a composite type,
+     you might want only one field (attribute) from its result.
+     You can do that with syntax like this:
+
+<screen>
+SELECT (new_emp()).name;
+
+ name
+------
+ None
+</screen>
+
+     The extra parentheses are needed to keep the parser from getting
+     confused.  If you try to do it without them, you get something like this:
+
+<screen>
+SELECT new_emp().name;
+ERROR:  syntax error at or near "."
+LINE 1: SELECT new_emp().name;
+                        ^
+</screen>
+    </para>
+
+    <para>
+     Another option is to use functional notation for extracting an attribute:
+
+<screen>
+SELECT name(new_emp());
+
+ name
+------
+ None
+</screen>
+
+     As explained in <xref linkend="rowtypes-usage"/>, the field notation and
+     functional notation are equivalent.
+    </para>
+
+    <para>
+     Another way to use a function returning a composite type is to pass the
+     result to another function that accepts the correct row type as input:
+
+<screen>
+CREATE FUNCTION getname(emp) RETURNS text AS $$
+    SELECT $1.name;
+$$ LANGUAGE SQL;
+
+SELECT getname(new_emp());
+ getname
+---------
+ None
+(1 row)
+</screen>
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-output-parameters">
+    <title><acronym>SQL</acronym> Functions with Output Parameters</title>
+
+   <indexterm>
+    <primary>function</primary>
+    <secondary>output parameter</secondary>
+   </indexterm>
+
+    <para>
+     An alternative way of describing a function's results is to define it
+     with <firstterm>output parameters</firstterm>, as in this example:
+
+<screen>
+CREATE FUNCTION add_em (IN x int, IN y int, OUT sum int)
+AS 'SELECT x + y'
+LANGUAGE SQL;
+
+SELECT add_em(3,7);
+ add_em
+--------
+     10
+(1 row)
+</screen>
+
+     This is not essentially different from the version of <literal>add_em</literal>
+     shown in <xref linkend="xfunc-sql-base-functions"/>.  The real value of
+     output parameters is that they provide a convenient way of defining
+     functions that return several columns.  For example,
+
+<screen>
+CREATE FUNCTION sum_n_product (x int, y int, OUT sum int, OUT product int)
+AS 'SELECT x + y, x * y'
+LANGUAGE SQL;
+
+ SELECT * FROM sum_n_product(11,42);
+ sum | product
+-----+---------
+  53 |     462
+(1 row)
+</screen>
+
+     What has essentially happened here is that we have created an anonymous
+     composite type for the result of the function.  The above example has
+     the same end result as
+
+<screen>
+CREATE TYPE sum_prod AS (sum int, product int);
+
+CREATE FUNCTION sum_n_product (int, int) RETURNS sum_prod
+AS 'SELECT $1 + $2, $1 * $2'
+LANGUAGE SQL;
+</screen>
+
+     but not having to bother with the separate composite type definition
+     is often handy.  Notice that the names attached to the output parameters
+     are not just decoration, but determine the column names of the anonymous
+     composite type.  (If you omit a name for an output parameter, the
+     system will choose a name on its own.)
+    </para>
+
+    <para>
+     Notice that output parameters are not included in the calling argument
+     list when invoking such a function from SQL.  This is because
+     <productname>PostgreSQL</productname> considers only the input
+     parameters to define the function's calling signature.  That means
+     also that only the input parameters matter when referencing the function
+     for purposes such as dropping it.  We could drop the above function
+     with either of
+
+<screen>
+DROP FUNCTION sum_n_product (x int, y int, OUT sum int, OUT product int);
+DROP FUNCTION sum_n_product (int, int);
+</screen>
+    </para>
+
+    <para>
+     Parameters can be marked as <literal>IN</literal> (the default),
+     <literal>OUT</literal>, <literal>INOUT</literal>, or <literal>VARIADIC</literal>.
+     An <literal>INOUT</literal>
+     parameter serves as both an input parameter (part of the calling
+     argument list) and an output parameter (part of the result record type).
+     <literal>VARIADIC</literal> parameters are input parameters, but are treated
+     specially as described below.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-output-parameters-proc">
+    <title><acronym>SQL</acronym> Procedures with Output Parameters</title>
+
+    <indexterm>
+     <primary>procedures</primary>
+     <secondary>output parameter</secondary>
+    </indexterm>
+
+    <para>
+     Output parameters are also supported in procedures, but they work a bit
+     differently from functions.  In <command>CALL</command> commands,
+     output parameters must be included in the argument list.
+     For example, the bank account debiting routine from earlier could be
+     written like this:
+<programlisting>
+CREATE PROCEDURE tp1 (accountno integer, debit numeric, OUT new_balance numeric) AS $$
+    UPDATE bank
+        SET balance = balance - debit
+        WHERE accountno = tp1.accountno
+    RETURNING balance;
+$$ LANGUAGE SQL;
+</programlisting>
+     To call this procedure, an argument matching the <literal>OUT</literal>
+     parameter must be included.  It's customary to write
+     <literal>NULL</literal>:
+<programlisting>
+CALL tp1(17, 100.0, NULL);
+</programlisting>
+     If you write something else, it must be an expression that is implicitly
+     coercible to the declared type of the parameter, just as for input
+     parameters.  Note however that such an expression will not be evaluated.
+    </para>
+
+    <para>
+     When calling a procedure from <application>PL/pgSQL</application>,
+     instead of writing <literal>NULL</literal> you must write a variable
+     that will receive the procedure's output.  See <xref
+     linkend="plpgsql-statements-calling-procedure"/> for details.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-variadic-functions">
+    <title><acronym>SQL</acronym> Functions with Variable Numbers of Arguments</title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>variadic</secondary>
+    </indexterm>
+
+    <indexterm>
+     <primary>variadic function</primary>
+    </indexterm>
+
+    <para>
+     <acronym>SQL</acronym> functions can be declared to accept
+     variable numbers of arguments, so long as all the <quote>optional</quote>
+     arguments are of the same data type.  The optional arguments will be
+     passed to the function as an array.  The function is declared by
+     marking the last parameter as <literal>VARIADIC</literal>; this parameter
+     must be declared as being of an array type.  For example:
+
+<screen>
+CREATE FUNCTION mleast(VARIADIC arr numeric[]) RETURNS numeric AS $$
+    SELECT min($1[i]) FROM generate_subscripts($1, 1) g(i);
+$$ LANGUAGE SQL;
+
+SELECT mleast(10, -1, 5, 4.4);
+ mleast
+--------
+     -1
+(1 row)
+</screen>
+
+     Effectively, all the actual arguments at or beyond the
+     <literal>VARIADIC</literal> position are gathered up into a one-dimensional
+     array, as if you had written
+
+<screen>
+SELECT mleast(ARRAY[10, -1, 5, 4.4]);    -- doesn't work
+</screen>
+
+     You can't actually write that, though &mdash; or at least, it will
+     not match this function definition.  A parameter marked
+     <literal>VARIADIC</literal> matches one or more occurrences of its element
+     type, not of its own type.
+    </para>
+
+    <para>
+     Sometimes it is useful to be able to pass an already-constructed array
+     to a variadic function; this is particularly handy when one variadic
+     function wants to pass on its array parameter to another one.  Also,
+     this is the only secure way to call a variadic function found in a schema
+     that permits untrusted users to create objects; see
+     <xref linkend="typeconv-func"/>.  You can do this by
+     specifying <literal>VARIADIC</literal> in the call:
+
+<screen>
+SELECT mleast(VARIADIC ARRAY[10, -1, 5, 4.4]);
+</screen>
+
+     This prevents expansion of the function's variadic parameter into its
+     element type, thereby allowing the array argument value to match
+     normally.  <literal>VARIADIC</literal> can only be attached to the last
+     actual argument of a function call.
+    </para>
+
+    <para>
+     Specifying <literal>VARIADIC</literal> in the call is also the only way to
+     pass an empty array to a variadic function, for example:
+
+<screen>
+SELECT mleast(VARIADIC ARRAY[]::numeric[]);
+</screen>
+
+     Simply writing <literal>SELECT mleast()</literal> does not work because a
+     variadic parameter must match at least one actual argument.
+     (You could define a second function also named <literal>mleast</literal>,
+     with no parameters, if you wanted to allow such calls.)
+    </para>
+
+    <para>
+     The array element parameters generated from a variadic parameter are
+     treated as not having any names of their own.  This means it is not
+     possible to call a variadic function using named arguments (<xref
+     linkend="sql-syntax-calling-funcs"/>), except when you specify
+     <literal>VARIADIC</literal>.  For example, this will work:
+
+<screen>
+SELECT mleast(VARIADIC arr =&gt; ARRAY[10, -1, 5, 4.4]);
+</screen>
+
+     but not these:
+
+<screen>
+SELECT mleast(arr =&gt; 10);
+SELECT mleast(arr =&gt; ARRAY[10, -1, 5, 4.4]);
+</screen>
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-parameter-defaults">
+    <title><acronym>SQL</acronym> Functions with Default Values for Arguments</title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>default values for arguments</secondary>
+    </indexterm>
+
+    <para>
+     Functions can be declared with default values for some or all input
+     arguments.  The default values are inserted whenever the function is
+     called with insufficiently many actual arguments.  Since arguments
+     can only be omitted from the end of the actual argument list, all
+     parameters after a parameter with a default value have to have
+     default values as well.  (Although the use of named argument notation
+     could allow this restriction to be relaxed, it's still enforced so that
+     positional argument notation works sensibly.)  Whether or not you use it,
+     this capability creates a need for precautions when calling functions in
+     databases where some users mistrust other users; see
+     <xref linkend="typeconv-func"/>.
+    </para>
+
+    <para>
+     For example:
+<screen>
+CREATE FUNCTION foo(a int, b int DEFAULT 2, c int DEFAULT 3)
+RETURNS int
+LANGUAGE SQL
+AS $$
+    SELECT $1 + $2 + $3;
+$$;
+
+SELECT foo(10, 20, 30);
+ foo
+-----
+  60
+(1 row)
+
+SELECT foo(10, 20);
+ foo
+-----
+  33
+(1 row)
+
+SELECT foo(10);
+ foo
+-----
+  15
+(1 row)
+
+SELECT foo();  -- fails since there is no default for the first argument
+ERROR:  function foo() does not exist
+</screen>
+     The <literal>=</literal> sign can also be used in place of the
+     key word <literal>DEFAULT</literal>.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-table-functions">
+    <title><acronym>SQL</acronym> Functions as Table Sources</title>
+
+    <para>
+     All SQL functions can be used in the <literal>FROM</literal> clause of a query,
+     but it is particularly useful for functions returning composite types.
+     If the function is defined to return a base type, the table function
+     produces a one-column table.  If the function is defined to return
+     a composite type, the table function produces a column for each attribute
+     of the composite type.
+    </para>
+
+    <para>
+     Here is an example:
+
+<screen>
+CREATE TABLE foo (fooid int, foosubid int, fooname text);
+INSERT INTO foo VALUES (1, 1, 'Joe');
+INSERT INTO foo VALUES (1, 2, 'Ed');
+INSERT INTO foo VALUES (2, 1, 'Mary');
+
+CREATE FUNCTION getfoo(int) RETURNS foo AS $$
+    SELECT * FROM foo WHERE fooid = $1;
+$$ LANGUAGE SQL;
+
+SELECT *, upper(fooname) FROM getfoo(1) AS t1;
+
+ fooid | foosubid | fooname | upper
+-------+----------+---------+-------
+     1 |        1 | Joe     | JOE
+(1 row)
+</screen>
+
+     As the example shows, we can work with the columns of the function's
+     result just the same as if they were columns of a regular table.
+    </para>
+
+    <para>
+     Note that we only got one row out of the function.  This is because
+     we did not use <literal>SETOF</literal>.  That is described in the next section.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-functions-returning-set">
+    <title><acronym>SQL</acronym> Functions Returning Sets</title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>with SETOF</secondary>
+    </indexterm>
+
+    <para>
+     When an SQL function is declared as returning <literal>SETOF
+     <replaceable>sometype</replaceable></literal>, the function's final
+     query is executed to completion, and each row it
+     outputs is returned as an element of the result set.
+    </para>
+
+    <para>
+     This feature is normally used when calling the function in the <literal>FROM</literal>
+     clause.  In this case each row returned by the function becomes
+     a row of the table seen by the query.  For example, assume that
+     table <literal>foo</literal> has the same contents as above, and we say:
+
+<programlisting>
+CREATE FUNCTION getfoo(int) RETURNS SETOF foo AS $$
+    SELECT * FROM foo WHERE fooid = $1;
+$$ LANGUAGE SQL;
+
+SELECT * FROM getfoo(1) AS t1;
+</programlisting>
+
+     Then we would get:
+<screen>
+ fooid | foosubid | fooname
+-------+----------+---------
+     1 |        1 | Joe
+     1 |        2 | Ed
+(2 rows)
+</screen>
+    </para>
+
+    <para>
+     It is also possible to return multiple rows with the columns defined by
+     output parameters, like this:
+
+<programlisting>
+CREATE TABLE tab (y int, z int);
+INSERT INTO tab VALUES (1, 2), (3, 4), (5, 6), (7, 8);
+
+CREATE FUNCTION sum_n_product_with_tab (x int, OUT sum int, OUT product int)
+RETURNS SETOF record
+AS $$
+    SELECT $1 + tab.y, $1 * tab.y FROM tab;
+$$ LANGUAGE SQL;
+
+SELECT * FROM sum_n_product_with_tab(10);
+ sum | product
+-----+---------
+  11 |      10
+  13 |      30
+  15 |      50
+  17 |      70
+(4 rows)
+</programlisting>
+
+     The key point here is that you must write <literal>RETURNS SETOF record</literal>
+     to indicate that the function returns multiple rows instead of just one.
+     If there is only one output parameter, write that parameter's type
+     instead of <type>record</type>.
+    </para>
+
+    <para>
+     It is frequently useful to construct a query's result by invoking a
+     set-returning function multiple times, with the parameters for each
+     invocation coming from successive rows of a table or subquery.  The
+     preferred way to do this is to use the <literal>LATERAL</literal> key word,
+     which is described in <xref linkend="queries-lateral"/>.
+     Here is an example using a set-returning function to enumerate
+     elements of a tree structure:
+
+<screen>
+SELECT * FROM nodes;
+   name    | parent
+-----------+--------
+ Top       |
+ Child1    | Top
+ Child2    | Top
+ Child3    | Top
+ SubChild1 | Child1
+ SubChild2 | Child1
+(6 rows)
+
+CREATE FUNCTION listchildren(text) RETURNS SETOF text AS $$
+    SELECT name FROM nodes WHERE parent = $1
+$$ LANGUAGE SQL STABLE;
+
+SELECT * FROM listchildren('Top');
+ listchildren
+--------------
+ Child1
+ Child2
+ Child3
+(3 rows)
+
+SELECT name, child FROM nodes, LATERAL listchildren(name) AS child;
+  name  |   child
+--------+-----------
+ Top    | Child1
+ Top    | Child2
+ Top    | Child3
+ Child1 | SubChild1
+ Child1 | SubChild2
+(5 rows)
+</screen>
+
+     This example does not do anything that we couldn't have done with a
+     simple join, but in more complex calculations the option to put
+     some of the work into a function can be quite convenient.
+    </para>
+
+    <para>
+     Functions returning sets can also be called in the select list
+     of a query.  For each row that the query
+     generates by itself, the set-returning function is invoked, and an output
+     row is generated for each element of the function's result set.
+     The previous example could also be done with queries like
+     these:
+
+<screen>
+SELECT listchildren('Top');
+ listchildren
+--------------
+ Child1
+ Child2
+ Child3
+(3 rows)
+
+SELECT name, listchildren(name) FROM nodes;
+  name  | listchildren
+--------+--------------
+ Top    | Child1
+ Top    | Child2
+ Top    | Child3
+ Child1 | SubChild1
+ Child1 | SubChild2
+(5 rows)
+</screen>
+
+     In the last <command>SELECT</command>,
+     notice that no output row appears for <literal>Child2</literal>, <literal>Child3</literal>, etc.
+     This happens because <function>listchildren</function> returns an empty set
+     for those arguments, so no result rows are generated.  This is the same
+     behavior as we got from an inner join to the function result when using
+     the <literal>LATERAL</literal> syntax.
+    </para>
+
+    <para>
+     <productname>PostgreSQL</productname>'s behavior for a set-returning function in a
+     query's select list is almost exactly the same as if the set-returning
+     function had been written in a <literal>LATERAL FROM</literal>-clause item
+     instead.  For example,
+<programlisting>
+SELECT x, generate_series(1,5) AS g FROM tab;
+</programlisting>
+     is almost equivalent to
+<programlisting>
+SELECT x, g FROM tab, LATERAL generate_series(1,5) AS g;
+</programlisting>
+     It would be exactly the same, except that in this specific example,
+     the planner could choose to put <structname>g</structname> on the outside of the
+     nested-loop join, since <structname>g</structname> has no actual lateral dependency
+     on <structname>tab</structname>.  That would result in a different output row
+     order.  Set-returning functions in the select list are always evaluated
+     as though they are on the inside of a nested-loop join with the rest of
+     the <literal>FROM</literal> clause, so that the function(s) are run to
+     completion before the next row from the <literal>FROM</literal> clause is
+     considered.
+    </para>
+
+    <para>
+     If there is more than one set-returning function in the query's select
+     list, the behavior is similar to what you get from putting the functions
+     into a single <literal>LATERAL ROWS FROM( ... )</literal> <literal>FROM</literal>-clause
+     item.  For each row from the underlying query, there is an output row
+     using the first result from each function, then an output row using the
+     second result, and so on.  If some of the set-returning functions
+     produce fewer outputs than others, null values are substituted for the
+     missing data, so that the total number of rows emitted for one
+     underlying row is the same as for the set-returning function that
+     produced the most outputs.  Thus the set-returning functions
+     run <quote>in lockstep</quote> until they are all exhausted, and then
+     execution continues with the next underlying row.
+    </para>
+
+    <para>
+     Set-returning functions can be nested in a select list, although that is
+     not allowed in <literal>FROM</literal>-clause items.  In such cases, each level
+     of nesting is treated separately, as though it were
+     a separate <literal>LATERAL ROWS FROM( ... )</literal> item.  For example, in
+<programlisting>
+SELECT srf1(srf2(x), srf3(y)), srf4(srf5(z)) FROM tab;
+</programlisting>
+     the set-returning functions <function>srf2</function>, <function>srf3</function>,
+     and <function>srf5</function> would be run in lockstep for each row
+     of <structname>tab</structname>, and then <function>srf1</function> and <function>srf4</function>
+     would be applied in lockstep to each row produced by the lower
+     functions.
+    </para>
+
+    <para>
+     Set-returning functions cannot be used within conditional-evaluation
+     constructs, such as <literal>CASE</literal> or <literal>COALESCE</literal>.  For
+     example, consider
+<programlisting>
+SELECT x, CASE WHEN x &gt; 0 THEN generate_series(1, 5) ELSE 0 END FROM tab;
+</programlisting>
+     It might seem that this should produce five repetitions of input rows
+     that have <literal>x &gt; 0</literal>, and a single repetition of those that do
+     not; but actually, because <function>generate_series(1, 5)</function> would be
+     run in an implicit <literal>LATERAL FROM</literal> item before
+     the <literal>CASE</literal> expression is ever evaluated, it would produce five
+     repetitions of every input row.  To reduce confusion, such cases produce
+     a parse-time error instead.
+    </para>
+
+    <note>
+     <para>
+      If a function's last command is <command>INSERT</command>, <command>UPDATE</command>,
+      or <command>DELETE</command> with <literal>RETURNING</literal>, that command will
+      always be executed to completion, even if the function is not declared
+      with <literal>SETOF</literal> or the calling query does not fetch all the
+      result rows.  Any extra rows produced by the <literal>RETURNING</literal>
+      clause are silently dropped, but the commanded table modifications
+      still happen (and are all completed before returning from the function).
+     </para>
+    </note>
+
+    <note>
+     <para>
+      Before <productname>PostgreSQL</productname> 10, putting more than one
+      set-returning function in the same select list did not behave very
+      sensibly unless they always produced equal numbers of rows.  Otherwise,
+      what you got was a number of output rows equal to the least common
+      multiple of the numbers of rows produced by the set-returning
+      functions.  Also, nested set-returning functions did not work as
+      described above; instead, a set-returning function could have at most
+      one set-returning argument, and each nest of set-returning functions
+      was run independently.  Also, conditional execution (set-returning
+      functions inside <literal>CASE</literal> etc.) was previously allowed,
+      complicating things even more.
+      Use of the <literal>LATERAL</literal> syntax is recommended when writing
+      queries that need to work in older <productname>PostgreSQL</productname> versions,
+      because that will give consistent results across different versions.
+      If you have a query that is relying on conditional execution of a
+      set-returning function, you may be able to fix it by moving the
+      conditional test into a custom set-returning function.  For example,
+<programlisting>
+SELECT x, CASE WHEN y &gt; 0 THEN generate_series(1, z) ELSE 5 END FROM tab;
+</programlisting>
+      could become
+<programlisting>
+CREATE FUNCTION case_generate_series(cond bool, start int, fin int, els int)
+  RETURNS SETOF int AS $$
+BEGIN
+  IF cond THEN
+    RETURN QUERY SELECT generate_series(start, fin);
+  ELSE
+    RETURN QUERY SELECT els;
+  END IF;
+END$$ LANGUAGE plpgsql;
+
+SELECT x, case_generate_series(y &gt; 0, 1, z, 5) FROM tab;
+</programlisting>
+      This formulation will work the same in all versions
+      of <productname>PostgreSQL</productname>.
+     </para>
+    </note>
+   </sect2>
+
+   <sect2 id="xfunc-sql-functions-returning-table">
+    <title><acronym>SQL</acronym> Functions Returning <literal>TABLE</literal></title>
+
+    <indexterm>
+     <primary>function</primary>
+     <secondary>RETURNS TABLE</secondary>
+    </indexterm>
+
+    <para>
+     There is another way to declare a function as returning a set,
+     which is to use the syntax
+     <literal>RETURNS TABLE(<replaceable>columns</replaceable>)</literal>.
+     This is equivalent to using one or more <literal>OUT</literal> parameters plus
+     marking the function as returning <literal>SETOF record</literal> (or
+     <literal>SETOF</literal> a single output parameter's type, as appropriate).
+     This notation is specified in recent versions of the SQL standard, and
+     thus may be more portable than using <literal>SETOF</literal>.
+    </para>
+
+    <para>
+     For example, the preceding sum-and-product example could also be
+     done this way:
+
+<programlisting>
+CREATE FUNCTION sum_n_product_with_tab (x int)
+RETURNS TABLE(sum int, product int) AS $$
+    SELECT $1 + tab.y, $1 * tab.y FROM tab;
+$$ LANGUAGE SQL;
+</programlisting>
+
+     It is not allowed to use explicit <literal>OUT</literal> or <literal>INOUT</literal>
+     parameters with the <literal>RETURNS TABLE</literal> notation &mdash; you must
+     put all the output columns in the <literal>TABLE</literal> list.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-sql-polymorphic-functions">
+    <title>Polymorphic <acronym>SQL</acronym> Functions</title>
+
+    <para>
+     <acronym>SQL</acronym> functions can be declared to accept and
+     return the polymorphic types described in <xref
+     linkend="extend-types-polymorphic"/>.  Here is a polymorphic
+     function <function>make_array</function> that builds up an array
+     from two arbitrary data type elements:
+<screen>
+CREATE FUNCTION make_array(anyelement, anyelement) RETURNS anyarray AS $$
+    SELECT ARRAY[$1, $2];
+$$ LANGUAGE SQL;
+
+SELECT make_array(1, 2) AS intarray, make_array('a'::text, 'b') AS textarray;
+ intarray | textarray
+----------+-----------
+ {1,2}    | {a,b}
+(1 row)
+</screen>
+    </para>
+
+    <para>
+     Notice the use of the typecast <literal>'a'::text</literal>
+     to specify that the argument is of type <type>text</type>. This is
+     required if the argument is just a string literal, since otherwise
+     it would be treated as type
+     <type>unknown</type>, and array of <type>unknown</type> is not a valid
+     type.
+     Without the typecast, you will get errors like this:
+<screen>
+ERROR:  could not determine polymorphic type because input has type unknown
+</screen>
+    </para>
+
+    <para>
+     With <function>make_array</function> declared as above, you must
+     provide two arguments that are of exactly the same data type; the
+     system will not attempt to resolve any type differences.  Thus for
+     example this does not work:
+<screen>
+SELECT make_array(1, 2.5) AS numericarray;
+ERROR:  function make_array(integer, numeric) does not exist
+</screen>
+     An alternative approach is to use the <quote>common</quote> family of
+     polymorphic types, which allows the system to try to identify a
+     suitable common type:
+<screen>
+CREATE FUNCTION make_array2(anycompatible, anycompatible)
+RETURNS anycompatiblearray AS $$
+    SELECT ARRAY[$1, $2];
+$$ LANGUAGE SQL;
+
+SELECT make_array2(1, 2.5) AS numericarray;
+ numericarray
+--------------
+ {1,2.5}
+(1 row)
+</screen>
+     Because the rules for common type resolution default to choosing
+     type <type>text</type> when all inputs are of unknown types, this
+     also works:
+<screen>
+SELECT make_array2('a', 'b') AS textarray;
+ textarray
+-----------
+ {a,b}
+(1 row)
+</screen>
+    </para>
+
+    <para>
+     It is permitted to have polymorphic arguments with a fixed
+     return type, but the converse is not. For example:
+<screen>
+CREATE FUNCTION is_greater(anyelement, anyelement) RETURNS boolean AS $$
+    SELECT $1 &gt; $2;
+$$ LANGUAGE SQL;
+
+SELECT is_greater(1, 2);
+ is_greater
+------------
+ f
+(1 row)
+
+CREATE FUNCTION invalid_func() RETURNS anyelement AS $$
+    SELECT 1;
+$$ LANGUAGE SQL;
+ERROR:  cannot determine result data type
+DETAIL:  A result of type anyelement requires at least one input of type anyelement, anyarray, anynonarray, anyenum, or anyrange.
+</screen>
+    </para>
+
+    <para>
+     Polymorphism can be used with functions that have output arguments.
+     For example:
+<screen>
+CREATE FUNCTION dup (f1 anyelement, OUT f2 anyelement, OUT f3 anyarray)
+AS 'select $1, array[$1,$1]' LANGUAGE SQL;
+
+SELECT * FROM dup(22);
+ f2 |   f3
+----+---------
+ 22 | {22,22}
+(1 row)
+</screen>
+    </para>
+
+    <para>
+     Polymorphism can also be used with variadic functions.
+     For example:
+<screen>
+CREATE FUNCTION anyleast (VARIADIC anyarray) RETURNS anyelement AS $$
+    SELECT min($1[i]) FROM generate_subscripts($1, 1) g(i);
+$$ LANGUAGE SQL;
+
+SELECT anyleast(10, -1, 5, 4);
+ anyleast
+----------
+       -1
+(1 row)
+
+SELECT anyleast('abc'::text, 'def');
+ anyleast
+----------
+ abc
+(1 row)
+
+CREATE FUNCTION concat_values(text, VARIADIC anyarray) RETURNS text AS $$
+    SELECT array_to_string($2, $1);
+$$ LANGUAGE SQL;
+
+SELECT concat_values('|', 1, 4, 2);
+ concat_values
+---------------
+ 1|4|2
+(1 row)
+</screen>
+    </para>
+   </sect2>
+
+   <sect2>
+    <title><acronym>SQL</acronym> Functions with Collations</title>
+
+    <indexterm>
+     <primary>collation</primary>
+     <secondary>in SQL functions</secondary>
+    </indexterm>
+
+    <para>
+     When an SQL function has one or more parameters of collatable data types,
+     a collation is identified for each function call depending on the
+     collations assigned to the actual arguments, as described in <xref
+     linkend="collation"/>.  If a collation is successfully identified
+     (i.e., there are no conflicts of implicit collations among the arguments)
+     then all the collatable parameters are treated as having that collation
+     implicitly.  This will affect the behavior of collation-sensitive
+     operations within the function.  For example, using the
+     <function>anyleast</function> function described above, the result of
+<programlisting>
+SELECT anyleast('abc'::text, 'ABC');
+</programlisting>
+     will depend on the database's default collation.  In <literal>C</literal> locale
+     the result will be <literal>ABC</literal>, but in many other locales it will
+     be <literal>abc</literal>.  The collation to use can be forced by adding
+     a <literal>COLLATE</literal> clause to any of the arguments, for example
+<programlisting>
+SELECT anyleast('abc'::text, 'ABC' COLLATE "C");
+</programlisting>
+     Alternatively, if you wish a function to operate with a particular
+     collation regardless of what it is called with, insert
+     <literal>COLLATE</literal> clauses as needed in the function definition.
+     This version of <function>anyleast</function> would always use <literal>en_US</literal>
+     locale to compare strings:
+<programlisting>
+CREATE FUNCTION anyleast (VARIADIC anyarray) RETURNS anyelement AS $$
+    SELECT min($1[i] COLLATE "en_US") FROM generate_subscripts($1, 1) g(i);
+$$ LANGUAGE SQL;
+</programlisting>
+     But note that this will throw an error if applied to a non-collatable
+     data type.
+    </para>
+
+    <para>
+     If no common collation can be identified among the actual arguments,
+     then an SQL function treats its parameters as having their data types'
+     default collation (which is usually the database's default collation,
+     but could be different for parameters of domain types).
+    </para>
+
+    <para>
+     The behavior of collatable parameters can be thought of as a limited
+     form of polymorphism, applicable only to textual data types.
+    </para>
+   </sect2>
+  </sect1>
+
+  <sect1 id="xfunc-overload">
+   <title>Function Overloading</title>
+
+   <indexterm zone="xfunc-overload">
+    <primary>overloading</primary>
+    <secondary>functions</secondary>
+   </indexterm>
+
+   <para>
+    More than one function can be defined with the same SQL name, so long
+    as the arguments they take are different.  In other words,
+    function names can be <firstterm>overloaded</firstterm>.  Whether or not
+    you use it, this capability entails security precautions when calling
+    functions in databases where some users mistrust other users; see
+    <xref linkend="typeconv-func"/>.  When a query is executed, the server
+    will determine which function to call from the data types and the number
+    of the provided arguments.  Overloading can also be used to simulate
+    functions with a variable number of arguments, up to a finite maximum
+    number.
+   </para>
+
+   <para>
+    When creating a family of overloaded functions, one should be
+    careful not to create ambiguities.  For instance, given the
+    functions:
+<programlisting>
+CREATE FUNCTION test(int, real) RETURNS ...
+CREATE FUNCTION test(smallint, double precision) RETURNS ...
+</programlisting>
+    it is not immediately clear which function would be called with
+    some trivial input like <literal>test(1, 1.5)</literal>.  The
+    currently implemented resolution rules are described in
+    <xref linkend="typeconv"/>, but it is unwise to design a system that subtly
+    relies on this behavior.
+   </para>
+
+   <para>
+    A function that takes a single argument of a composite type should
+    generally not have the same name as any attribute (field) of that type.
+    Recall that <literal><replaceable>attribute</replaceable>(<replaceable>table</replaceable>)</literal>
+    is considered equivalent
+    to <literal><replaceable>table</replaceable>.<replaceable>attribute</replaceable></literal>.
+    In the case that there is an
+    ambiguity between a function on a composite type and an attribute of
+    the composite type, the attribute will always be used.  It is possible
+    to override that choice by schema-qualifying the function name
+    (that is, <literal><replaceable>schema</replaceable>.<replaceable>func</replaceable>(<replaceable>table</replaceable>)
+    </literal>) but it's better to
+    avoid the problem by not choosing conflicting names.
+   </para>
+
+   <para>
+    Another possible conflict is between variadic and non-variadic functions.
+    For instance, it is possible to create both <literal>foo(numeric)</literal> and
+    <literal>foo(VARIADIC numeric[])</literal>.  In this case it is unclear which one
+    should be matched to a call providing a single numeric argument, such as
+    <literal>foo(10.1)</literal>.  The rule is that the function appearing
+    earlier in the search path is used, or if the two functions are in the
+    same schema, the non-variadic one is preferred.
+   </para>
+
+   <para>
+    When overloading C-language functions, there is an additional
+    constraint: The C name of each function in the family of
+    overloaded functions must be different from the C names of all
+    other functions, either internal or dynamically loaded.  If this
+    rule is violated, the behavior is not portable.  You might get a
+    run-time linker error, or one of the functions will get called
+    (usually the internal one).  The alternative form of the
+    <literal>AS</literal> clause for the SQL <command>CREATE
+    FUNCTION</command> command decouples the SQL function name from
+    the function name in the C source code.  For instance:
+<programlisting>
+CREATE FUNCTION test(int) RETURNS int
+    AS '<replaceable>filename</replaceable>', 'test_1arg'
+    LANGUAGE C;
+CREATE FUNCTION test(int, int) RETURNS int
+    AS '<replaceable>filename</replaceable>', 'test_2arg'
+    LANGUAGE C;
+</programlisting>
+    The names of the C functions here reflect one of many possible conventions.
+   </para>
+  </sect1>
+
+  <sect1 id="xfunc-volatility">
+   <title>Function Volatility Categories</title>
+
+   <indexterm zone="xfunc-volatility">
+    <primary>volatility</primary>
+    <secondary>functions</secondary>
+   </indexterm>
+   <indexterm zone="xfunc-volatility">
+    <primary>VOLATILE</primary>
+   </indexterm>
+   <indexterm zone="xfunc-volatility">
+    <primary>STABLE</primary>
+   </indexterm>
+   <indexterm zone="xfunc-volatility">
+    <primary>IMMUTABLE</primary>
+   </indexterm>
+
+   <para>
+    Every function has a <firstterm>volatility</firstterm> classification, with
+    the possibilities being <literal>VOLATILE</literal>, <literal>STABLE</literal>, or
+    <literal>IMMUTABLE</literal>.  <literal>VOLATILE</literal> is the default if the
+    <link linkend="sql-createfunction"><command>CREATE FUNCTION</command></link>
+    command does not specify a category.  The volatility category is a
+    promise to the optimizer about the behavior of the function:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      A <literal>VOLATILE</literal> function can do anything, including modifying
+      the database.  It can return different results on successive calls with
+      the same arguments.  The optimizer makes no assumptions about the
+      behavior of such functions.  A query using a volatile function will
+      re-evaluate the function at every row where its value is needed.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      A <literal>STABLE</literal> function cannot modify the database and is
+      guaranteed to return the same results given the same arguments
+      for all rows within a single statement. This category allows the
+      optimizer to optimize multiple calls of the function to a single
+      call. In particular, it is safe to use an expression containing
+      such a function in an index scan condition. (Since an index scan
+      will evaluate the comparison value only once, not once at each
+      row, it is not valid to use a <literal>VOLATILE</literal> function in an
+      index scan condition.)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      An <literal>IMMUTABLE</literal> function cannot modify the database and is
+      guaranteed to return the same results given the same arguments forever.
+      This category allows the optimizer to pre-evaluate the function when
+      a query calls it with constant arguments.  For example, a query like
+      <literal>SELECT ... WHERE x = 2 + 2</literal> can be simplified on sight to
+      <literal>SELECT ... WHERE x = 4</literal>, because the function underlying
+      the integer addition operator is marked <literal>IMMUTABLE</literal>.
+     </para>
+    </listitem>
+   </itemizedlist>
+   </para>
+
+   <para>
+    For best optimization results, you should label your functions with the
+    strictest volatility category that is valid for them.
+   </para>
+
+   <para>
+    Any function with side-effects <emphasis>must</emphasis> be labeled
+    <literal>VOLATILE</literal>, so that calls to it cannot be optimized away.
+    Even a function with no side-effects needs to be labeled
+    <literal>VOLATILE</literal> if its value can change within a single query;
+    some examples are <literal>random()</literal>, <literal>currval()</literal>,
+    <literal>timeofday()</literal>.
+   </para>
+
+   <para>
+    Another important example is that the <function>current_timestamp</function>
+    family of functions qualify as <literal>STABLE</literal>, since their values do
+    not change within a transaction.
+   </para>
+
+   <para>
+    There is relatively little difference between <literal>STABLE</literal> and
+    <literal>IMMUTABLE</literal> categories when considering simple interactive
+    queries that are planned and immediately executed: it doesn't matter
+    a lot whether a function is executed once during planning or once during
+    query execution startup.  But there is a big difference if the plan is
+    saved and reused later.  Labeling a function <literal>IMMUTABLE</literal> when
+    it really isn't might allow it to be prematurely folded to a constant during
+    planning, resulting in a stale value being re-used during subsequent uses
+    of the plan.  This is a hazard when using prepared statements or when
+    using function languages that cache plans (such as
+    <application>PL/pgSQL</application>).
+   </para>
+
+   <para>
+    For functions written in SQL or in any of the standard procedural
+    languages, there is a second important property determined by the
+    volatility category, namely the visibility of any data changes that have
+    been made by the SQL command that is calling the function.  A
+    <literal>VOLATILE</literal> function will see such changes, a <literal>STABLE</literal>
+    or <literal>IMMUTABLE</literal> function will not.  This behavior is implemented
+    using the snapshotting behavior of MVCC (see <xref linkend="mvcc"/>):
+    <literal>STABLE</literal> and <literal>IMMUTABLE</literal> functions use a snapshot
+    established as of the start of the calling query, whereas
+    <literal>VOLATILE</literal> functions obtain a fresh snapshot at the start of
+    each query they execute.
+   </para>
+
+   <note>
+    <para>
+     Functions written in C can manage snapshots however they want, but it's
+     usually a good idea to make C functions work this way too.
+    </para>
+   </note>
+
+   <para>
+    Because of this snapshotting behavior,
+    a function containing only <command>SELECT</command> commands can safely be
+    marked <literal>STABLE</literal>, even if it selects from tables that might be
+    undergoing modifications by concurrent queries.
+    <productname>PostgreSQL</productname> will execute all commands of a
+    <literal>STABLE</literal> function using the snapshot established for the
+    calling query, and so it will see a fixed view of the database throughout
+    that query.
+   </para>
+
+   <para>
+    The same snapshotting behavior is used for <command>SELECT</command> commands
+    within <literal>IMMUTABLE</literal> functions.  It is generally unwise to select
+    from database tables within an <literal>IMMUTABLE</literal> function at all,
+    since the immutability will be broken if the table contents ever change.
+    However, <productname>PostgreSQL</productname> does not enforce that you
+    do not do that.
+   </para>
+
+   <para>
+    A common error is to label a function <literal>IMMUTABLE</literal> when its
+    results depend on a configuration parameter.  For example, a function
+    that manipulates timestamps might well have results that depend on the
+    <xref linkend="guc-timezone"/> setting.  For safety, such functions should
+    be labeled <literal>STABLE</literal> instead.
+   </para>
+
+   <note>
+    <para>
+     <productname>PostgreSQL</productname> requires that <literal>STABLE</literal>
+     and <literal>IMMUTABLE</literal> functions contain no SQL commands other
+     than <command>SELECT</command> to prevent data modification.
+     (This is not a completely bulletproof test, since such functions could
+     still call <literal>VOLATILE</literal> functions that modify the database.
+     If you do that, you will find that the <literal>STABLE</literal> or
+     <literal>IMMUTABLE</literal> function does not notice the database changes
+     applied by the called function, since they are hidden from its snapshot.)
+    </para>
+   </note>
+  </sect1>
+
+  <sect1 id="xfunc-pl">
+   <title>Procedural Language Functions</title>
+
+   <para>
+    <productname>PostgreSQL</productname> allows user-defined functions
+    to be written in other languages besides SQL and C.  These other
+    languages are generically called <firstterm>procedural
+    languages</firstterm> (<acronym>PL</acronym>s).
+    Procedural languages aren't built into the
+    <productname>PostgreSQL</productname> server; they are offered
+    by loadable modules.
+    See <xref linkend="xplang"/> and following chapters for more
+    information.
+   </para>
+  </sect1>
+
+  <sect1 id="xfunc-internal">
+   <title>Internal Functions</title>
+
+   <indexterm zone="xfunc-internal"><primary>function</primary><secondary>internal</secondary></indexterm>
+
+   <para>
+    Internal functions are functions written in C that have been statically
+    linked into the <productname>PostgreSQL</productname> server.
+    The <quote>body</quote> of the function definition
+    specifies the C-language name of the function, which need not be the
+    same as the name being declared for SQL use.
+    (For reasons of backward compatibility, an empty body
+    is accepted as meaning that the C-language function name is the
+    same as the SQL name.)
+   </para>
+
+   <para>
+    Normally, all internal functions present in the
+    server are declared during the initialization of the database cluster
+    (see <xref linkend="creating-cluster"/>),
+    but a user could use <command>CREATE FUNCTION</command>
+    to create additional alias names for an internal function.
+    Internal functions are declared in <command>CREATE FUNCTION</command>
+    with language name <literal>internal</literal>.  For instance, to
+    create an alias for the <function>sqrt</function> function:
+<programlisting>
+CREATE FUNCTION square_root(double precision) RETURNS double precision
+    AS 'dsqrt'
+    LANGUAGE internal
+    STRICT;
+</programlisting>
+    (Most internal functions expect to be declared <quote>strict</quote>.)
+   </para>
+
+   <note>
+    <para>
+     Not all <quote>predefined</quote> functions are
+     <quote>internal</quote> in the above sense.  Some predefined
+     functions are written in SQL.
+    </para>
+   </note>
+  </sect1>
+
+  <sect1 id="xfunc-c">
+   <title>C-Language Functions</title>
+
+   <indexterm zone="xfunc-c">
+    <primary>function</primary>
+    <secondary>user-defined</secondary>
+    <tertiary>in C</tertiary>
+   </indexterm>
+
+   <para>
+    User-defined functions can be written in C (or a language that can
+    be made compatible with C, such as C++).  Such functions are
+    compiled into dynamically loadable objects (also called shared
+    libraries) and are loaded by the server on demand.  The dynamic
+    loading feature is what distinguishes <quote>C language</quote> functions
+    from <quote>internal</quote> functions &mdash; the actual coding conventions
+    are essentially the same for both.  (Hence, the standard internal
+    function library is a rich source of coding examples for user-defined
+    C functions.)
+   </para>
+
+   <para>
+    Currently only one calling convention is used for C functions
+    (<quote>version 1</quote>). Support for that calling convention is
+    indicated by writing a <literal>PG_FUNCTION_INFO_V1()</literal> macro
+    call for the function, as illustrated below.
+   </para>
+
+  <sect2 id="xfunc-c-dynload">
+   <title>Dynamic Loading</title>
+
+   <indexterm zone="xfunc-c-dynload">
+    <primary>dynamic loading</primary>
+   </indexterm>
+
+   <para>
+    The first time a user-defined function in a particular
+    loadable object file is called in a session,
+    the dynamic loader loads that object file into memory so that the
+    function can be called.  The <command>CREATE FUNCTION</command>
+    for a user-defined C function must therefore specify two pieces of
+    information for the function: the name of the loadable
+    object file, and the C name (link symbol) of the specific function to call
+    within that object file.  If the C name is not explicitly specified then
+    it is assumed to be the same as the SQL function name.
+   </para>
+
+   <para>
+    The following algorithm is used to locate the shared object file
+    based on the name given in the <command>CREATE FUNCTION</command>
+    command:
+
+    <orderedlist>
+     <listitem>
+      <para>
+       If the name is an absolute path, the given file is loaded.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       If the name starts with the string <literal>$libdir</literal>,
+       that part is replaced by the <productname>PostgreSQL</productname> package
+        library directory
+       name, which is determined at build time.<indexterm><primary>$libdir</primary></indexterm>
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       If the name does not contain a directory part, the file is
+       searched for in the path specified by the configuration variable
+       <xref linkend="guc-dynamic-library-path"/>.<indexterm><primary>dynamic_library_path</primary></indexterm>
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Otherwise (the file was not found in the path, or it contains a
+       non-absolute directory part), the dynamic loader will try to
+       take the name as given, which will most likely fail.  (It is
+       unreliable to depend on the current working directory.)
+      </para>
+     </listitem>
+    </orderedlist>
+
+    If this sequence does not work, the platform-specific shared
+    library file name extension (often <filename>.so</filename>) is
+    appended to the given name and this sequence is tried again.  If
+    that fails as well, the load will fail.
+   </para>
+
+   <para>
+    It is recommended to locate shared libraries either relative to
+    <literal>$libdir</literal> or through the dynamic library path.
+    This simplifies version upgrades if the new installation is at a
+    different location.  The actual directory that
+    <literal>$libdir</literal> stands for can be found out with the
+    command <literal>pg_config --pkglibdir</literal>.
+   </para>
+
+   <para>
+    The user ID the <productname>PostgreSQL</productname> server runs
+    as must be able to traverse the path to the file you intend to
+    load.  Making the file or a higher-level directory not readable
+    and/or not executable by the <systemitem>postgres</systemitem>
+    user is a common mistake.
+   </para>
+
+   <para>
+    In any case, the file name that is given in the
+    <command>CREATE FUNCTION</command> command is recorded literally
+    in the system catalogs, so if the file needs to be loaded again
+    the same procedure is applied.
+   </para>
+
+   <note>
+    <para>
+     <productname>PostgreSQL</productname> will not compile a C function
+     automatically.  The object file must be compiled before it is referenced
+     in a <command>CREATE
+     FUNCTION</command> command.  See <xref linkend="dfunc"/> for additional
+     information.
+    </para>
+   </note>
+
+   <indexterm zone="xfunc-c-dynload">
+    <primary>magic block</primary>
+   </indexterm>
+
+   <para>
+    To ensure that a dynamically loaded object file is not loaded into an
+    incompatible server, <productname>PostgreSQL</productname> checks that the
+    file contains a <quote>magic block</quote> with the appropriate contents.
+    This allows the server to detect obvious incompatibilities, such as code
+    compiled for a different major version of
+    <productname>PostgreSQL</productname>. To include a magic block,
+    write this in one (and only one) of the module source files, after having
+    included the header <filename>fmgr.h</filename>:
+
+<programlisting>
+PG_MODULE_MAGIC;
+</programlisting>
+   </para>
+
+   <para>
+    After it is used for the first time, a dynamically loaded object
+    file is retained in memory.  Future calls in the same session to
+    the function(s) in that file will only incur the small overhead of
+    a symbol table lookup.  If you need to force a reload of an object
+    file, for example after recompiling it, begin a fresh session.
+   </para>
+
+   <indexterm zone="xfunc-c-dynload">
+    <primary>_PG_init</primary>
+   </indexterm>
+   <indexterm zone="xfunc-c-dynload">
+    <primary>library initialization function</primary>
+   </indexterm>
+
+   <para>
+    Optionally, a dynamically loaded file can contain an initialization
+    function.  If the file includes a function named
+    <function>_PG_init</function>, that function will be called immediately after
+    loading the file.  The function receives no parameters and should
+    return void.  There is presently no way to unload a dynamically loaded file.
+   </para>
+
+  </sect2>
+
+   <sect2 id="xfunc-c-basetype">
+    <title>Base Types in C-Language Functions</title>
+
+    <indexterm zone="xfunc-c-basetype">
+     <primary>data type</primary>
+     <secondary>internal organization</secondary>
+    </indexterm>
+
+    <para>
+     To know how to write C-language functions, you need to know how
+     <productname>PostgreSQL</productname> internally represents base
+     data types and how they can be passed to and from functions.
+     Internally, <productname>PostgreSQL</productname> regards a base
+     type as a <quote>blob of memory</quote>.  The user-defined
+     functions that you define over a type in turn define the way that
+     <productname>PostgreSQL</productname> can operate on it.  That
+     is, <productname>PostgreSQL</productname> will only store and
+     retrieve the data from disk and use your user-defined functions
+     to input, process, and output the data.
+    </para>
+
+    <para>
+     Base types can have one of three internal formats:
+
+     <itemizedlist>
+      <listitem>
+       <para>
+        pass by value, fixed-length
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        pass by reference, fixed-length
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        pass by reference, variable-length
+       </para>
+      </listitem>
+     </itemizedlist>
+    </para>
+
+    <para>
+     By-value  types  can  only be 1, 2, or 4 bytes in length
+     (also 8 bytes, if <literal>sizeof(Datum)</literal> is 8 on your machine).
+     You should be careful to define your types such that they will be the
+     same size (in bytes) on all architectures.  For example, the
+     <literal>long</literal> type is dangerous because it is 4 bytes on some
+     machines and 8 bytes on others, whereas <type>int</type> type is 4 bytes
+     on most Unix machines.  A reasonable implementation of the
+     <type>int4</type> type on Unix machines might be:
+
+<programlisting>
+/* 4-byte integer, passed by value */
+typedef int int4;
+</programlisting>
+
+     (The actual PostgreSQL C code calls this type <type>int32</type>, because
+     it is a convention in C that <type>int<replaceable>XX</replaceable></type>
+     means <replaceable>XX</replaceable> <emphasis>bits</emphasis>.  Note
+     therefore also that the C type <type>int8</type> is 1 byte in size.  The
+     SQL type <type>int8</type> is called <type>int64</type> in C.  See also
+     <xref linkend="xfunc-c-type-table"/>.)
+    </para>
+
+    <para>
+     On  the  other hand, fixed-length types of any size can
+     be passed by-reference.  For example, here is a  sample
+     implementation of a <productname>PostgreSQL</productname> type:
+
+<programlisting>
+/* 16-byte structure, passed by reference */
+typedef struct
+{
+    double  x, y;
+} Point;
+</programlisting>
+
+     Only  pointers  to  such types can be used when passing
+     them in and out of <productname>PostgreSQL</productname> functions.
+     To return a value of such a type, allocate the right amount of
+     memory with <literal>palloc</literal>, fill in the allocated memory,
+     and return a pointer to it.  (Also, if you just want to return the
+     same value as one of your input arguments that's of the same data type,
+     you can skip the extra <literal>palloc</literal> and just return the
+     pointer to the input value.)
+    </para>
+
+    <para>
+     Finally, all variable-length types must also be  passed
+     by  reference.   All  variable-length  types must begin
+     with an opaque length field of exactly 4 bytes, which will be set
+     by <symbol>SET_VARSIZE</symbol>; never set this field directly! All data to
+     be  stored within that type must be located in the memory
+     immediately  following  that  length  field.   The
+     length field contains the total length of the structure,
+     that is,  it  includes  the  size  of  the  length  field
+     itself.
+    </para>
+
+    <para>
+     Another important point is to avoid leaving any uninitialized bits
+     within data type values; for example, take care to zero out any
+     alignment padding bytes that might be present in structs.  Without
+     this, logically-equivalent constants of your data type might be
+     seen as unequal by the planner, leading to inefficient (though not
+     incorrect) plans.
+    </para>
+
+    <warning>
+     <para>
+      <emphasis>Never</emphasis> modify the contents of a pass-by-reference input
+      value.  If you do so you are likely to corrupt on-disk data, since
+      the pointer you are given might point directly into a disk buffer.
+      The sole exception to this rule is explained in
+      <xref linkend="xaggr"/>.
+     </para>
+    </warning>
+
+    <para>
+     As an example, we can define the type <type>text</type> as
+     follows:
+
+<programlisting>
+typedef struct {
+    int32 length;
+    char data[FLEXIBLE_ARRAY_MEMBER];
+} text;
+</programlisting>
+
+     The <literal>[FLEXIBLE_ARRAY_MEMBER]</literal> notation means that the actual
+     length of the data part is not specified by this declaration.
+    </para>
+
+    <para>
+     When manipulating
+     variable-length types, we must  be  careful  to  allocate
+     the  correct amount  of memory and set the length field correctly.
+     For example, if we wanted to  store  40  bytes  in  a <structname>text</structname>
+     structure, we might use a code fragment like this:
+
+<programlisting><![CDATA[
+#include "postgres.h"
+...
+char buffer[40]; /* our source data */
+...
+text *destination = (text *) palloc(VARHDRSZ + 40);
+SET_VARSIZE(destination, VARHDRSZ + 40);
+memcpy(destination->data, buffer, 40);
+...
+]]>
+</programlisting>
+
+     <literal>VARHDRSZ</literal> is the same as <literal>sizeof(int32)</literal>, but
+     it's considered good style to use the macro <literal>VARHDRSZ</literal>
+     to refer to the size of the overhead for a variable-length type.
+     Also, the length field <emphasis>must</emphasis> be set using the
+     <literal>SET_VARSIZE</literal> macro, not by simple assignment.
+    </para>
+
+    <para>
+     <xref linkend="xfunc-c-type-table"/> shows the C types
+     corresponding to many of the built-in SQL data types
+     of <productname>PostgreSQL</productname>.
+     The <quote>Defined In</quote> column gives the header file that
+     needs to be included to get the type definition.  (The actual
+     definition might be in a different file that is included by the
+     listed file.  It is recommended that users stick to the defined
+     interface.)  Note that you should always include
+     <filename>postgres.h</filename> first in any source file of server
+     code, because it declares a number of things that you will need
+     anyway, and because including other headers first can cause
+     portability issues.
+    </para>
+
+     <table tocentry="1" id="xfunc-c-type-table">
+      <title>Equivalent C Types for Built-in SQL Types</title>
+      <tgroup cols="3">
+       <colspec colname="col1" colwidth="1*"/>
+       <colspec colname="col2" colwidth="1*"/>
+       <colspec colname="col3" colwidth="2*"/>
+       <thead>
+        <row>
+         <entry>
+          SQL Type
+         </entry>
+         <entry>
+          C Type
+         </entry>
+         <entry>
+          Defined In
+         </entry>
+        </row>
+       </thead>
+       <tbody>
+        <row>
+         <entry><type>boolean</type></entry>
+         <entry><type>bool</type></entry>
+         <entry><filename>postgres.h</filename> (maybe compiler built-in)</entry>
+        </row>
+        <row>
+         <entry><type>box</type></entry>
+         <entry><type>BOX*</type></entry>
+         <entry><filename>utils/geo_decls.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>bytea</type></entry>
+         <entry><type>bytea*</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>"char"</type></entry>
+         <entry><type>char</type></entry>
+         <entry>(compiler built-in)</entry>
+        </row>
+        <row>
+         <entry><type>character</type></entry>
+         <entry><type>BpChar*</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>cid</type></entry>
+         <entry><type>CommandId</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>date</type></entry>
+         <entry><type>DateADT</type></entry>
+         <entry><filename>utils/date.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>float4</type> (<type>real</type>)</entry>
+         <entry><type>float4</type></entry>
+        <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>float8</type> (<type>double precision</type>)</entry>
+         <entry><type>float8</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>int2</type> (<type>smallint</type>)</entry>
+         <entry><type>int16</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>int4</type> (<type>integer</type>)</entry>
+         <entry><type>int32</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>int8</type> (<type>bigint</type>)</entry>
+         <entry><type>int64</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>interval</type></entry>
+         <entry><type>Interval*</type></entry>
+         <entry><filename>datatype/timestamp.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>lseg</type></entry>
+         <entry><type>LSEG*</type></entry>
+         <entry><filename>utils/geo_decls.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>name</type></entry>
+         <entry><type>Name</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>numeric</type></entry>
+         <entry><type>Numeric</type></entry>
+         <entry><filename>utils/numeric.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>oid</type></entry>
+         <entry><type>Oid</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>oidvector</type></entry>
+         <entry><type>oidvector*</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>path</type></entry>
+         <entry><type>PATH*</type></entry>
+         <entry><filename>utils/geo_decls.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>point</type></entry>
+         <entry><type>POINT*</type></entry>
+         <entry><filename>utils/geo_decls.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>regproc</type></entry>
+         <entry><type>RegProcedure</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>text</type></entry>
+         <entry><type>text*</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>tid</type></entry>
+         <entry><type>ItemPointer</type></entry>
+         <entry><filename>storage/itemptr.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>time</type></entry>
+         <entry><type>TimeADT</type></entry>
+         <entry><filename>utils/date.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>time with time zone</type></entry>
+         <entry><type>TimeTzADT</type></entry>
+         <entry><filename>utils/date.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>timestamp</type></entry>
+         <entry><type>Timestamp</type></entry>
+         <entry><filename>datatype/timestamp.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>timestamp with time zone</type></entry>
+         <entry><type>TimestampTz</type></entry>
+         <entry><filename>datatype/timestamp.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>varchar</type></entry>
+         <entry><type>VarChar*</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>xid</type></entry>
+         <entry><type>TransactionId</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+       </tbody>
+      </tgroup>
+     </table>
+
+    <para>
+     Now that we've gone over all of the possible structures
+     for base types, we can show some examples of real functions.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Version 1 Calling Conventions</title>
+
+    <para>
+     The version-1 calling convention relies on macros to suppress most
+     of the complexity of passing arguments and results.  The C declaration
+     of a version-1 function is always:
+<programlisting>
+Datum funcname(PG_FUNCTION_ARGS)
+</programlisting>
+     In addition, the macro call:
+<programlisting>
+PG_FUNCTION_INFO_V1(funcname);
+</programlisting>
+     must appear in the same source file.  (Conventionally, it's
+     written just before the function itself.)  This macro call is not
+     needed for <literal>internal</literal>-language functions, since
+     <productname>PostgreSQL</productname> assumes that all internal functions
+     use the version-1 convention.  It is, however, required for
+     dynamically-loaded functions.
+    </para>
+
+    <para>
+     In a version-1 function, each actual argument is fetched using a
+     <function>PG_GETARG_<replaceable>xxx</replaceable>()</function>
+     macro that corresponds to the argument's data type.  (In non-strict
+     functions there needs to be a previous check about argument null-ness
+     using <function>PG_ARGISNULL()</function>; see below.)
+     The result is returned using a
+     <function>PG_RETURN_<replaceable>xxx</replaceable>()</function>
+     macro for the return type.
+     <function>PG_GETARG_<replaceable>xxx</replaceable>()</function>
+     takes as its argument the number of the function argument to
+     fetch, where the count starts at 0.
+     <function>PG_RETURN_<replaceable>xxx</replaceable>()</function>
+     takes as its argument the actual value to return.
+    </para>
+
+    <para>
+     Here are some examples using the version-1 calling convention:
+    </para>
+
+<programlisting><![CDATA[
+#include "postgres.h"
+#include <string.h>
+#include "fmgr.h"
+#include "utils/geo_decls.h"
+
+PG_MODULE_MAGIC;
+
+/* by value */
+
+PG_FUNCTION_INFO_V1(add_one);
+
+Datum
+add_one(PG_FUNCTION_ARGS)
+{
+    int32   arg = PG_GETARG_INT32(0);
+
+    PG_RETURN_INT32(arg + 1);
+}
+
+/* by reference, fixed length */
+
+PG_FUNCTION_INFO_V1(add_one_float8);
+
+Datum
+add_one_float8(PG_FUNCTION_ARGS)
+{
+    /* The macros for FLOAT8 hide its pass-by-reference nature. */
+    float8   arg = PG_GETARG_FLOAT8(0);
+
+    PG_RETURN_FLOAT8(arg + 1.0);
+}
+
+PG_FUNCTION_INFO_V1(makepoint);
+
+Datum
+makepoint(PG_FUNCTION_ARGS)
+{
+    /* Here, the pass-by-reference nature of Point is not hidden. */
+    Point     *pointx = PG_GETARG_POINT_P(0);
+    Point     *pointy = PG_GETARG_POINT_P(1);
+    Point     *new_point = (Point *) palloc(sizeof(Point));
+
+    new_point->x = pointx->x;
+    new_point->y = pointy->y;
+
+    PG_RETURN_POINT_P(new_point);
+}
+
+/* by reference, variable length */
+
+PG_FUNCTION_INFO_V1(copytext);
+
+Datum
+copytext(PG_FUNCTION_ARGS)
+{
+    text     *t = PG_GETARG_TEXT_PP(0);
+
+    /*
+     * VARSIZE_ANY_EXHDR is the size of the struct in bytes, minus the
+     * VARHDRSZ or VARHDRSZ_SHORT of its header.  Construct the copy with a
+     * full-length header.
+     */
+    text     *new_t = (text *) palloc(VARSIZE_ANY_EXHDR(t) + VARHDRSZ);
+    SET_VARSIZE(new_t, VARSIZE_ANY_EXHDR(t) + VARHDRSZ);
+
+    /*
+     * VARDATA is a pointer to the data region of the new struct.  The source
+     * could be a short datum, so retrieve its data through VARDATA_ANY.
+     */
+    memcpy((void *) VARDATA(new_t), /* destination */
+           (void *) VARDATA_ANY(t), /* source */
+           VARSIZE_ANY_EXHDR(t));   /* how many bytes */
+    PG_RETURN_TEXT_P(new_t);
+}
+
+PG_FUNCTION_INFO_V1(concat_text);
+
+Datum
+concat_text(PG_FUNCTION_ARGS)
+{
+    text  *arg1 = PG_GETARG_TEXT_PP(0);
+    text  *arg2 = PG_GETARG_TEXT_PP(1);
+    int32 arg1_size = VARSIZE_ANY_EXHDR(arg1);
+    int32 arg2_size = VARSIZE_ANY_EXHDR(arg2);
+    int32 new_text_size = arg1_size + arg2_size + VARHDRSZ;
+    text *new_text = (text *) palloc(new_text_size);
+
+    SET_VARSIZE(new_text, new_text_size);
+    memcpy(VARDATA(new_text), VARDATA_ANY(arg1), arg1_size);
+    memcpy(VARDATA(new_text) + arg1_size, VARDATA_ANY(arg2), arg2_size);
+    PG_RETURN_TEXT_P(new_text);
+}
+]]>
+</programlisting>
+
+    <para>
+     Supposing that the above code has been prepared in file
+     <filename>funcs.c</filename> and compiled into a shared object,
+     we could define the functions to <productname>PostgreSQL</productname>
+     with commands like this:
+    </para>
+
+<programlisting>
+CREATE FUNCTION add_one(integer) RETURNS integer
+     AS '<replaceable>DIRECTORY</replaceable>/funcs', 'add_one'
+     LANGUAGE C STRICT;
+
+-- note overloading of SQL function name "add_one"
+CREATE FUNCTION add_one(double precision) RETURNS double precision
+     AS '<replaceable>DIRECTORY</replaceable>/funcs', 'add_one_float8'
+     LANGUAGE C STRICT;
+
+CREATE FUNCTION makepoint(point, point) RETURNS point
+     AS '<replaceable>DIRECTORY</replaceable>/funcs', 'makepoint'
+     LANGUAGE C STRICT;
+
+CREATE FUNCTION copytext(text) RETURNS text
+     AS '<replaceable>DIRECTORY</replaceable>/funcs', 'copytext'
+     LANGUAGE C STRICT;
+
+CREATE FUNCTION concat_text(text, text) RETURNS text
+     AS '<replaceable>DIRECTORY</replaceable>/funcs', 'concat_text'
+     LANGUAGE C STRICT;
+</programlisting>
+
+    <para>
+     Here, <replaceable>DIRECTORY</replaceable> stands for the
+     directory of the shared library file (for instance the
+     <productname>PostgreSQL</productname> tutorial directory, which
+     contains the code for the examples used in this section).
+     (Better style would be to use just <literal>'funcs'</literal> in the
+     <literal>AS</literal> clause, after having added
+     <replaceable>DIRECTORY</replaceable> to the search path.  In any
+     case, we can omit the system-specific extension for a shared
+     library, commonly <literal>.so</literal>.)
+    </para>
+
+    <para>
+     Notice that we have specified the functions as <quote>strict</quote>,
+     meaning that
+     the system should automatically assume a null result if any input
+     value is null.  By doing this, we avoid having to check for null inputs
+     in the function code.  Without this, we'd have to check for null values
+     explicitly, using <function>PG_ARGISNULL()</function>.
+    </para>
+
+    <para>
+     The macro <function>PG_ARGISNULL(<replaceable>n</replaceable>)</function>
+     allows a function to test whether each input is null.  (Of course, doing
+     this is only necessary in functions not declared <quote>strict</quote>.)
+     As with the
+     <function>PG_GETARG_<replaceable>xxx</replaceable>()</function> macros,
+     the input arguments are counted beginning at zero.  Note that one
+     should refrain from executing
+     <function>PG_GETARG_<replaceable>xxx</replaceable>()</function> until
+     one has verified that the argument isn't null.
+     To return a null result, execute <function>PG_RETURN_NULL()</function>;
+     this works in both strict and nonstrict functions.
+    </para>
+
+    <para>
+     At first glance, the version-1 coding conventions might appear
+     to be just pointless obscurantism, compared to using
+     plain <literal>C</literal> calling conventions.  They do however allow
+     us to deal with <literal>NULL</literal>able arguments/return values,
+     and <quote>toasted</quote> (compressed or out-of-line) values.
+    </para>
+
+    <para>
+     Other options provided by the version-1 interface are two
+     variants of the
+     <function>PG_GETARG_<replaceable>xxx</replaceable>()</function>
+     macros. The first of these,
+     <function>PG_GETARG_<replaceable>xxx</replaceable>_COPY()</function>,
+     guarantees to return a copy of the specified argument that is
+     safe for writing into. (The normal macros will sometimes return a
+     pointer to a value that is physically stored in a table, which
+     must not be written to. Using the
+     <function>PG_GETARG_<replaceable>xxx</replaceable>_COPY()</function>
+     macros guarantees a writable result.)
+    The second variant consists of the
+    <function>PG_GETARG_<replaceable>xxx</replaceable>_SLICE()</function>
+    macros which take three arguments. The first is the number of the
+    function argument (as above). The second and third are the offset and
+    length of the segment to be returned. Offsets are counted from
+    zero, and a negative length requests that the remainder of the
+    value be returned. These macros provide more efficient access to
+    parts of large values in the case where they have storage type
+    <quote>external</quote>. (The storage type of a column can be specified using
+    <literal>ALTER TABLE <replaceable>tablename</replaceable> ALTER
+    COLUMN <replaceable>colname</replaceable> SET STORAGE
+    <replaceable>storagetype</replaceable></literal>. <replaceable>storagetype</replaceable> is one of
+    <literal>plain</literal>, <literal>external</literal>, <literal>extended</literal>,
+     or <literal>main</literal>.)
+    </para>
+
+    <para>
+     Finally, the version-1 function call conventions make it possible
+     to return set results (<xref linkend="xfunc-c-return-set"/>) and
+     implement trigger functions (<xref linkend="triggers"/>) and
+     procedural-language call handlers (<xref
+     linkend="plhandler"/>).  For more details
+     see <filename>src/backend/utils/fmgr/README</filename> in the
+     source distribution.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Writing Code</title>
+
+    <para>
+     Before we turn to the more advanced topics, we should discuss
+     some coding rules for <productname>PostgreSQL</productname>
+     C-language functions.  While it might be possible to load functions
+     written in languages other than C into
+     <productname>PostgreSQL</productname>, this is usually difficult
+     (when it is possible at all) because other languages, such as
+     C++, FORTRAN, or Pascal often do not follow the same calling
+     convention as C.  That is, other languages do not pass argument
+     and return values between functions in the same way.  For this
+     reason, we will assume that your C-language functions are
+     actually written in C.
+    </para>
+
+    <para>
+     The basic rules for writing and building C functions are as follows:
+
+     <itemizedlist>
+      <listitem>
+       <para>
+        Use <literal>pg_config
+        --includedir-server</literal><indexterm><primary>pg_config</primary><secondary>with user-defined C functions</secondary></indexterm>
+        to find out where the <productname>PostgreSQL</productname> server header
+        files are installed on your system (or the system that your
+        users will be running on).
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Compiling and linking your code so that it can be dynamically
+        loaded into <productname>PostgreSQL</productname> always
+        requires special flags.  See <xref linkend="dfunc"/> for a
+        detailed explanation of how to do it for your particular
+        operating system.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Remember to define a <quote>magic block</quote> for your shared library,
+        as described in <xref linkend="xfunc-c-dynload"/>.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        When allocating memory, use the
+        <productname>PostgreSQL</productname> functions
+        <function>palloc</function><indexterm><primary>palloc</primary></indexterm> and <function>pfree</function><indexterm><primary>pfree</primary></indexterm>
+        instead of the corresponding C library functions
+        <function>malloc</function> and <function>free</function>.
+        The memory allocated by <function>palloc</function> will be
+        freed automatically at the end of each transaction, preventing
+        memory leaks.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Always zero the bytes of your structures using <function>memset</function>
+        (or allocate them with <function>palloc0</function> in the first place).
+        Even if you assign to each field of your structure, there might be
+        alignment padding (holes in the structure) that contain
+        garbage values.  Without this, it's difficult to
+        support hash indexes or hash joins, as you must pick out only
+        the significant bits of your data structure to compute a hash.
+        The planner also sometimes relies on comparing constants via
+        bitwise equality, so you can get undesirable planning results if
+        logically-equivalent values aren't bitwise equal.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Most of the internal <productname>PostgreSQL</productname>
+        types are declared in <filename>postgres.h</filename>, while
+        the function manager interfaces
+        (<symbol>PG_FUNCTION_ARGS</symbol>, etc.)  are in
+        <filename>fmgr.h</filename>, so you will need to include at
+        least these two files.  For portability reasons it's best to
+        include <filename>postgres.h</filename> <emphasis>first</emphasis>,
+        before any other system or user header files.  Including
+        <filename>postgres.h</filename> will also include
+        <filename>elog.h</filename> and <filename>palloc.h</filename>
+        for you.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Symbol names defined within object files must not conflict
+        with each other or with symbols defined in the
+        <productname>PostgreSQL</productname> server executable.  You
+        will have to rename your functions or variables if you get
+        error messages to this effect.
+       </para>
+      </listitem>
+     </itemizedlist>
+    </para>
+   </sect2>
+
+&dfunc;
+
+   <sect2>
+    <title>Composite-Type Arguments</title>
+
+    <para>
+     Composite types do not have a fixed layout like C structures.
+     Instances of a composite type can contain null fields.  In
+     addition, composite types that are part of an inheritance
+     hierarchy can have different fields than other members of the
+     same inheritance hierarchy.  Therefore,
+     <productname>PostgreSQL</productname> provides a function
+     interface for accessing fields of composite types from C.
+    </para>
+
+    <para>
+     Suppose we want to write a function to answer the query:
+
+<programlisting>
+SELECT name, c_overpaid(emp, 1500) AS overpaid
+    FROM emp
+    WHERE name = 'Bill' OR name = 'Sam';
+</programlisting>
+
+     Using the version-1 calling conventions, we can define
+     <function>c_overpaid</function> as:
+
+<programlisting><![CDATA[
+#include "postgres.h"
+#include "executor/executor.h"  /* for GetAttributeByName() */
+
+PG_MODULE_MAGIC;
+
+PG_FUNCTION_INFO_V1(c_overpaid);
+
+Datum
+c_overpaid(PG_FUNCTION_ARGS)
+{
+    HeapTupleHeader  t = PG_GETARG_HEAPTUPLEHEADER(0);
+    int32            limit = PG_GETARG_INT32(1);
+    bool isnull;
+    Datum salary;
+
+    salary = GetAttributeByName(t, "salary", &isnull);
+    if (isnull)
+        PG_RETURN_BOOL(false);
+    /* Alternatively, we might prefer to do PG_RETURN_NULL() for null salary. */
+
+    PG_RETURN_BOOL(DatumGetInt32(salary) > limit);
+}
+]]>
+</programlisting>
+    </para>
+
+    <para>
+     <function>GetAttributeByName</function> is the
+     <productname>PostgreSQL</productname> system function that
+     returns attributes out of the specified row.  It has
+     three arguments: the argument of type <type>HeapTupleHeader</type> passed
+     into
+     the  function, the name of the desired attribute, and a
+     return parameter that tells whether  the  attribute
+     is  null.   <function>GetAttributeByName</function> returns a <type>Datum</type>
+     value that you can convert to the proper data type by using the
+     appropriate <function>DatumGet<replaceable>XXX</replaceable>()</function>
+     macro.  Note that the return value is meaningless if the null flag is
+     set; always check the null flag before trying to do anything with the
+     result.
+    </para>
+
+    <para>
+     There is also <function>GetAttributeByNum</function>, which selects
+     the target attribute by column number instead of name.
+    </para>
+
+    <para>
+     The following command declares the function
+     <function>c_overpaid</function> in SQL:
+
+<programlisting>
+CREATE FUNCTION c_overpaid(emp, integer) RETURNS boolean
+    AS '<replaceable>DIRECTORY</replaceable>/funcs', 'c_overpaid'
+    LANGUAGE C STRICT;
+</programlisting>
+
+     Notice we have used <literal>STRICT</literal> so that we did not have to
+     check whether the input arguments were NULL.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Returning Rows (Composite Types)</title>
+
+    <para>
+     To return a row or composite-type value from a C-language
+     function, you can use a special API that provides macros and
+     functions to hide most of the complexity of building composite
+     data types.  To use this API, the source file must include:
+<programlisting>
+#include "funcapi.h"
+</programlisting>
+    </para>
+
+    <para>
+     There are two ways you can build a composite data value (henceforth
+     a <quote>tuple</quote>): you can build it from an array of Datum values,
+     or from an array of C strings that can be passed to the input
+     conversion functions of the tuple's column data types.  In either
+     case, you first need to obtain or construct a <structname>TupleDesc</structname>
+     descriptor for the tuple structure.  When working with Datums, you
+     pass the <structname>TupleDesc</structname> to <function>BlessTupleDesc</function>,
+     and then call <function>heap_form_tuple</function> for each row.  When working
+     with C strings, you pass the <structname>TupleDesc</structname> to
+     <function>TupleDescGetAttInMetadata</function>, and then call
+     <function>BuildTupleFromCStrings</function> for each row.  In the case of a
+     function returning a set of tuples, the setup steps can all be done
+     once during the first call of the function.
+    </para>
+
+    <para>
+     Several helper functions are available for setting up the needed
+     <structname>TupleDesc</structname>.  The recommended way to do this in most
+     functions returning composite values is to call:
+<programlisting>
+TypeFuncClass get_call_result_type(FunctionCallInfo fcinfo,
+                                   Oid *resultTypeId,
+                                   TupleDesc *resultTupleDesc)
+</programlisting>
+     passing the same <literal>fcinfo</literal> struct passed to the calling function
+     itself.  (This of course requires that you use the version-1
+     calling conventions.)  <varname>resultTypeId</varname> can be specified
+     as <literal>NULL</literal> or as the address of a local variable to receive the
+     function's result type OID.  <varname>resultTupleDesc</varname> should be the
+     address of a local <structname>TupleDesc</structname> variable.  Check that the
+     result is <literal>TYPEFUNC_COMPOSITE</literal>; if so,
+     <varname>resultTupleDesc</varname> has been filled with the needed
+     <structname>TupleDesc</structname>.  (If it is not, you can report an error along
+     the lines of <quote>function returning record called in context that
+     cannot accept type record</quote>.)
+    </para>
+
+    <tip>
+     <para>
+      <function>get_call_result_type</function> can resolve the actual type of a
+      polymorphic function result; so it is useful in functions that return
+      scalar polymorphic results, not only functions that return composites.
+      The <varname>resultTypeId</varname> output is primarily useful for functions
+      returning polymorphic scalars.
+     </para>
+    </tip>
+
+    <note>
+     <para>
+      <function>get_call_result_type</function> has a sibling
+      <function>get_expr_result_type</function>, which can be used to resolve the
+      expected output type for a function call represented by an expression
+      tree.  This can be used when trying to determine the result type from
+      outside the function itself.  There is also
+      <function>get_func_result_type</function>, which can be used when only the
+      function's OID is available.  However these functions are not able
+      to deal with functions declared to return <structname>record</structname>, and
+      <function>get_func_result_type</function> cannot resolve polymorphic types,
+      so you should preferentially use <function>get_call_result_type</function>.
+     </para>
+    </note>
+
+    <para>
+     Older, now-deprecated functions for obtaining
+     <structname>TupleDesc</structname>s are:
+<programlisting>
+TupleDesc RelationNameGetTupleDesc(const char *relname)
+</programlisting>
+     to get a <structname>TupleDesc</structname> for the row type of a named relation,
+     and:
+<programlisting>
+TupleDesc TypeGetTupleDesc(Oid typeoid, List *colaliases)
+</programlisting>
+     to get a <structname>TupleDesc</structname> based on a type OID. This can
+     be used to get a <structname>TupleDesc</structname> for a base or
+     composite type.  It will not work for a function that returns
+     <structname>record</structname>, however, and it cannot resolve polymorphic
+     types.
+    </para>
+
+    <para>
+     Once you have a <structname>TupleDesc</structname>, call:
+<programlisting>
+TupleDesc BlessTupleDesc(TupleDesc tupdesc)
+</programlisting>
+     if you plan to work with Datums, or:
+<programlisting>
+AttInMetadata *TupleDescGetAttInMetadata(TupleDesc tupdesc)
+</programlisting>
+     if you plan to work with C strings.  If you are writing a function
+     returning set, you can save the results of these functions in the
+     <structname>FuncCallContext</structname> structure &mdash; use the
+     <structfield>tuple_desc</structfield> or <structfield>attinmeta</structfield> field
+     respectively.
+    </para>
+
+    <para>
+     When working with Datums, use:
+<programlisting>
+HeapTuple heap_form_tuple(TupleDesc tupdesc, Datum *values, bool *isnull)
+</programlisting>
+     to build a <structname>HeapTuple</structname> given user data in Datum form.
+    </para>
+
+    <para>
+     When working with C strings, use:
+<programlisting>
+HeapTuple BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values)
+</programlisting>
+     to build a <structname>HeapTuple</structname> given user data
+     in C string form.  <parameter>values</parameter> is an array of C strings,
+     one for each attribute of the return row. Each C string should be in
+     the form expected by the input function of the attribute data
+     type. In order to return a null value for one of the attributes,
+     the corresponding pointer in the <parameter>values</parameter> array
+     should be set to <symbol>NULL</symbol>.  This function will need to
+     be called again for each row you return.
+    </para>
+
+    <para>
+     Once you have built a tuple to return from your function, it
+     must be converted into a <type>Datum</type>. Use:
+<programlisting>
+HeapTupleGetDatum(HeapTuple tuple)
+</programlisting>
+     to convert a <structname>HeapTuple</structname> into a valid Datum.  This
+     <type>Datum</type> can be returned directly if you intend to return
+     just a single row, or it can be used as the current return value
+     in a set-returning function.
+    </para>
+
+    <para>
+     An example appears in the next section.
+    </para>
+
+   </sect2>
+
+   <sect2 id="xfunc-c-return-set">
+    <title>Returning Sets</title>
+
+    <para>
+     C-language functions have two options for returning sets (multiple
+     rows).  In one method, called <firstterm>ValuePerCall</firstterm>
+     mode, a set-returning function is called repeatedly (passing the same
+     arguments each time) and it returns one new row on each call, until
+     it has no more rows to return and signals that by returning NULL.
+     The set-returning function (<acronym>SRF</acronym>) must therefore
+     save enough state across calls to remember what it was doing and
+     return the correct next item on each call.
+     In the other method, called <firstterm>Materialize</firstterm> mode,
+     an SRF fills and returns a tuplestore object containing its
+     entire result; then only one call occurs for the whole result, and
+     no inter-call state is needed.
+    </para>
+
+    <para>
+     When using ValuePerCall mode, it is important to remember that the
+     query is not guaranteed to be run to completion; that is, due to
+     options such as <literal>LIMIT</literal>, the executor might stop
+     making calls to the set-returning function before all rows have been
+     fetched.  This means it is not safe to perform cleanup activities in
+     the last call, because that might not ever happen.  It's recommended
+     to use Materialize mode for functions that need access to external
+     resources, such as file descriptors.
+    </para>
+
+    <para>
+     The remainder of this section documents a set of helper macros that
+     are commonly used (though not required to be used) for SRFs using
+     ValuePerCall mode.  Additional details about Materialize mode can be
+     found in <filename>src/backend/utils/fmgr/README</filename>.  Also,
+     the <filename>contrib</filename> modules in
+     the <productname>PostgreSQL</productname> source distribution contain
+     many examples of SRFs using both ValuePerCall and Materialize mode.
+    </para>
+
+    <para>
+     To use the ValuePerCall support macros described here,
+     include <filename>funcapi.h</filename>.  These macros work with a
+     structure <structname>FuncCallContext</structname> that contains the
+     state that needs to be saved across calls.  Within the calling
+     SRF, <literal>fcinfo-&gt;flinfo-&gt;fn_extra</literal> is used to
+     hold a pointer to <structname>FuncCallContext</structname> across
+     calls.  The macros automatically fill that field on first use,
+     and expect to find the same pointer there on subsequent uses.
+<programlisting>
+typedef struct FuncCallContext
+{
+    /*
+     * Number of times we've been called before
+     *
+     * call_cntr is initialized to 0 for you by SRF_FIRSTCALL_INIT(), and
+     * incremented for you every time SRF_RETURN_NEXT() is called.
+     */
+    uint64 call_cntr;
+
+    /*
+     * OPTIONAL maximum number of calls
+     *
+     * max_calls is here for convenience only and setting it is optional.
+     * If not set, you must provide alternative means to know when the
+     * function is done.
+     */
+    uint64 max_calls;
+
+    /*
+     * OPTIONAL pointer to miscellaneous user-provided context information
+     *
+     * user_fctx is for use as a pointer to your own data to retain
+     * arbitrary context information between calls of your function.
+     */
+    void *user_fctx;
+
+    /*
+     * OPTIONAL pointer to struct containing attribute type input metadata
+     *
+     * attinmeta is for use when returning tuples (i.e., composite data types)
+     * and is not used when returning base data types. It is only needed
+     * if you intend to use BuildTupleFromCStrings() to create the return
+     * tuple.
+     */
+    AttInMetadata *attinmeta;
+
+    /*
+     * memory context used for structures that must live for multiple calls
+     *
+     * multi_call_memory_ctx is set by SRF_FIRSTCALL_INIT() for you, and used
+     * by SRF_RETURN_DONE() for cleanup. It is the most appropriate memory
+     * context for any memory that is to be reused across multiple calls
+     * of the SRF.
+     */
+    MemoryContext multi_call_memory_ctx;
+
+    /*
+     * OPTIONAL pointer to struct containing tuple description
+     *
+     * tuple_desc is for use when returning tuples (i.e., composite data types)
+     * and is only needed if you are going to build the tuples with
+     * heap_form_tuple() rather than with BuildTupleFromCStrings().  Note that
+     * the TupleDesc pointer stored here should usually have been run through
+     * BlessTupleDesc() first.
+     */
+    TupleDesc tuple_desc;
+
+} FuncCallContext;
+</programlisting>
+    </para>
+
+    <para>
+     The macros to be used by an <acronym>SRF</acronym> using this
+     infrastructure are:
+<programlisting>
+SRF_IS_FIRSTCALL()
+</programlisting>
+     Use this to determine if your function is being called for the first or a
+     subsequent time. On the first call (only), call:
+<programlisting>
+SRF_FIRSTCALL_INIT()
+</programlisting>
+     to initialize the <structname>FuncCallContext</structname>. On every function call,
+     including the first, call:
+<programlisting>
+SRF_PERCALL_SETUP()
+</programlisting>
+     to set up for using the <structname>FuncCallContext</structname>.
+    </para>
+
+    <para>
+     If your function has data to return in the current call, use:
+<programlisting>
+SRF_RETURN_NEXT(funcctx, result)
+</programlisting>
+     to return it to the caller.  (<literal>result</literal> must be of type
+     <type>Datum</type>, either a single value or a tuple prepared as
+     described above.)  Finally, when your function is finished
+     returning data, use:
+<programlisting>
+SRF_RETURN_DONE(funcctx)
+</programlisting>
+     to clean up and end the <acronym>SRF</acronym>.
+    </para>
+
+    <para>
+     The memory context that is current when the <acronym>SRF</acronym> is called is
+     a transient context that will be cleared between calls.  This means
+     that you do not need to call <function>pfree</function> on everything
+     you allocated using <function>palloc</function>; it will go away anyway.  However, if you want to allocate
+     any data structures to live across calls, you need to put them somewhere
+     else.  The memory context referenced by
+     <structfield>multi_call_memory_ctx</structfield> is a suitable location for any
+     data that needs to survive until the <acronym>SRF</acronym> is finished running.  In most
+     cases, this means that you should switch into
+     <structfield>multi_call_memory_ctx</structfield> while doing the
+     first-call setup.
+     Use <literal>funcctx-&gt;user_fctx</literal> to hold a pointer to
+     any such cross-call data structures.
+     (Data you allocate
+     in <structfield>multi_call_memory_ctx</structfield> will go away
+     automatically when the query ends, so it is not necessary to free
+     that data manually, either.)
+    </para>
+
+    <warning>
+     <para>
+      While the actual arguments to the function remain unchanged between
+      calls, if you detoast the argument values (which is normally done
+      transparently by the
+      <function>PG_GETARG_<replaceable>xxx</replaceable></function> macro)
+      in the transient context then the detoasted copies will be freed on
+      each cycle. Accordingly, if you keep references to such values in
+      your <structfield>user_fctx</structfield>, you must either copy them into the
+      <structfield>multi_call_memory_ctx</structfield> after detoasting, or ensure
+      that you detoast the values only in that context.
+     </para>
+    </warning>
+
+    <para>
+     A complete pseudo-code example looks like the following:
+<programlisting>
+Datum
+my_set_returning_function(PG_FUNCTION_ARGS)
+{
+    FuncCallContext  *funcctx;
+    Datum             result;
+    <replaceable>further declarations as needed</replaceable>
+
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext oldcontext;
+
+        funcctx = SRF_FIRSTCALL_INIT();
+        oldcontext = MemoryContextSwitchTo(funcctx-&gt;multi_call_memory_ctx);
+        /* One-time setup code appears here: */
+        <replaceable>user code</replaceable>
+        <replaceable>if returning composite</replaceable>
+            <replaceable>build TupleDesc, and perhaps AttInMetadata</replaceable>
+        <replaceable>endif returning composite</replaceable>
+        <replaceable>user code</replaceable>
+        MemoryContextSwitchTo(oldcontext);
+    }
+
+    /* Each-time setup code appears here: */
+    <replaceable>user code</replaceable>
+    funcctx = SRF_PERCALL_SETUP();
+    <replaceable>user code</replaceable>
+
+    /* this is just one way we might test whether we are done: */
+    if (funcctx-&gt;call_cntr &lt; funcctx-&gt;max_calls)
+    {
+        /* Here we want to return another item: */
+        <replaceable>user code</replaceable>
+        <replaceable>obtain result Datum</replaceable>
+        SRF_RETURN_NEXT(funcctx, result);
+    }
+    else
+    {
+        /* Here we are done returning items, so just report that fact. */
+        /* (Resist the temptation to put cleanup code here.) */
+        SRF_RETURN_DONE(funcctx);
+    }
+}
+</programlisting>
+    </para>
+
+    <para>
+     A complete example of a simple <acronym>SRF</acronym> returning a composite type
+     looks like:
+<programlisting><![CDATA[
+PG_FUNCTION_INFO_V1(retcomposite);
+
+Datum
+retcomposite(PG_FUNCTION_ARGS)
+{
+    FuncCallContext     *funcctx;
+    int                  call_cntr;
+    int                  max_calls;
+    TupleDesc            tupdesc;
+    AttInMetadata       *attinmeta;
+
+    /* stuff done only on the first call of the function */
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext   oldcontext;
+
+        /* create a function context for cross-call persistence */
+        funcctx = SRF_FIRSTCALL_INIT();
+
+        /* switch to memory context appropriate for multiple function calls */
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        /* total number of tuples to be returned */
+        funcctx->max_calls = PG_GETARG_INT32(0);
+
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("function returning record called in context "
+                            "that cannot accept type record")));
+
+        /*
+         * generate attribute metadata needed later to produce tuples from raw
+         * C strings
+         */
+        attinmeta = TupleDescGetAttInMetadata(tupdesc);
+        funcctx->attinmeta = attinmeta;
+
+        MemoryContextSwitchTo(oldcontext);
+    }
+
+    /* stuff done on every call of the function */
+    funcctx = SRF_PERCALL_SETUP();
+
+    call_cntr = funcctx->call_cntr;
+    max_calls = funcctx->max_calls;
+    attinmeta = funcctx->attinmeta;
+
+    if (call_cntr < max_calls)    /* do when there is more left to send */
+    {
+        char       **values;
+        HeapTuple    tuple;
+        Datum        result;
+
+        /*
+         * Prepare a values array for building the returned tuple.
+         * This should be an array of C strings which will
+         * be processed later by the type input functions.
+         */
+        values = (char **) palloc(3 * sizeof(char *));
+        values[0] = (char *) palloc(16 * sizeof(char));
+        values[1] = (char *) palloc(16 * sizeof(char));
+        values[2] = (char *) palloc(16 * sizeof(char));
+
+        snprintf(values[0], 16, "%d", 1 * PG_GETARG_INT32(1));
+        snprintf(values[1], 16, "%d", 2 * PG_GETARG_INT32(1));
+        snprintf(values[2], 16, "%d", 3 * PG_GETARG_INT32(1));
+
+        /* build a tuple */
+        tuple = BuildTupleFromCStrings(attinmeta, values);
+
+        /* make the tuple into a datum */
+        result = HeapTupleGetDatum(tuple);
+
+        /* clean up (this is not really necessary) */
+        pfree(values[0]);
+        pfree(values[1]);
+        pfree(values[2]);
+        pfree(values);
+
+        SRF_RETURN_NEXT(funcctx, result);
+    }
+    else    /* do when there is no more left */
+    {
+        SRF_RETURN_DONE(funcctx);
+    }
+}
+]]>
+</programlisting>
+
+     One way to declare this function in SQL is:
+<programlisting>
+CREATE TYPE __retcomposite AS (f1 integer, f2 integer, f3 integer);
+
+CREATE OR REPLACE FUNCTION retcomposite(integer, integer)
+    RETURNS SETOF __retcomposite
+    AS '<replaceable>filename</replaceable>', 'retcomposite'
+    LANGUAGE C IMMUTABLE STRICT;
+</programlisting>
+     A different way is to use OUT parameters:
+<programlisting>
+CREATE OR REPLACE FUNCTION retcomposite(IN integer, IN integer,
+    OUT f1 integer, OUT f2 integer, OUT f3 integer)
+    RETURNS SETOF record
+    AS '<replaceable>filename</replaceable>', 'retcomposite'
+    LANGUAGE C IMMUTABLE STRICT;
+</programlisting>
+     Notice that in this method the output type of the function is formally
+     an anonymous <structname>record</structname> type.
+    </para>
+   </sect2>
+
+   <sect2>
+    <title>Polymorphic Arguments and Return Types</title>
+
+    <para>
+     C-language functions can be declared to accept and
+     return the polymorphic types described in <xref
+     linkend="extend-types-polymorphic"/>.
+     When a function's arguments or return types
+     are defined as polymorphic types, the function author cannot know
+     in advance what data type it will be called with, or
+     need to return. There are two routines provided in <filename>fmgr.h</filename>
+     to allow a version-1 C function to discover the actual data types
+     of its arguments and the type it is expected to return. The routines are
+     called <literal>get_fn_expr_rettype(FmgrInfo *flinfo)</literal> and
+     <literal>get_fn_expr_argtype(FmgrInfo *flinfo, int argnum)</literal>.
+     They return the result or argument type OID, or <symbol>InvalidOid</symbol> if the
+     information is not available.
+     The structure <literal>flinfo</literal> is normally accessed as
+     <literal>fcinfo-&gt;flinfo</literal>. The parameter <literal>argnum</literal>
+     is zero based.  <function>get_call_result_type</function> can also be used
+     as an alternative to <function>get_fn_expr_rettype</function>.
+     There is also <function>get_fn_expr_variadic</function>, which can be used to
+     find out whether variadic arguments have been merged into an array.
+     This is primarily useful for <literal>VARIADIC "any"</literal> functions,
+     since such merging will always have occurred for variadic functions
+     taking ordinary array types.
+    </para>
+
+    <para>
+     For example, suppose we want to write a function to accept a single
+     element of any type, and return a one-dimensional array of that type:
+
+<programlisting>
+PG_FUNCTION_INFO_V1(make_array);
+Datum
+make_array(PG_FUNCTION_ARGS)
+{
+    ArrayType  *result;
+    Oid         element_type = get_fn_expr_argtype(fcinfo-&gt;flinfo, 0);
+    Datum       element;
+    bool        isnull;
+    int16       typlen;
+    bool        typbyval;
+    char        typalign;
+    int         ndims;
+    int         dims[MAXDIM];
+    int         lbs[MAXDIM];
+
+    if (!OidIsValid(element_type))
+        elog(ERROR, "could not determine data type of input");
+
+    /* get the provided element, being careful in case it's NULL */
+    isnull = PG_ARGISNULL(0);
+    if (isnull)
+        element = (Datum) 0;
+    else
+        element = PG_GETARG_DATUM(0);
+
+    /* we have one dimension */
+    ndims = 1;
+    /* and one element */
+    dims[0] = 1;
+    /* and lower bound is 1 */
+    lbs[0] = 1;
+
+    /* get required info about the element type */
+    get_typlenbyvalalign(element_type, &amp;typlen, &amp;typbyval, &amp;typalign);
+
+    /* now build the array */
+    result = construct_md_array(&amp;element, &amp;isnull, ndims, dims, lbs,
+                                element_type, typlen, typbyval, typalign);
+
+    PG_RETURN_ARRAYTYPE_P(result);
+}
+</programlisting>
+    </para>
+
+    <para>
+     The following command declares the function
+     <function>make_array</function> in SQL:
+
+<programlisting>
+CREATE FUNCTION make_array(anyelement) RETURNS anyarray
+    AS '<replaceable>DIRECTORY</replaceable>/funcs', 'make_array'
+    LANGUAGE C IMMUTABLE;
+</programlisting>
+    </para>
+
+    <para>
+     There is a variant of polymorphism that is only available to C-language
+     functions: they can be declared to take parameters of type
+     <literal>"any"</literal>.  (Note that this type name must be double-quoted,
+     since it's also an SQL reserved word.)  This works like
+     <type>anyelement</type> except that it does not constrain different
+     <literal>"any"</literal> arguments to be the same type, nor do they help
+     determine the function's result type.  A C-language function can also
+     declare its final parameter to be <literal>VARIADIC "any"</literal>.  This will
+     match one or more actual arguments of any type (not necessarily the same
+     type).  These arguments will <emphasis>not</emphasis> be gathered into an array
+     as happens with normal variadic functions; they will just be passed to
+     the function separately.  The <function>PG_NARGS()</function> macro and the
+     methods described above must be used to determine the number of actual
+     arguments and their types when using this feature.  Also, users of such
+     a function might wish to use the <literal>VARIADIC</literal> keyword in their
+     function call, with the expectation that the function would treat the
+     array elements as separate arguments.  The function itself must implement
+     that behavior if wanted, after using <function>get_fn_expr_variadic</function> to
+     detect that the actual argument was marked with <literal>VARIADIC</literal>.
+    </para>
+   </sect2>
+
+   <sect2 id="xfunc-shared-addin">
+    <title>Shared Memory and LWLocks</title>
+
+    <para>
+     Add-ins can reserve LWLocks and an allocation of shared memory on server
+     startup.  The add-in's shared library must be preloaded by specifying
+     it in
+     <xref linkend="guc-shared-preload-libraries"/><indexterm><primary>shared_preload_libraries</primary></indexterm>.
+     The shared library should register a <literal>shmem_request_hook</literal>
+     in its <function>_PG_init</function> function.  This
+     <literal>shmem_request_hook</literal> can reserve LWLocks or shared memory.
+     Shared memory is reserved by calling:
+<programlisting>
+void RequestAddinShmemSpace(int size)
+</programlisting>
+     from your <literal>shmem_request_hook</literal>.
+    </para>
+    <para>
+     LWLocks are reserved by calling:
+<programlisting>
+void RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
+</programlisting>
+     from your <literal>shmem_request_hook</literal>.  This will ensure that an array of
+     <literal>num_lwlocks</literal> LWLocks is available under the name
+     <literal>tranche_name</literal>.  Use <function>GetNamedLWLockTranche</function>
+     to get a pointer to this array.
+    </para>
+    <para>
+     An example of a <literal>shmem_request_hook</literal> can be found in
+     <filename>contrib/pg_stat_statements/pg_stat_statements.c</filename> in the
+     <productname>PostgreSQL</productname> source tree.
+    </para>
+    <para>
+     To avoid possible race-conditions, each backend should use the LWLock
+     <function>AddinShmemInitLock</function> when connecting to and initializing
+     its allocation of shared memory, as shown here:
+<programlisting>
+static mystruct *ptr = NULL;
+
+if (!ptr)
+{
+        bool    found;
+
+        LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+        ptr = ShmemInitStruct("my struct name", size, &amp;found);
+        if (!found)
+        {
+                initialize contents of shmem area;
+                acquire any requested LWLocks using:
+                ptr->locks = GetNamedLWLockTranche("my tranche name");
+        }
+        LWLockRelease(AddinShmemInitLock);
+}
+</programlisting>
+    </para>
+   </sect2>
+
+   <sect2 id="extend-cpp">
+    <title>Using C++ for Extensibility</title>
+
+    <indexterm zone="extend-cpp">
+     <primary>C++</primary>
+    </indexterm>
+
+    <para>
+     Although the <productname>PostgreSQL</productname> backend is written in
+     C, it is possible to write extensions in C++ if these guidelines are
+     followed:
+
+     <itemizedlist>
+      <listitem>
+       <para>
+         All functions accessed by the backend must present a C interface
+         to the backend;  these C functions can then call C++ functions.
+         For example, <literal>extern C</literal> linkage is required for
+         backend-accessed functions.  This is also necessary for any
+         functions that are passed as pointers between the backend and
+         C++ code.
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        Free memory using the appropriate deallocation method.  For example,
+        most backend memory is allocated using <function>palloc()</function>, so use
+        <function>pfree()</function> to free it.  Using C++
+        <function>delete</function> in such cases will fail.
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        Prevent exceptions from propagating into the C code (use a catch-all
+        block at the top level of all <literal>extern C</literal> functions).  This
+        is necessary even if the C++ code does not explicitly throw any
+        exceptions, because events like out-of-memory can still throw
+        exceptions.  Any exceptions must be caught and appropriate errors
+        passed back to the C interface.  If possible, compile C++ with
+        <option>-fno-exceptions</option> to eliminate exceptions entirely; in such
+        cases, you must check for failures in your C++ code, e.g.,  check for
+        NULL returned by <function>new()</function>.
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        If calling backend functions from C++ code, be sure that the
+        C++ call stack contains only plain old data structures
+        (<acronym>POD</acronym>).  This is necessary because backend errors
+        generate a distant <function>longjmp()</function> that does not properly
+        unroll a C++ call stack with non-POD objects.
+       </para>
+      </listitem>
+     </itemizedlist>
+    </para>
+
+    <para>
+     In summary, it is best to place C++ code behind a wall of
+     <literal>extern C</literal> functions that interface to the backend,
+     and avoid exception, memory, and call stack leakage.
+    </para>
+   </sect2>
+
+  </sect1>
+
+  <sect1 id="xfunc-optimization">
+   <title>Function Optimization Information</title>
+
+  <indexterm zone="xfunc-optimization">
+   <primary>optimization information</primary>
+   <secondary>for functions</secondary>
+  </indexterm>
+
+   <para>
+    By default, a function is just a <quote>black box</quote> that the
+    database system knows very little about the behavior of.  However,
+    that means that queries using the function may be executed much less
+    efficiently than they could be.  It is possible to supply additional
+    knowledge that helps the planner optimize function calls.
+   </para>
+
+   <para>
+    Some basic facts can be supplied by declarative annotations provided in
+    the <link linkend="sql-createfunction"><command>CREATE FUNCTION</command></link> command.  Most important of
+    these is the function's <link linkend="xfunc-volatility">volatility
+    category</link> (<literal>IMMUTABLE</literal>, <literal>STABLE</literal>,
+    or <literal>VOLATILE</literal>); one should always be careful to
+    specify this correctly when defining a function.
+    The parallel safety property (<literal>PARALLEL
+    UNSAFE</literal>, <literal>PARALLEL RESTRICTED</literal>, or
+    <literal>PARALLEL SAFE</literal>) must also be specified if you hope
+    to use the function in parallelized queries.
+    It can also be useful to specify the function's estimated execution
+    cost, and/or the number of rows a set-returning function is estimated
+    to return.  However, the declarative way of specifying those two
+    facts only allows specifying a constant value, which is often
+    inadequate.
+   </para>
+
+   <para>
+    It is also possible to attach a <firstterm>planner support
+    function</firstterm> to an SQL-callable function (called
+    its <firstterm>target function</firstterm>), and thereby provide
+    knowledge about the target function that is too complex to be
+    represented declaratively.  Planner support functions have to be
+    written in C (although their target functions might not be), so this is
+    an advanced feature that relatively few people will use.
+   </para>
+
+   <para>
+    A planner support function must have the SQL signature
+<programlisting>
+supportfn(internal) returns internal
+</programlisting>
+    It is attached to its target function by specifying
+    the <literal>SUPPORT</literal> clause when creating the target function.
+   </para>
+
+   <para>
+    The details of the API for planner support functions can be found in
+    file <filename>src/include/nodes/supportnodes.h</filename> in the
+    <productname>PostgreSQL</productname> source code.  Here we provide
+    just an overview of what planner support functions can do.
+    The set of possible requests to a support function is extensible,
+    so more things might be possible in future versions.
+   </para>
+
+   <para>
+    Some function calls can be simplified during planning based on
+    properties specific to the function.  For example,
+    <literal>int4mul(n, 1)</literal> could be simplified to
+    just <literal>n</literal>.  This type of transformation can be
+    performed by a planner support function, by having it implement
+    the <literal>SupportRequestSimplify</literal> request type.
+    The support function will be called for each instance of its target
+    function found in a query parse tree.  If it finds that the particular
+    call can be simplified into some other form, it can build and return a
+    parse tree representing that expression.  This will automatically work
+    for operators based on the function, too &mdash; in the example just
+    given, <literal>n * 1</literal> would also be simplified to
+    <literal>n</literal>.
+    (But note that this is just an example; this particular
+    optimization is not actually performed by
+    standard <productname>PostgreSQL</productname>.)
+    We make no guarantee that <productname>PostgreSQL</productname> will
+    never call the target function in cases that the support function could
+    simplify.  Ensure rigorous equivalence between the simplified
+    expression and an actual execution of the target function.
+   </para>
+
+   <para>
+    For target functions that return <type>boolean</type>, it is often useful to estimate
+    the fraction of rows that will be selected by a <literal>WHERE</literal> clause using that
+    function.  This can be done by a support function that implements
+    the <literal>SupportRequestSelectivity</literal> request type.
+   </para>
+
+   <para>
+    If the target function's run time is highly dependent on its inputs,
+    it may be useful to provide a non-constant cost estimate for it.
+    This can be done by a support function that implements
+    the <literal>SupportRequestCost</literal> request type.
+   </para>
+
+   <para>
+    For target functions that return sets, it is often useful to provide
+    a non-constant estimate for the number of rows that will be returned.
+    This can be done by a support function that implements
+    the <literal>SupportRequestRows</literal> request type.
+   </para>
+
+   <para>
+    For target functions that return <type>boolean</type>, it may be possible to
+    convert a function call appearing in <literal>WHERE</literal> into an indexable operator
+    clause or clauses.  The converted clauses might be exactly equivalent
+    to the function's condition, or they could be somewhat weaker (that is,
+    they might accept some values that the function condition does not).
+    In the latter case the index condition is said to
+    be <firstterm>lossy</firstterm>; it can still be used to scan an index,
+    but the function call will have to be executed for each row returned by
+    the index to see if it really passes the <literal>WHERE</literal> condition or not.
+    To create such conditions, the support function must implement
+    the <literal>SupportRequestIndexCondition</literal> request type.
+   </para>
+  </sect1>

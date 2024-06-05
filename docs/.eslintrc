@@ -1,0 +1,85 @@
+{
+  "root": true,
+  "parser": "@babel/eslint-parser",
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "plugins": [
+    "jsx-a11y",
+    "import"
+  ],
+  "extends": [
+    "airbnb",
+    "eslint:recommended",
+    "xo-space"
+  ],
+  "rules": {
+    "arrow-parens": 0,
+    "camelcase": 0,
+    "comma-dangle": [
+      1,
+      "always-multiline"
+    ],
+    "import/no-extraneous-dependencies": 0,
+    "import/prefer-default-export": 0,
+    "key-spacing": [
+      "error",
+      {
+        "multiLine": {
+          "mode": "minimum"
+        }
+      }
+    ],
+    "new-cap": [
+      "error",
+      {
+        "capIsNewExceptions": [
+          "DrawerNavigator",
+          "StackNavigator",
+          "TabNavigator"
+        ]
+      }
+    ],
+    "no-cond-assign": [
+      2,
+      "except-parens"
+    ],
+    "no-console": 1,
+    "no-debugger": 1,
+    "no-multi-assign": 0,
+    "no-return-assign": [
+      2,
+      "except-parens"
+    ],
+    "no-unused-vars": 1,
+    "no-use-before-define": 0,
+    "no-warning-comments": 0,
+    "object-curly-spacing": 0,
+    "one-var": 0,
+    "one-var-declaration-per-line": 0,
+    "react/forbid-prop-types": 0,
+    "react/jsx-closing-bracket-location": 0,
+    "react/jsx-first-prop-new-line": 0,
+    "react/prefer-stateless-function": 0,
+    "react/require-default-props": 0,
+    "react/jsx-filename-extension": [
+      1,
+      {
+        "extensions": [
+          ".js",
+          ".jsx"
+        ]
+      }
+    ]
+  },
+  "settings": {
+    "import/resolver": {
+      "node": {
+        "paths": [
+          "./src"
+        ]
+      }
+    }
+  }
+}

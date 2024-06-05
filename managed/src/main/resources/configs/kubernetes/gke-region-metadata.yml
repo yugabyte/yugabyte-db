@@ -1,0 +1,201 @@
+# Copyright (c) YugaByte, Inc.
+
+us-central1:
+  name: "Iowa"
+  latitude: 41.878003
+  longitude: -93.097702
+
+us-east1:
+  name: "South Carolina"
+  latitude: 34.000710
+  longitude: -81.034814
+
+us-east4:
+  name: "Northern Virginia"
+  latitude: 38.907192
+  longitude: -77.036871
+
+us-west1:
+  name: "Oregon"
+  latitude: 45.523064
+  longitude: -122.676483
+
+us-west2:
+  name: "Los Angeles"
+  latitude: 34.052235
+  longitude: -118.243683
+
+us-west3:
+  name: "Salt Lake City"
+  latitude: 40.760780
+  longitude: -111.891045
+
+us-west4:
+  name: "Las Vegas"
+  latitude: 36.169941
+  longitude: -115.139830
+
+northamerica-northeast1:
+  name: "Montreal"
+  latitude: 45.501690
+  longitude: -73.567253
+
+southamerica-east1:
+  name: "Sao Paulo"
+  latitude: -23.550519
+  longitude: -46.633309
+
+europe-north1:
+  name: "Finland"
+  latitude: 60.169856
+  longitude: 24.938379
+
+europe-west1:
+  name: "Belgium"
+  latitude: 50.850346
+  longitude: 4.351721
+
+europe-west2:
+  name: "London"
+  latitude: 51.507351
+  longitude: -0.127758
+
+europe-west3:
+  name: "Frankfurt"
+  latitude: 50.110924
+  longitude: 8.682127
+
+europe-west4:
+  name: "Netherlands"
+  latitude: 52.367984
+  longitude: 4.903561
+
+europe-west6:
+  name: "Zurich"
+  latitude: 47.376888
+  longitude: 8.541694
+
+asia-east1:
+  name: "Taiwan"
+  latitude: 23.697810
+  longitude: 120.960515
+
+asia-east2:
+  name: "Hong Kong"
+  latitude: 22.319304
+  longitude: 114.169361
+
+asia-northeast1:
+  name: "Tokyo"
+  latitude: 35.689487
+  longitude: 139.691711
+
+asia-northeast2:
+  name: "Osaka"
+  latitude: 34.693738
+  longitude: 135.502165
+
+asia-northeast3:
+  name: "Seoul"
+  latitude: 37.566535
+  longitude: 126.977969
+
+asia-southeast1:
+  name: "Singapore"
+  latitude: 1.352083
+  longitude: 103.819839
+
+asia-southeast2:
+  name: "Jakarta"
+  latitude: -6.214620
+  longitude: 106.845130
+
+asia-south1:
+  name: "Mumbai"
+  latitude: 19.0760
+  longitude: 72.8777
+
+australia-southeast1:
+  name: "Sydney"
+  latitude: -33.868820
+  longitude: 151.209296
+
+africa-south1:
+  name: Johannesburg, South Africa
+  latitude: 26.2056
+  longitude:  28.0337
+
+asia-south2:
+  name: Delhi
+  latitude: 28.704059
+  longitude: 77.10249
+
+us-east5:
+  name: Ohio
+  latitude: 39.983334
+  longitude: -82.983330
+
+us-south1:
+  name: Texas
+  latitude: 32.779167
+  longitude: -96.808891
+
+northamerica-northeast2:
+  name: Toronto
+  latitude: 43.653226
+  longitude: -79.383184
+
+southamerica-west1:
+  name: Chile
+  latitude: 35.6751
+  longitude: 71.5430
+
+europe-central2:
+  name: Poland
+  latitude: 52.229676
+  longitude: 21.012229
+
+europe-southwest1:
+  name: Spain
+  latitude: 40.4637
+  longitude: 3.7492
+
+europe-west10:
+  name: Germany
+  latitude: 51.1657
+  longitude: 10.4515
+
+europe-west12:
+  name: Turin, Italy
+  latitude: 41.8719
+  longitude: 12.5674
+
+europe-west8:
+  name: Milan, Italy
+  latitude: 41.8719
+  longitude: 12.5674
+
+europe-west9:
+  name: France
+  latitude: 46.2276
+  longitude: 2.2137
+
+australia-southeast2:
+  name: Melbourne
+  latitude:  -37.813628
+  longitude: 144.963058
+
+me-central1:
+  name: Qatar
+  latitude:  25.3548
+  longitude: 51.1839
+
+me-central2:
+  name: Saudi Arabia
+  latitude:  23.8859
+  longitude: 45.0792
+
+me-west1:
+  name: Israel
+  latitude:  31.0461
+  longitude: 34.8516

@@ -1,0 +1,330 @@
+<!--
+doc/src/sgml/ref/create_opclass.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createopclass">
+ <indexterm zone="sql-createopclass">
+  <primary>CREATE OPERATOR CLASS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE OPERATOR CLASS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE OPERATOR CLASS</refname>
+  <refpurpose>define a new operator class</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE OPERATOR CLASS <replaceable class="parameter">name</replaceable> [ DEFAULT ] FOR TYPE <replaceable class="parameter">data_type</replaceable>
+  USING <replaceable class="parameter">index_method</replaceable> [ FAMILY <replaceable class="parameter">family_name</replaceable> ] AS
+  {  OPERATOR <replaceable class="parameter">strategy_number</replaceable> <replaceable class="parameter">operator_name</replaceable> [ ( <replaceable class="parameter">op_type</replaceable>, <replaceable class="parameter">op_type</replaceable> ) ] [ FOR SEARCH | FOR ORDER BY <replaceable class="parameter">sort_family_name</replaceable> ]
+   | FUNCTION <replaceable class="parameter">support_number</replaceable> [ ( <replaceable class="parameter">op_type</replaceable> [ , <replaceable class="parameter">op_type</replaceable> ] ) ] <replaceable class="parameter">function_name</replaceable> ( <replaceable class="parameter">argument_type</replaceable> [, ...] )
+   | STORAGE <replaceable class="parameter">storage_type</replaceable>
+  } [, ... ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE OPERATOR CLASS</command> creates a new operator class.
+   An operator class defines how a particular data type can be used with
+   an index.  The operator class specifies that certain operators will fill
+   particular roles or <quote>strategies</quote> for this data type and this
+   index method.  The operator class also specifies the support functions to
+   be used by
+   the index method when the operator class is selected for an
+   index column.  All the operators and functions used by an operator
+   class must be defined before the operator class can be created.
+  </para>
+
+  <para>
+   If a schema name is given then the operator class is created in the
+   specified schema.  Otherwise it is created in the current schema.
+   Two operator classes in the same schema can have the same name only if they
+   are for different index methods.
+  </para>
+
+  <para>
+   The user who defines an operator class becomes its owner.  Presently,
+   the creating user must be a superuser.  (This restriction is made because
+   an erroneous operator class definition could confuse or even crash the
+   server.)
+  </para>
+
+  <para>
+   <command>CREATE OPERATOR CLASS</command> does not presently check
+   whether the operator class definition includes all the operators and
+   functions required by the index method, nor whether the operators and
+   functions form a self-consistent set.  It is the user's
+   responsibility to define a valid operator class.
+  </para>
+
+  <para>
+   Related operator classes can be grouped into <firstterm>operator
+   families</firstterm>.  To add a new operator class to an existing family,
+   specify the <literal>FAMILY</literal> option in <command>CREATE OPERATOR
+   CLASS</command>.  Without this option, the new class is placed into
+   a family named the same as the new class (creating that family if
+   it doesn't already exist).
+  </para>
+
+  <para>
+   Refer to <xref linkend="xindex"/> for further information.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the operator class to be created.  The name can be
+      schema-qualified.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DEFAULT</literal></term>
+    <listitem>
+     <para>
+      If present, the operator class will become the default
+      operator class for its data type.  At most one operator class
+      can be the default for a specific data type and index method.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">data_type</replaceable></term>
+    <listitem>
+     <para>
+      The column data type that this operator class is for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_method</replaceable></term>
+    <listitem>
+     <para>
+      The name of the index method this operator class is for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">family_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the existing operator family to add this operator class to.
+      If not specified, a family named the same as the operator class is
+      used (creating it, if it doesn't already exist).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">strategy_number</replaceable></term>
+    <listitem>
+     <para>
+      The index method's strategy number for an operator
+      associated with the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">operator_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an operator associated
+      with the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">op_type</replaceable></term>
+    <listitem>
+     <para>
+      In an <literal>OPERATOR</literal> clause,
+      the operand data type(s) of the operator, or <literal>NONE</literal> to
+      signify a prefix operator.  The operand data
+      types can be omitted in the normal case where they are the same
+      as the operator class's data type.
+     </para>
+
+     <para>
+      In a <literal>FUNCTION</literal> clause, the operand data type(s) the
+      function is intended to support, if different from
+      the input data type(s) of the function (for B-tree comparison functions
+      and hash functions)
+      or the class's data type (for B-tree sort support functions,
+      B-tree equal image functions, and all functions in GiST,
+      SP-GiST, GIN and BRIN operator classes).  These defaults are
+      correct, and so <replaceable
+       class="parameter">op_type</replaceable> need not be specified
+      in <literal>FUNCTION</literal> clauses, except for the case of a
+      B-tree sort support function that is meant to support
+      cross-data-type comparisons.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">sort_family_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing <literal>btree</literal> operator
+      family that describes the sort ordering associated with an ordering
+      operator.
+     </para>
+
+     <para>
+      If neither <literal>FOR SEARCH</literal> nor <literal>FOR ORDER BY</literal> is
+      specified, <literal>FOR SEARCH</literal> is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">support_number</replaceable></term>
+    <listitem>
+     <para>
+      The index method's support function number for a
+      function associated with the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">function_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a function that is an
+      index method support function for the operator class.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argument_type</replaceable></term>
+    <listitem>
+     <para>
+      The parameter data type(s) of the function.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">storage_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type actually stored in the index.  Normally this is
+      the same as the column data type, but some index methods
+      (currently GiST, GIN, SP-GiST and BRIN) allow it to be different.  The
+      <literal>STORAGE</literal> clause must be omitted unless the index
+      method allows a different type to be used.
+      If the column <replaceable class="parameter">data_type</replaceable> is specified
+      as <type>anyarray</type>, the <replaceable class="parameter">storage_type</replaceable>
+      can be declared as <type>anyelement</type> to indicate that the index
+      entries are members of the element type belonging to the actual array
+      type that each particular index is created for.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   The <literal>OPERATOR</literal>, <literal>FUNCTION</literal>, and <literal>STORAGE</literal>
+   clauses can appear in any order.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Because the index machinery does not check access permissions on functions
+   before using them, including a function or operator in an operator class
+   is tantamount to granting public execute permission on it.  This is usually
+   not an issue for the sorts of functions that are useful in an operator
+   class.
+  </para>
+
+  <para>
+   The operators should not be defined by SQL functions.  An SQL function
+   is likely to be inlined into the calling query, which will prevent
+   the optimizer from recognizing that the query matches an index.
+  </para>
+
+  <para>
+   Before <productname>PostgreSQL</productname> 8.4, the <literal>OPERATOR</literal>
+   clause could include a <literal>RECHECK</literal> option.  This is no longer
+   supported because whether an index operator is <quote>lossy</quote> is now
+   determined on-the-fly at run time.  This allows efficient handling of
+   cases where an operator might or might not be lossy.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   The following example command defines a GiST index operator class
+   for the data type <literal>_int4</literal> (array of <type>int4</type>).  See the
+   <xref linkend="intarray"/> module for the complete example.
+  </para>
+
+<programlisting>
+CREATE OPERATOR CLASS gist__int_ops
+    DEFAULT FOR TYPE _int4 USING gist AS
+        OPERATOR        3       &amp;&amp;,
+        OPERATOR        6       = (anyarray, anyarray),
+        OPERATOR        7       @&gt;,
+        OPERATOR        8       &lt;@,
+        OPERATOR        20      @@ (_int4, query_int),
+        FUNCTION        1       g_int_consistent (internal, _int4, smallint, oid, internal),
+        FUNCTION        2       g_int_union (internal, internal),
+        FUNCTION        3       g_int_compress (internal),
+        FUNCTION        4       g_int_decompress (internal),
+        FUNCTION        5       g_int_penalty (internal, internal, internal),
+        FUNCTION        6       g_int_picksplit (internal, internal),
+        FUNCTION        7       g_int_same (_int4, _int4, internal);
+</programlisting>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE OPERATOR CLASS</command> is a
+   <productname>PostgreSQL</productname> extension.  There is no
+   <command>CREATE OPERATOR CLASS</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alteropclass"/></member>
+   <member><xref linkend="sql-dropopclass"/></member>
+   <member><xref linkend="sql-createopfamily"/></member>
+   <member><xref linkend="sql-alteropfamily"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

@@ -1,0 +1,42 @@
+.restore-v2 {
+  .search-filter-options {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 52px;
+
+    .search-placeholder {
+      width: 470px;
+    }
+
+    .backup-status-filter {
+      min-width: 140px;
+      margin-right: 8px;
+    }
+
+    .date-filters {
+      display: flex;
+      margin-left: auto;
+      .time-range {
+        width: 150px;
+      }
+
+      .custom-date-picker {
+        display: flex;
+        align-items: center;
+        color: #333333;
+
+        div.rw-datetime-picker {
+          margin-left: 8px !important;
+        }
+      }
+    }
+  }
+  .universeName {
+    text-decoration: underline;
+    color: #495589;
+  }
+  .restore_status {
+    display: flex;
+    gap: 20px;
+  }
+}

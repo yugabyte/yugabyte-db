@@ -1,0 +1,100 @@
+.gflag-display-container .tab-content {
+  min-height: initial;
+}
+
+.gflag-display-container a {
+  margin-left: 0;
+}
+
+.time-delay-container {
+  width: 90%;
+}
+
+.modal-body .rolling-upgrade-form {
+  .form-item-label {
+    min-width: 165px;
+    padding: 0;
+    vertical-align: middle;
+  }
+
+  .yb-field-group {
+    padding: 4px 0;
+  }
+}
+
+.gflag-upgrade-container {
+  width: 100%;
+  margin-top: 16px;
+  background-color: #f7f7f7;
+  border: 1px solid #e3e3e5;
+  border-radius: 8px;
+}
+
+.gflag-upgrade--label {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 16px;
+}
+
+.gflag-upgrade-options {
+  display: flex;
+  flex: 8;
+  flex-direction: column;
+  border-left: 1px solid #e3e3e5;
+  padding: 8px 16px 16px 16px;
+}
+
+.upgrade-radio-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.upgrade-radio-label {
+  margin: 4px 0px 0px 4px;
+}
+
+.gflag-delay {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.gflag-err-msg {
+  width: 750px;
+}
+
+.gflag-delay .form-group .yb-field-group {
+  padding-bottom: 0px !important;
+  padding: 0px 8px;
+}
+
+.vr-line {
+  color: #aeacae;
+  margin: 0px 16px 0px 8px;
+}
+
+.mb-8 {
+  margin-bottom: 8px;
+}
+
+.non-rolling-msg {
+  color: #545454;
+  width: 800px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.warning-icon {
+  color: #ff9933;
+}
+
+.gflag-modal-body {
+  display: flex;
+  height: 620px;
+  width: 100%;
+  flex-direction: column;
+}

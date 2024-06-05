@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+import argparse
+import getpass
+import json
+import os
+import subprocess
+import sys
+
+# Set this to False if node agent is not needed.
+INSTALL_NODE_AGENT={{install_node_agent}}
+
+def construct_node_agent_command(args):
+    cmd = [
+        '{{devops_home}}/bin/ybcloud.sh', '{{cloud}}',
+        '--node_metadata',
+        '{"ip":"%s","sshPort":{{custom_ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}' % (args.ip),
+        'instance', 'install-node-agent',
+        '--vars_file', '{{vars_file}}',
+        '--vault_password_file', '{{vault_password_file}}',
+        '--private_key_file', '{{private_key_file}}',
+        '--ssh_user', '{{ssh_user}}',
+        '--yba_url', args.yba_url,
+        '--api_token', args.api_token,
+        '--node_name', args.node_name,
+        '--node_agent_ip', args.ip,
+        '--node_agent_port', '{{node_agent_port}}',
+        '--provider_id', '{{provider_id}}',
+        '--instance_type',  args.instance_type,
+        '--zone_name', args.zone_name
+    ]
+    cmd.append('@@DEFAULT_NODE_NAME@@')
+    return cmd
+
+def construct_instance_command(args, is_preflight=False):
+    cmd = [
+        '{{devops_home}}/bin/ybcloud.sh', '{{cloud}}',
+        '--node_metadata',
+        '{"ip":"%s","sshPort":{{custom_ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}' % (args.ip),
+        'instance', 'provision' if not is_preflight else 'precheck',
+        '--vars_file', '{{vars_file}}',
+        '--vault_password_file', '{{vault_password_file}}',
+        '--private_key_file', '{{private_key_file}}',
+        '--ssh_user', '{{ssh_user}}',
+        '--mount_points', args.mount_points,
+        {%- if air_gap %}
+        '--air_gap',
+        {%- endif %}
+        {%- if install_node_exporter %}
+        '--install_node_exporter',
+        {%- endif %}
+    ]
+    if not args.disable_systemd_services:
+      cmd.append("--systemd_services")
+    if is_preflight:
+        cmd.extend([
+            '--precheck_type', 'provision',
+            {%- if use_chrony %}
+            '--skip_ntp_check',
+            {%- endif %}
+        ])
+    else:
+        cmd.extend([
+            '--local_package_path', '{{local_package_path}}',
+            {%- if install_node_exporter %}
+            '--node_exporter_user', '{{ node_exporter_user }}',
+            '--node_exporter_port', '{{ node_exporter_port }}',
+            {%- endif %}
+            {%- if use_chrony %}
+            '--use_chrony',
+            {%- endif %}
+            {%- for server in ntp_server %}
+            '--ntp_server', '{{ server }}',
+            {%- endfor %}
+        ])
+
+    cmd.append('@@DEFAULT_NODE_NAME@@')
+    return cmd
+
+def construct_vault_command(args):
+    return [
+        '{{devops_home}}/bin/ybcloud.sh', '{{cloud}}',
+        'access', 'edit-vault',
+        '--private_key_file', '{{private_key_file}}',
+        '--has_sudo_pass'
+    ]
+
+def execute_command(cmd, password=None):
+    new_env = dict(os.environ, YB_HOME_DIR="{{ yb_home_dir }}")
+    if password:
+        new_env['YB_SUDO_PASS'] = password
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=new_env)
+    stdout, stderr = p.communicate()
+    if p.returncode != 0:
+        print("Failed running cmd: {}".format(cmd))
+        print(stdout.decode('utf-8'))
+        print(stderr.decode('utf-8'))
+        sys.exit(1)
+    else:
+        return stdout.decode('utf-8')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--ip', required=True,
+                        help='Private IP of the instance to provision.')
+    parser.add_argument('-m', '--mount_points', required=True,
+                        help='The comma-separated locations of each mounted hard drive.')
+    parser.add_argument('--disable_systemd_services', action='store_true',
+                        help='Specify this flag to disable systemd services and use cron.')
+    parser.add_argument('--ask_password', action='store_true',
+                        help='Specify this flag if a password is required for sudo access. '
+                             'It will persist in subsequent runs even without this flag.')
+    parser.add_argument('--skip_preflight_check', action='store_true',
+                        help='Skip preflight-check if specified.')
+    if INSTALL_NODE_AGENT:
+        # Node agent installation is optional for backward compatibility.
+        parser.add_argument('--install_node_agent', action='store_true',
+                            help='Install node agent.')
+        parser.add_argument('--yba_url', required=False,
+                            help='YBA URL reachable from the node e.g https://10.20.30.40.')
+        parser.add_argument('--api_token', required=False,
+                            help='API token for YBA.')
+        parser.add_argument('--node_name', required=False,
+                            help='Node name.')
+        parser.add_argument('--instance_type', required=False,
+                            help='Instance type e.g c5.xlarge.')
+        parser.add_argument('--zone_name', required=False,
+                            help='Zone name or code e.g us-west-2a.')
+    args = parser.parse_args()
+    if INSTALL_NODE_AGENT:
+        if args.install_node_agent != (args.yba_url is not None):
+            parser.error("--yba_url is required only for --install_node_agent.")
+        if args.install_node_agent != (args.api_token is not None):
+            parser.error("--api_token is required only for --install_node_agent.")
+        if args.install_node_agent != (args.node_name is not None):
+            parser.error("--node_name is required only for --install_node_agent.")
+        if args.install_node_agent != (args.instance_type is not None):
+            parser.error("--instance_type is required only for --install_node_agent.")
+        if args.install_node_agent != (args.zone_name is not None):
+            parser.error("--zone_name is required only for --install_node_agent.")
+    password = None
+    if args.ask_password:
+        password = getpass.getpass('Sudo password: ')
+        execute_command(construct_vault_command(args), password=password)
+        print("Password saved.")
+
+    # Running provisioning again on retry can fail preflight checks which passed earlier
+    # due to partially provisioned node.
+    if not args.skip_preflight_check:
+        print('Performing preflight checks for instance with IP {}...'.format(args.ip))
+        output = execute_command(construct_instance_command(args, True), password=password)
+        if not all(json.loads(output).values()):
+            print("Failed preflight checks!")
+            print(output)
+            sys.exit(1)
+        print("Preflight checks passed!")
+    print('Executing provision now for instance with IP {}...'.format(args.ip))
+    execute_command(construct_instance_command(args), password=password)
+    print("Provisioning successful!")
+    if INSTALL_NODE_AGENT and args.install_node_agent:
+        print('Installing node agent on instance with IP {}...'.format(args.ip))
+        execute_command(construct_node_agent_command(args), password=password)
+        print("Node Agent installation successful!")

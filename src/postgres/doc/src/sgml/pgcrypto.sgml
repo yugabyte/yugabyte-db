@@ -1,0 +1,1332 @@
+<!-- doc/src/sgml/pgcrypto.sgml -->
+
+<sect1 id="pgcrypto" xreflabel="pgcrypto">
+ <title>pgcrypto</title>
+
+ <indexterm zone="pgcrypto">
+  <primary>pgcrypto</primary>
+ </indexterm>
+
+ <indexterm zone="pgcrypto">
+  <primary>encryption</primary>
+  <secondary>for specific columns</secondary>
+ </indexterm>
+
+ <para>
+  The <filename>pgcrypto</filename> module provides cryptographic functions for
+  <productname>PostgreSQL</productname>.
+ </para>
+
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
+ </para>
+
+ <para>
+  <filename>pgcrypto</filename> requires OpenSSL and won't be installed if
+  OpenSSL support was not selected when PostgreSQL was built.
+ </para>
+
+ <sect2>
+  <title>General Hashing Functions</title>
+
+  <sect3>
+   <title><function>digest()</function></title>
+
+   <indexterm>
+    <primary>digest</primary>
+   </indexterm>
+
+<synopsis>
+digest(data text, type text) returns bytea
+digest(data bytea, type text) returns bytea
+</synopsis>
+
+   <para>
+    Computes a binary hash of the given <parameter>data</parameter>.
+    <parameter>type</parameter> is the algorithm to use.
+    Standard algorithms are <literal>md5</literal>, <literal>sha1</literal>,
+    <literal>sha224</literal>, <literal>sha256</literal>,
+    <literal>sha384</literal> and <literal>sha512</literal>.
+    Moreover, any digest algorithm <productname>OpenSSL</productname> supports
+    is automatically picked up.
+   </para>
+
+   <para>
+    If you want the digest as a hexadecimal string, use
+    <function>encode()</function> on the result.  For example:
+<programlisting>
+CREATE OR REPLACE FUNCTION sha1(bytea) returns text AS $$
+    SELECT encode(digest($1, 'sha1'), 'hex')
+$$ LANGUAGE SQL STRICT IMMUTABLE;
+</programlisting>
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>hmac()</function></title>
+
+   <indexterm>
+    <primary>hmac</primary>
+   </indexterm>
+
+<synopsis>
+hmac(data text, key text, type text) returns bytea
+hmac(data bytea, key bytea, type text) returns bytea
+</synopsis>
+
+   <para>
+    Calculates hashed MAC for <parameter>data</parameter> with key <parameter>key</parameter>.
+    <parameter>type</parameter> is the same as in <function>digest()</function>.
+   </para>
+
+   <para>
+    This is similar to <function>digest()</function> but the hash can only be
+    recalculated knowing the key.  This prevents the scenario of someone
+    altering data and also changing the hash to match.
+   </para>
+
+   <para>
+    If the key is larger than the hash block size it will first be hashed and
+    the result will be used as key.
+   </para>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>Password Hashing Functions</title>
+
+  <para>
+   The functions <function>crypt()</function> and <function>gen_salt()</function>
+   are specifically designed for hashing passwords.
+   <function>crypt()</function> does the hashing and <function>gen_salt()</function>
+   prepares algorithm parameters for it.
+  </para>
+
+  <para>
+   The algorithms in <function>crypt()</function> differ from the usual
+   MD5 or SHA1 hashing algorithms in the following respects:
+  </para>
+
+  <orderedlist>
+   <listitem>
+    <para>
+     They are slow.  As the amount of data is so small, this is the only
+     way to make brute-forcing passwords hard.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     They use a random value, called the <firstterm>salt</firstterm>, so that users
+     having the same password will have different encrypted passwords.
+     This is also an additional defense against reversing the algorithm.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     They include the algorithm type in the result, so passwords hashed with
+     different algorithms can co-exist.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Some of them are adaptive &mdash; that means when computers get
+     faster, you can tune the algorithm to be slower, without
+     introducing incompatibility with existing passwords.
+    </para>
+   </listitem>
+  </orderedlist>
+
+  <para>
+   <xref linkend="pgcrypto-crypt-algorithms"/> lists the algorithms
+   supported by the <function>crypt()</function> function.
+  </para>
+
+  <table id="pgcrypto-crypt-algorithms">
+   <title>Supported Algorithms for <function>crypt()</function></title>
+   <tgroup cols="6">
+    <thead>
+     <row>
+      <entry>Algorithm</entry>
+      <entry>Max Password Length</entry>
+      <entry>Adaptive?</entry>
+      <entry>Salt Bits</entry>
+      <entry>Output Length</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>bf</literal></entry>
+      <entry>72</entry>
+      <entry>yes</entry>
+      <entry>128</entry>
+      <entry>60</entry>
+      <entry>Blowfish-based, variant 2a</entry>
+     </row>
+     <row>
+      <entry><literal>md5</literal></entry>
+      <entry>unlimited</entry>
+      <entry>no</entry>
+      <entry>48</entry>
+      <entry>34</entry>
+      <entry>MD5-based crypt</entry>
+     </row>
+     <row>
+      <entry><literal>xdes</literal></entry>
+      <entry>8</entry>
+      <entry>yes</entry>
+      <entry>24</entry>
+      <entry>20</entry>
+      <entry>Extended DES</entry>
+     </row>
+     <row>
+      <entry><literal>des</literal></entry>
+      <entry>8</entry>
+      <entry>no</entry>
+      <entry>12</entry>
+      <entry>13</entry>
+      <entry>Original UNIX crypt</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <sect3>
+   <title><function>crypt()</function></title>
+
+   <indexterm>
+    <primary>crypt</primary>
+   </indexterm>
+
+<synopsis>
+crypt(password text, salt text) returns text
+</synopsis>
+
+   <para>
+    Calculates a crypt(3)-style hash of <parameter>password</parameter>.
+    When storing a new password, you need to use
+    <function>gen_salt()</function> to generate a new <parameter>salt</parameter> value.
+    To check a password, pass the stored hash value as <parameter>salt</parameter>,
+    and test whether the result matches the stored value.
+   </para>
+   <para>
+    Example of setting a new password:
+<programlisting>
+UPDATE ... SET pswhash = crypt('new password', gen_salt('md5'));
+</programlisting>
+   </para>
+   <para>
+    Example of authentication:
+<programlisting>
+SELECT (pswhash = crypt('entered password', pswhash)) AS pswmatch FROM ... ;
+</programlisting>
+    This returns <literal>true</literal> if the entered password is correct.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>gen_salt()</function></title>
+
+  <indexterm>
+   <primary>gen_salt</primary>
+  </indexterm>
+
+<synopsis>
+gen_salt(type text [, iter_count integer ]) returns text
+</synopsis>
+
+   <para>
+    Generates a new random salt string for use in <function>crypt()</function>.
+    The salt string also tells <function>crypt()</function> which algorithm to use.
+   </para>
+
+   <para>
+    The <parameter>type</parameter> parameter specifies the hashing algorithm.
+    The accepted types are: <literal>des</literal>, <literal>xdes</literal>,
+    <literal>md5</literal> and <literal>bf</literal>.
+   </para>
+
+   <para>
+    The <parameter>iter_count</parameter> parameter lets the user specify the iteration
+    count, for algorithms that have one.
+    The higher the count, the more time it takes to hash
+    the password and therefore the more time to break it.  Although with
+    too high a count the time to calculate a hash may be several years
+    &mdash; which is somewhat impractical.  If the <parameter>iter_count</parameter>
+    parameter is omitted, the default iteration count is used.
+    Allowed values for <parameter>iter_count</parameter> depend on the algorithm and
+    are shown in <xref linkend="pgcrypto-icfc-table"/>.
+   </para>
+
+   <table id="pgcrypto-icfc-table">
+    <title>Iteration Counts for <function>crypt()</function></title>
+    <tgroup cols="4">
+     <thead>
+      <row>
+       <entry>Algorithm</entry>
+       <entry>Default</entry>
+       <entry>Min</entry>
+       <entry>Max</entry>
+      </row>
+     </thead>
+     <tbody>
+      <row>
+       <entry><literal>xdes</literal></entry>
+       <entry>725</entry>
+       <entry>1</entry>
+       <entry>16777215</entry>
+      </row>
+      <row>
+       <entry><literal>bf</literal></entry>
+       <entry>6</entry>
+       <entry>4</entry>
+       <entry>31</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <para>
+    For <literal>xdes</literal> there is an additional limitation that the
+    iteration count must be an odd number.
+   </para>
+
+   <para>
+    To pick an appropriate iteration count, consider that
+    the original DES crypt was designed to have the speed of 4 hashes per
+    second on the hardware of that time.
+    Slower than 4 hashes per second would probably dampen usability.
+    Faster than 100 hashes per second is probably too fast.
+   </para>
+
+   <para>
+    <xref linkend="pgcrypto-hash-speed-table"/> gives an overview of the relative slowness
+    of different hashing algorithms.
+    The table shows how much time it would take to try all
+    combinations of characters in an 8-character password, assuming
+    that the password contains either only lower case letters, or
+    upper- and lower-case letters and numbers.
+    In the <literal>crypt-bf</literal> entries, the number after a slash is
+    the <parameter>iter_count</parameter> parameter of
+    <function>gen_salt</function>.
+   </para>
+
+   <table id="pgcrypto-hash-speed-table">
+    <title>Hash Algorithm Speeds</title>
+    <tgroup cols="5">
+     <thead>
+      <row>
+       <entry>Algorithm</entry>
+       <entry>Hashes/sec</entry>
+       <entry>For <literal>[a-z]</literal></entry>
+       <entry>For <literal>[A-Za-z0-9]</literal></entry>
+       <entry>Duration relative to <literal>md5 hash</literal></entry>
+      </row>
+     </thead>
+     <tbody>
+      <row>
+       <entry><literal>crypt-bf/8</literal></entry>
+       <entry>1792</entry>
+       <entry>4 years</entry>
+       <entry>3927 years</entry>
+       <entry>100k</entry>
+      </row>
+      <row>
+       <entry><literal>crypt-bf/7</literal></entry>
+       <entry>3648</entry>
+       <entry>2 years</entry>
+       <entry>1929 years</entry>
+       <entry>50k</entry>
+      </row>
+      <row>
+       <entry><literal>crypt-bf/6</literal></entry>
+       <entry>7168</entry>
+       <entry>1 year</entry>
+       <entry>982 years</entry>
+       <entry>25k</entry>
+      </row>
+      <row>
+       <entry><literal>crypt-bf/5</literal></entry>
+       <entry>13504</entry>
+       <entry>188 days</entry>
+       <entry>521 years</entry>
+       <entry>12.5k</entry>
+      </row>
+      <row>
+       <entry><literal>crypt-md5</literal></entry>
+       <entry>171584</entry>
+       <entry>15 days</entry>
+       <entry>41 years</entry>
+       <entry>1k</entry>
+      </row>
+      <row>
+       <entry><literal>crypt-des</literal></entry>
+       <entry>23221568</entry>
+       <entry>157.5 minutes</entry>
+       <entry>108 days</entry>
+       <entry>7</entry>
+      </row>
+      <row>
+       <entry><literal>sha1</literal></entry>
+       <entry>37774272</entry>
+       <entry>90 minutes</entry>
+       <entry>68 days</entry>
+       <entry>4</entry>
+      </row>
+      <row>
+       <entry><literal>md5</literal> (hash)</entry>
+       <entry>150085504</entry>
+       <entry>22.5 minutes</entry>
+       <entry>17 days</entry>
+       <entry>1</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <para>
+    Notes:
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+     The machine used is an Intel Mobile Core i3.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>crypt-des</literal> and <literal>crypt-md5</literal> algorithm numbers are
+      taken from John the Ripper v1.6.38 <literal>-test</literal> output.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>md5 hash</literal> numbers are from mdcrack 1.2.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>sha1</literal> numbers are from lcrack-20031130-beta.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>crypt-bf</literal> numbers are taken using a simple program that
+      loops over 1000 8-character passwords.  That way I can show the speed
+      with different numbers of iterations.  For reference: <literal>john
+      -test</literal> shows 13506 loops/sec for <literal>crypt-bf/5</literal>.
+      (The very small
+      difference in results is in accordance with the fact that the
+      <literal>crypt-bf</literal> implementation in <filename>pgcrypto</filename>
+      is the same one used in John the Ripper.)
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    Note that <quote>try all combinations</quote> is not a realistic exercise.
+    Usually password cracking is done with the help of dictionaries, which
+    contain both regular words and various mutations of them.  So, even
+    somewhat word-like passwords could be cracked much faster than the above
+    numbers suggest, while a 6-character non-word-like password may escape
+    cracking.  Or not.
+   </para>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>PGP Encryption Functions</title>
+
+  <para>
+   The functions here implement the encryption part of the OpenPGP
+   (<ulink url="https://tools.ietf.org/html/rfc4880">RFC 4880</ulink>)
+   standard.  Supported are both symmetric-key and public-key encryption.
+  </para>
+
+  <para>
+   An encrypted PGP message consists of 2 parts, or <firstterm>packets</firstterm>:
+  </para>
+  <itemizedlist>
+   <listitem>
+    <para>
+     Packet containing a session key &mdash; either symmetric-key or public-key
+     encrypted.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Packet containing data encrypted with the session key.
+    </para>
+   </listitem>
+  </itemizedlist>
+
+  <para>
+   When encrypting with a symmetric key (i.e., a password):
+  </para>
+  <orderedlist>
+   <listitem>
+    <para>
+     The given password is hashed using a String2Key (S2K) algorithm.  This is
+     rather similar to <function>crypt()</function> algorithms &mdash; purposefully
+     slow and with random salt &mdash; but it produces a full-length binary
+     key.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     If a separate session key is requested, a new random key will be
+     generated.  Otherwise the S2K key will be used directly as the session
+     key.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     If the S2K key is to be used directly, then only S2K settings will be put
+     into the session key packet.  Otherwise the session key will be encrypted
+     with the S2K key and put into the session key packet.
+    </para>
+   </listitem>
+  </orderedlist>
+
+  <para>
+   When encrypting with a public key:
+  </para>
+  <orderedlist>
+   <listitem>
+    <para>
+     A new random session key is generated.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     It is encrypted using the public key and put into the session key packet.
+    </para>
+   </listitem>
+  </orderedlist>
+
+  <para>
+   In either case the data to be encrypted is processed as follows:
+  </para>
+  <orderedlist>
+   <listitem>
+    <para>
+     Optional data-manipulation: compression, conversion to UTF-8,
+     and/or conversion of line-endings.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     The data is prefixed with a block of random bytes.  This is equivalent
+     to using a random IV.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     A SHA1 hash of the random prefix and data is appended.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     All this is encrypted with the session key and placed in the data packet.
+    </para>
+   </listitem>
+  </orderedlist>
+
+  <sect3>
+   <title><function>pgp_sym_encrypt()</function></title>
+
+   <indexterm>
+    <primary>pgp_sym_encrypt</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pgp_sym_encrypt_bytea</primary>
+   </indexterm>
+
+<synopsis>
+pgp_sym_encrypt(data text, psw text [, options text ]) returns bytea
+pgp_sym_encrypt_bytea(data bytea, psw text [, options text ]) returns bytea
+</synopsis>
+   <para>
+    Encrypt <parameter>data</parameter> with a symmetric PGP key <parameter>psw</parameter>.
+    The <parameter>options</parameter> parameter can contain option settings,
+    as described below.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>pgp_sym_decrypt()</function></title>
+
+   <indexterm>
+    <primary>pgp_sym_decrypt</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pgp_sym_decrypt_bytea</primary>
+   </indexterm>
+
+<synopsis>
+pgp_sym_decrypt(msg bytea, psw text [, options text ]) returns text
+pgp_sym_decrypt_bytea(msg bytea, psw text [, options text ]) returns bytea
+</synopsis>
+   <para>
+    Decrypt a symmetric-key-encrypted PGP message.
+   </para>
+   <para>
+    Decrypting <type>bytea</type> data with <function>pgp_sym_decrypt</function> is disallowed.
+    This is to avoid outputting invalid character data.  Decrypting
+    originally textual data with <function>pgp_sym_decrypt_bytea</function> is fine.
+   </para>
+   <para>
+    The <parameter>options</parameter> parameter can contain option settings,
+    as described below.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>pgp_pub_encrypt()</function></title>
+
+   <indexterm>
+    <primary>pgp_pub_encrypt</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pgp_pub_encrypt_bytea</primary>
+   </indexterm>
+
+<synopsis>
+pgp_pub_encrypt(data text, key bytea [, options text ]) returns bytea
+pgp_pub_encrypt_bytea(data bytea, key bytea [, options text ]) returns bytea
+</synopsis>
+   <para>
+    Encrypt <parameter>data</parameter> with a public PGP key <parameter>key</parameter>.
+    Giving this function a secret key will produce an error.
+   </para>
+   <para>
+    The <parameter>options</parameter> parameter can contain option settings,
+    as described below.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>pgp_pub_decrypt()</function></title>
+
+   <indexterm>
+    <primary>pgp_pub_decrypt</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pgp_pub_decrypt_bytea</primary>
+   </indexterm>
+
+<synopsis>
+pgp_pub_decrypt(msg bytea, key bytea [, psw text [, options text ]]) returns text
+pgp_pub_decrypt_bytea(msg bytea, key bytea [, psw text [, options text ]]) returns bytea
+</synopsis>
+   <para>
+    Decrypt a public-key-encrypted message.  <parameter>key</parameter> must be the
+    secret key corresponding to the public key that was used to encrypt.
+    If the secret key is password-protected, you must give the password in
+    <parameter>psw</parameter>.  If there is no password, but you want to specify
+    options, you need to give an empty password.
+   </para>
+   <para>
+    Decrypting <type>bytea</type> data with <function>pgp_pub_decrypt</function> is disallowed.
+    This is to avoid outputting invalid character data.  Decrypting
+    originally textual data with <function>pgp_pub_decrypt_bytea</function> is fine.
+   </para>
+   <para>
+    The <parameter>options</parameter> parameter can contain option settings,
+    as described below.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>pgp_key_id()</function></title>
+
+   <indexterm>
+    <primary>pgp_key_id</primary>
+   </indexterm>
+
+<synopsis>
+pgp_key_id(bytea) returns text
+</synopsis>
+   <para>
+    <function>pgp_key_id</function> extracts the key ID of a PGP public or secret key.
+    Or it gives the key ID that was used for encrypting the data, if given
+    an encrypted message.
+   </para>
+   <para>
+    It can return 2 special key IDs:
+   </para>
+   <itemizedlist>
+    <listitem>
+     <para>
+      <literal>SYMKEY</literal>
+     </para>
+     <para>
+      The message is encrypted with a symmetric key.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>ANYKEY</literal>
+     </para>
+     <para>
+      The message is public-key encrypted, but the key ID has been removed.
+      That means you will need to try all your secret keys on it to see
+      which one decrypts it.  <filename>pgcrypto</filename> itself does not produce
+      such messages.
+     </para>
+    </listitem>
+   </itemizedlist>
+   <para>
+    Note that different keys may have the same ID.   This is rare but a normal
+    event. The client application should then try to decrypt with each one,
+    to see which fits &mdash; like handling <literal>ANYKEY</literal>.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>armor()</function>, <function>dearmor()</function></title>
+
+   <indexterm>
+    <primary>armor</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>dearmor</primary>
+   </indexterm>
+
+<synopsis>
+armor(data bytea [ , keys text[], values text[] ]) returns text
+dearmor(data text) returns bytea
+</synopsis>
+   <para>
+    These functions wrap/unwrap binary data into PGP ASCII-armor format,
+    which is basically Base64 with CRC and additional formatting.
+   </para>
+
+   <para>
+    If the <parameter>keys</parameter> and <parameter>values</parameter> arrays are specified,
+    an <firstterm>armor header</firstterm> is added to the armored format for each
+    key/value pair. Both arrays must be single-dimensional, and they must
+    be of the same length.  The keys and values cannot contain any non-ASCII
+    characters.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title><function>pgp_armor_headers</function></title>
+
+   <indexterm>
+    <primary>pgp_armor_headers</primary>
+   </indexterm>
+
+<synopsis>
+pgp_armor_headers(data text, key out text, value out text) returns setof record
+</synopsis>
+   <para>
+    <function>pgp_armor_headers()</function> extracts the armor headers from
+    <parameter>data</parameter>.  The return value is a set of rows with two columns,
+    key and value.  If the keys or values contain any non-ASCII characters,
+    they are treated as UTF-8.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title>Options for PGP Functions</title>
+
+   <para>
+    Options are named to be similar to GnuPG.  An option's value should be
+    given after an equal sign; separate options from each other with commas.
+    For example:
+<programlisting>
+pgp_sym_encrypt(data, psw, 'compress-algo=1, cipher-algo=aes256')
+</programlisting>
+   </para>
+
+   <para>
+    All of the options except <literal>convert-crlf</literal> apply only to
+    encrypt functions.  Decrypt functions get the parameters from the PGP
+    data.
+   </para>
+
+   <para>
+    The most interesting options are probably
+    <literal>compress-algo</literal> and <literal>unicode-mode</literal>.
+    The rest should have reasonable defaults.
+   </para>
+
+  <sect4>
+   <title>cipher-algo</title>
+
+   <para>
+    Which cipher algorithm to use.
+   </para>
+<literallayout>
+Values: bf, aes128, aes192, aes256, 3des, cast5
+Default: aes128
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>compress-algo</title>
+
+   <para>
+    Which compression algorithm to use.  Only available if
+    <productname>PostgreSQL</productname> was built with zlib.
+   </para>
+<literallayout>
+Values:
+  0 - no compression
+  1 - ZIP compression
+  2 - ZLIB compression (= ZIP plus meta-data and block CRCs)
+Default: 0
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>compress-level</title>
+
+   <para>
+    How much to compress.  Higher levels compress smaller but are slower.
+    0 disables compression.
+   </para>
+<literallayout>
+Values: 0, 1-9
+Default: 6
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>convert-crlf</title>
+
+   <para>
+    Whether to convert <literal>\n</literal> into <literal>\r\n</literal> when
+    encrypting and <literal>\r\n</literal> to <literal>\n</literal> when
+    decrypting.  <acronym>RFC</acronym> 4880 specifies that text data should be stored using
+    <literal>\r\n</literal> line-feeds.  Use this to get fully RFC-compliant
+    behavior.
+   </para>
+<literallayout>
+Values: 0, 1
+Default: 0
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt, pgp_sym_decrypt, pgp_pub_decrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>disable-mdc</title>
+
+   <para>
+    Do not protect data with SHA-1.  The only good reason to use this
+    option is to achieve compatibility with ancient PGP products, predating
+    the addition of SHA-1 protected packets to <acronym>RFC</acronym> 4880.
+    Recent gnupg.org and pgp.com software supports it fine.
+   </para>
+<literallayout>
+Values: 0, 1
+Default: 0
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>sess-key</title>
+
+   <para>
+    Use separate session key.  Public-key encryption always uses a separate
+    session key; this option is for symmetric-key encryption, which by default
+    uses the S2K key directly.
+   </para>
+<literallayout>
+Values: 0, 1
+Default: 0
+Applies to: pgp_sym_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>s2k-mode</title>
+
+   <para>
+    Which S2K algorithm to use.
+   </para>
+<literallayout>
+Values:
+  0 - Without salt.  Dangerous!
+  1 - With salt but with fixed iteration count.
+  3 - Variable iteration count.
+Default: 3
+Applies to: pgp_sym_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>s2k-count</title>
+
+   <para>
+    The number of iterations of the S2K algorithm to use.  It must
+    be a value between 1024 and 65011712, inclusive.
+   </para>
+<literallayout>
+Default: A random value between 65536 and 253952
+Applies to: pgp_sym_encrypt, only with s2k-mode=3
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>s2k-digest-algo</title>
+
+   <para>
+    Which digest algorithm to use in S2K calculation.
+   </para>
+<literallayout>
+Values: md5, sha1
+Default: sha1
+Applies to: pgp_sym_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>s2k-cipher-algo</title>
+
+   <para>
+    Which cipher to use for encrypting separate session key.
+   </para>
+<literallayout>
+Values: bf, aes, aes128, aes192, aes256
+Default: use cipher-algo
+Applies to: pgp_sym_encrypt
+</literallayout>
+  </sect4>
+
+  <sect4>
+   <title>unicode-mode</title>
+
+   <para>
+    Whether to convert textual data from database internal encoding to
+    UTF-8 and back.  If your database already is UTF-8, no conversion will
+    be done, but the message will be tagged as UTF-8.  Without this option
+    it will not be.
+   </para>
+<literallayout>
+Values: 0, 1
+Default: 0
+Applies to: pgp_sym_encrypt, pgp_pub_encrypt
+</literallayout>
+  </sect4>
+  </sect3>
+
+ <sect3>
+  <title>Generating PGP Keys with GnuPG</title>
+
+  <para>
+   To generate a new key:
+<programlisting>
+gpg --gen-key
+</programlisting>
+  </para>
+  <para>
+   The preferred key type is <quote>DSA and Elgamal</quote>.
+  </para>
+  <para>
+   For RSA encryption you must create either DSA or RSA sign-only key
+   as master and then add an RSA encryption subkey with
+   <literal>gpg --edit-key</literal>.
+  </para>
+  <para>
+   To list keys:
+<programlisting>
+gpg --list-secret-keys
+</programlisting>
+  </para>
+  <para>
+   To export a public key in ASCII-armor format:
+<programlisting>
+gpg -a --export KEYID > public.key
+</programlisting>
+  </para>
+  <para>
+   To export a secret key in ASCII-armor format:
+<programlisting>
+gpg -a --export-secret-keys KEYID > secret.key
+</programlisting>
+  </para>
+  <para>
+   You need to use <function>dearmor()</function> on these keys before giving them to
+   the PGP functions.  Or if you can handle binary data, you can drop
+   <literal>-a</literal> from the command.
+  </para>
+  <para>
+   For more details see <literal>man gpg</literal>,
+   <ulink url="https://www.gnupg.org/gph/en/manual.html">The GNU
+   Privacy Handbook</ulink> and other documentation on
+   <ulink url="https://www.gnupg.org/"></ulink>.
+  </para>
+ </sect3>
+
+ <sect3>
+  <title>Limitations of PGP Code</title>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+    No support for signing.  That also means that it is not checked
+    whether the encryption subkey belongs to the master key.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    No support for encryption key as master key.  As such practice
+    is generally discouraged, this should not be a problem.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    No support for several subkeys.  This may seem like a problem, as this
+    is common practice.  On the other hand, you should not use your regular
+    GPG/PGP keys with <filename>pgcrypto</filename>, but create new ones,
+    as the usage scenario is rather different.
+    </para>
+   </listitem>
+  </itemizedlist>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>Raw Encryption Functions</title>
+
+  <para>
+   These functions only run a cipher over data; they don't have any advanced
+   features of PGP encryption.  Therefore they have some major problems:
+  </para>
+  <orderedlist>
+   <listitem>
+    <para>
+    They use user key directly as cipher key.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    They don't provide any integrity checking, to see
+    if the encrypted data was modified.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    They expect that users manage all encryption parameters
+    themselves, even IV.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    They don't handle text.
+    </para>
+   </listitem>
+  </orderedlist>
+  <para>
+   So, with the introduction of PGP encryption, usage of raw
+   encryption functions is discouraged.
+  </para>
+
+  <indexterm>
+   <primary>encrypt</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>decrypt</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>encrypt_iv</primary>
+  </indexterm>
+
+  <indexterm>
+   <primary>decrypt_iv</primary>
+  </indexterm>
+
+<synopsis>
+encrypt(data bytea, key bytea, type text) returns bytea
+decrypt(data bytea, key bytea, type text) returns bytea
+
+encrypt_iv(data bytea, key bytea, iv bytea, type text) returns bytea
+decrypt_iv(data bytea, key bytea, iv bytea, type text) returns bytea
+</synopsis>
+
+  <para>
+   Encrypt/decrypt data using the cipher method specified by
+   <parameter>type</parameter>.  The syntax of the
+   <parameter>type</parameter> string is:
+
+<synopsis>
+<replaceable>algorithm</replaceable> <optional> <literal>-</literal> <replaceable>mode</replaceable> </optional> <optional> <literal>/pad:</literal> <replaceable>padding</replaceable> </optional>
+</synopsis>
+   where <replaceable>algorithm</replaceable> is one of:
+
+  <itemizedlist>
+   <listitem><para><literal>bf</literal> &mdash; Blowfish</para></listitem>
+   <listitem><para><literal>aes</literal> &mdash; AES (Rijndael-128, -192 or -256)</para></listitem>
+  </itemizedlist>
+   and <replaceable>mode</replaceable> is one of:
+  <itemizedlist>
+   <listitem>
+    <para>
+    <literal>cbc</literal> &mdash; next block depends on previous (default)
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    <literal>ecb</literal> &mdash; each block is encrypted separately (for
+    testing only)
+    </para>
+   </listitem>
+  </itemizedlist>
+   and <replaceable>padding</replaceable> is one of:
+  <itemizedlist>
+   <listitem>
+    <para>
+    <literal>pkcs</literal> &mdash; data may be any length (default)
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+    <literal>none</literal> &mdash; data must be multiple of cipher block size
+    </para>
+   </listitem>
+  </itemizedlist>
+  </para>
+  <para>
+   So, for example, these are equivalent:
+<programlisting>
+encrypt(data, 'fooz', 'bf')
+encrypt(data, 'fooz', 'bf-cbc/pad:pkcs')
+</programlisting>
+  </para>
+  <para>
+   In <function>encrypt_iv</function> and <function>decrypt_iv</function>, the
+   <parameter>iv</parameter> parameter is the initial value for the CBC mode;
+   it is ignored for ECB.
+   It is clipped or padded with zeroes if not exactly block size.
+   It defaults to all zeroes in the functions without this parameter.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Random-Data Functions</title>
+
+  <indexterm>
+   <primary>gen_random_bytes</primary>
+  </indexterm>
+
+<synopsis>
+gen_random_bytes(count integer) returns bytea
+</synopsis>
+  <para>
+   Returns <parameter>count</parameter> cryptographically strong random bytes.
+   At most 1024 bytes can be extracted at a time.  This is to avoid
+   draining the randomness generator pool.
+  </para>
+
+  <indexterm>
+   <primary>gen_random_uuid</primary>
+  </indexterm>
+
+<synopsis>
+gen_random_uuid() returns uuid
+</synopsis>
+  <para>
+   Returns a version 4 (random) UUID. (Obsolete, this function
+   internally calls the <link linkend="functions-uuid">core
+   function</link> of the same name.)
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Notes</title>
+
+  <sect3>
+   <title>Configuration</title>
+
+   <para>
+    <filename>pgcrypto</filename> configures itself according to the findings of the
+    main PostgreSQL <literal>configure</literal> script.  The options that
+    affect it are <literal>--with-zlib</literal> and
+    <literal>--with-ssl=openssl</literal>.
+   </para>
+
+   <para>
+    When compiled with zlib, PGP encryption functions are able to
+    compress data before encrypting.
+   </para>
+
+   <para>
+    <filename>pgcrypto</filename> requires <productname>OpenSSL</productname>.
+    Otherwise, it will not be built or installed.
+   </para>
+
+   <para>
+    When compiled against <productname>OpenSSL</productname> 3.0.0 and later
+    versions, the legacy provider must be activated in the
+    <filename>openssl.cnf</filename> configuration file in order to use older
+    ciphers like DES or Blowfish.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title>NULL Handling</title>
+
+   <para>
+    As is standard in SQL, all functions return NULL, if any of the arguments
+    are NULL.  This may create security risks on careless usage.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title>Security Limitations</title>
+
+   <para>
+    All <filename>pgcrypto</filename> functions run inside the database server.
+    That means that all
+    the data and passwords move between <filename>pgcrypto</filename> and client
+    applications in clear text.  Thus you must:
+   </para>
+
+   <orderedlist>
+    <listitem>
+     <para>Connect locally or use SSL connections.</para>
+    </listitem>
+    <listitem>
+     <para>Trust both system and database administrator.</para>
+    </listitem>
+   </orderedlist>
+
+   <para>
+    If you cannot, then better do crypto inside client application.
+   </para>
+
+   <para>
+    The implementation does not resist
+    <ulink url="https://en.wikipedia.org/wiki/Side-channel_attack">side-channel
+    attacks</ulink>.  For example, the time required for
+    a <filename>pgcrypto</filename> decryption function to complete varies among
+    ciphertexts of a given size.
+   </para>
+  </sect3>
+
+  <sect3>
+   <title>Useful Reading</title>
+
+   <itemizedlist>
+    <listitem>
+     <para><ulink url="https://www.gnupg.org/gph/en/manual.html"></ulink></para>
+     <para>The GNU Privacy Handbook.</para>
+    </listitem>
+    <listitem>
+     <para><ulink url="https://www.openwall.com/crypt/"></ulink></para>
+     <para>Describes the crypt-blowfish algorithm.</para>
+    </listitem>
+    <listitem>
+     <para>
+      <ulink url="https://www.iusmentis.com/security/passphrasefaq/"></ulink>
+     </para>
+     <para>How to choose a good password.</para>
+    </listitem>
+    <listitem>
+     <para><ulink url="http://world.std.com/~reinhold/diceware.html"></ulink></para>
+     <para>Interesting idea for picking passwords.</para>
+    </listitem>
+    <listitem>
+     <para>
+      <ulink url="http://www.interhack.net/people/cmcurtin/snake-oil-faq.html"></ulink>
+     </para>
+     <para>Describes good and bad cryptography.</para>
+    </listitem>
+   </itemizedlist>
+  </sect3>
+
+  <sect3>
+   <title>Technical References</title>
+
+   <itemizedlist>
+    <listitem>
+     <para><ulink url="https://tools.ietf.org/html/rfc4880"></ulink></para>
+     <para>OpenPGP message format.</para>
+    </listitem>
+    <listitem>
+     <para><ulink url="https://tools.ietf.org/html/rfc1321"></ulink></para>
+     <para>The MD5 Message-Digest Algorithm.</para>
+    </listitem>
+    <listitem>
+     <para><ulink url="https://tools.ietf.org/html/rfc2104"></ulink></para>
+     <para>HMAC: Keyed-Hashing for Message Authentication.</para>
+    </listitem>
+    <listitem>
+     <para>
+      <ulink url="https://www.usenix.org/legacy/events/usenix99/provos.html"></ulink>
+     </para>
+     <para>Comparison of crypt-des, crypt-md5 and bcrypt algorithms.</para>
+    </listitem>
+    <listitem>
+     <para>
+      <ulink url="https://en.wikipedia.org/wiki/Fortuna_(PRNG)"></ulink>
+     </para>
+     <para>Description of Fortuna CSPRNG.</para>
+    </listitem>
+    <listitem>
+     <para><ulink url="https://jlcooke.ca/random/"></ulink></para>
+     <para>Jean-Luc Cooke Fortuna-based <filename>/dev/random</filename> driver for Linux.</para>
+    </listitem>
+   </itemizedlist>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Marko Kreen <email>markokr@gmail.com</email>
+  </para>
+
+  <para>
+   <filename>pgcrypto</filename> uses code from the following sources:
+  </para>
+
+  <informaltable>
+   <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Algorithm</entry>
+      <entry>Author</entry>
+      <entry>Source origin</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry>DES crypt</entry>
+      <entry>David Burren and others</entry>
+      <entry>FreeBSD libcrypt</entry>
+     </row>
+     <row>
+      <entry>MD5 crypt</entry>
+      <entry>Poul-Henning Kamp</entry>
+      <entry>FreeBSD libcrypt</entry>
+     </row>
+     <row>
+      <entry>Blowfish crypt</entry>
+      <entry>Solar Designer</entry>
+      <entry>www.openwall.com</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </informaltable>
+ </sect2>
+
+</sect1>

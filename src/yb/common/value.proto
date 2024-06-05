@@ -1,0 +1,178 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+import "yb/rpc/lightweight_message.proto";
+
+package yb;
+
+option java_package = "org.yb";
+
+// Sequence of values used to represent Lists, Sets and Tuples
+message QLSeqValuePB {
+  repeated QLValuePB elems = 1;
+}
+
+message QLMapValuePB {
+  repeated QLValuePB keys = 1;
+  repeated QLValuePB values = 2;
+}
+
+//--------------------------------------------------------------------------------------------------
+// YQL support.
+// The following section is common for all query language.
+//--------------------------------------------------------------------------------------------------
+// Represent system internal values.
+enum QLVirtualValuePB {
+  LIMIT_MAX = 1;
+  LIMIT_MIN = 2;
+  COUNTER = 3;
+  SS_FORWARD = 4;
+  SS_REVERSE = 5;
+  TOMBSTONE = 6;
+  NULL_LOW = 7;
+  ARRAY = 8;
+}
+
+// A QL value
+message QLValuePB {
+  // Note: an absent value means NULL
+  oneof value {
+    int32 int8_value = 1;  // Note: min int size in protobuf is int32
+    int32 int16_value = 2;
+    int32 int32_value = 3;
+    int64 int64_value = 4;
+    float float_value = 5;
+    double double_value = 6;
+    // Sometimes YB sends non-UTF8 string in string field. For example, this can happen
+    // with a collated string: under "en_US.utf8" collation, string 'abc' is encoded
+    // as string_value: "\000\201\014\r\016\001\t\t\t\001\t\t\t\000abc" which is not
+    // a valid UTF8 string. That is why 'bytes' is used for string_value field.
+    bytes string_value = 7;
+    bool bool_value = 8;
+    int64 timestamp_value = 9;
+    bytes binary_value = 10;
+    // raw bytes for inet address in network byte order.
+    bytes inetaddress_value = 11;
+    QLMapValuePB map_value = 12;
+    QLSeqValuePB set_value = 13;
+    QLSeqValuePB list_value = 14;
+    bytes decimal_value = 15;
+    bytes varint_value = 16;
+    QLSeqValuePB frozen_value = 17;
+    // raw bytes for uuid value.
+    bytes uuid_value = 18;
+    // raw bytes for timeuuid value.
+    bytes timeuuid_value = 19;
+    bytes jsonb_value = 20;
+    // Number of days where 2^31 corresponds to 1970-01-01
+    // (see DateTime::DateFromString)
+    uint32 date_value = 21;
+    // Number of nano-seconds, from 0 to (24 * 60 * 60 * 1,000,000,000 - 1)
+    // (see DateTime::kMaxTime)
+    int64 time_value = 22;
+    uint32 uint32_value = 23;
+    uint64 uint64_value = 24;
+    // Represent various system values.
+    QLVirtualValuePB virtual_value = 25;
+    // Null category for GIN indexes.
+    uint32 gin_null_value = 26;
+    QLSeqValuePB tuple_value = 27;
+  }
+}
+
+// To ensure compatibility between release versions, the numeric values of these datatypes cannot
+// be changed once the types are implemented and released.
+//
+// Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
+enum PersistentDataType {
+  // DataType constains continuous range of values and should be used in memory for efficiency.
+  option (yb.rpc.lightweight_enum).name = "DataType";
+
+  UNKNOWN_DATA = 999;
+  NULL_VALUE_TYPE = 0;
+  INT8 = 1;
+  INT16 = 2;
+  INT32 = 3;
+  INT64 = 4;
+  STRING = 5;
+  BOOL = 6;
+  FLOAT = 7;
+  DOUBLE = 8;
+  BINARY = 9;
+  TIMESTAMP = 10;
+  DECIMAL = 11;
+  VARINT = 12;
+  INET = 13;
+  LIST = 14;
+  MAP = 15;
+  SET = 16;
+  UUID = 17;
+  TIMEUUID = 18;
+  TUPLE = 19;  // TUPLE is not yet fully implemented, but it is a CQL type.
+  TYPEARGS = 20;
+  USER_DEFINED_TYPE = 21;
+  FROZEN = 22;
+  DATE = 23;
+  TIME = 24;
+  JSONB = 25;
+
+  // All unsigned datatypes will be removed from QL because databases do not have these types.
+  UINT8 = 100;
+  UINT16 = 101;
+  UINT32 = 102;
+  UINT64 = 103;
+
+  GIN_NULL = 104;
+}
+
+// Expression operators.
+enum QLOperator {
+  QL_OP_NOOP = 0;
+
+  // Logic operators that take one operand.
+  QL_OP_NOT = 1;
+  QL_OP_IS_TRUE = 2;
+  QL_OP_IS_FALSE = 3;
+
+  // Logic operators that take two or more operands.
+  QL_OP_AND = 4;
+  QL_OP_OR = 5;
+
+  // Relation operators that take one operand.
+  QL_OP_IS_NULL = 6;
+  QL_OP_IS_NOT_NULL = 7;
+
+  // Relation operators that take two operands.
+  QL_OP_EQUAL = 8;
+  QL_OP_LESS_THAN = 9;
+  QL_OP_LESS_THAN_EQUAL = 10;
+  QL_OP_GREATER_THAN = 11;
+  QL_OP_GREATER_THAN_EQUAL = 12;
+  QL_OP_NOT_EQUAL = 13;
+
+  QL_OP_LIKE = 14;
+  QL_OP_NOT_LIKE = 15;
+  QL_OP_IN = 16;
+  QL_OP_NOT_IN = 17;
+  QL_OP_CONTAINS = 22;
+  QL_OP_CONTAINS_KEY = 23;
+
+  // Relation operators that take three operands.
+  QL_OP_BETWEEN = 18;
+  QL_OP_NOT_BETWEEN = 19;
+
+  // Operators that take no operand. For use in "if" clause only currently.
+  QL_OP_EXISTS = 20;     // IF EXISTS
+  QL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
+}

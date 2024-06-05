@@ -1,0 +1,85 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.release-list-table {
+  .storage-cell {
+    overflow: visible;
+    white-space: normal;
+    width: 270px;
+    word-wrap: break-word;
+  }
+  .cta-button {
+    .btn {
+      margin-right: 10px !important;
+    }
+  }
+  tbody {
+    .td-column-imported {
+      color: white;
+      background-color: colors.$YB_WARNING_COLOR;
+    }
+
+    > tr > td {
+      vertical-align: middle;
+    }
+  }
+
+  .state-pill {
+    position: relative;
+    padding: .75rem 1.25rem;
+    width: fit-content;
+    border: 1px solid transparent;
+    border-radius: 25px;
+    margin: 0 auto;
+    font-size: smaller;
+
+    &--success {
+      color: #155724;
+      background-color: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    &--danger {
+      color: #721c24;
+      background-color: #f8d7da;
+      border-color: #f5c6cb;
+    }
+
+    &--secondary {
+      color: #383d41;
+      background-color: #e2e3e5;
+      border-color: #d6d8db;
+    }
+  }
+}
+
+.modal-body {
+  .storage-location {
+    height: 50px;
+  }
+  overflow: visible;
+}
+
+.content-panel {
+  h2 {
+    margin-bottom: 3px;
+  }
+
+  .release-list-action-btn-group {
+    .table-action {
+      float: right;
+
+      .btn {
+        height: 40px;
+        padding-top: 9px;
+        margin-left: 7px;
+      }
+    }
+  }
+
+  .release-list-action-btn-group > * {
+    position: relative;
+    z-index: 2;
+  }
+}

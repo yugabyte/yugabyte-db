@@ -1,0 +1,60 @@
+# LANGUAGE message translation file for pg_hint_plan installation.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../installation.md:1 6225298afc924035b5f8712ea4645610
+msgid "Installation"
+msgstr ""
+
+#: ../../installation.md:3 54ca26c27ac049429553ec9b4dba0368
+msgid "This section describes the installation steps."
+msgstr ""
+
+#: ../../installation.md:5 fd614f1674c540e3b65c1bc9bc92fd80
+msgid "building binary module"
+msgstr ""
+
+#: ../../installation.md:7 8607e07605fa4a09b1b5dad6ed6889d4
+msgid ""
+"Simply run `make` at the top of the source tree, then `make install` as "
+"an appropriate user. The `PATH` environment variable should be set "
+"properly for the target PostgreSQL for this process."
+msgstr ""
+
+#: ../../installation.md:15 b28c29b7b1794f84a9aeb073a5ca17ae
+msgid "Loading `pg_hint_plan`"
+msgstr ""
+
+#: ../../installation.md:17 d36fba3e1cb84e22bfad012664d74915
+msgid ""
+"Basically `pg_hint_plan` does not require `CREATE EXTENSION`. Simply "
+"loading it by `LOAD` command will activate it and of course you can load "
+"it globally by setting `shared_preload_libraries` in `postgresql.conf`. "
+"Or you might be interested in `ALTER USER SET`/`ALTER DATABASE SET` for "
+"automatic loading for specific sessions."
+msgstr ""
+
+#: ../../installation.md:29 506611680a634c4596a30674af5905ff
+msgid ""
+"Do `CREATE EXTENSION` and `SET pg_hint_plan.enable_hint_tables TO on` if "
+"you are planning to use the hint table."
+msgstr ""
+

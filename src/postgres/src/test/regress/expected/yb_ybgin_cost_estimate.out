@@ -1,0 +1,180 @@
+--
+-- Yugabyte-owned test for ybgin index access method and cost estimates.
+--
+SET enable_seqscan = off;
+SHOW yb_test_ybgin_disable_cost_factor;
+ yb_test_ybgin_disable_cost_factor
+-----------------------------------
+ 2
+(1 row)
+
+\set run 'EXPLAIN (costs off) :query; /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ EXPLAIN (costs off) :query'
+-- Given what is currently supported, these queries would fail, so they should
+-- use sequential scan.
+-- GIN_SEARCH_MODE_ALL
+\set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''!aa'')'
+:run;
+                 QUERY PLAN
+---------------------------------------------
+ Seq Scan on vectors
+   Storage Filter: (v @@ '!''aa'''::tsquery)
+(2 rows)
+
+                QUERY PLAN
+-------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '!''aa'''::tsquery)
+(2 rows)
+
+-- multiple scan keys
+\set query 'SELECT * FROM vectors WHERE v @@ ''a'' and v @@ ''bb'''
+:run;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on vectors
+   Storage Filter: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
+(2 rows)
+
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
+(2 rows)
+
+-- multiple required scan entries
+-- TODO(jason): this kind of query is hard to detect during cost estimation.
+-- Though it can be done, it would be a lot of work, and in that case, it is
+-- probably better to spend the time supporting the query instead.  So it
+-- currently will suggest index scan, unfortunately.
+\set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''aa | bb'')'
+:run;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '''aa'' | ''bb'''::tsquery)
+(2 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '''aa'' | ''bb'''::tsquery)
+(2 rows)
+
+-- GIN_CAT_NULL_KEY
+-- TODO(jason): this kind of query is hard to detect during cost estimation.
+-- Though it can be done, it would be a lot of work, and in that case, it is
+-- probably better to spend the time supporting the query instead.  So it
+-- currently will suggest index scan, unfortunately.
+\set query 'SELECT * FROM arrays WHERE a @> ''{null}'''
+:run;
+                QUERY PLAN
+------------------------------------------
+ Index Scan using arrays_a_idx on arrays
+   Index Cond: (a @> '{NULL}'::integer[])
+(2 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Index Scan using arrays_a_idx on arrays
+   Index Cond: (a @> '{NULL}'::integer[])
+(2 rows)
+
+CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
+    USING ybgin (a)
+    WHERE a <@ '{1}' or a @> '{}' or a is null;
+-- GIN_SEARCH_MODE_INCLUDE_EMPTY
+\set query 'SELECT * FROM arrays WHERE a <@ ''{1}'''
+:run;
+            QUERY PLAN
+-----------------------------------
+ Seq Scan on arrays
+   Filter: (a <@ '{1}'::integer[])
+(2 rows)
+
+               QUERY PLAN
+----------------------------------------
+ Index Scan using idx_partial on arrays
+   Index Cond: (a <@ '{1}'::integer[])
+(2 rows)
+
+-- GIN_SEARCH_MODE_ALL
+\set query 'SELECT * FROM arrays WHERE a @> ''{}'''
+:run;
+            QUERY PLAN
+----------------------------------
+ Seq Scan on arrays
+   Filter: (a @> '{}'::integer[])
+(2 rows)
+
+               QUERY PLAN
+----------------------------------------
+ Index Scan using idx_partial on arrays
+   Index Cond: (a @> '{}'::integer[])
+(2 rows)
+
+-- GIN_SEARCH_MODE_EVERYTHING, GIN_CAT_NULL_ITEM
+\set query 'SELECT * FROM arrays WHERE a is null'
+:run;
+          QUERY PLAN
+-------------------------------
+ Seq Scan on arrays
+   Storage Filter: (a IS NULL)
+(2 rows)
+
+               QUERY PLAN
+----------------------------------------
+ Index Scan using idx_partial on arrays
+   Storage Filter: (a IS NULL)
+(2 rows)
+
+-- Cleanup
+DROP INDEX idx_partial;
+-- multiple required scan entries
+-- TODO(jason): this kind of query is hard to detect during cost estimation.
+-- Though it can be done, it would be a lot of work, and in that case, it is
+-- probably better to spend the time supporting the query instead.  So it
+-- currently will suggest index scan, unfortunately.
+\set query 'SELECT * FROM jsonbs WHERE j ?| ''{"ggg", "eee"}'''
+:run;
+                QUERY PLAN
+------------------------------------------
+ Index Scan using jsonbs_j_idx on jsonbs
+   Index Cond: (j ?| '{ggg,eee}'::text[])
+(2 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Index Scan using jsonbs_j_idx on jsonbs
+   Index Cond: (j ?| '{ggg,eee}'::text[])
+(2 rows)
+
+-- GIN_SEARCH_MODE_ALL
+\set query 'SELECT * FROM jsonbs WHERE j @? ''$.aaa[*] ? (@ > 2)'''
+:run;
+                       QUERY PLAN
+---------------------------------------------------------
+ Seq Scan on jsonbs
+   Storage Filter: (j @? '$."aaa"[*]?(@ > 2)'::jsonpath)
+(2 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Scan using jsonbs_j_idx on jsonbs
+   Index Cond: (j @? '$."aaa"[*]?(@ > 2)'::jsonpath)
+(2 rows)
+
+-- On the other hand, these queries would succeed, so they should use index
+-- scan.
+\set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''(aa | bb) & (cc & dd)'')'
+:run;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '( ''aa'' | ''bb'' ) & ''cc'' & ''dd'''::tsquery)
+(2 rows)
+
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Scan using vectors_v_idx on vectors
+   Index Cond: (v @@ '( ''aa'' | ''bb'' ) & ''cc'' & ''dd'''::tsquery)
+(2 rows)

@@ -1,0 +1,230 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.on-prem-provider-container {
+  width: 100%;
+  min-height: 500px;
+  height: 100%;
+
+  .cell-container {
+    position: relative;
+    height: 40px;
+    padding: 0 8px;
+  }
+
+  .cell-field {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    right: 65px;
+    float: left;
+  }
+
+  .form-group {
+    width: 100%;
+    display: inline-block;
+
+    label {
+      display: none;
+    }
+
+    .yb-field-group {
+      padding: 0 !important;
+    }
+  }
+
+  .host-list-container .form-group {
+    width: 40%;
+    margin-right: 4px;
+  }
+
+  .form-item-label {
+    margin: 0 !important;
+  }
+
+  .form-control {
+    display: inline;
+    float: left;
+    padding: 2px 5px;
+    height: 30px;
+  }
+}
+
+.host-data-cell .form-control {
+  display: inline;
+  float: left;
+  width: 100%;
+  margin: 0px 0px 10px 0;
+  padding: 0;
+  height: 36px;
+}
+
+.host-data-cell .delete-btn {
+  position: relative;
+  top: -26px;
+  border-radius: 50%;
+  background-color: red;
+  color: white;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  padding: 0;
+  border: none;
+  margin-left: 10px;
+  text-align: center;
+
+  i {
+    margin: 0 !important;
+  }
+}
+
+.on-prem-provider-container .cell-button-group {
+  display: inline;
+  float: right;
+  text-align: right;
+  margin: 0px;
+  margin-top: 8px;
+  height: 28px;
+  overflow: visible;
+}
+
+.form-action-button-container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 30px;
+  padding: 14px 12px;
+  border-top: 1px solid #ececea;
+  background-color: #f6f6f5;
+  margin-bottom: 0 !important;
+
+  .btn {
+    margin: 0 6px;
+    min-width: 120px !important;
+  }
+}
+
+.region-list-container {
+  position: relative;
+  width: 25%;
+  top: 30px;
+  padding-left: 20px;
+}
+
+.zone-list-container {
+  position: absolute;
+  width: 100%;
+  margin-left: 100%;
+  top: -10px;
+  padding-left: 20px;
+}
+
+.host-list-container {
+  position: absolute;
+  width: 100%;
+  margin-left: 100%;
+  top: 0;
+  padding-left: 20px;
+}
+
+.column-hidden {
+  display: none;
+}
+
+.column-visible {
+  display: block;
+}
+
+.on-prem-provider-container .list-column {
+  border: 1px solid #d3d3d3;
+  height: 350px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+.host-list-container .list-column {
+  border: none;
+}
+
+.add-list-item-label {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.add-list-action {
+  padding-top: 4px;
+  font-size: 16px;
+  color: colors.$YB_ORANGE;
+  float: right;
+  cursor: pointer;
+}
+
+.add-host-list-action {
+  color: colors.$YB_ORANGE;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.host-list-label {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.config-action-btn {
+  color: colors.$YB_ORANGE;
+  padding: 4px 1px;
+  line-height: 12px;
+  text-align: center;
+  margin-left: 4px;
+
+  .fa {
+    margin: 0 !important;
+  }
+}
+
+.cell-item {
+  font-weight: 500;
+  font-size: 16px;
+  text-align: center;
+  width: 50%;
+  line-height: 38px;
+  display: inline;
+}
+
+.cell-saved-container {
+  position: relative;
+  margin-top: 10px;
+  height: 46px;
+}
+
+.data-item-active {
+  background-color: colors.$YB_ORANGE;
+  color: white;
+}
+
+.color-light-grey {
+  margin-top: 16px;
+}
+.sample-config-item-label {
+  height: 44px;
+}
+
+.sample-config-item .json {
+  height: 450px;
+}
+
+.add-host-item-label {
+  padding-top: 10px;
+}
+
+.add-host-item-label span {
+  display: inline-block;
+  width: 40%;
+  margin-right: 4px;
+}
+
+.form-data-container {
+  margin-bottom: 55px;
+}

@@ -1,0 +1,8 @@
+# src/test/regress/yb_hash_in_schedule
+#
+####################################################################################################
+# This testsuite includes tests on IN conditions on hash keys. These tests rely on
+# the YsqlRequestLimit flag being set to 1.
+# The tests in this schedule are not ported from PostgreSQL original tests
+####################################################################################################
+test: yb_hash_in_queries

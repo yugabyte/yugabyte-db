@@ -1,0 +1,47 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+
+/* TODO: Do we still use the .h1, .h2, .h3 classes? */
+h1,
+.h1,
+h2,
+.h2,
+h3,
+.h3 {
+  margin-top: 0px;
+  margin-bottom: 10px;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: colors.$YB_TEXT_COLOR;
+}
+
+h1 {
+  font-size: 30px;
+}
+
+h2 {
+  font-size: 26px;
+  margin-bottom: 26px;
+  height: 42px;
+  line-height: 42px;
+}
+
+h3 {
+  font-size: 21px;
+}
+
+h4 {
+  font-size: 18px;
+  margin-top: 0;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+}
+
+h5 {
+  font-size: 16px;
+  margin-top: 0;
+  font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+}

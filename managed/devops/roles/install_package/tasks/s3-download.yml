@@ -1,0 +1,59 @@
+# Copyright 2020 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# This playbook is now deprecated in favor of the S3 download in download-package.yml
+- name: Download-itest | Set yum packages fact
+  set_fact: yum_packages="[ 'python3', 'python3-pip' ]"
+
+- name:  Download-itest | Install python3 and pip3
+  become: yes
+  become_method: sudo
+  yum:
+    name: "{{ item }}"
+    state: latest
+    update_cache: yes
+  with_items: "{{ yum_packages }}"
+
+- name: Download-itest | Install awscli
+  become: yes
+  become_method: sudo
+  pip:
+    name: awscli
+    executable: /usr/bin/pip3
+
+- name: Download-itest | Download from s3 bucket
+  shell: "aws s3 cp {{ itest_s3_package_path }} {{ remote_tmp_dir | default('/tmp') }}"
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ cluster_server_vault | get_value('AWS_ACCESS_KEY_ID') }}"
+    AWS_SECRET_ACCESS_KEY: "{{ cluster_server_vault | get_value('AWS_SECRET_ACCESS_KEY') }}"
+
+- name: Download-itest | Modify package ownership
+  become: yes
+  become_method: sudo
+  file:
+    mode: 0755
+    path: "{{ remote_tmp_dir | default('/tmp') }}/{{ itest_s3_package_path | basename }}"
+    owner: yugabyte
+    group: yugabyte
+    state: file
+
+- name: Download-itest | Uninstall awscli
+  become: yes
+  become_method: sudo
+  pip:
+    name: awscli
+    executable: /usr/bin/pip3
+    state: absent
+
+- name: Download-itest | Remove python3 and pip3
+  become: yes
+  become_method: sudo
+  yum:
+    name: "{{ item }}"
+    state: absent
+  with_items: "{{ yum_packages }}"

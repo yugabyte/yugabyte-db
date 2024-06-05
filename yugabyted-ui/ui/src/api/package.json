@@ -1,0 +1,17 @@
+{
+  "name": "yugabyte_cloud",
+  "version": "1.0.0",
+  "description": "OpenAPI client for yugabyte_cloud",
+  "author": "OpenAPI-Generator",
+  "main": "./dist/index.js",
+  "typings": "./dist/index.d.ts",
+  "dependencies": {
+    "factory.ts": "0.5.2",
+    "faker": "5.5.3",
+    "react-query": "3.15.2",
+    "nock": "13.1.0"
+  },
+  "devDependencies": {
+    "typescript": "4.2.4"
+  }
+}

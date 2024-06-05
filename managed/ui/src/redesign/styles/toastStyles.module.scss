@@ -1,0 +1,9 @@
+.toastMessage {
+  display: flex;
+  gap: 4px;
+
+  a {
+    text-decoration: underline;
+    color: #fff;
+  }
+}

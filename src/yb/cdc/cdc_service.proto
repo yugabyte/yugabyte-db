@@ -1,0 +1,693 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.cdc;
+
+option java_package = "org.yb.cdc";
+
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
+import "yb/common/value.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/master/master_client.proto";
+import "yb/rpc/service.proto";
+import "yb/tablet/operations.proto";
+import "yb/tserver/tserver.proto";
+
+service CDCService {
+  rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream (DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
+  rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
+  rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
+  rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
+  rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
+      returns (UpdateCdcReplicatedIndexResponsePB);
+  rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
+  rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
+  rpc GetCDCDBStreamInfo (GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
+  rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
+  rpc GetTabletListToPollForCDC (GetTabletListToPollForCDCRequestPB)
+      returns (GetTabletListToPollForCDCResponsePB);
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
+  rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
+      returns (CheckReplicationDrainResponsePB);
+  rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
+      returns (DestroyVirtualWALForCDCResponsePB);
+  rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
+  rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
+      returns (UpdatePublicationTableListResponsePB);
+}
+
+message CDCErrorPB {
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+    TABLET_NOT_FOUND = 2;
+    TABLE_NOT_FOUND = 3;
+    SUBSCRIBER_NOT_FOUND = 4;
+    CHECKPOINT_TOO_OLD = 5;
+    TABLET_NOT_RUNNING = 6;
+    NOT_LEADER = 7; // deprecated. use TABLET_NOT_FOUND
+    LEADER_NOT_READY = 11;
+    NOT_RUNNING = 8;
+    INTERNAL_ERROR = 9;
+    INVALID_REQUEST = 10;
+    TABLET_SPLIT = 12;
+    OPERATION_DISALLOWED = 13;
+    AUTO_FLAGS_CONFIG_VERSION_MISMATCH = 14;
+  }
+
+  // The error code.
+  optional Code code = 1 [default = UNKNOWN_ERROR];
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  optional AppStatusPB status = 2;
+}
+
+enum CDCRecordType {
+  // CHANGE: Default type, only the changed columns as new image, no old image except DELETE
+  CHANGE = 1;
+
+  // ALL: [Old type that is no longer allowed to be created] same as PG_FULL
+  ALL = 3;
+
+  // FULL_ROW_NEW_IMAGE: [Old type that is no longer allowed to be created] Entire updated row as
+  // new image, entire row as old image for DELETE
+  FULL_ROW_NEW_IMAGE = 4;
+
+  // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: [Old type that is no longer allowed to be created]
+  // same as CHANGE_OLD_NEW
+  MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
+
+  // PG_FULL: Both old and new images of the entire row
+  PG_FULL = 6;
+
+  // PG_CHANGE_OLD_NEW: Both old and new image only of the modified columns
+  PG_CHANGE_OLD_NEW = 7;
+
+  // PG_DEFAULT: Entire updated row as new image, only key as old image for DELETE
+  PG_DEFAULT = 8;
+
+  // PG_NOTHING: No old image for any operation
+  PG_NOTHING = 9;
+
+  // Difference between CHANGE and PG_NOTHING:
+  // CHANGE: Only modified columns of the updated record. No columns of the old record except in
+  // case of DELETE where we send the primary key of the old record
+  // PG_NOTHING: All columns of the updated record. No columns of the old record even in case of
+  // DELETE which is the PG behavior
+}
+
+enum CDCRecordFormat {
+  JSON = 1;
+  WAL = 2; // Used for 2DC.
+  PROTO = 3; // Used for CDCSDK in case of Debezium
+}
+
+enum CDCRequestSource {
+  XCLUSTER = 1; // Used for 2DC
+  CDCSDK = 2; // Used for CDC
+}
+
+enum CDCCheckpointType {
+  IMPLICIT = 1; // Used for 2DC and CDC
+  EXPLICIT = 2; // Used for CDC
+}
+
+message InitVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  repeated string table_id = 3;
+}
+
+message InitVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message GetConsistentChangesRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+}
+
+message GetConsistentChangesResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
+
+  // This field tells the walsender whether a refresh of publication's table list is needed
+  optional bool needs_publication_table_list_refresh = 3;
+
+  // This field tells the walsender the time at which the list of tables
+  // in the publication needs to be querried for refresh. This is only relevant if
+  // the above field 'needs_publication_table_list_refresh' is true.
+  optional uint64 publication_refresh_time = 4;
+}
+
+message DestroyVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+}
+
+message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message UpdateAndPersistLSNRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  optional uint64 confirmed_flush_lsn = 3;
+  // The hint given for the possible value of restart_lsn.
+  // The actual value which is persisted might differ from this value
+  // and is returned in the response of this RPC.
+  optional uint64 restart_lsn = 4;
+}
+
+message UpdateAndPersistLSNResponsePB {
+  optional CDCErrorPB error = 1;
+  optional uint64 restart_lsn = 2;
+}
+
+message UpdatePublicationTableListRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  repeated string table_id = 3;
+}
+
+message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message CreateCDCStreamRequestPB {
+  // Table to set up CDC on.
+  optional string table_id = 1;
+  optional CDCRecordType record_type = 2 [default = CHANGE];
+  optional CDCRecordFormat record_format = 3 [default = JSON];
+  optional string namespace_name = 4;
+  optional CDCRequestSource source_type = 5 [default = XCLUSTER];
+  optional CDCCheckpointType checkpoint_type = 6;
+  optional bool transactional = 7; // [default = false]
+  optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
+}
+
+message CreateCDCStreamResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bytes stream_id = 2;
+  optional bytes db_stream_id = 3;
+}
+
+message DeleteCDCStreamRequestPB {
+  repeated bytes stream_id = 1;
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
+}
+
+message DeleteCDCStreamResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message ListTabletsRequestPB {
+  optional string stream_id = 1;
+  // local_only = true will only list tablets local to the tserver that receives the request.
+  // local_only = false will list  all tablets for the stream.
+  optional bool local_only = 2 [default = false];
+}
+
+message ListTabletsResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated CDCTabletPB tablets = 2;
+}
+
+message CDCTabletPB {
+  message ReplicaPB {
+    repeated HostPortPB broadcast_addresses = 1;
+    // Don't use private_rpc_addresses since we're cross-universe
+  }
+  optional bytes tablet_id = 1;
+  // Tservers holding data for the tablet.
+  repeated ReplicaPB tservers = 2;
+}
+
+message CDCSDKCheckpointPB {
+  optional int64 term = 1;
+  optional int64 index = 2;
+  // write_id, key which is the reverse_index_iterator are used to resume from partially
+  // streamed intents when the number of intents to be streamed are more than the intent max batch
+  // size
+  optional bytes key = 3;
+  optional int32 write_id = 4 [default = 0];
+  // snapshot_time is used in the context of bootstrap process
+  optional uint64 snapshot_time = 5;
+}
+
+message CDCCheckpointPB {
+  optional OpIdPB op_id = 1;
+}
+
+enum CDCSDKRequestSource {
+  // Debezium connector directly calling CDC Service.
+  DEBEZIUM = 1;
+  // Walsender calling CDC service.
+  WALSENDER = 2;
+}
+
+message GetChangesRequestPB {
+  optional bytes stream_id = 1;
+  // Tablet to get the changes for.
+  optional bytes tablet_id = 2;
+
+  // Checkpoint to start reading from (exclusive).
+  // Start reading from the first record after this checkpoint.
+  optional CDCCheckpointPB from_checkpoint = 3;
+
+  // Maximum records to read.
+  optional uint32 max_records = 4;
+
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 5 [default = true];
+
+  optional bytes db_stream_id = 6;
+
+  optional bytes table_id = 7;
+
+  optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
+
+  optional bool need_schema_info = 9 [default = false];
+
+  // This will be the checkpoint used for 'EXPLICIT' checkpoint streams.
+  optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
+
+  optional int64 safe_hybrid_time = 11 [default = -1];
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 12 [default = 0];
+
+  // Used only in xCluster streams.
+  optional uint32 auto_flags_config_version = 13;
+
+  optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
+}
+
+message KeyValuePairPB {
+  optional bytes key = 1;
+  optional QLValuePB value = 2;
+}
+
+message CDCRecordPB {
+  enum OperationType {
+    WRITE = 1;
+    DELETE = 2;
+    APPLY = 3;
+    SPLIT_OP = 4;
+    CHANGE_METADATA = 5;
+    // Reserved for deprecated TRANSACTION_COMMITTED and TRANSACTION_CREATED fields.
+    reserved 6, 7;
+  }
+  optional uint64 time = 1;
+  optional OperationType operation = 2;
+
+  // Primary key of the record that changed
+  repeated KeyValuePairPB key = 3;
+
+  // Key-value pairs (column_name : value) of changes / before record / after record
+  repeated KeyValuePairPB changes = 4;
+  repeated KeyValuePairPB before = 5;  // NOT CURRENTLY USED
+  repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
+
+  optional tablet.TransactionStatePB transaction_state = 7;
+
+  // If transaction_state.status is APPLYING, then partition will contain the partition for the
+  // tablet being polled.
+  optional PartitionPB partition = 9;
+
+  // If operation type is a SPLIT_OP, then include the split request.
+  optional tablet.SplitTabletRequestPB split_tablet_request = 10;
+
+  // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
+  optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
+
+  // For intents, what subtransaction, if any, they are part of.
+  // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
+  optional uint32 subtransaction_id = 12;
+}
+
+// CDCSDK: Column information used in case of DDL, as part of schema info
+message CDCSDKColumnInfoPB {
+  optional string name = 1;
+  optional QLTypePB type = 2;
+  optional bool is_key = 3 [default = false];
+  optional bool is_hash_key = 4 [default = false];
+  optional bool is_nullable = 5 [default = false];
+  optional int32 oid = 6 [default = 0];
+}
+
+// CDCSDK: Table properties used in case of DDL, as part of schema info
+message CDCSDKTablePropertiesPB {
+  optional uint64 default_time_to_live = 1;
+  optional int32 num_tablets = 2 [ default = 0 ];
+  optional bool is_ysql_catalog_table = 3 [ default = false ];
+}
+
+// CDCSDK: Schema information
+message CDCSDKSchemaPB {
+  // List of columns with associated column properties
+  repeated CDCSDKColumnInfoPB column_info = 1;
+
+  // Table properties
+  optional CDCSDKTablePropertiesPB tab_info = 2;
+}
+
+message CDCSDKOpIdPB {
+  // The term of an operation or the leader's sequence id.
+  optional int64 term = 1;
+  optional int64 index = 2;
+  optional uint32 write_id = 3 [default = 0];
+  optional bytes write_id_key = 4 [default = ""];
+}
+
+// CDCSDK: New record format for CDCSDK
+//message CDCSDKRecordPB {
+//  // Existing CDCRecord being used for 2DC
+//  enum OperationType {
+//    WRITE = 1;
+//    DELETE = 2;
+//    APPLY = 3;
+//    DDL = 4;   // CDCSDK: Added to send DDL info as part of CDC
+//    TRUNCATE = 5; // CDCSDK: Added to send truncate info as part of CDC
+//    INSERT = 6; // CDCSDK: Added to differentiate insert and update as part of write op
+//    UPDATE = 7; // CDCSDK: Added to differentiate insert and update as part of write op
+//    READ = 8; // CDCSDK: Used while streaming snapshot records
+//  }
+//  optional uint64 time = 1;
+//  optional OperationType operation = 2;
+//
+//  // Primary key of the record that changed
+//  repeated KeyValuePairPB key = 3;
+//
+//  // Key-value pairs (column_name : value) of changes / before record / after record
+//  repeated KeyValuePairPB changes = 4;
+//  repeated KeyValuePairPB before = 5;  // NOT CURRENTLY USED
+//  repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
+//
+//  optional yb.tablet.TransactionStatePB transaction_state = 7;
+//
+//  // If transaction_state.status is APPLYING, partition refers to the tablet being polled.
+//  optional PartitionPB partition = 8;
+//
+//  // Op id information to identify dupicate entries
+//  optional CDCSDKOpIdPB cdc_sdk_op_id = 9;
+//
+//  // Schema information used in case of DDL
+//  optional CDCSDKSchemaPB schema = 10;
+//
+//  // Schema version
+//  optional uint32 schema_version = 11;
+//
+//  // New table name, used in the case of rename table
+//  optional string new_table_name = 12;
+//
+//  optional string pgschema_name = 13;
+//
+//  // truncate info
+//  optional tserver.TruncateRequestPB truncate_request_info = 14;
+//}
+
+message TypeInfo {
+  optional string modifier = 1;
+  optional bool value_optional = 2;
+}
+
+message RowMessage {
+  enum Op {
+    UNKNOWN  = -1;
+    INSERT   = 0;
+    UPDATE   = 1;
+    DELETE   = 2;
+    BEGIN    = 3;
+    COMMIT   = 4;
+    DDL      = 5;
+    TRUNCATE = 6;
+    READ     = 7;
+    SAFEPOINT= 8;
+  }
+
+  optional bytes  transaction_id = 1;
+  optional uint64 commit_time = 2;
+  optional string table = 3;
+  optional Op op = 4;
+  repeated DatumMessagePB new_tuple = 5;
+  repeated DatumMessagePB old_tuple = 6;
+  repeated TypeInfo new_typeinfo = 7;
+
+  // Schema information used in case of DDL
+  optional CDCSDKSchemaPB schema = 8;
+
+  // Schema version
+  optional uint32 schema_version = 9;
+
+  // New table name, used in the case of rename table
+  optional string new_table_name = 10;
+
+  optional string pgschema_name = 11;
+
+  // truncate info
+  optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
+  optional uint64 record_time = 14;
+  optional uint64 pg_lsn = 15;
+  optional uint32 pg_transaction_id = 16;
+
+  // The ID of the table associated with the row. Only populated for DMLs & DDLs
+  // but not for other ops such as BEGIN/COMMIT/SAFEPOINT.
+  optional string table_id = 17;
+
+  // DocKey for the row in a table. Only populated for DMLs in the streaming phase but not
+  // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
+  optional bytes primary_key = 18;
+}
+
+message CDCSDKProtoRecordPB {
+  optional RowMessage row_message = 1;
+
+  // Op id information to identify duplicate entries
+  optional CDCSDKOpIdPB cdc_sdk_op_id = 2;
+
+  optional CDCSDKOpIdPB from_op_id = 3;
+}
+
+message GetChangesResponsePB {
+  optional CDCErrorPB error = 1;
+  optional CDCRecordType record_type = 2 [default = CHANGE];
+  optional CDCRecordFormat record_format = 3;
+  repeated CDCRecordPB records = 4;
+
+  // Checkpoint that consumers can send back in GetChanges RPC
+  // to mark all CDC records in this GetChanges batch as committed.
+  optional CDCCheckpointPB checkpoint = 5;
+
+  // In case the tablet is no longer hosted on this tserver, provide the list of tservers holding
+  // data for the tablet.
+  repeated HostPortPB tserver = 6;
+
+  // repeated CDCSDKRecordPB cdc_sdk_records = 7;
+  repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 8;
+
+  // In addition to the op id info, cdc_sdk_checkpoint also stores the info about write_id and
+  // reverse_index_key so that it could be used  to resume partially streamed intents
+  optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 9;
+
+  // The safe time to be used on the target for this tablet.
+  optional int64 safe_hybrid_time = 10;
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 11 [default = 0];
+
+  // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
+  optional uint32 auto_flags_config_version = 12;
+}
+
+message GetCheckpointRequestPB {
+  optional bytes stream_id = 1;
+  optional bytes tablet_id = 2;
+  // The table_id will be required in case of colocated tables.
+  optional bytes table_id = 3;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 4 [default = true];
+}
+
+message GetCheckpointResponsePB {
+  optional CDCErrorPB error = 1;
+  optional CDCCheckpointPB checkpoint = 2;
+  // The snapshot_key and snapshot_time will be used for CDCSDK snapshot purposes.
+  optional bytes snapshot_key = 3;
+  optional uint64 snapshot_time = 4;
+}
+
+message UpdateCdcReplicatedIndexRequestPB {
+  // Old API. Deprecated.
+  optional bytes tablet_id = 1;
+  optional int64 replicated_index = 2;
+  optional int64 replicated_term = 3;
+  // Batch API.
+  // Tablets being updated.
+  repeated bytes tablet_ids = 4;
+  // Minimum replicated index for each tablet across all the streams.
+  repeated int64 replicated_indices = 5;
+  repeated int64 replicated_terms = 6;
+  // Minimum checkpoint term and index  for CDCSDK stream, to do intent cleanup for this tablet.
+  repeated OpIdPB cdc_sdk_consumed_ops = 7;
+  repeated uint64 cdc_sdk_ops_expiration_ms = 8;
+  repeated bytes stream_ids = 9;
+  optional fixed64 cdc_sdk_safe_time = 10;
+  repeated fixed64 cdc_sdk_safe_times = 11;
+  // Is this an initial retention barrier setting request
+  optional bool initial_retention_barrier = 12;
+}
+
+message UpdateCdcReplicatedIndexResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message BootstrapProducerRequestPB {
+  repeated string table_ids = 1;
+  // If the stream_ids are not provided, a new stream for each table will be created.
+  repeated bytes xrepl_stream_ids = 2;
+  // Check if data bootstrap is required. Equivalent to the IsBootstrapRequired RPC.
+  optional bool check_if_bootstrap_required = 3; // [default = false]
+}
+
+message BootstrapProducerResponsePB {
+  optional CDCErrorPB error = 1;
+  // New streams that were created. Only happens if the request does not have xrepl_stream_ids.
+  repeated bytes cdc_bootstrap_ids = 2;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 3;
+  // Only set if check_if_bootstrap_required is set on the request.
+  optional bool bootstrap_required = 4; // [default = false]
+}
+
+message GetLatestEntryOpIdRequestPB {
+  optional bytes tablet_id = 1; // Deprecated.
+  repeated bytes tablet_ids = 2; // Batch param.
+}
+
+message GetLatestEntryOpIdResponsePB {
+  optional CDCErrorPB error = 1;
+
+  optional OpIdPB op_id = 2; // Deprecated.
+  repeated OpIdPB op_ids = 3; // Batch param.
+  optional fixed64 bootstrap_time = 4;
+}
+
+message TableInfo {
+  optional bytes stream_id = 1;
+  optional bytes table_id = 2;
+}
+
+message GetCDCDBStreamInfoRequestPB {
+  optional bytes db_stream_id = 1;
+}
+
+message GetCDCDBStreamInfoResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bytes namespace_id = 2;
+  repeated TableInfo table_info = 3;
+}
+
+message SetCDCCheckpointRequestPB {
+  optional CDCCheckpointPB checkpoint = 1;
+  optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
+  optional bytes stream_id = 3;
+  optional bytes tablet_id = 4;
+  optional bool initial_checkpoint = 5 [default = false];
+  optional bool bootstrap = 6 [default = false];
+  optional fixed64 cdc_sdk_safe_time = 7;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 8 [default = true];
+}
+
+message SetCDCCheckpointResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message TabletCheckpointPair {
+  optional yb.master.TabletLocationsPB tablet_locations = 1;
+  optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
+}
+
+message GetTabletListToPollForCDCRequestPB {
+  optional TableInfo table_info = 1;
+  optional bytes tablet_id = 2;
+}
+
+message GetTabletListToPollForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated TabletCheckpointPair tablet_checkpoint_pairs = 2;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string tablet_ids = 1;
+  optional string stream_id = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bool bootstrap_required = 2 [default = false];
+}
+
+// Metadata regarding replication status of a stream set up on a tablet.
+message StreamTabletDrainInfoPB {
+  required bytes stream_id = 1;
+  required bytes tablet_id = 2;
+}
+
+message CheckReplicationDrainRequestPB {
+  repeated StreamTabletDrainInfoPB stream_info = 1;
+  optional uint64 target_time = 2;
+}
+
+message CheckReplicationDrainResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated StreamTabletDrainInfoPB drained_stream_info = 2;
+}

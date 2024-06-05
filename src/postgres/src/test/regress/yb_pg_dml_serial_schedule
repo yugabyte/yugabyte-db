@@ -1,0 +1,15 @@
+# src/test/regress/yb_pg_dml_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests on dml statements.
+# NOTES:
+# The following tests are copied from Postgres original code. Whenever Postgres updates
+# these tests, we need to update ours also.
+#   - yb_pg_insert_conflict
+# Other tests are YugaByte tests.
+####################################################################################################
+test: yb_pg_insert_conflict
+test: yb_dml_insert_conflict
+test: yb_dml_read_time
+test: yb_dml_pushdown
+test: yb_dml_scankey

@@ -1,0 +1,96 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.widget-panel {
+  margin: 0;
+  padding: 0;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  border: none;
+  background-color: #fff;
+  border-radius: 7px;
+  margin-bottom: 25px;
+  height: 210px;
+  overflow: hidden;
+
+  > .header {
+    height: 45px;
+    padding: 0 20px;
+    border-bottom: 1px solid colors.$YB_BACKGROUND;
+    overflow: hidden;
+    line-height: 45px;
+    font-size: 14px;
+
+    .left {
+      color: colors.$YB_TEXT_COLOR;
+      text-align: left;
+      font-family: 'Rubik', 'Helvetica Neue', sans-serif;
+      font-weight: 500;
+    }
+
+    .right {
+      text-align: right;
+      font-weight: 300;
+      color: colors.$YB_SUBTITLE_COLOR;
+
+      .fa {
+        font-size: 18px;
+        position: relative;
+        top: 1px;
+      }
+    }
+    a {
+      cursor: pointer;
+    }
+  }
+
+  > .body {
+    position: relative;
+    padding: 10px 20px 15px 20px;
+    margin: 0;
+    min-height: 144px;
+    margin-top: -10px;
+
+    &.body-no-margin {
+      padding: 0;
+    }
+
+    .flex-cnt {
+      height: 116px;
+    }
+  }
+
+  &.widget-panel-row-2 {
+    height: 405px;
+    > .body {
+      min-height: 359px;
+    }
+  }
+
+  &.widget-panel-row-3 {
+    height: 570px;
+    > .body {
+      min-height: 584px;
+    }
+  }
+}
+
+.content-panel-margin-top {
+  margin-top: 58px;
+}
+.panel_toolbox {
+  float: right;
+  min-width: 70px;
+}
+.panel_toolbox > li {
+  float: left;
+  cursor: pointer;
+}
+.panel_toolbox > li > a {
+  padding: 5px;
+  color: #c5c7cb;
+  font-size: 14px;
+}
+.panel_toolbox > li > a:hover {
+  background: #f5f7fa;
+}

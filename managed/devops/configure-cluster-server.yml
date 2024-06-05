@@ -1,0 +1,23 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Install and configure server
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  gather_facts: yes
+  vars_files:
+    - "{{ vars_file | default(placeholder_vars_file) }}"
+  roles:
+    - role: configure-cluster-server
+      process_types: "{{ yb_process_type | default(['master', 'tserver']) }}"
+
+    - role: install_package
+      symlink_folders: "{{ yb_process_type | default(['master', 'tserver']) }}"
+      when: package is defined
+
+    - role: configure-ybc-server
+      when: configure_ybc

@@ -1,0 +1,915 @@
+<!-- doc/src/sgml/pageinspect.sgml -->
+
+<sect1 id="pageinspect" xreflabel="pageinspect">
+ <title>pageinspect</title>
+
+ <indexterm zone="pageinspect">
+  <primary>pageinspect</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pageinspect</filename> module provides functions that allow you to
+  inspect the contents of database pages at a low level, which is useful for
+  debugging purposes.  All of these functions may be used only by superusers.
+ </para>
+
+ <sect2>
+  <title>General Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>get_raw_page(relname text, fork text, blkno bigint) returns bytea</function>
+     <indexterm>
+      <primary>get_raw_page</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>get_raw_page</function> reads the specified block of the named
+      relation and returns a copy as a <type>bytea</type> value.  This allows a
+      single time-consistent copy of the block to be obtained.
+      <replaceable>fork</replaceable> should be <literal>'main'</literal> for
+      the main data fork, <literal>'fsm'</literal> for the
+      <link linkend="storage-fsm">free space map</link>,
+      <literal>'vm'</literal> for the
+      <link linkend="storage-vm">visibility map</link>, or
+      <literal>'init'</literal> for the initialization fork.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>get_raw_page(relname text, blkno bigint) returns bytea</function>
+    </term>
+
+    <listitem>
+     <para>
+      A shorthand version of <function>get_raw_page</function>, for reading
+      from the main fork.  Equivalent to
+      <literal>get_raw_page(relname, 'main', blkno)</literal>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>page_header(page bytea) returns record</function>
+     <indexterm>
+      <primary>page_header</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>page_header</function> shows fields that are common to all
+      <productname>PostgreSQL</productname> heap and index pages.
+     </para>
+
+     <para>
+      A page image obtained with <function>get_raw_page</function> should be
+      passed as argument.  For example:
+<screen>
+test=# SELECT * FROM page_header(get_raw_page('pg_class', 0));
+    lsn    | checksum | flags  | lower | upper | special | pagesize | version | prune_xid
+-----------+----------+--------+-------+-------+---------+----------+---------+-----------
+ 0/24A1B50 |        0 |      1 |   232 |   368 |    8192 |     8192 |       4 |         0
+</screen>
+      The returned columns correspond to the fields in the
+      <structname>PageHeaderData</structname> struct.
+      See <filename>src/include/storage/bufpage.h</filename> for details.
+     </para>
+
+     <para>
+      The <structfield>checksum</structfield> field is the checksum stored in
+      the page, which might be incorrect if the page is somehow corrupted.  If
+      data checksums are not enabled for this instance, then the value stored
+      is meaningless.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>page_checksum(page bytea, blkno bigint) returns smallint</function>
+     <indexterm>
+      <primary>page_checksum</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>page_checksum</function> computes the checksum for the page, as if
+      it was located at the given block.
+     </para>
+
+     <para>
+      A page image obtained with <function>get_raw_page</function> should be
+      passed as argument.  For example:
+<screen>
+test=# SELECT page_checksum(get_raw_page('pg_class', 0), 0);
+ page_checksum
+---------------
+         13443
+</screen>
+      Note that the checksum depends on the block number, so matching block
+      numbers should be passed (except when doing esoteric debugging).
+     </para>
+
+     <para>
+      The checksum computed with this function can be compared with
+      the <structfield>checksum</structfield> result field of the
+      function <function>page_header</function>.  If data checksums are
+      enabled for this instance, then the two values should be equal.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>fsm_page_contents(page bytea) returns text</function>
+     <indexterm>
+      <primary>fsm_page_contents</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>fsm_page_contents</function> shows the internal node structure
+      of an <acronym>FSM</acronym> page.  For example:
+<screen>
+test=# SELECT fsm_page_contents(get_raw_page('pg_class', 'fsm', 0));
+</screen>
+      The output is a multiline string, with one line per node in the binary
+      tree within the page.  Only those nodes that are not zero are printed.
+      The so-called "next" pointer, which points to the next slot to be
+      returned from the page, is also printed.
+     </para>
+     <para>
+      See <filename>src/backend/storage/freespace/README</filename> for more
+      information on the structure of an <acronym>FSM</acronym> page.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>Heap Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>heap_page_items(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>heap_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>heap_page_items</function> shows all line pointers on a heap
+      page.  For those line pointers that are in use, tuple headers as well
+      as tuple raw data are also shown. All tuples are shown, whether or not
+      the tuples were visible to an MVCC snapshot at the time the raw page
+      was copied.
+     </para>
+     <para>
+      A heap page image obtained with <function>get_raw_page</function> should
+      be passed as argument.  For example:
+<screen>
+test=# SELECT * FROM heap_page_items(get_raw_page('pg_class', 0));
+</screen>
+      See <filename>src/include/storage/itemid.h</filename> and
+      <filename>src/include/access/htup_details.h</filename> for explanations of the fields
+      returned.
+     </para>
+     <para>
+      The <function>heap_tuple_infomask_flags</function> function can be
+      used to unpack the flag bits of <structfield>t_infomask</structfield>
+      and <structfield>t_infomask2</structfield> for heap tuples.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>tuple_data_split(rel_oid oid, t_data bytea, t_infomask integer, t_infomask2 integer, t_bits text [, do_detoast bool]) returns bytea[]</function>
+     <indexterm>
+      <primary>tuple_data_split</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <function>tuple_data_split</function> splits tuple data into attributes
+      in the same way as backend internals.
+<screen>
+test=# SELECT tuple_data_split('pg_class'::regclass, t_data, t_infomask, t_infomask2, t_bits) FROM heap_page_items(get_raw_page('pg_class', 0));
+</screen>
+      This function should be called with the same arguments as the return
+      attributes of <function>heap_page_items</function>.
+     </para>
+     <para>
+      If <parameter>do_detoast</parameter> is <literal>true</literal>,
+      attributes will be detoasted as needed. Default value is
+      <literal>false</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>heap_page_item_attrs(page bytea, rel_oid regclass [, do_detoast bool]) returns setof record</function>
+     <indexterm>
+      <primary>heap_page_item_attrs</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <function>heap_page_item_attrs</function> is equivalent to
+      <function>heap_page_items</function> except that it returns
+      tuple raw data as an array of attributes that can optionally
+      be detoasted by <parameter>do_detoast</parameter> which is
+      <literal>false</literal> by default.
+     </para>
+     <para>
+      A heap page image obtained with <function>get_raw_page</function> should
+      be passed as argument.  For example:
+<screen>
+test=# SELECT * FROM heap_page_item_attrs(get_raw_page('pg_class', 0), 'pg_class'::regclass);
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>heap_tuple_infomask_flags(t_infomask integer, t_infomask2 integer) returns record</function>
+     <indexterm>
+      <primary>heap_tuple_infomask_flags</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <function>heap_tuple_infomask_flags</function> decodes the
+      <structfield>t_infomask</structfield> and
+      <structfield>t_infomask2</structfield> returned by
+      <function>heap_page_items</function> into a human-readable
+      set of arrays made of flag names, with one column for all
+      the flags and one column for combined flags. For example:
+<screen>
+test=# SELECT t_ctid, raw_flags, combined_flags
+         FROM heap_page_items(get_raw_page('pg_class', 0)),
+           LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2)
+         WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+</screen>
+      This function should be called with the same arguments as the return
+      attributes of <function>heap_page_items</function>.
+     </para>
+     <para>
+      Combined flags are displayed for source-level macros that take into
+      account the value of more than one raw bit, such as
+      <literal>HEAP_XMIN_FROZEN</literal>.
+     </para>
+     <para>
+      See <filename>src/include/access/htup_details.h</filename> for
+      explanations of the flag names returned.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>B-Tree Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>bt_metap(relname text) returns record</function>
+     <indexterm>
+      <primary>bt_metap</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>bt_metap</function> returns information about a B-tree
+      index's metapage.  For example:
+<screen>
+test=# SELECT * FROM bt_metap('pg_cast_oid_index');
+-[ RECORD 1 ]-------------+-------
+magic                     | 340322
+version                   | 4
+root                      | 1
+level                     | 0
+fastroot                  | 1
+fastlevel                 | 0
+last_cleanup_num_delpages | 0
+last_cleanup_num_tuples   | 230
+allequalimage             | f
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>bt_page_stats(relname text, blkno bigint) returns record</function>
+     <indexterm>
+      <primary>bt_page_stats</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>bt_page_stats</function> returns summary information about
+      single pages of B-tree indexes.  For example:
+<screen>
+test=# SELECT * FROM bt_page_stats('pg_cast_oid_index', 1);
+-[ RECORD 1 ]-+-----
+blkno         | 1
+type          | l
+live_items    | 224
+dead_items    | 0
+avg_item_size | 16
+page_size     | 8192
+free_size     | 3668
+btpo_prev     | 0
+btpo_next     | 0
+btpo_level    | 0
+btpo_flags    | 3
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>bt_page_items(relname text, blkno bigint) returns setof record</function>
+     <indexterm>
+      <primary>bt_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>bt_page_items</function> returns detailed information about
+      all of the items on a B-tree index page.  For example:
+<screen>
+test=# SELECT itemoffset, ctid, itemlen, nulls, vars, data, dead, htid, tids[0:2] AS some_tids
+        FROM bt_page_items('tenk2_hundred', 5);
+ itemoffset |   ctid    | itemlen | nulls | vars |          data           | dead |  htid  |      some_tids
+------------+-----------+---------+-------+------+-------------------------+------+--------+---------------------
+          1 | (16,1)    |      16 | f     | f    | 30 00 00 00 00 00 00 00 |      |        |
+          2 | (16,8292) |     616 | f     | f    | 24 00 00 00 00 00 00 00 | f    | (1,6)  | {"(1,6)","(10,22)"}
+          3 | (16,8292) |     616 | f     | f    | 25 00 00 00 00 00 00 00 | f    | (1,18) | {"(1,18)","(4,22)"}
+          4 | (16,8292) |     616 | f     | f    | 26 00 00 00 00 00 00 00 | f    | (4,18) | {"(4,18)","(6,17)"}
+          5 | (16,8292) |     616 | f     | f    | 27 00 00 00 00 00 00 00 | f    | (1,2)  | {"(1,2)","(1,19)"}
+          6 | (16,8292) |     616 | f     | f    | 28 00 00 00 00 00 00 00 | f    | (2,24) | {"(2,24)","(4,11)"}
+          7 | (16,8292) |     616 | f     | f    | 29 00 00 00 00 00 00 00 | f    | (2,17) | {"(2,17)","(11,2)"}
+          8 | (16,8292) |     616 | f     | f    | 2a 00 00 00 00 00 00 00 | f    | (0,25) | {"(0,25)","(3,20)"}
+          9 | (16,8292) |     616 | f     | f    | 2b 00 00 00 00 00 00 00 | f    | (0,10) | {"(0,10)","(0,14)"}
+         10 | (16,8292) |     616 | f     | f    | 2c 00 00 00 00 00 00 00 | f    | (1,3)  | {"(1,3)","(3,9)"}
+         11 | (16,8292) |     616 | f     | f    | 2d 00 00 00 00 00 00 00 | f    | (6,28) | {"(6,28)","(11,1)"}
+         12 | (16,8292) |     616 | f     | f    | 2e 00 00 00 00 00 00 00 | f    | (0,27) | {"(0,27)","(1,13)"}
+         13 | (16,8292) |     616 | f     | f    | 2f 00 00 00 00 00 00 00 | f    | (4,17) | {"(4,17)","(4,21)"}
+(13 rows)
+</screen>
+      This is a B-tree leaf page.  All tuples that point to the table
+      happen to be posting list tuples (all of which store a total of
+      100 6 byte TIDs).  There is also a <quote>high key</quote> tuple
+      at <literal>itemoffset</literal> number 1.
+      <structfield>ctid</structfield> is used to store encoded
+      information about each tuple in this example, though leaf page
+      tuples often store a heap TID directly in the
+      <structfield>ctid</structfield> field instead.
+      <structfield>tids</structfield> is the list of TIDs stored as a
+      posting list.
+     </para>
+     <para>
+      In an internal page (not shown), the block number part of
+      <structfield>ctid</structfield> is a <quote>downlink</quote>,
+      which is a block number of another page in the index itself.
+      The offset part (the second number) of
+      <structfield>ctid</structfield> stores encoded information about
+      the tuple, such as the number of columns present (suffix
+      truncation may have removed unneeded suffix columns).  Truncated
+      columns are treated as having the value <quote>minus
+       infinity</quote>.
+     </para>
+     <para>
+      <structfield>htid</structfield> shows a heap TID for the tuple,
+      regardless of the underlying tuple representation.  This value
+      may match <structfield>ctid</structfield>, or may be decoded
+      from the alternative representations used by posting list tuples
+      and tuples from internal pages.  Tuples in internal pages
+      usually have the implementation level heap TID column truncated
+      away, which is represented as a NULL
+      <structfield>htid</structfield> value.
+     </para>
+     <para>
+      Note that the first item on any non-rightmost page (any page with
+      a non-zero value in the <structfield>btpo_next</structfield> field) is the
+      page's <quote>high key</quote>, meaning its <structfield>data</structfield>
+      serves as an upper bound on all items appearing on the page, while
+      its <structfield>ctid</structfield> field does not point to
+      another block.  Also, on internal pages, the first real data
+      item (the first item that is not a high key) reliably has every
+      column truncated away, leaving no actual value in its
+      <structfield>data</structfield> field.  Such an item does have a
+      valid downlink in its <structfield>ctid</structfield> field,
+      however.
+     </para>
+     <para>
+      For more details about the structure of B-tree indexes, see
+      <xref linkend="btree-structure"/>.  For more details about
+      deduplication and posting lists, see <xref
+       linkend="btree-deduplication"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>bt_page_items(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>bt_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      It is also possible to pass a page to <function>bt_page_items</function>
+      as a <type>bytea</type> value.  A page image obtained
+      with <function>get_raw_page</function> should be passed as argument.  So
+      the last example could also be rewritten like this:
+<screen>
+test=# SELECT itemoffset, ctid, itemlen, nulls, vars, data, dead, htid, tids[0:2] AS some_tids
+        FROM bt_page_items(get_raw_page('tenk2_hundred', 5));
+ itemoffset |   ctid    | itemlen | nulls | vars |          data           | dead |  htid  |      some_tids
+------------+-----------+---------+-------+------+-------------------------+------+--------+---------------------
+          1 | (16,1)    |      16 | f     | f    | 30 00 00 00 00 00 00 00 |      |        |
+          2 | (16,8292) |     616 | f     | f    | 24 00 00 00 00 00 00 00 | f    | (1,6)  | {"(1,6)","(10,22)"}
+          3 | (16,8292) |     616 | f     | f    | 25 00 00 00 00 00 00 00 | f    | (1,18) | {"(1,18)","(4,22)"}
+          4 | (16,8292) |     616 | f     | f    | 26 00 00 00 00 00 00 00 | f    | (4,18) | {"(4,18)","(6,17)"}
+          5 | (16,8292) |     616 | f     | f    | 27 00 00 00 00 00 00 00 | f    | (1,2)  | {"(1,2)","(1,19)"}
+          6 | (16,8292) |     616 | f     | f    | 28 00 00 00 00 00 00 00 | f    | (2,24) | {"(2,24)","(4,11)"}
+          7 | (16,8292) |     616 | f     | f    | 29 00 00 00 00 00 00 00 | f    | (2,17) | {"(2,17)","(11,2)"}
+          8 | (16,8292) |     616 | f     | f    | 2a 00 00 00 00 00 00 00 | f    | (0,25) | {"(0,25)","(3,20)"}
+          9 | (16,8292) |     616 | f     | f    | 2b 00 00 00 00 00 00 00 | f    | (0,10) | {"(0,10)","(0,14)"}
+         10 | (16,8292) |     616 | f     | f    | 2c 00 00 00 00 00 00 00 | f    | (1,3)  | {"(1,3)","(3,9)"}
+         11 | (16,8292) |     616 | f     | f    | 2d 00 00 00 00 00 00 00 | f    | (6,28) | {"(6,28)","(11,1)"}
+         12 | (16,8292) |     616 | f     | f    | 2e 00 00 00 00 00 00 00 | f    | (0,27) | {"(0,27)","(1,13)"}
+         13 | (16,8292) |     616 | f     | f    | 2f 00 00 00 00 00 00 00 | f    | (4,17) | {"(4,17)","(4,21)"}
+(13 rows)
+</screen>
+      All the other details are the same as explained in the previous item.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>BRIN Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>brin_page_type(page bytea) returns text</function>
+     <indexterm>
+      <primary>brin_page_type</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>brin_page_type</function> returns the page type of the given
+      <acronym>BRIN</acronym> index page, or throws an error if the page is
+      not a valid <acronym>BRIN</acronym> page.  For example:
+<screen>
+test=# SELECT brin_page_type(get_raw_page('brinidx', 0));
+ brin_page_type
+----------------
+ meta
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>brin_metapage_info(page bytea) returns record</function>
+     <indexterm>
+      <primary>brin_metapage_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>brin_metapage_info</function> returns assorted information
+      about a <acronym>BRIN</acronym> index metapage.  For example:
+<screen>
+test=# SELECT * FROM brin_metapage_info(get_raw_page('brinidx', 0));
+   magic    | version | pagesperrange | lastrevmappage
+------------+---------+---------------+----------------
+ 0xA8109CFA |       1 |             4 |              2
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>brin_revmap_data(page bytea) returns setof tid</function>
+     <indexterm>
+      <primary>brin_revmap_data</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>brin_revmap_data</function> returns the list of tuple
+      identifiers in a <acronym>BRIN</acronym> index range map page.
+      For example:
+<screen>
+test=# SELECT * FROM brin_revmap_data(get_raw_page('brinidx', 2)) LIMIT 5;
+  pages
+---------
+ (6,137)
+ (6,138)
+ (6,139)
+ (6,140)
+ (6,141)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>brin_page_items(page bytea, index oid) returns setof record</function>
+     <indexterm>
+      <primary>brin_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>brin_page_items</function> returns the data stored in the
+      <acronym>BRIN</acronym> data page.  For example:
+<screen>
+test=# SELECT * FROM brin_page_items(get_raw_page('brinidx', 5),
+                                     'brinidx')
+       ORDER BY blknum, attnum LIMIT 6;
+ itemoffset | blknum | attnum | allnulls | hasnulls | placeholder |    value
+------------+--------+--------+----------+----------+-------------+--------------
+        137 |      0 |      1 | t        | f        | f           |
+        137 |      0 |      2 | f        | f        | f           | {1 .. 88}
+        138 |      4 |      1 | t        | f        | f           |
+        138 |      4 |      2 | f        | f        | f           | {89 .. 176}
+        139 |      8 |      1 | t        | f        | f           |
+        139 |      8 |      2 | f        | f        | f           | {177 .. 264}
+</screen>
+      The returned columns correspond to the fields in the
+      <structname>BrinMemTuple</structname> and <structname>BrinValues</structname> structs.
+      See <filename>src/include/access/brin_tuple.h</filename> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>GIN Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>gin_metapage_info(page bytea) returns record</function>
+     <indexterm>
+      <primary>gin_metapage_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gin_metapage_info</function> returns information about
+      a <acronym>GIN</acronym> index metapage.  For example:
+<screen>
+test=# SELECT * FROM gin_metapage_info(get_raw_page('gin_index', 0));
+-[ RECORD 1 ]----+-----------
+pending_head     | 4294967295
+pending_tail     | 4294967295
+tail_free_size   | 0
+n_pending_pages  | 0
+n_pending_tuples | 0
+n_total_pages    | 7
+n_entry_pages    | 6
+n_data_pages     | 0
+n_entries        | 693
+version          | 2
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>gin_page_opaque_info(page bytea) returns record</function>
+     <indexterm>
+      <primary>gin_page_opaque_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gin_page_opaque_info</function> returns information about
+      a <acronym>GIN</acronym> index opaque area, like the page type.
+      For example:
+<screen>
+test=# SELECT * FROM gin_page_opaque_info(get_raw_page('gin_index', 2));
+ rightlink | maxoff |         flags
+-----------+--------+------------------------
+         5 |      0 | {data,leaf,compressed}
+(1 row)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>gin_leafpage_items(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>gin_leafpage_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gin_leafpage_items</function> returns information about
+      the data stored in a <acronym>GIN</acronym> leaf page.  For example:
+<screen>
+test=# SELECT first_tid, nbytes, tids[0:5] AS some_tids
+        FROM gin_leafpage_items(get_raw_page('gin_test_idx', 2));
+ first_tid | nbytes |                        some_tids
+-----------+--------+----------------------------------------------------------
+ (8,41)    |    244 | {"(8,41)","(8,43)","(8,44)","(8,45)","(8,46)"}
+ (10,45)   |    248 | {"(10,45)","(10,46)","(10,47)","(10,48)","(10,49)"}
+ (12,52)   |    248 | {"(12,52)","(12,53)","(12,54)","(12,55)","(12,56)"}
+ (14,59)   |    320 | {"(14,59)","(14,60)","(14,61)","(14,62)","(14,63)"}
+ (167,16)  |    376 | {"(167,16)","(167,17)","(167,18)","(167,19)","(167,20)"}
+ (170,30)  |    376 | {"(170,30)","(170,31)","(170,32)","(170,33)","(170,34)"}
+ (173,44)  |    197 | {"(173,44)","(173,45)","(173,46)","(173,47)","(173,48)"}
+(7 rows)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>GiST Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>gist_page_opaque_info(page bytea) returns record</function>
+     <indexterm>
+      <primary>gist_page_opaque_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gist_page_opaque_info</function> returns information from
+      a <acronym>GiST</acronym> index page's opaque area, such as the NSN,
+      rightlink and page type.
+      For example:
+<screen>
+test=# SELECT * FROM gist_page_opaque_info(get_raw_page('test_gist_idx', 2));
+ lsn | nsn | rightlink | flags
+-----+-----+-----------+--------
+ 0/1 | 0/0 |         1 | {leaf}
+(1 row)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>gist_page_items(page bytea, index_oid regclass) returns setof record</function>
+     <indexterm>
+      <primary>gist_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gist_page_items</function> returns information about
+      the data stored in a page of a <acronym>GiST</acronym> index.  For example:
+<screen>
+test=# SELECT * FROM gist_page_items(get_raw_page('test_gist_idx', 0), 'test_gist_idx');
+ itemoffset |   ctid    | itemlen | dead |       keys
+------------+-----------+---------+------+-------------------
+          1 | (1,65535) |      40 | f    | (p)=((166,166))
+          2 | (2,65535) |      40 | f    | (p)=((332,332))
+          3 | (3,65535) |      40 | f    | (p)=((498,498))
+          4 | (4,65535) |      40 | f    | (p)=((664,664))
+          5 | (5,65535) |      40 | f    | (p)=((830,830))
+          6 | (6,65535) |      40 | f    | (p)=((996,996))
+          7 | (7,65535) |      40 | f    | (p)=((1000,1000))
+(7 rows)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>gist_page_items_bytea(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>gist_page_items_bytea</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      Same as <function>gist_page_items</function>, but returns the key data
+      as a raw <type>bytea</type> blob.  Since it does not attempt to decode
+      the key, it does not need to know which index is involved.  For
+      example:
+<screen>
+test=# SELECT * FROM gist_page_items_bytea(get_raw_page('test_gist_idx', 0));
+ itemoffset |   ctid    | itemlen | dead |                                      key_data
+------------+-----------+---------+------+-----------------------------------------&zwsp;-------------------------------------------
+          1 | (1,65535) |      40 | f    | \x00000100ffff28000000000000c0644000000000&zwsp;00c06440000000000000f03f000000000000f03f
+          2 | (2,65535) |      40 | f    | \x00000200ffff28000000000000c0744000000000&zwsp;00c074400000000000e064400000000000e06440
+          3 | (3,65535) |      40 | f    | \x00000300ffff28000000000000207f4000000000&zwsp;00207f400000000000d074400000000000d07440
+          4 | (4,65535) |      40 | f    | \x00000400ffff28000000000000c0844000000000&zwsp;00c084400000000000307f400000000000307f40
+          5 | (5,65535) |      40 | f    | \x00000500ffff28000000000000f0894000000000&zwsp;00f089400000000000c884400000000000c88440
+          6 | (6,65535) |      40 | f    | \x00000600ffff28000000000000208f4000000000&zwsp;00208f400000000000f889400000000000f88940
+          7 | (7,65535) |      40 | f    | \x00000700ffff28000000000000408f4000000000&zwsp;00408f400000000000288f400000000000288f40
+(7 rows)
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>Hash Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>hash_page_type(page bytea) returns text</function>
+     <indexterm>
+      <primary>hash_page_type</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>hash_page_type</function> returns page type of
+      the given <acronym>HASH</acronym> index page.  For example:
+<screen>
+test=# SELECT hash_page_type(get_raw_page('con_hash_index', 0));
+ hash_page_type
+----------------
+ metapage
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>hash_page_stats(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>hash_page_stats</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>hash_page_stats</function> returns information about
+      a bucket or overflow page of a <acronym>HASH</acronym> index.
+      For example:
+<screen>
+test=# SELECT * FROM hash_page_stats(get_raw_page('con_hash_index', 1));
+-[ RECORD 1 ]---+-----------
+live_items      | 407
+dead_items      | 0
+page_size       | 8192
+free_size       | 8
+hasho_prevblkno | 4096
+hasho_nextblkno | 8474
+hasho_bucket    | 0
+hasho_flag      | 66
+hasho_page_id   | 65408
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>hash_page_items(page bytea) returns setof record</function>
+     <indexterm>
+      <primary>hash_page_items</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>hash_page_items</function> returns information about
+      the data stored in a bucket or overflow page of a <acronym>HASH</acronym>
+      index page.  For example:
+<screen>
+test=# SELECT * FROM hash_page_items(get_raw_page('con_hash_index', 1)) LIMIT 5;
+ itemoffset |   ctid    |    data
+------------+-----------+------------
+          1 | (899,77)  | 1053474816
+          2 | (897,29)  | 1053474816
+          3 | (894,207) | 1053474816
+          4 | (892,159) | 1053474816
+          5 | (890,111) | 1053474816
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>hash_bitmap_info(index oid, blkno bigint) returns record</function>
+     <indexterm>
+      <primary>hash_bitmap_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>hash_bitmap_info</function> shows the status of a bit
+      in the bitmap page for a particular overflow page of <acronym>HASH</acronym>
+      index. For example:
+<screen>
+test=# SELECT * FROM hash_bitmap_info('con_hash_index', 2052);
+ bitmapblkno | bitmapbit | bitstatus
+-------------+-----------+-----------
+          65 |         3 | t
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>hash_metapage_info(page bytea) returns record</function>
+     <indexterm>
+      <primary>hash_metapage_info</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>hash_metapage_info</function> returns information stored
+      in the meta page of a <acronym>HASH</acronym> index.  For example:
+<screen>
+test=# SELECT magic, version, ntuples, ffactor, bsize, bmsize, bmshift,
+test-#     maxbucket, highmask, lowmask, ovflpoint, firstfree, nmaps, procid,
+test-#     regexp_replace(spares::text, '(,0)*}', '}') as spares,
+test-#     regexp_replace(mapp::text, '(,0)*}', '}') as mapp
+test-# FROM hash_metapage_info(get_raw_page('con_hash_index', 0));
+-[ RECORD 1 ]-------------------------------------------------&zwsp;------------------------------
+magic     | 105121344
+version   | 4
+ntuples   | 500500
+ffactor   | 40
+bsize     | 8152
+bmsize    | 4096
+bmshift   | 15
+maxbucket | 12512
+highmask  | 16383
+lowmask   | 8191
+ovflpoint | 28
+firstfree | 1204
+nmaps     | 1
+procid    | 450
+spares    | {0,0,0,0,0,0,1,1,1,1,1,1,1,1,3,4,4,4,45,55,58,59,&zwsp;508,567,628,704,1193,1202,1204}
+mapp      | {65}
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+</sect1>

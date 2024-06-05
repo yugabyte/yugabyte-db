@@ -1,0 +1,37 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+
+a {
+  color: colors.$YB_ORANGE;
+  text-decoration: none;
+}
+
+a:focus,
+a:hover,
+a:active {
+  color: colors.$YB_ORANGE_HOVER;
+  text-decoration: none;
+}
+a,
+a:visited,
+a:focus,
+a:active,
+:visited,
+:focus,
+:active,
+.btn:focus,
+.btn:active:focus,
+.btn.active:focus,
+.btn.focus,
+.btn:active.focus,
+.btn.active.focus {
+  outline: 0;
+}
+
+// TODO: Are we still using this?
+.fontawesome-icon-list .fa-hover a:hover {
+  background-color: #ddd;
+  color: #fff;
+  text-decoration: none;
+}

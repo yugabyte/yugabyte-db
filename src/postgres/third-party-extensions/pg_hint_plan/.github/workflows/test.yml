@@ -1,0 +1,95 @@
+name: regression test
+on:
+  push:
+    branches:
+      - PG16
+      - PG15
+      - PG14
+      - PG13
+      - PG12
+      - PG11
+  pull_request:
+    branches:
+      - PG16
+      - PG15
+      - PG14
+      - PG13
+      - PG12
+      - PG11
+  schedule:
+    # Runs at 00:00 UTC on every Sunday.
+    - cron: "0 0 * * SUN"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    env:
+      PGPORT: 55435
+      PGUSER: runner
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set PATH and PG_VERSION
+        run: |
+          if [ "${{ github.ref_name }}" == 'PG16' ]; then
+            echo "PG_VERSION=16" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG15' ]; then
+            echo "PG_VERSION=15" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG14' ]; then
+            echo "PG_VERSION=14" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG13' ]; then
+            echo "PG_VERSION=13" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG12' ]; then
+            echo "PG_VERSION=12" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG11' ]; then
+            echo "PG_VERSION=11" >> $GITHUB_ENV
+          fi
+
+      - name: Build PostgreSQL
+        run: |
+          sudo -nH apt-get -q update
+          sudo -nH apt-get -y install libreadline-dev zlib1g-dev bison flex gcc
+          wget -q -O postgresql.tar.bz2 https://ftp.postgresql.org/pub/snapshot/${PG_VERSION}/postgresql-${PG_VERSION}-snapshot.tar.bz2
+          mkdir -p ~/source
+          tar --extract --file postgresql.tar.bz2 --directory ~/source --strip-components 1
+          cd ~/source
+          ./configure --prefix=$HOME/pgsql --enable-cassert --enable-debug
+
+          make -j 2
+          make -C contrib/pg_stat_statements
+          make -C contrib/file_fdw
+          make -C contrib/btree_gist
+          make -C contrib/btree_gin
+
+          sudo make install
+          sudo make -C contrib/pg_stat_statements install
+          sudo make -C contrib/file_fdw install
+          sudo make -C contrib/btree_gist install
+          sudo make -C contrib/btree_gin install
+
+          echo "$HOME/pgsql/bin" >> $GITHUB_PATH
+
+      - name: Build pg_hint_plan
+        run: |
+          make USE_PGXS=1 clean
+          make USE_PGXS=1 PG_CONFIG=$(which pg_config)
+          sudo make USE_PGXS=1 PG_CONFIG=$(which pg_config) install
+
+      - name: Start PostgreSQL Server
+        run: |
+          initdb -D regression_data --no-locale -E UTF8 -A trust
+          echo "shared_preload_libraries = 'pg_hint_plan,pg_stat_statements,file_fdw'" >> regression_data/postgresql.conf
+          pg_ctl start -D regression_data -o "-p ${PGPORT}"
+
+      - name: Make installcheck
+        run: |
+          make installcheck USE_PGXS=1 || status=$?
+          if test -f regression.diffs; then cat regression.diffs; fi
+          exit $status
+

@@ -1,0 +1,333 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb;
+
+option java_package = "org.yb";
+
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+
+// A column value, optionally with subscripts, e.g. m['x'] or l[2]['x']
+message QLColumnValuePB {
+  optional int32 column_id = 1;
+  repeated QLExpressionPB subscript_args = 3;
+  repeated QLJsonOperationPB json_args = 4;
+  optional QLExpressionPB expr = 2;
+}
+
+// Paging state for continuing a read request.
+//
+// For a SELECT statement that returns many rows, the client may specify how many rows to return at
+// most in each fetch. This paging state maintains the state for returning the next set of rows of
+// the statement. This paging state is opaque to the client.
+//
+// When there should be more rows to return from the same tablet in the next fetch, "next_row_key"
+// is populated in DocDB (QLReadOperation) with the DocKey of the next row to read. We also embed a
+// hybrid-time which is the clean snapshot time for read consistency. We also populate the
+// "next_partition_key" for the next row, which is the hash code of the hash portion of the DocKey.
+// This next partition key is needed by YBClient (Batcher) to locate the tablet to send the request
+// to and it doesn't have access to the DocDB function to decode and extract from the DocKey.
+//
+// When we are done returning rows from the current tablet and the next fetch should continue in
+// the next tablet (possible only for full-table query across tablets), "next_partition_key" is
+// populated by the current tablet with its exclusive partition-end key, which is the start key of
+// next tablet's partition. "next_row_key" is empty in this case which means we will start from the
+// very beginning of the next tablet. (TODO: we need to return the clean snapshot time in this case
+// also).
+//
+// RowCounter message.
+// - These state variables are exchanged between users and CQL server when query result is paged.
+// - DocDB does not use these.
+message QLSelectRowCounterPB {
+  // The following counters represent LIMIT and OFFSET clause in SELECT and their status.
+  //   SELECT ... FROM table LIMIT xxx OFFSET yyy;
+  // - When a field value == -1, that field is not used.
+  // - When a field value >= 0, it is valid.
+  // - Example: If "select_limit == 0", users are querying zero rows.
+  optional int64 select_limit = 1 [default = -1];
+  optional int64 select_offset = 2 [default = -1];
+  optional int64 read_count = 3 [default = 0];
+  optional int64 skip_count = 4 [default = 0];
+}
+
+message QLPagingStatePB {
+  // Table UUID to verify the same table still exists when continuing in the next fetch.
+  optional bytes table_id = 1;
+
+  // Partition key to find the tablet server of the next row to read.
+  optional bytes next_partition_key = 2;
+
+  // The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  optional bytes next_row_key = 3;
+
+  // Running total number of rows read across fetches so far. Needed to ensure we read up to the
+  // number of rows in the SELECT's LIMIT clause across fetches.
+  optional uint64 total_num_rows_read = 4;
+
+  // For selects with IN condition on the hash columns there are multiple partitions that need to be
+  // queried, one for each combination of allowed values for the hash columns.
+  // This holds the index of the next partition and is used to resume the read from the right place.
+  optional uint64 next_partition_index = 5;
+
+  // The number of valid rows that we've skipped so far. This is needed to properly implement
+  // SELECT's OFFSET clause.
+  optional uint64 total_rows_skipped = 6;
+
+  // Request id of the first request, that started paging.
+  optional uint64 original_request_id = 7;
+
+  // Used read time.
+  optional ReadHybridTimePB read_time = 8;
+
+  // SELECT row counters.
+  // NOTE:
+  // - The select-row-counter is always applied to the entire SELECT statement.
+  // - The rest of the counters might be applied to just one batch. When indexed query returns
+  //   data in batches, and these counters would be for just one specific batch.
+  //
+  // Example on nested query.
+  //   SELECT <data> FROM <table> WHERE <keys> IN (SELECT <keys> FROM <index> WHERE hash IN <set>)
+  //   - The <row_counter> is used for query "SELECT <data>".
+  //   - The rest of the counters are for nested query "SELECT <keys>".
+  optional QLSelectRowCounterPB row_counter = 9;
+
+  // Schema version:
+  // - A query is prepared for a specific schema version.
+  // - A paging state of a query execution is for a specific schema version.
+  // - When schema version changes, we can either continue or raise error for the execution.
+  //   This is controlled by the g-flag 'cql_check_table_schema_in_paging_state'. The flag is
+  //   'true' by default. It means: raise error in the case to prevent data reinterpretation
+  //   on the driver side.
+  //
+  // Example:
+  // - Prepare queryX = "SELECT a, b FROM t"
+  // - Execute queryX - get page1.
+  // - Alter t column c; -> This alter shouldn't affect the query on columns a & b.
+  // - Execute queryX (continue) -> Should this be an error? Yes, raise error if
+  //                                '--cql_check_table_schema_in_paging_state=true'.
+  optional uint32 schema_version = 10 [default = 0];
+}
+
+//-------------------------------------- Column request --------------------------------------
+
+// These columns must be read by DocDB before a read or write request can be executed.
+message QLReferencedColumnsPB {
+  repeated int32 ids = 1;
+  repeated int32 static_ids = 2;
+}
+
+//-------------------------------------- Write request ---------------------------------------
+
+message QLWriteRequestPB {
+
+  // Statement types
+  enum QLStmtType {
+    QL_STMT_INSERT = 1;
+    QL_STMT_UPDATE = 2;
+    QL_STMT_DELETE = 3;
+  }
+
+  // Statement type
+  optional QLStmtType type = 1; // required
+
+  // Client info
+  optional QLClient client = 2; // required
+  optional uint64 request_id = 3; // client request id - for debug tracing purpose only
+
+  // Table schema version
+  optional uint32 schema_version = 4; // required
+
+  // Primary key of the row to insert/update/delete - all fields required. The hashed and
+  // range column values must be in the same order as the column order in the table schema.
+  //
+  // Note: the hash_code is the hash of the hashed_column_values. Technically, this can be
+  // recomputed by tserver also, but since the client already calculates this to look up the
+  // correct tablet server, it is passed in.
+  optional uint32 hash_code = 5;
+  repeated QLExpressionPB hashed_column_values = 6;
+  repeated QLExpressionPB range_column_values = 7;
+
+  // Column values to insert/update/delete - required
+  // Note: DELETE statement has no column value.
+  repeated QLColumnValuePB column_values = 8;
+
+  // Where clause condition -- currently this is only allowed for deletes.
+  optional QLExpressionPB where_expr = 14;
+
+  // If clause condition
+  optional QLExpressionPB if_expr = 9;
+
+  // Else error clause
+  optional bool else_error = 17 [default = false];
+
+  // Time to live in milliseconds.
+  optional uint64 ttl = 10;
+
+  // Listing of all columns that this write operation is referencing. TServers will need to read
+  // these columns when processing the write request.
+  optional QLReferencedColumnsPB column_refs = 11;
+
+  // Id used to track different queries.
+  optional int64 query_id = 12;
+
+  // User-provided timestamp in microseconds.
+  optional uint64 user_timestamp_usec = 13;
+
+  // Ids of indexes that need update.
+  repeated bytes update_index_ids = 15;
+
+  // Child transaction data for additional write requests necessary for index updates, etc.
+  optional ChildTransactionDataPB child_transaction_data = 16;
+
+  // Whether to return a status row reporting applied status and execution errors (if any).
+  optional bool returns_status = 18 [default = false];
+
+  // Does this request correspond to backfilling an index table?
+  optional bool is_backfill = 19 [default = false];
+  optional bool is_compatible_with_previous_version = 20 [ default = false ];
+
+  optional AshMetadataPB ash_metadata = 21;
+}
+
+//-------------------------------------- Read request ----------------------------------------
+
+// QLRSColDesc is the descriptor of a SELECT'ed column in a ResultSet, which can be any expression
+// and not just table columns.
+message QLRSColDescPB {
+  optional string name = 1;
+  optional QLTypePB ql_type = 2;
+}
+
+// Descriptor of a row in a resultset.
+message QLRSRowDescPB {
+  repeated QLRSColDescPB rscol_descs = 1;
+}
+
+// TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
+// execution plan in tablet server.
+message QLReadRequestPB {
+  // Client info
+  optional QLClient client = 1; // required
+  optional uint64 request_id = 2; // client request id - for debug tracing purpose only
+
+  // Table schema version
+  optional uint32 schema_version = 3; // required
+
+  // Hashed key of row(s) to read - all fields required. The hashed column values must be in the
+  // same order as the column order in the table schema. If only a subset of hash columns are
+  // specified in the WHERE clause of the SELECT statement, "hashed_column_values" will be empty
+  // and we will do a full-table query across tablets.
+  optional uint32 hash_code = 4;
+  repeated QLExpressionPB hashed_column_values = 5;
+
+  optional bool is_forward_scan = 18 [default = true];
+
+  // Where clause condition
+  optional QLExpressionPB where_expr = 6;
+
+  // If clause condition
+  optional QLExpressionPB if_expr = 21;
+
+  // TODO(neil) Currently, we need only the datatypes of the rsrow descriptor. However, when we
+  // optimize our execution pipeline to bypass QL layer, we might need to send the name as part
+  // of the prepared protobuf so that server know how to form result set without the help from QL.
+  //
+  // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
+  // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
+  // database in our coding.
+  optional QLRSRowDescPB rsrow_desc = 17; // required.
+  repeated QLExpressionPB selected_exprs = 7; // required.
+
+  // Reading distinct columns?
+  optional bool distinct = 12 [default = false];
+
+  // Current only used on SELECT DISTINCT scan. If the value is greater than 0, use the specified
+  // prefix length to scan the table.
+  optional uint64 prefix_length = 23 [default = 0];
+
+  // Limit number of rows to return. For QL SELECT, this limit is the smaller of the page size (max
+  // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
+  optional uint64 limit = 8;
+
+  // The offset from which we should start returning rows. This is primarily used to support the
+  // QL OFFSET clause.
+  optional uint64 offset = 9;
+
+  // Paging state retrieved from the last response.
+  optional QLPagingStatePB paging_state = 10;
+
+  // Return paging state when "limit" number of rows are returned? In case when "limit" is the
+  // page size, this is set for QLResponsePB to return the paging state for the next fetch.
+  optional bool return_paging_state = 11 [default = false];
+
+  // The remote endpoint sending this request. This is filled in by the server and should not be
+  // set.
+  optional HostPortPB remote_endpoint = 13;
+
+  // If this request comes from proxy, it should be filled with UUID of this proxy.
+  optional string proxy_uuid = 20;
+
+  // the upper limit for partition (hash) key scan ranges (inclusive)
+  optional uint32 max_hash_code = 14;
+
+  // Listing of all columns that this operation is referencing. TServers will need to read these
+  // columns when processing this read request.
+  optional QLReferencedColumnsPB column_refs = 15;
+
+  // Id used to track different queries.
+  optional int64 query_id = 16;
+
+  // Flag for reading aggregate values.
+  optional bool is_aggregate = 19 [default = false];
+  optional bool is_compatible_with_previous_version = 22 [ default = false ];
+
+  optional AshMetadataPB ash_metadata = 24;
+}
+
+//------------------------------ Response (for both read and write) -----------------------------
+
+message QLResponsePB {
+
+  // Response status
+  enum QLStatus {
+    YQL_STATUS_OK = 0;
+    YQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
+    YQL_STATUS_RUNTIME_ERROR = 2;
+    YQL_STATUS_USAGE_ERROR = 3;
+    YQL_STATUS_RESTART_REQUIRED_ERROR = 4;
+    YQL_STATUS_QUERY_ERROR = 5;
+  }
+
+  // Status and error message
+  optional QLStatus status = 1 [ default = YQL_STATUS_OK ]; // required
+  optional string error_message = 2;
+
+  // Schema of the rows returned if present (used by conditional DML (write) request only
+  // as of Jan 2017).
+  repeated ColumnSchemaPB column_schemas = 3;
+
+  // Sidecar of rows data returned
+  optional int32 rows_data_sidecar = 4;
+
+  // Paging state for continuing the read in the next QLReadRequestPB fetch.
+  optional QLPagingStatePB paging_state = 5;
+
+  // Result of child transaction.
+  optional ChildTransactionResultPB child_transaction_result = 6;
+
+  // For conditional DML: indicate if the DML is applied or not according to the conditions.
+  optional bool applied = 7;
+}

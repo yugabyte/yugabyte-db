@@ -1,0 +1,85 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Setup {{ ssh_config.ssh_type }} | Create {{ ssh_config.ssh_type }} directory
+  file:
+    path: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}"
+    state: directory
+    mode: 0700
+    owner: "{{ create_user.name  }}"
+    group: "{{ create_user.group  }}"
+
+- name: Check SELinux status
+  shell: getenforce
+  register: getenforce_result
+  ignore_errors: true
+
+- set_fact: selinux_status_result="{{ getenforce_result.stdout | default("Disabled") }}"
+
+- block:
+  - name: Setup {{ ssh_config.ssh_type }} | Check if private key file exists
+    stat:
+      path: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}/id_rsa"
+    register: stat_result
+
+  - name: Setup {{ ssh_config.ssh_type }} | Install private key
+    copy:
+      content: "{{ ssh_config.id_rsa }}"
+      dest: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}/id_rsa"
+      mode: 0600
+      owner: "{{ create_user.name  }}"
+      group: "{{ create_user.group  }}"
+    when: not stat_result.stat.exists
+
+  - name: Setup {{ ssh_config.ssh_type }} | Install public key
+    copy:
+      content: "{{ ssh_config.id_rsa_pub }}"
+      dest: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}/id_rsa.pub"
+      mode: 0600
+      owner: "{{ create_user.name  }}"
+      group: "{{ create_user.group  }}"
+    when: not stat_result.stat.exists
+
+- name: Setup {{ ssh_config.ssh_type }} | Make authorized directory
+  file:
+    path: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}/authorized_keys"
+    state: directory
+    mode: 0700
+    owner: "{{ create_user.name  }}"
+    group: "{{ create_user.group  }}"
+  when: ssh_config.ssh_type == "ssh2"
+
+- name: Setup {{ ssh_config.ssh_type }} | Install authorized keys
+  copy:
+    content: "{{ ssh_config.id_rsa_pub }}"
+    dest: "{{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}/authorized_keys/id_rsa.pub"
+    mode: 0600
+    owner: "{{ create_user.name  }}"
+    group: "{{ create_user.group  }}"
+  when: ssh_config.ssh_type == "ssh2"
+
+- name: Setup {{ ssh_config.ssh_type }} | Install authorized keys
+  authorized_key:
+    user: "{{ create_user.name  }}"
+    key: "{{ item }}"
+    state: present
+    manage_dir: true
+  with_items: "{{ ssh_config.authorized_keys }}"
+  loop_control:
+    label: "{{ create_user.name }}-keys"
+  when: ssh_config.ssh_type != "ssh2"
+
+- name: Setup {{ ssh_config.ssh_type }} | Append the authorized keys to the sudo user
+  authorized_key:
+    user: "{{ ssh_config.sudo_user }}"
+    key: "{{ ssh_config.authorized_keys }}"
+  when: ssh_config.ssh_type != "ssh2"
+
+- name: Set correct context for ".ssh" directory when SELinux enabled
+  shell: chcon -R -t ssh_home_t {{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}
+  when: selinux_status_result == "Enforcing"

@@ -1,0 +1,319 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.graph-panel-header {
+  .content-panel > .header {
+    margin-bottom: 0px !important;
+  }
+
+  .content-panel .container > .body {
+    margin-top: 30px;
+  }
+}
+.node-agent-panel,
+.graph-panel {
+  .filter-container {
+    float: left;
+    clear: both;
+
+    @media (min-width: 992px) {
+      clear: none;
+    }
+  }
+
+  .downright-arrow {
+    margin: 0 8px 0 3px;
+  }
+
+  #all-divider {
+    width: auto;
+    top: 50px;
+  }
+
+  #region-divider {
+    width: auto;
+    top: 0px;
+  }
+
+  .node-selector-node-name {
+    float: left;
+  }
+
+  .node-selector-node-ip {
+    float: right;
+  }
+
+  #zone-divider {
+    width: auto;
+    top: -50px;
+  }
+
+  .cluster-name {
+    margin: 10px 0 0 20px;
+  }
+
+  .live-queries-label,
+  .universe-name,
+  .provider-name,
+  .region-name,
+  .node-type-label,
+  .node-ip-address,
+  .node-name,
+  .cluster-az-name {
+    font-family: 'Inter';
+    font-style: normal;
+  }
+
+  .cluster-az-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .universe-name,
+  .provider-name,
+  .region-name,
+  .node-name {
+    float: left;
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 400;
+  }
+
+  .node-type-label,
+  .node-ip-address {
+    font-weight: 400;
+    font-size: 11.5px;
+    line-height: 14px;
+    float: right;
+    margin-top: 2px;
+    color: rgba(35, 35, 41, 0.4);
+  }
+
+  .node-type-label {
+    float: left !important;
+  }
+
+  .dropdown-menu .active a {
+    color: #2b59c3;
+  }
+
+  .live-queries {
+    margin: 10px 10px 0 10px;
+    display: inline-flex;
+  }
+
+  .live-queries-label {
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 16px;
+    text-decoration-line: underline;
+    color: #44518b;
+  }
+
+  .dr-metrics-link {
+    text-decoration-line: underline;
+    color: #44518b;
+  }
+
+  .node-filter-dropdown {
+    &__border-topk {
+      border-radius: 0px 8px 8px 0px;
+    }
+    &__border {
+      border-radius: 8px;
+    }
+  }
+
+  .region-filter-dropdown,
+  .provider-filter-dropdown,
+  .universe-filter-dropdown {
+    .dropdown-toggle-button {
+      border-radius: 8px 0px 0px 8px;
+    }
+  }
+
+  .node-type-filter-dropdown {
+    .dropdown-toggle-button {
+      border-radius: 0px 0px 0px 0px;
+    }
+  }
+
+  .provider-filter-dropdown,
+  .universe-filter-dropdown,
+  .node-filter-dropdown,
+  .node-type-filter-dropdown,
+  .region-filter-dropdown {
+    width: 240px;
+    background-color: #fff;
+
+    .dropdown-toggle-button {
+      width: 100%;
+      height: 42px;
+    }
+
+    .dropdown-menu {
+      max-height: 800px;
+      overflow-y: scroll;
+    }
+
+    .default-value {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
+      float: left;
+      list-style-type: none;
+      max-width: 90%;
+      text-overflow: ellipsis;
+      overflow: auto;
+      white-space: nowrap;
+    }
+
+    a {
+      color: #333;
+    }
+
+    .caret {
+      float: right;
+      vertical-align: middle;
+      margin-top: 9px;
+      color: #44518b;
+    }
+  }
+
+  h2 {
+    display: inline-block;
+    margin-top: 0;
+  }
+
+  .graph-settings-icon {
+    margin-right: 0;
+    padding-right: 0;
+    font-size: 18px;
+  }
+
+  .graph-filter-dropdown {
+    margin-right: 10px;
+  }
+
+  .graph-setting-dropdown {
+    button {
+      padding: 9px 12px 9px;
+    }
+  }
+
+  .dropdown-header {
+    padding: 5px 20px;
+  }
+
+  .graph-interval-container {
+    display: inline-block;
+    padding-right: 15px;
+    margin-right: 15px;
+    border-right: 1px solid colors.$YB_GRAY;
+
+    .dropdown {
+      margin-left: 10px;
+    }
+
+    .dropdown-menu {
+      min-width: 100%;
+    }
+
+    .dropdown-toggle-button {
+      padding: 6px 11px;
+      font-size: 14px;
+    }
+
+    .chip {
+      font-size: 12px;
+      line-height: 14px;
+      padding: 7px;
+      margin: 0 3px;
+      display: inline-block;
+      color: colors.$YB_TEXT_BLACK;
+      background-color: rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+    }
+  }
+
+  .timezone {
+    display: inline;
+    margin-top: 20px;
+  }
+
+  .date-picker {
+    display: inline;
+    margin-top: 8px;
+  }
+
+  .universe-picker-container,
+  .provider-picker-container,
+  .node-type-picker-container,
+  .node-picker-container {
+    float: left;
+    vertical-align: middle;
+  }
+
+  .node-type-picker-container,
+  .node-picker-container {
+    .dropdown-menu {
+      width: max-content;
+    }
+  }
+
+  // TODO: Remove once TopK metrics is tested and fully integrated
+  .universe-picker,
+  .node-picker-old {
+    float: left;
+    line-height: 42px;
+    vertical-align: middle;
+
+    .form-control {
+      display: inline-block !important;
+      width: auto !important;
+      margin: 0 15px 0 6px;
+      min-width: 120px;
+      height: 42px;
+      -webkit-appearance: none;
+    }
+  }
+
+  .graph-panel-container {
+    margin: 4px 0 10px 0;
+    padding-bottom: 10px;
+  }
+
+  .js-plotly-plot {
+    display: inline-block;
+  }
+
+  .panel-heading {
+    padding-left: 10px;
+    font-size: 16px;
+    font-weight: 500;
+
+    a {
+      cursor: pointer;
+    }
+  }
+}
+
+.refresh-btn,
+.custom-filter-btn {
+  padding: 10px 12px 9px;
+  margin-left: 10px;
+
+  .fa {
+    margin: 0px 10px;
+  }
+}
+
+.graph-panel {
+  .timezone {
+    display: inline;
+    margin-right: 10px;
+  }
+}

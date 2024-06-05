@@ -1,0 +1,120 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+// Protobuf used for introspection of RPC services (eg listing in-flight RPCs,
+// reflection, etc)
+syntax = "proto2";
+
+package yb.rpc;
+
+option java_package = "org.yb";
+
+import "yb/common/common.proto";
+import "yb/rpc/rpc_header.proto";
+
+message CQLStatementsDetailsPB {
+  optional string sql_id = 1;
+  optional string sql_string = 2;
+  optional string params = 3;
+}
+
+message RedisStatementsDetailsPB {
+  optional string redis_string = 1;
+}
+
+message CQLCallDetailsPB {
+  optional string type = 1;
+  repeated CQLStatementsDetailsPB call_details = 2;
+}
+
+message RedisCallDetailsPB {
+  repeated RedisStatementsDetailsPB call_details = 1;
+}
+
+enum RpcCallState {
+  READY = 0;
+  ON_OUTBOUND_QUEUE = 1;
+  SENT = 2;
+  TIMED_OUT = 3;
+  FINISHED_ERROR = 4;
+  FINISHED_SUCCESS = 5;
+}
+
+message RpcCallInProgressPB {
+  required RequestHeader header = 1;
+  optional string trace_buffer = 2;
+  optional uint64 elapsed_millis = 3;
+  optional uint64 sending_bytes = 6;
+  optional RpcCallState state = 7;
+  oneof call_details {
+    CQLCallDetailsPB cql_details = 4;
+    RedisCallDetailsPB redis_details = 5;
+  }
+  optional WaitStateInfoPB wait_state = 8;
+}
+
+message CQLConnectionDetailsPB {
+  optional string keyspace = 1;
+}
+
+message RpcConnectionDetailsPB {
+  oneof connection_details {
+    CQLConnectionDetailsPB cql_connection_details = 1;
+  }
+}
+
+message RpcConnectionPB {
+  enum StateType {
+    UNKNOWN = 999;
+    NEGOTIATING = 0;  // Connection is still being negotiated.
+    OPEN = 1;         // Connection is active.
+  };
+
+  required string remote_ip = 1;
+  required StateType state = 2;
+  optional uint64 processed_call_count = 4;
+  optional uint64 sending_bytes = 7;
+  optional RpcConnectionDetailsPB connection_details = 5;
+  repeated RpcCallInProgressPB calls_in_flight = 6;
+}
+
+message DumpRunningRpcsRequestPB {
+  optional bool include_traces = 1 [ default = false ];
+  optional bool dump_timed_out = 2;
+  optional bool get_wait_state = 3;
+  optional bool get_local_calls = 4;
+}
+
+message DumpRunningRpcsResponsePB {
+  repeated RpcConnectionPB inbound_connections = 1;
+  repeated RpcConnectionPB outbound_connections = 2;
+  optional RpcConnectionPB local_calls = 3;
+}

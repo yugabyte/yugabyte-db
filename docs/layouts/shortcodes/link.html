@@ -1,0 +1,14 @@
+{{/* <link "http://www.yugabyte.com">*/}}
+{{- $url :=.Get 0 -}}
+{{/* get the page path so determine depth and version */}}
+{{- $path := split $.Page.File.Dir "/" -}}
+{{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
+{{- $version := index $path 0 -}}
+{{- $url = replace $url ":version" $version -}}
+{{- $icon := "fa-file-doc" -}}
+{{/* external link */}}
+{{- if and (strings.HasPrefix $url "http") (not (strings.HasPrefix  $url "https://docs.yugabyte")) -}}
+{{- $icon = "fa-arrow-up-right-from-square" -}}
+{{- end -}}
+
+<a href="{{$url}}"><i class="fa-sharp fa-regular {{$icon}}" aria-hidden="true"></i></a>

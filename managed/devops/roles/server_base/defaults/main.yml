@@ -1,0 +1,24 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+air_gap: false
+update_yum_cache: false
+yum_retry_count: 25
+nproc_override_file: /etc/security/limits.d/yb-nproc.conf
+
+linux_packages:
+  - rsync
+  - openssl
+
+aarch64_packages:
+  - libatomic
+  - glibc-langpack-en
+
+debian_aarch64_packages:
+  - libatomic1
+  - libncurses6

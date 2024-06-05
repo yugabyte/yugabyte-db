@@ -1,0 +1,361 @@
+<!--
+doc/src/sgml/ref/declare.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-declare">
+ <indexterm zone="sql-declare">
+  <primary>DECLARE</primary>
+ </indexterm>
+
+ <indexterm zone="sql-declare">
+  <primary>cursor</primary>
+  <secondary>DECLARE</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DECLARE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DECLARE</refname>
+  <refpurpose>define a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ ASENSITIVE | INSENSITIVE ] [ [ NO ] SCROLL ]
+    CURSOR [ { WITH | WITHOUT } HOLD ] FOR <replaceable class="parameter">query</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DECLARE</command> allows a user to create cursors, which
+   can be used to retrieve
+   a small number of rows at a time out of a larger query.
+   After the cursor is created, rows are fetched from it using
+   <link linkend="sql-fetch"><command>FETCH</command></link>.
+  </para>
+
+  <note>
+   <para>
+    This page describes usage of cursors at the SQL command level.
+    If you are trying to use cursors inside a <application>PL/pgSQL</application>
+    function, the rules are different &mdash;
+    see <xref linkend="plpgsql-cursors"/>.
+   </para>
+  </note>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the cursor to be created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>BINARY</literal></term>
+    <listitem>
+     <para>
+      Causes the cursor to return data in binary rather than in text format.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ASENSITIVE</literal></term>
+    <term><literal>INSENSITIVE</literal></term>
+    <listitem>
+     <para>
+      Cursor sensitivity determines whether changes to the data underlying the
+      cursor, done in the same transaction, after the cursor has been
+      declared, are visible in the cursor.  <literal>INSENSITIVE</literal>
+      means they are not visible, <literal>ASENSITIVE</literal> means the
+      behavior is implementation-dependent.  A third behavior,
+      <literal>SENSITIVE</literal>, meaning that such changes are visible in
+      the cursor, is not available in <productname>PostgreSQL</productname>.
+      In <productname>PostgreSQL</productname>, all cursors are insensitive;
+      so these key words have no effect and are only accepted for
+      compatibility with the SQL standard.
+     </para>
+
+     <para>
+      Specifying <literal>INSENSITIVE</literal> together with <literal>FOR
+      UPDATE</literal> or <literal>FOR SHARE</literal> is an error.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SCROLL</literal></term>
+    <term><literal>NO SCROLL</literal></term>
+    <listitem>
+     <para><literal>SCROLL</literal> specifies that the cursor can be used
+      to retrieve rows in a nonsequential fashion (e.g.,
+      backward). Depending upon the complexity of the query's
+      execution plan, specifying <literal>SCROLL</literal> might impose
+      a performance penalty on the query's execution time.
+      <literal>NO SCROLL</literal> specifies that the cursor cannot be
+      used to retrieve rows in a nonsequential fashion.  The default is to
+      allow scrolling in some cases; this is not the same as specifying
+      <literal>SCROLL</literal>. See <xref linkend="sql-declare-notes"/>
+      below for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITH HOLD</literal></term>
+    <term><literal>WITHOUT HOLD</literal></term>
+    <listitem>
+     <para><literal>WITH HOLD</literal> specifies that the cursor can
+      continue to be used after the transaction that created it
+      successfully commits.  <literal>WITHOUT HOLD</literal> specifies
+      that the cursor cannot be used outside of the transaction that
+      created it. If neither <literal>WITHOUT HOLD</literal> nor
+      <literal>WITH HOLD</literal> is specified, <literal>WITHOUT
+      HOLD</literal> is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">query</replaceable></term>
+    <listitem>
+     <para>
+      A <link linkend="sql-select"><command>SELECT</command></link> or
+      <link linkend="sql-values"><command>VALUES</command></link> command
+      which will provide the rows to be returned by the cursor.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   The key words <literal>ASENSITIVE</literal>, <literal>BINARY</literal>,
+   <literal>INSENSITIVE</literal>, and <literal>SCROLL</literal> can
+   appear in any order.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-declare-notes" xreflabel="Notes">
+  <title>Notes</title>
+
+  <para>
+   Normal cursors return data in text format, the same as a
+   <command>SELECT</command> would produce.  The <literal>BINARY</literal> option
+   specifies that the cursor should return data in binary format.
+   This reduces conversion effort for both the server and client,
+   at the cost of more programmer effort to deal with platform-dependent
+   binary data formats.
+   As an example, if a query returns a value of one from an integer column,
+   you would get a string of <literal>1</literal> with a default cursor,
+   whereas with a binary cursor you would get
+   a 4-byte field containing the internal representation of the value
+   (in big-endian byte order).
+  </para>
+
+  <para>
+   Binary cursors should be used carefully.  Many applications,
+   including <application>psql</application>, are not prepared to
+   handle binary cursors and expect data to come back in the text
+   format.
+  </para>
+
+  <note>
+   <para>
+    When the client application uses the <quote>extended query</quote> protocol
+    to issue a <command>FETCH</command> command, the Bind protocol message
+    specifies whether data is to be retrieved in text or binary format.
+    This choice overrides the way that the cursor is defined.  The concept
+    of a binary cursor as such is thus obsolete when using extended query
+    protocol &mdash; any cursor can be treated as either text or binary.
+   </para>
+  </note>
+
+   <para>
+    Unless <literal>WITH HOLD</literal> is specified, the cursor
+    created by this command can only be used within the current
+    transaction.  Thus, <command>DECLARE</command> without <literal>WITH
+    HOLD</literal> is useless outside a transaction block: the cursor would
+    survive only to the completion of the statement.  Therefore
+    <productname>PostgreSQL</productname> reports an error if such a
+    command is used outside a transaction block.
+    Use
+    <link linkend="sql-begin"><command>BEGIN</command></link> and
+    <link linkend="sql-commit"><command>COMMIT</command></link>
+    (or <link linkend="sql-rollback"><command>ROLLBACK</command></link>)
+    to define a transaction block.
+   </para>
+
+   <para>
+    If <literal>WITH HOLD</literal> is specified and the transaction
+    that created the cursor successfully commits, the cursor can
+    continue to be accessed by subsequent transactions in the same
+    session.  (But if the creating transaction is aborted, the cursor
+    is removed.)  A cursor created with <literal>WITH HOLD</literal>
+    is closed when an explicit <command>CLOSE</command> command is
+    issued on it, or the session ends.  In the current implementation,
+    the rows represented by a held cursor are copied into a temporary
+    file or memory area so that they remain available for subsequent
+    transactions.
+   </para>
+
+   <para>
+    <literal>WITH HOLD</literal> may not be specified when the query
+    includes <literal>FOR UPDATE</literal> or <literal>FOR SHARE</literal>.
+   </para>
+
+   <para>
+    The <literal>SCROLL</literal> option should be specified when defining a
+    cursor that will be used to fetch backwards.  This is required by
+    the SQL standard.  However, for compatibility with earlier
+    versions, <productname>PostgreSQL</productname> will allow
+    backward fetches without <literal>SCROLL</literal>, if the cursor's query
+    plan is simple enough that no extra overhead is needed to support
+    it. However, application developers are advised not to rely on
+    using backward fetches from a cursor that has not been created
+    with <literal>SCROLL</literal>.  If <literal>NO SCROLL</literal> is
+    specified, then backward fetches are disallowed in any case.
+   </para>
+
+   <para>
+    Backward fetches are also disallowed when the query
+    includes <literal>FOR UPDATE</literal> or <literal>FOR SHARE</literal>; therefore
+    <literal>SCROLL</literal> may not be specified in this case.
+   </para>
+
+   <caution>
+    <para>
+     Scrollable cursors may give unexpected
+     results if they invoke any volatile functions (see <xref
+     linkend="xfunc-volatility"/>).  When a previously fetched row is
+     re-fetched, the functions might be re-executed, perhaps leading to
+     results different from the first time.  It's best to
+     specify <literal>NO SCROLL</literal> for a query involving volatile
+     functions.  If that is not practical, one workaround
+     is to declare the cursor <literal>SCROLL WITH HOLD</literal> and commit the
+     transaction before reading any rows from it.  This will force the
+     entire output of the cursor to be materialized in temporary storage,
+     so that volatile functions are executed exactly once for each row.
+    </para>
+   </caution>
+
+   <para>
+    If the cursor's query includes <literal>FOR UPDATE</literal> or <literal>FOR
+    SHARE</literal>, then returned rows are locked at the time they are first
+    fetched, in the same way as for a regular
+    <link linkend="sql-select"><command>SELECT</command></link> command with
+    these options.
+    In addition, the returned rows will be the most up-to-date versions.
+   </para>
+
+   <caution>
+    <para>
+     It is generally recommended to use <literal>FOR UPDATE</literal> if the cursor
+     is intended to be used with <command>UPDATE ... WHERE CURRENT OF</command> or
+     <command>DELETE ... WHERE CURRENT OF</command>.  Using <literal>FOR UPDATE</literal>
+     prevents other sessions from changing the rows between the time they are
+     fetched and the time they are updated.  Without <literal>FOR UPDATE</literal>,
+     a subsequent <literal>WHERE CURRENT OF</literal> command will have no effect if
+     the row was changed since the cursor was created.
+    </para>
+
+    <para>
+     Another reason to use <literal>FOR UPDATE</literal> is that without it, a
+     subsequent <literal>WHERE CURRENT OF</literal> might fail if the cursor query
+     does not meet the SQL standard's rules for being <quote>simply
+     updatable</quote> (in particular, the cursor must reference just one table
+     and not use grouping or <literal>ORDER BY</literal>).  Cursors
+     that are not simply updatable might work, or might not, depending on plan
+     choice details; so in the worst case, an application might work in testing
+     and then fail in production.  If <literal>FOR UPDATE</literal> is
+     specified, the cursor is guaranteed to be updatable.
+    </para>
+
+    <para>
+     The main reason not to use <literal>FOR UPDATE</literal> with <literal>WHERE
+     CURRENT OF</literal> is if you need the cursor to be scrollable, or to be
+     isolated from concurrent updates (that is, continue to show the old
+     data).  If this is a requirement, pay close heed to the caveats shown
+     above.
+    </para>
+   </caution>
+
+   <para>
+    The SQL standard only makes provisions for cursors in embedded
+    <acronym>SQL</acronym>.  The <productname>PostgreSQL</productname>
+    server does not implement an <command>OPEN</command> statement for
+    cursors; a cursor is considered to be open when it is declared.
+    However, <application>ECPG</application>, the embedded SQL
+    preprocessor for <productname>PostgreSQL</productname>, supports
+    the standard SQL cursor conventions, including those involving
+    <command>DECLARE</command> and <command>OPEN</command> statements.
+   </para>
+
+   <para>
+    You can see all available cursors by querying the <link
+    linkend="view-pg-cursors"><structname>pg_cursors</structname></link>
+    system view.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To declare a cursor:
+<programlisting>
+DECLARE liahona CURSOR FOR SELECT * FROM films;
+</programlisting>
+   See <xref linkend="sql-fetch"/> for more
+   examples of cursor usage.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL standard allows cursors only in embedded
+   <acronym>SQL</acronym> and in modules. <productname>PostgreSQL</productname>
+   permits cursors to be used interactively.
+  </para>
+
+  <para>
+   According to the SQL standard, changes made to insensitive cursors by
+   <literal>UPDATE ... WHERE CURRENT OF</literal> and <literal>DELETE
+   ... WHERE CURRENT OF</literal> statements are visible in that same
+   cursor.  <productname>PostgreSQL</productname> treats these statements like
+   all other data changing statements in that they are not visible in
+   insensitive cursors.
+  </para>
+
+  <para>
+   Binary cursors are a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-close"/></member>
+   <member><xref linkend="sql-fetch"/></member>
+   <member><xref linkend="sql-move"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

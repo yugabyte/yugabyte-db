@@ -1,0 +1,333 @@
+.single-col-image {
+  display: flex;
+  flex-flow: row wrap;
+  margin: 64px -16px;
+
+  > div {
+    flex: 0 0 calc(50% - 32px);
+    margin: 0 16px;
+
+    &.card-img {
+      height: 215px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #f4f4f4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .card-title {
+      color: #0b1117;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 28px;
+      margin: 0 0 24px;
+    }
+
+    .card-desc {
+      font-size: 16px;
+      line-height: 24px;
+      color: #4e5f6d;
+    }
+
+    .card-link {
+      margin: 16px 0 0;
+    }
+
+    .card-link + .card-link {
+      margin-left: 0;
+    }
+  }
+}
+
+.card-img {
+  img {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+}
+
+.two-col-side-image {
+  display: flex;
+  flex-flow: row wrap;
+  padding: 0;
+  margin: 64px -16px;
+  gap: 32px 0;
+
+  > div {
+    flex: 0 0 calc(50% - 32px);
+    margin: 0 16px 0;
+    border: 1px solid #d7dee4;
+    background: #fff;
+    overflow: hidden;
+    border-radius: 8px;
+    display: inline-flex;
+    flex-flow: column;
+    position: relative;
+    padding: 24px;
+    transition: all 300ms ease;
+    width: auto;
+
+    &:hover {
+      background: #f2f6ff;
+      border: 1px solid #cddbff;
+      box-shadow: 0 0 0 1px #cddbff;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 24px;
+      margin: 0 0 16px;
+      position: relative;
+      z-index: 1;
+      color: #0b1117;
+    }
+
+    .card-desc {
+      color: #25323d;
+      font-size: 14px;
+      line-height: 22px;
+      margin-bottom: 16px;
+      width: 364px;
+      max-width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-img {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      max-width: 217px;
+      margin: 0;
+      border: none;
+      z-index: 0;
+    }
+
+    .card-link {
+      a {
+        &::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 1;
+        }
+      }
+    }
+
+    .card-link + .card-link {
+      margin-left: 0;
+    }
+  }
+}
+
+.three-col-top-image,
+.three-col-left-icon {
+  display: flex;
+  flex-flow: row wrap;
+  padding: 0 !important;
+  margin: 0 -8px !important;
+  gap: 16px 0;
+
+  .card-title {
+    color: #0b1117;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 24px;
+    margin: 0 0 24px;
+  }
+
+  .card-desc {
+    color: #25323d;
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  &.three-col-left-icon {
+    > div {
+      padding: 24px 17px 24px 24px;
+
+      &.card-multi-links {
+        padding: 24px;
+      }
+
+      .card-img {
+        width: 32px;
+        height: 32px;
+        margin: 0 0 16px;
+        background: transparent;
+        aspect-ratio: 1;
+        border: none;
+      }
+    }
+  }
+
+  > div {
+    flex: 0 0 calc(33.3% - 16px);
+    margin: 0 8px;
+    border: 1px solid #d7dee4;
+    background: #fff;
+    overflow: hidden;
+    border-radius: 8px;
+    display: inline-flex;
+    flex-flow: column;
+    position: relative;
+    padding: 0 17px 24px 24px;
+    transition: all 300ms ease;
+    width: auto;
+
+    &:not(.card-multi-links) {
+      &:hover {
+        background: #f2f6ff;
+        border: 1px solid #cddbff;
+        box-shadow: 0 0 0 1px #cddbff;
+      }
+
+      .card-link {
+        width: 0;
+        height: 0;
+
+        a {
+          opacity: 0;
+
+          &::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+          }
+        }
+      }
+    }
+
+    .card-img {
+      width: calc(100% + 48px);
+      max-width: calc(100% + 48px);
+      margin: 0 0 16px -24px;
+      overflow: hidden;
+      background: #fff;
+      aspect-ratio: 2.2;
+      border-bottom: 1px solid #d7dee4;
+      max-height: 162px;
+    }
+
+    &.card-multi-links {
+      .card-desc {
+        margin-bottom: 16px;
+      }
+
+      .tritiery-btn:not(.btn-priority) {
+        display: block;
+        padding: 0;
+        border: 0;
+        font-weight: 400;
+      }
+    }
+
+    .card-link + .card-link {
+      margin-left: 0;
+    }
+  }
+}
+
+@media (max-width: 1280px) {
+  .two-col-side-image > div {
+    flex: none;
+    flex: 1 1 calc(50% - 32px);
+    padding-right: 75px;
+  }
+
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 1 1 calc(33.3% - 16px);
+  }
+}
+
+@media (max-width: 991px) {
+  .single-col-image {
+    gap: 24px;
+
+    > div,
+    > div.card-img {
+      flex: 1 1 100%;
+    }
+  }
+
+  .three-col-top-image > div .card-img {
+    text-align: center;
+    max-height: 165px;
+  }
+
+  .two-col-side-image {
+    flex-flow: column;
+    margin: 64px -15px;
+  }
+
+  .two-col-side-image > div {
+    padding-right: 50px;
+  }
+
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 0 0 calc(50% - 16px);
+  }
+}
+
+@media (max-width: 600px) {
+  .two-col-side-image > div {
+    padding-right: 70px;
+  }
+
+  .three-col-top-image,
+  .three-col-left-icon {
+    flex-flow: column;
+
+    > div {
+      max-width: 100%;
+    }
+  }
+}
+
+body:not(.is-safari) .content-parent {
+  container-type: inline-size;
+  container-name: content-area;
+}
+
+@container content-area (max-width: 1000px) {
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 0 0 calc(33.3% - 16px);
+  }
+}
+
+@container content-area (max-width: 700px) {
+  .two-col-side-image > div {
+    flex: 0 0 calc(100% - 32px);
+  }
+
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 0 0 calc(50% - 16px);
+  }
+
+  .three-col-top-image > div .card-img,
+  .three-col-left-icon > div .card-img {
+    text-align: center;
+  }
+}
+
+@container content-area (max-width: 500px) {
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 0 0 calc(100% - 16px);
+  }
+}

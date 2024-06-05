@@ -1,0 +1,16 @@
+{{ if .Site.Params.algolia_docsearch -}}
+<div class="search-area">
+  <i class="search-icon"></i>
+  <input type="search" id="search-query" name="query"  class="td-search-input" placeholder="Search documentation" aria-label="Search documentation"
+  autocomplete="off">
+  <div class="reset-input"></div>
+  {{ if ne .Type "searchpage" }}
+  <div class="search-result" style="display:none">
+    <div class="algolia-data" id="docs">
+      <ul id="doc-hit" class="content-panel"></ul>
+      <div id="pagination-docs" class="pager"></div>
+    </div>
+  </div>
+  {{ end }}
+</div>
+{{ end -}}

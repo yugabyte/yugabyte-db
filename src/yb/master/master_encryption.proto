@@ -1,0 +1,90 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/encryption/encryption.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+
+message ChangeEncryptionInfoRequestPB {
+  optional bool encryption_enabled = 1;
+  optional string key_path = 2;
+  optional string version_id = 3;
+  optional bool in_memory = 4;
+}
+
+message ChangeEncryptionInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsEncryptionEnabledRequestPB {
+}
+
+message IsEncryptionEnabledResponsePB {
+  optional bool encryption_enabled = 1;
+  optional string key_id = 2;
+  optional MasterErrorPB error = 3;
+}
+
+message AddUniverseKeysRequestPB {
+  optional encryption.UniverseKeysPB universe_keys = 1;
+}
+
+message AddUniverseKeysResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseKeyRegistryRequestPB {
+}
+
+message GetUniverseKeyRegistryResponsePB {
+  optional MasterErrorPB error = 1;
+  optional encryption.UniverseKeysPB universe_keys = 2;
+}
+
+message GetFullUniverseKeyRegistryRequestPB {
+}
+
+message GetFullUniverseKeyRegistryResponsePB {
+  optional MasterErrorPB error = 1;
+  optional encryption.UniverseKeyRegistryPB universe_key_registry = 2;
+}
+
+message HasUniverseKeyInMemoryRequestPB {
+  optional string version_id = 1;
+}
+
+message HasUniverseKeyInMemoryResponsePB {
+  optional bool has_key = 1;
+  optional MasterErrorPB error = 2;
+}
+
+service MasterEncryption {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
+
+  rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
+
+  rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
+  rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
+      returns (GetUniverseKeyRegistryResponsePB);
+  rpc GetFullUniverseKeyRegistry(GetFullUniverseKeyRegistryRequestPB)
+      returns (GetFullUniverseKeyRegistryResponsePB);
+  rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
+      returns (HasUniverseKeyInMemoryResponsePB);
+}

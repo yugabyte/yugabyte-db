@@ -1,0 +1,6 @@
+# third-party-extensions/hypopg/yb_schedule
+
+test: yb_pg_hypopg
+test: yb_pg_hypo_include
+test: yb_pg_hypo_index_part
+test: yb_pg_hypo_hide_index

@@ -1,0 +1,6 @@
+# src/test/regress/yb_partition_prune_schedule
+#
+##########################################################################
+test: yb_pg_partition_prune
+test: yb_partition_prune
+test: yb_partition_prune_plancache

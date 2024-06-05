@@ -1,0 +1,14 @@
+Documentation concerning how to run these regression tests and interpret
+the results can be found in the PostgreSQL manual, in the chapter
+"Regression Tests".
+
+YugabyteDB uses PgRegressRunner found in java/yb-pgsql/src/test/java/org/yb/pgsql
+to run smaller schedules prefixed with yb_.  These schedules run tests prefixed
+with yb_.  The tests named yb_pg_foo are ported from upstream postgres test
+foo.  The tests named yb_foo are new tests created for YugabyteDB.  See also
+the bottom of docs/content/latest/contribute/core-database/run-unit-tests.md
+for this naming convention.
+
+Ported tests (those named yb_pg_foo) should be ordered the same way as
+parallel_schedule.  Otherwise, tests may not have the right dependencies or
+expected state.

@@ -1,0 +1,16 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.react-bs-table-search-form {
+  .form-control {
+    border-radius: 7px;
+  }
+}
+
+.task-abort-view {
+  cursor: pointer;
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;
+}

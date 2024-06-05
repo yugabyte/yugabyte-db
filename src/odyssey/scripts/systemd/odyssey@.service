@@ -1,0 +1,15 @@
+[Unit]
+Description=Advanced multi-threaded PostgreSQL connection pooler and request router
+After=network.target
+
+[Service]
+User=odyssey
+Group=odyssey
+Type=simple
+ExecStart=/usr/bin/odyssey /etc/odyssey/%i.conf
+LimitNOFILE=100000
+LimitNPROC=100000
+
+[Install]
+WantedBy=multi-user.target
+

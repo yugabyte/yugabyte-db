@@ -1,0 +1,3 @@
+{{ yugabyte_alert_policy_name }} alert with severity level '{{ yugabyte_alert_severity }}' for {{ yugabyte_alert_source_type }} '{{ yugabyte_alert_source_name }}' is {{ yugabyte_alert_status }}.
+
+{{ yugabyte_alert_message }}

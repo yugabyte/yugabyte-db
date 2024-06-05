@@ -1,0 +1,39 @@
+@use '../../../_style/colors.scss';
+
+.bootstrapTableContainer {
+  height: fit-content;
+
+  .bootstrapTable {
+    overflow-y: visible;
+
+    table > thead > tr > th {
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    table > tbody > tr > td {
+      padding: 4px 8px 4px 0 !important;
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    .providerActionsColumn {
+      overflow: visible;
+
+      // The following is used to override the overflow: hidden styling
+      // on '.react-bs-table table td *'
+      * {
+        overflow: visible;
+      }
+
+      :global(.btn) {
+        border: none;
+        padding: 6px 12px 6px 12px;
+        background-color: transparent;
+      }
+      :global(.btn):hover {
+        background-color: colors.$YB_GRAY_HOVER;
+      }
+    }
+  }
+}

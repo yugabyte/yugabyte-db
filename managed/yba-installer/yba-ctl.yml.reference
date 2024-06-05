@@ -1,0 +1,212 @@
+# Global config parameters
+# ========================
+
+# Root directory for installation. Make sure to choose a directory
+# with sufficient disk space (min 250 GB).
+# This setting needs to be changed if executing in non-root mode.
+# A few config files might still be placed outside this root directory.
+# Cannot be modified after installation.
+installRoot: "/opt/yugabyte"
+
+# Hostname/IP address that Platform and prometheus will bind to
+# OK to leave empty - the installer will guess the primary IP of the host
+host: ""
+
+# HTTPS server cert and key in PEM format.
+# The certificate SAN/CN must match the host setting above
+# OK to leave empty - a self-signed cert will be generated
+server_cert_path: ""
+server_key_path: ""
+
+# Linux user which will run all services that make up YugabyteDB Anywhere.
+# With default settings, the user "yugabyte" will be created and used.
+# If customized, the specified user is assumed to exist and will be used.
+# Cannot be modified after installation.
+service_username: "yugabyte"
+
+
+# Config parameters for YB-Platform:
+# =======================================
+
+platform:
+   # port: The container exposed port that is used by
+   # the running Platform instance for HTTPS. Defaults to 443, override
+   # if you want to use a different port.
+   port: 443
+   hsts_enabled: true
+   # In case client wants to enable the additional headers to the YBA's http response
+   # Previously, it was possible via nginx, but given that we no longer have it, we can
+   # expose the same as application config/runtime config.
+   # Example: ["X-Content-Type-Options: nosniff", "Keep-Alive: timeout=5, max=1000"]
+   custom_headers: []
+
+   # Specifies the list of algorithms that will be disabled for TLS handshake
+   tlsDisabledAlgorithms: ["DHE keySize < 2048"]
+
+   # OAuth related settings
+   # useOauth: The boolean that determine if OIDC SSO needs to be
+   # enabled on the Platform. Default to false, but override
+   # it to true if you intend on using OIDC SSO for your platform
+   # installation (must be a boolean).
+
+   # ybSecurityType: The Security Type corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty).
+
+   # ybOidcClientId: The Client Id corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty).
+
+   # ybOidcSecret: The OIDC Secret Key corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty).
+
+   # ybOidcDiscoveryUri: The OIDC Discovery URI corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty, must be a valid url).
+
+   # ywWrl: The Platform IP corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty, must be a valid url).
+
+   # ybOidcScope: The OIDC Scope corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty).
+
+   # ybOidcEmailAtr: The OIDC Email Attr corresponding to the
+   # OIDC SSO for your platform installation. Only set this
+   # field if you intend on using OIDC SSO for your platform
+   # installation (otherwise leave it empty, must be a valid
+   # email address).
+
+   useOauth: false
+   ybSecurityType: ""
+   ybOidcClientId: ""
+   ybOidcSecret: ""
+   ybOidcDiscoveryUri: ""
+   ywUrl: ""
+   ybOidcScope: ""
+   ybOidcEmailAttr: ""
+
+   # Password used for the Java keystore that stores the
+   # HTTPS certificate and key files
+   # OK to leave empty
+   keyStorePassword: ""
+
+   # Play framework crypto secret.
+   # OK to leave empty
+   appSecret: ""
+
+   # restartSeconds: time in seconds for systemd to wait before restarting
+   # the platform
+   restartSeconds: 10
+
+   # Http(s) Proxy settings
+   #
+   # http_proxy:            Specify the setting for HTTP_PROXY
+   # java_http_proxy_port:  Specify -Dhttp.proxyPort
+   # java_http_proxy_host:  Specify -Dhttp.proxyHost
+   # https_proxy:           Specify the setting for HTTPS_PROXY
+   # java_https_proxy_port: Specify -Dhttps.proxyPort
+   # java_https_proxy_host: Specify -Dhttps.proxyHost
+   # no_proxy:              Specify the setting for NO_PROXY
+   # java_non_proxy:        Specify  -Dhttps.nonProxyHosts.
+   proxy:
+      enable: false
+      http_proxy: ""
+      java_http_proxy_port: 80
+      java_http_proxy_host: ""
+      https_proxy: ""
+      java_https_proxy_port: 443
+      java_https_proxy_host: ""
+      no_proxy: ""
+      java_non_proxy: ""
+
+   support_origin_url: "/"
+
+   # This section is for and additional data entries that you can
+   # add to platform.conf if you desire. Please enter the text
+   # exactly in the correct format starting from the lines below the
+   # piped delimiter, as it will be appended to the end of yb-platform.conf
+   # in the exact format typed.
+
+   # Example:
+   # yb {
+   #   taskGC.task_retention_duration=60
+   # }
+   additional: |
+
+
+
+# Config parameters for Postgres
+# ==============================
+postgres:
+
+   # YBA-installer will install a local postgres using the settings below.
+   # Only one of useExisting or install must be selected.
+   # Cannot be modified after installation
+   install:
+      enabled: true # yba-ctl will set up its own postgres
+      username: postgres # user to connect to yugaware db
+      password: ""
+      port: 5432
+      restartSeconds: 10 # restart interval on exit
+      locale: en_US.UTF8 # Locale for initdb
+      ldap_enabled: false
+      ldap_server: ""
+      ldap_prefix: ""
+      ldap_suffix: ""
+      ldap_port: 389
+      secure_ldap: false
+
+
+   # Specify the connection parameters to an existing postgres db.
+   # A database named 'yugaware' must already be created on this host.
+   useExisting:
+      enabled: false # enable to use an existing postgres install
+      username: ""
+      password: ""
+      host: ""
+      port: 5432
+      pg_dump_path: ""
+      pg_restore_path: ""
+
+
+# Config parameters for Prometheus
+# Format for specifying timing information can be found at
+# https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
+# h/m/d syntax not supported by golang time parse function https://pkg.go.dev/time#ParseDuration.
+# If you want to use that syntax skip the prometheus preflight check.
+# ================================
+
+prometheus:
+    port: 9090
+    restartSeconds: 10        # time (in seconds) to sleep before restarting prometheus service
+    scrapeInterval: 10s       # time between prometheus data scrapes
+    scrapeTimeout: 10s        # time before a scrape request times out
+    maxConcurrency: 20        # max number of queries to execute concurrently
+    maxSamples: 5000000       # max number of samples prometheus can load to process single query
+    timeout: 30s              # time before a query times out
+    retentionTime: 15d        # time to retain metrics
+    enableHttps: false        # enable HTTPS for prometheus web UI
+    enableAuth: false         # enable authentication for prometheus
+    authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
+    authPassword: ""          # password to authenticate to prometheus (if enableAuth)
+    oomScoreAdjust: 500       # OOMScoreAdjust value for the prometheus systemd service
+    allowedTLSCiphers: [
+      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+      "TLS_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_RSA_WITH_AES_256_CBC_SHA",
+      "TLS_RSA_WITH_AES_256_GCM_SHA384"
+   ] # Supported Ciphers for TLS handshake

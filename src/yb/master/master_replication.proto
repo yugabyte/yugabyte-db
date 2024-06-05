@@ -1,0 +1,735 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/cdc/cdc_consumer.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/master/catalog_entity_info.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+import "yb/tablet/operations.proto";
+import "yb/common/common.proto";
+
+message CDCStreamInfoPB {
+  optional bytes stream_id = 1;
+  repeated bytes table_id = 2;
+  repeated CDCStreamOptionsPB options = 3;
+  optional bytes namespace_id = 4;
+  optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional uint64 cdcsdk_consistent_snapshot_time = 7;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 8;
+  optional uint64 stream_creation_time = 9;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 10;
+}
+
+message ValidateReplicationInfoRequestPB {
+  optional ReplicationInfoPB replication_info = 1;
+}
+
+message ValidateReplicationInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// ============================================================================
+//  CDC Stream
+// ============================================================================
+
+message CreateCDCStreamRequestPB {
+  optional string table_id = 1;
+  repeated CDCStreamOptionsPB options = 3;
+  optional SysCDCStreamEntryPB.State initial_state = 4;
+  optional string db_stream_id = 5;
+  optional bool transactional = 6; // [default = false]
+  optional string namespace_id = 7;
+  optional string cdcsdk_ysql_replication_slot_name = 8;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
+}
+
+message CreateCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional bytes stream_id = 2;
+  optional uint64 cdcsdk_consistent_snapshot_time = 3;
+}
+
+message DeleteCDCStreamRequestPB {
+  repeated bytes stream_id = 1;
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
+  repeated string cdcsdk_ysql_replication_slot_name = 4;
+}
+
+message DeleteCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  repeated bytes not_found_stream_ids = 2;
+  repeated string not_found_cdcsdk_ysql_replication_slot_names = 3;
+}
+
+enum IdTypePB {
+  TABLE_ID = 1;
+  NAMESPACE_ID = 2;
+}
+
+message ListCDCStreamsRequestPB {
+  optional string table_id = 1;
+  optional string namespace_id = 2;
+  optional IdTypePB id_type = 3 [default = TABLE_ID];
+}
+
+message ListCDCStreamsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  repeated CDCStreamInfoPB streams = 2;
+}
+
+message IsObjectPartOfXReplRequestPB {
+  required string table_id = 1;
+}
+
+message IsObjectPartOfXReplResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  required bool is_object_part_of_xrepl = 2;
+}
+
+message GetCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
+}
+
+message GetCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional CDCStreamInfoPB stream = 2;
+}
+
+message GetCDCDBStreamInfoRequestPB {
+  optional bytes db_stream_id = 1;
+}
+
+message GetCDCDBStreamInfoResponsePB {
+  message TableInfo {
+    optional bytes stream_id = 1;
+    optional bytes table_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated TableInfo table_info = 2;
+  optional bytes namespace_id = 3;
+}
+
+message UpdateCDCStreamRequestPB {
+  message StreamUpdateInfo {
+    optional bytes stream_id = 1;
+    optional SysCDCStreamEntryPB entry = 2;
+  }
+
+  optional bytes stream_id = 1;
+  optional SysCDCStreamEntryPB entry = 2;
+  // For batch update.
+  repeated StreamUpdateInfo streams = 3;
+}
+
+message UpdateCDCStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message BootstrapProducerRequestPB {
+  required YQLDatabase db_type = 1;
+  required string namespace_name = 2;
+  repeated string pg_schema_name = 3;
+  repeated string table_name = 4;
+}
+
+message BootstrapProducerResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated string table_ids = 2;
+  repeated bytes bootstrap_ids = 3;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 4;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string table_ids = 1;
+  repeated string stream_ids = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  message TableResult {
+    optional bytes table_id = 1;
+    optional bool bootstrap_required = 2;
+  }
+  optional MasterErrorPB error = 1;
+  repeated TableResult results = 2;
+}
+
+message GetUDTypeMetadataRequestPB {
+  // The table namespace (if empty - uses default namespace).
+ optional NamespaceIdentifierPB namespace = 1;
+ optional bool pg_enum_info = 2 [default = false];
+ optional bool pg_composite_info = 3 [default = false];
+ optional uint32 pg_type_oid = 4; // if set, metadata only of this type will be fetched.
+                                  // To be used to update cache after a DDL on type.
+}
+
+message PgEnumInfoPB {
+  // PG enum Oid.
+ required uint32 oid = 1;
+ // PG enum label.
+ required string label = 2;
+}
+
+message PgAttributePB {
+  required uint32 attrelid = 1;
+  required string attname = 2;
+  required uint32 atttypid = 3;
+  required int32 attstattarget = 4;
+  required int32 attlen = 5;
+  required int32 attnum = 6;
+  required int32 attndims = 7;
+  required int32 attcacheoff = 8;
+  required int32 atttypmod = 9;
+  required bool attbyval = 10;
+  required int32 attstorage = 11;
+  required int32 attalign = 12;
+  required bool attnotnull = 13;
+  required bool atthasdef = 14;
+  required bool atthasmissing = 15;
+  required int32 attidentity = 16;
+  required bool attisdropped = 17;
+  required bool attislocal = 18;
+  required int32 attinhcount = 19;
+  required uint32 attcollation = 20;
+}
+
+message PgCompositeInfoPB {
+  // PG composite type oid.
+ required uint32 oid = 1;
+ // Attributes of composite type.
+ repeated PgAttributePB attributes = 2;
+}
+
+
+message GetUDTypeMetadataResponsePB {
+ // The error, if an error occurred with this request.
+ optional MasterErrorPB error = 1;
+ repeated PgEnumInfoPB enums = 2;
+ repeated PgCompositeInfoPB composites = 3;
+}
+
+enum SetupReplicationWithBootstrapStatePB {
+ BOOTSTRAP_PRODUCER = 1;
+ CREATE_PRODUCER_SNAPSHOT = 2;
+ IMPORT_SNAPSHOT = 3;
+ CREATE_CONSUMER_SNAPSHOT = 4;
+ TRANSFER_SNAPSHOT = 5;
+ RESTORE_SNAPSHOT = 6;
+ SETUP_REPLICATION = 7;
+}
+
+message SetupNamespaceReplicationWithBootstrapRequestPB {
+ required string replication_id = 1;
+ repeated HostPortPB producer_master_addresses = 2;
+ required NamespaceIdentifierPB producer_namespace = 3;
+
+ // Is the created replication group transactionally consistent.
+ optional bool transactional = 4; // [default = false]
+}
+
+message SetupNamespaceReplicationWithBootstrapResponsePB {
+ optional MasterErrorPB error = 1;
+}
+
+message SetupUniverseReplicationRequestPB {
+  optional string replication_group_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids = 3;
+
+  // An id generated by the producer when BootstrapProducer rpc is called.
+  repeated string producer_bootstrap_ids = 4;
+  // Is the created replication group transactionally consistent.
+  optional bool transactional = 5; // [default = false]
+
+  // Used for DB Scoped replication.
+  repeated string namespace_names = 6; // YSQL database names.
+  repeated string producer_namespace_ids = 7;
+}
+
+message SetupUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional string universe_uuid = 2;
+}
+
+message DeleteUniverseReplicationRequestPB {
+  optional string replication_group_id = 1;
+  optional bool ignore_errors = 2 [default = false];
+  optional bool skip_producer_stream_deletion = 3 [ default = false ];
+}
+
+message DeleteUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+  // In case force is set, then still return any ignored warnings.
+  repeated AppStatusPB warnings = 2;
+}
+
+message AlterUniverseReplicationRequestPB {
+  optional string replication_group_id = 1;
+  // The below options are currently mutually exclusive.  Only 1 operation at a time.
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids_to_add = 4;
+  repeated string producer_table_ids_to_remove = 5;
+  optional string new_replication_group_id = 7;
+
+  // Optional bootstrap ids for the add table operation.
+  repeated string producer_bootstrap_ids_to_add = 6;
+
+  optional bool remove_table_ignore_errors = 8 [default = false];
+}
+
+message AlterUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message ChangeXClusterRoleRequestPB {
+  optional cdc.XClusterRole role = 1;
+}
+
+message ChangeXClusterRoleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message SetUniverseReplicationEnabledRequestPB {
+  optional string replication_group_id = 1;
+  optional bool is_enabled = 2;
+}
+
+message SetUniverseReplicationEnabledResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message PauseResumeXClusterProducerStreamsRequestPB {
+  repeated string stream_ids = 1;
+  optional bool is_paused = 2;
+}
+
+message PauseResumeXClusterProducerStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseReplicationRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message GetUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysUniverseReplicationEntryPB entry = 2;
+}
+
+message IsSetupUniverseReplicationDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsSetupUniverseReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the universe is properly setup for replication, false otherwise.
+  optional bool done = 2;
+  // The more specific error that occurred during replication, or OK if we succeeded.
+  optional AppStatusPB replication_error = 3;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the bootstrapping is complete, false otherwise.
+  optional bool done = 2;
+
+  // The current state of the bootstrap.
+  optional SysUniverseReplicationBootstrapEntryPB.State state = 3;
+
+  // The more specific error that occurred during replication, or OK if we
+  // succeeded.
+  optional AppStatusPB bootstrap_error = 4;
+}
+
+message ProducerSplitTabletInfoPB {
+  required bytes tablet_id = 1;
+
+  required bytes new_tablet1_id = 2;
+
+  required bytes new_tablet2_id = 3;
+
+  required bytes split_partition_key = 4;
+
+  required bytes split_encoded_key = 5;
+}
+
+message UpdateConsumerOnProducerSplitRequestPB {
+  optional string replication_group_id = 1;
+  optional string stream_id = 2;
+  optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+}
+
+message UpdateConsumerOnProducerSplitResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetReplicationStatusRequestPB {
+  // Filters by the replication group if non-empty.
+  optional string replication_group_id = 1;
+}
+
+message ReplicationStatusErrorPB {
+  required ReplicationErrorPb error = 1;
+  required string error_detail = 2;
+}
+
+message ReplicationStatusPB {
+  required bytes table_id = 1;
+  required bytes stream_id = 2;
+  repeated ReplicationStatusErrorPB errors = 3;
+}
+
+message GetReplicationStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated ReplicationStatusPB statuses = 2;
+}
+
+message WaitForReplicationDrainRequestPB {
+  repeated bytes stream_ids = 1;
+  optional uint64 target_time = 2;
+}
+
+message WaitForReplicationDrainResponsePB {
+  // Metadata regarding replication status of a stream set up on a tablet.
+  message UndrainedStreamInfoPB {
+    required bytes stream_id = 1;
+    required bytes tablet_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated UndrainedStreamInfoPB undrained_stream_info = 2;
+}
+
+message SetupNSUniverseReplicationRequestPB {
+  optional string replication_group_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  optional string producer_ns_name = 3;
+  optional YQLDatabase producer_ns_type = 4;
+}
+
+message SetupNSUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message UpdateConsumerOnProducerMetadataRequestPB {
+  optional string replication_group_id = 1;
+  optional string stream_id = 2;
+  optional string consumer_tablet_id = 3;
+  optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+  optional uint32 colocation_id = 5;
+  optional uint32 producer_schema_version = 6;
+  optional uint32 consumer_schema_version = 7;
+}
+
+message UpdateConsumerOnProducerMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool should_wait = 2 [default = true];
+
+  // The last Consumer schema version that was EquivalentForDataCopy with the Producer
+  optional uint32 last_compatible_consumer_schema_version = 3;
+
+  optional cdc.SchemaVersionsPB schema_versions = 4;
+}
+
+message GetXClusterSafeTimeRequestPB{}
+
+message GetXClusterSafeTimeResponsePB {
+  message NamespaceSafeTimePB{
+    optional string namespace_id = 1;
+    optional fixed64 safe_time_ht = 2;
+    optional uint64 safe_time_lag = 3;
+    optional uint64 safe_time_skew = 4;
+    optional string namespace_name = 5;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated NamespaceSafeTimePB namespace_safe_times = 2;
+}
+
+enum XClusterSafeTimeFilter {
+  NONE = 1;
+  DDL_QUEUE = 2;
+}
+
+message GetXClusterSafeTimeForNamespaceRequestPB {
+  optional string namespace_id = 1;
+
+  // Ignore safe times from these types of tables.
+  // If this filters out all tables, then will return master leader safe time.
+  optional XClusterSafeTimeFilter filter = 2;
+}
+
+message GetXClusterSafeTimeForNamespaceResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 safe_time_ht = 2;
+}
+
+message GetTableSchemaFromSysCatalogRequestPB {
+  required TableIdentifierPB table = 1;
+  optional  int64 read_time = 2;
+}
+
+message GetTableSchemaFromSysCatalogResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // This is the schema that every TS should be able to understand
+  // if your alter is keeping the schema compatible.
+  // In case of an alter table in progress, this is the previous schema;
+  // otherwise it is the latest schema.
+  optional SchemaPB schema = 2;
+
+  // Table schema version
+  optional uint32 version = 3;
+}
+
+message XClusterReportNewAutoFlagConfigVersionRequestPB {
+  required string replication_group_id = 1;
+  required uint32 auto_flag_config_version = 2;
+}
+
+message XClusterReportNewAutoFlagConfigVersionResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterCreateOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  repeated string namespace_names = 2;
+}
+
+message XClusterCreateOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated bytes namespace_ids = 2; // One per namespace.
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional string namespace_name = 2;
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsXClusterBootstrapRequiredRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message IsXClusterBootstrapRequiredResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2;
+  optional bool initial_bootstrap_required = 3;
+}
+
+message GetXClusterStreamsRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+
+  message TableInfo {
+    required string table_name = 1;
+    required string pg_schema_name = 2;
+  }
+  repeated TableInfo table_infos = 3; // If empty, return all tables.
+}
+
+message GetXClusterStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2; // [default = false]
+  optional bool initial_bootstrap_required = 3; // [default = false]
+
+  message TableInfo {
+    required bytes table_id = 1;
+    required bytes xrepl_stream_id = 2;
+    required string table_name = 3;
+    required string pg_schema_name = 4;
+  }
+
+  repeated TableInfo table_infos = 4;
+}
+
+message CreateXClusterReplicationRequestPB {
+  required string replication_group_id = 1;
+
+  repeated HostPortPB target_master_addresses = 2;
+}
+
+message CreateXClusterReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsCreateXClusterReplicationDoneRequestPB {
+  required string replication_group_id = 1;
+
+  repeated HostPortPB target_master_addresses = 2;
+}
+
+message IsCreateXClusterReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2; // [default = false]
+
+  // Only set when done is true. OK if the created succeeded or the error if it
+  // failed.
+  optional AppStatusPB replication_error = 3;
+}
+
+service MasterReplication {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  // Tablet-level Replication.
+  rpc ValidateReplicationInfo(ValidateReplicationInfoRequestPB)
+      returns (ValidateReplicationInfoResponsePB);
+
+  // CDC stream RPCs.
+  rpc CreateCDCStream(CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
+  rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
+  rpc IsObjectPartOfXRepl(IsObjectPartOfXReplRequestPB)
+      returns (IsObjectPartOfXReplResponsePB);
+  rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
+  rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
+  rpc WaitForReplicationDrain (WaitForReplicationDrainRequestPB)
+      returns (WaitForReplicationDrainResponsePB);
+  rpc GetTableSchemaFromSysCatalog(GetTableSchemaFromSysCatalogRequestPB)
+      returns(GetTableSchemaFromSysCatalogResponsePB);
+
+  rpc SetupNamespaceReplicationWithBootstrap(
+      SetupNamespaceReplicationWithBootstrapRequestPB)
+      returns (SetupNamespaceReplicationWithBootstrapResponsePB);
+  rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
+      returns (SetupUniverseReplicationResponsePB);
+  rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
+      returns (DeleteUniverseReplicationResponsePB);
+  rpc AlterUniverseReplication(AlterUniverseReplicationRequestPB)
+      returns (AlterUniverseReplicationResponsePB);
+  rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
+      returns (SetUniverseReplicationEnabledResponsePB);
+  rpc PauseResumeXClusterProducerStreams(PauseResumeXClusterProducerStreamsRequestPB)
+      returns (PauseResumeXClusterProducerStreamsResponsePB);
+  rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
+      returns (GetUniverseReplicationResponsePB);
+  rpc IsSetupNamespaceReplicationWithBootstrapDone(
+      IsSetupNamespaceReplicationWithBootstrapDoneRequestPB)
+      returns (IsSetupNamespaceReplicationWithBootstrapDoneResponsePB);
+  rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
+      returns (IsSetupUniverseReplicationDoneResponsePB);
+  rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
+      returns (SetupNSUniverseReplicationResponsePB);
+  rpc ChangeXClusterRole(ChangeXClusterRoleRequestPB)
+      returns (ChangeXClusterRoleResponsePB);
+
+  rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
+      returns (UpdateConsumerOnProducerSplitResponsePB);
+  rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
+      returns (UpdateConsumerOnProducerMetadataResponsePB);
+
+  rpc GetReplicationStatus(GetReplicationStatusRequestPB)
+      returns (GetReplicationStatusResponsePB);
+
+  rpc GetXClusterSafeTime(GetXClusterSafeTimeRequestPB)
+      returns (GetXClusterSafeTimeResponsePB);
+  rpc GetXClusterSafeTimeForNamespace(GetXClusterSafeTimeForNamespaceRequestPB)
+      returns (GetXClusterSafeTimeForNamespaceResponsePB);
+
+  rpc BootstrapProducer(BootstrapProducerRequestPB)
+      returns (BootstrapProducerResponsePB);
+
+  rpc XClusterReportNewAutoFlagConfigVersion(
+      XClusterReportNewAutoFlagConfigVersionRequestPB)
+      returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
+
+  // Backfill a replication slot name to an existing CDCSDK stream.
+  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
+      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
+
+  // xClusterOutboundReplicationGroup RPCs.
+  rpc XClusterCreateOutboundReplicationGroup(
+      XClusterCreateOutboundReplicationGroupRequestPB)
+      returns (XClusterCreateOutboundReplicationGroupResponsePB);
+  rpc XClusterAddNamespaceToOutboundReplicationGroup(
+      XClusterAddNamespaceToOutboundReplicationGroupRequestPB)
+      returns (XClusterAddNamespaceToOutboundReplicationGroupResponsePB);
+  rpc XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB)
+      returns (XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB);
+  rpc XClusterDeleteOutboundReplicationGroup(
+      XClusterDeleteOutboundReplicationGroupRequestPB)
+      returns (XClusterDeleteOutboundReplicationGroupResponsePB);
+  rpc IsXClusterBootstrapRequired(IsXClusterBootstrapRequiredRequestPB)
+      returns (IsXClusterBootstrapRequiredResponsePB);
+  rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
+      returns (GetXClusterStreamsResponsePB);
+
+  // xCluster APIsV2
+  rpc CreateXClusterReplication(CreateXClusterReplicationRequestPB)
+      returns (CreateXClusterReplicationResponsePB);
+  rpc IsCreateXClusterReplicationDone(IsCreateXClusterReplicationDoneRequestPB)
+      returns (IsCreateXClusterReplicationDoneResponsePB);
+}

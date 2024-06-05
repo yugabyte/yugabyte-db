@@ -1,0 +1,118 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.docdb;
+
+import "yb/common/common.proto";
+import "yb/common/opid.proto";
+import "yb/common/transaction.proto";
+
+option java_package = "org.yb.docdb";
+
+message KeyValuePairPB {
+  optional bytes key = 1;
+  optional bytes value = 2;
+  optional fixed64 external_hybrid_time = 3;
+  // Reserved for transaction field which was used in xcluster external intent writes.
+  reserved 4;
+}
+
+message ApplyExternalTransactionPB {
+  optional bytes transaction_id = 1;
+  optional SubtxnSetPB aborted_subtransactions = 3;
+  optional fixed64 commit_hybrid_time = 2;
+
+  // Defaults to empty string, which is the full key range.
+  optional bytes filter_start_key = 4;
+  optional bytes filter_end_key = 5;
+}
+
+message TableSchemaVersionPB {
+  optional bytes table_id = 1;
+  optional uint32 schema_version = 2;
+}
+
+// A set of key/value pairs to be written into RocksDB.
+message KeyValueWriteBatchPB {
+  repeated KeyValuePairPB write_pairs = 1;
+  optional TransactionMetadataPB transaction = 2;
+  optional SubTransactionMetadataPB subtransaction = 8;
+  optional bool DEPRECATED_may_have_metadata = 3;
+  // Used by serializable isolation transactions and row locking statements to store read intents.
+  // In case of read-modify-write operation both read_pairs and write_pairs could present.
+  repeated KeyValuePairPB read_pairs = 5;
+  // Even though there can be multiple write_pairs we have only one row_mark_type/ wait_policy since
+  // currently we don't batch read RPCs from YSQL (which are the only ones that can set these 2
+  // fields). And hence, only a singular value is sufficient.
+  optional RowMarkType row_mark_type = 6;
+  // wait_policy is used only for explicit row-locking to identify 3 possibilities: WAIT_BLOCK,
+  // WAIT_SKIP, or WAIT_ERROR. See WaitPolicy for detailed information.
+  //
+  // If this request has read_pairs but row_mark_type is not set, then wait_policy should not be
+  // set. Such a situation can occur when read intents are to be written as part of SERIALIZABLE
+  // isolation level.
+  optional WaitPolicy wait_policy = 10;
+  repeated ApplyExternalTransactionPB apply_external_transactions = 7;
+
+  optional int64 ttl = 9;
+
+  // Table schema version used by this write batch.
+  // We could have writes to multiple cotables in a single write batch.
+  repeated TableSchemaVersionPB table_schema_version = 11;
+
+  // Reserved for deprecated enable_replicate_transaction_status_table field.
+  reserved 12;
+}
+
+message PerDbFilterPB {
+  optional uint32 db_oid = 1;
+  optional fixed64 ht_filter = 2;
+}
+
+message ConsensusFrontierPB {
+  optional OpIdPB op_id = 1;
+  optional fixed64 hybrid_time = 2;
+  // History cutoff of all the tables of this tablet.
+  // On the master, this field is used for the sys catalog table.
+  // For cotables (i.e. ysql system tables) for which
+  // the cotables_history_cutoff field is used. On tservers,
+  // this field is used for everything i.e. both colocated and non colocated tables
+  // and the cotables_history_cutoff field is invalid.
+  optional fixed64 primary_cutoff_ht = 3;
+  // Filter applies to all the entries of the sst file.
+  // Only set for the largest frontier.
+  optional fixed64 hybrid_time_filter = 4;
+  optional fixed64 max_value_level_ttl_expiration_time = 5;
+  repeated TableSchemaVersionPB table_schema_version = 6;
+  // Used only for sys catalog tablet during PITR restores
+  // to selectively restore some databases. Only set for
+  // the largest frontier.
+  repeated PerDbFilterPB db_oid_to_ht_filter = 7;
+  // Set only on the master for cotables.
+  optional fixed64 cotables_cutoff_ht = 8;
+}
+
+message ApplyTransactionStatePB {
+  // Apply should be continued from this key in reverse index.
+  optional bytes key = 1;
+
+  // Write id for first continued record.
+  optional uint32 write_id = 2;
+
+  // Transaction commit hybrid time.
+  optional fixed64 commit_ht = 3;
+
+  // Set of aborted subtransactions.
+  optional SubtxnSetPB aborted = 4;
+}
