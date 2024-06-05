@@ -569,6 +569,7 @@ ReorderBufferGetTupleBuf(ReorderBuffer *rb, Size tuple_len)
 	if (IsYugaByteEnabled())
 	{
 		tuple->yb_is_omitted = NULL;
+		tuple->yb_is_omitted_size = 0;
 		YbWalSndTotalTimeInReorderBufferMicros +=
 			YbCalculateTimeDifferenceInMicros(yb_start_time);
 	}
@@ -3754,6 +3755,10 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				Size		oldlen = 0;
 				Size		newlen = 0;
 
+				/* is_omitted is only applicable to UPDATE. */
+				bool yb_handle_is_omitted = change->action ==
+											REORDER_BUFFER_CHANGE_UPDATE;
+
 				oldtup = change->data.tp.oldtuple;
 				newtup = change->data.tp.newtuple;
 
@@ -3762,6 +3767,11 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					sz += sizeof(HeapTupleData);
 					oldlen = oldtup->tuple.t_len;
 					sz += oldlen;
+
+					/* account for the size of the is_omitted array. */
+					if (IsYugaByteEnabled() && yb_handle_is_omitted)
+						sz += (sizeof(int) +
+							   oldtup->yb_is_omitted_size * sizeof(bool));
 				}
 
 				if (newtup)
@@ -3769,6 +3779,11 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					sz += sizeof(HeapTupleData);
 					newlen = newtup->tuple.t_len;
 					sz += newlen;
+
+					/* account for the size of the is_omitted array. */
+					if (IsYugaByteEnabled() && yb_handle_is_omitted)
+						sz += (sizeof(int) +
+							   newtup->yb_is_omitted_size * sizeof(bool));
 				}
 
 				/* make sure we have enough space */
@@ -3785,6 +3800,19 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					memcpy(data, oldtup->tuple.t_data, oldlen);
 					data += oldlen;
+
+					/* write the yb_is_omitted array. */
+					if (IsYugaByteEnabled() && yb_handle_is_omitted) {
+						memcpy(data, &oldtup->yb_is_omitted_size, sizeof(int));
+						data += sizeof(int);
+
+						if (oldtup->yb_is_omitted_size > 0)
+						{
+							memcpy(data, oldtup->yb_is_omitted,
+								   oldtup->yb_is_omitted_size * sizeof(bool));
+							data += oldtup->yb_is_omitted_size * sizeof(bool);
+						}
+					}
 				}
 
 				if (newlen)
@@ -3794,6 +3822,19 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					memcpy(data, newtup->tuple.t_data, newlen);
 					data += newlen;
+
+					/* write the yb_is_omitted array. */
+					if (IsYugaByteEnabled() && yb_handle_is_omitted) {
+						memcpy(data, &newtup->yb_is_omitted_size, sizeof(int));
+						data += sizeof(int);
+
+						if (newtup->yb_is_omitted_size > 0)
+						{
+							memcpy(data, newtup->yb_is_omitted,
+								   newtup->yb_is_omitted_size * sizeof(bool));
+							data += newtup->yb_is_omitted_size * sizeof(bool);
+						}
+					}
 				}
 				break;
 			}
@@ -4350,6 +4391,8 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			if (change->data.tp.oldtuple)
 			{
 				uint32		tuplelen = ((HeapTuple) data)->t_len;
+				bool yb_handle_is_omitted =
+					(change->action == REORDER_BUFFER_CHANGE_UPDATE);
 
 				change->data.tp.oldtuple =
 					ReorderBufferGetTupleBuf(rb, tuplelen - SizeofHeapTupleHeader);
@@ -4366,12 +4409,36 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				/* restore tuple data itself */
 				memcpy(change->data.tp.oldtuple->tuple.t_data, data, tuplelen);
 				data += tuplelen;
+
+				if (IsYugaByteEnabled() && yb_handle_is_omitted) {
+					int is_omitted_size;
+
+					/* restore yb_is_omitted_size */
+					memcpy(&change->data.tp.oldtuple->yb_is_omitted_size, data,
+						   sizeof(int));
+					data += sizeof(int);
+					is_omitted_size =
+						change->data.tp.oldtuple->yb_is_omitted_size;
+
+					/* restore yb_is_omitted */
+					if (is_omitted_size > 0)
+					{
+						change->data.tp.oldtuple->yb_is_omitted =
+							YBAllocateIsOmittedArray(rb, is_omitted_size);
+
+						memcpy(change->data.tp.oldtuple->yb_is_omitted, data,
+							   is_omitted_size * sizeof(bool));
+						data += is_omitted_size * sizeof(bool);
+					}
+				}
 			}
 
 			if (change->data.tp.newtuple)
 			{
 				/* here, data might not be suitably aligned! */
 				uint32		tuplelen;
+				bool yb_handle_is_omitted =
+					(change->action == REORDER_BUFFER_CHANGE_UPDATE);
 
 				memcpy(&tuplelen, data + offsetof(HeapTupleData, t_len),
 					   sizeof(uint32));
@@ -4391,6 +4458,28 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				/* restore tuple data itself */
 				memcpy(change->data.tp.newtuple->tuple.t_data, data, tuplelen);
 				data += tuplelen;
+
+				if (IsYugaByteEnabled() && yb_handle_is_omitted) {
+					int is_omitted_size;
+
+					/* restore yb_is_omitted_size */
+					memcpy(&change->data.tp.newtuple->yb_is_omitted_size, data,
+						   sizeof(int));
+					data += sizeof(int);
+					is_omitted_size =
+						change->data.tp.newtuple->yb_is_omitted_size;
+
+					/* restore yb_is_omitted */
+					if (is_omitted_size > 0)
+					{
+						change->data.tp.newtuple->yb_is_omitted =
+							YBAllocateIsOmittedArray(rb, is_omitted_size);
+
+						memcpy(change->data.tp.newtuple->yb_is_omitted, data,
+							   is_omitted_size * sizeof(bool));
+						data += is_omitted_size * sizeof(bool);
+					}
+				}
 			}
 
 			break;

@@ -528,11 +528,6 @@ retry:
 		ctl.entrysize = sizeof(YBCPgReplicaIdentityDescriptor);
 		ctl.hcxt = GetCurrentMemoryContext();
 
-		/*
-		 * TODO(#21028): This HTAB must be refreshed in case of dynamic table
-		 * additions so that it also includes the replica identity of the newly
-		 * added columns. It is not necessary to handle drop of a table though.
-		 */
 		replica_identities = hash_create("yb_repl_slot_replica_identities",
 										 32, /* start small and extend */
 										 &ctl, HASH_ELEM | HASH_BLOBS);

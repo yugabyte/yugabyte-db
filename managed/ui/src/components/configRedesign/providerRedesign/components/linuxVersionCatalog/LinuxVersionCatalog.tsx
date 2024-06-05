@@ -13,8 +13,7 @@ import { useMount, useToggle } from 'react-use';
 import { Control, useFieldArray, useWatch } from 'react-hook-form';
 import { makeStyles } from '@material-ui/core';
 import { FieldGroup } from '../../forms/components/FieldGroup';
-import { YBButton, YBCheckbox } from '../../../../../redesign/components';
-import { LinuxVersionEmpty } from './LinuxVersionEmpty';
+import { YBCheckbox } from '../../../../../redesign/components';
 import { LinuxVersionsList } from './LinuxVersionsList';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
 import { IsOsPatchingEnabled, sampleAarchImage, sampleX86Image } from './LinuxVersionUtils';
@@ -25,13 +24,19 @@ import {
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
-import { ArchitectureType, ProviderCode, ProviderStatus } from '../../constants';
-import { Add } from '@material-ui/icons';
+import { ArchitectureType, ProviderCode, ProviderOperation, ProviderStatus } from '../../constants';
+import { EmptyListPlaceholder } from '../../EmptyListPlaceholder';
+import { YBButton } from '../../../../common/forms/fields';
+import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
+import { getInUseImageBundleUuids } from '../../utils';
 
 interface LinuxVersionCatalogProps {
   control: Control<AWSProviderCreateFormFieldValues>;
   providerType: ProviderCode;
-  viewMode: 'CREATE' | 'EDIT';
+  isDisabled: boolean;
+  providerOperation: ProviderOperation;
+
+  linkedUniverses?: UniverseItem[];
   providerStatus?: ProviderStatus;
 }
 const useStyles = makeStyles((theme) => ({
@@ -50,8 +55,9 @@ type YbImageOptions = {
 export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
   control,
   providerType,
-  viewMode,
-  providerStatus
+  isDisabled,
+  providerOperation,
+  linkedUniverses
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion'
@@ -92,7 +98,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
 
   const [editImgBundleDetails, setEditImgBundleDetails] = useState<ImageBundle[]>([]);
 
-  const isEditMode = viewMode === 'EDIT';
+  const isEditMode = providerOperation === ProviderOperation.EDIT;
 
   const filterNonYBImages = (images: ImageBundle[]) => {
     return images.filter((i) => i.metadata?.type === ImageBundleType.CUSTOM);
@@ -175,7 +181,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
   if (!osPatchingEnabled) {
     return null;
   }
-
+  const inUseImageBundleUuids = linkedUniverses
+    ? getInUseImageBundleUuids(linkedUniverses)
+    : new Set<string>();
   return (
     <FieldGroup
       heading={t('linuxVersionCatalog')}
@@ -184,20 +192,21 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
       headerAccessories={
         <RbacValidator
           accessRequiredOn={
-            viewMode === 'CREATE'
-              ? ApiPermissionMap.CREATE_PROVIDER
-              : ApiPermissionMap.MODIFY_PROVIDER
+            isEditMode ? ApiPermissionMap.MODIFY_PROVIDER : ApiPermissionMap.CREATE_PROVIDER
           }
           isControl
         >
-          <YBButton
-            onClick={() => toggleShowLinuxVersionModal(true)}
-            startIcon={<Add />}
-            variant="secondary"
-            data-testid="LinuxVersionCatalog-AddLinuxVersion"
-          >
-            {t('addLinuxVersion')}
-          </YBButton>
+          {imageBundles.length > 0 && (
+            <YBButton
+              btnIcon="fa fa-plus"
+              btnText={t('addLinuxVersion')}
+              btnClass="btn btn-default"
+              btnType="button"
+              onClick={() => toggleShowLinuxVersionModal(true)}
+              disabled={isDisabled}
+              data-testid="LinuxVersionCatalog-AddLinuxVersion"
+            />
+          )}
         </RbacValidator>
       }
     >
@@ -216,7 +225,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
               updateDefaultLinuxVersions(opts, imageBundles);
             }}
             disabled={
-              isEditMode && providerType === ProviderCode.AWS
+              isDisabled || (isEditMode && providerType === ProviderCode.AWS)
                 ? editYBImageOptions.useArm && editYBImageOptions.useX86
                 : editYBImageOptions.useX86
             }
@@ -232,7 +241,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
               setUseYBImages(opts);
               updateDefaultLinuxVersions(opts, imageBundles);
             }}
-            disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useX86)}
+            disabled={
+              isDisabled || !ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useX86)
+            }
             checked={ybImageOptions.useX86}
             inputProps={{
               'data-testid': 'LinuxVersionCatalog-Includex86'
@@ -246,7 +257,11 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
                 setUseYBImages(opts);
                 updateDefaultLinuxVersions(opts, imageBundles);
               }}
-              disabled={!ybImageOptions.useYBImages || (isEditMode && editYBImageOptions.useArm)}
+              disabled={
+                isDisabled ||
+                !ybImageOptions.useYBImages ||
+                (isEditMode && editYBImageOptions.useArm)
+              }
               checked={ybImageOptions.useArm}
               inputProps={{
                 'data-testid': 'LinuxVersionCatalog-IncludeAarch'
@@ -255,14 +270,24 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
           )}
         </div>
         {imageBundles.length === 0 ? (
-          <LinuxVersionEmpty
-            viewMode={viewMode}
-            onAdd={() => {
-              toggleShowLinuxVersionModal(true);
-            }}
+          <EmptyListPlaceholder
+            variant="secondary"
+            accessRequiredOn={
+              isEditMode ? ApiPermissionMap.MODIFY_PROVIDER : ApiPermissionMap.CREATE_PROVIDER
+            }
+            actionButtonText={t('addLinuxVersion', { keyPrefix: 'linuxVersion' })}
+            descriptionText={t('emptyCard.info', { keyPrefix: 'linuxVersion' })}
+            onActionButtonClick={() => toggleShowLinuxVersionModal(true)}
+            isDisabled={isDisabled}
+            data-testid="LinuxVersionEmpty-AddLinuxVersion"
           />
         ) : (
-          <LinuxVersionsList control={control} providerType={providerType} viewMode={viewMode} />
+          <LinuxVersionsList
+            control={control}
+            providerType={providerType}
+            inUseImageBundleUuids={inUseImageBundleUuids}
+            viewMode={isEditMode ? 'EDIT' : 'CREATE'}
+          />
         )}
       </div>
       <AddLinuxVersionModal

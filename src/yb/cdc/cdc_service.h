@@ -73,13 +73,6 @@ typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortH
 
 YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
-static const char* const kRecordType = "record_type";
-static const char* const kRecordFormat = "record_format";
-static const char* const kRetentionSec = "retention_sec";
-static const char* const kSourceType = "source_type";
-static const char* const kCheckpointType = "checkpoint_type";
-static const char* const kStreamState = "state";
-static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
 
 struct TabletCheckpoint {
@@ -106,6 +99,7 @@ struct TabletCDCCheckpointInfo {
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
+using StreamIdSet = std::set<xrepl::StreamId>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 class CDCServiceImpl : public CDCServiceIf {
@@ -334,10 +328,6 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void RemoveStreamFromCache(const xrepl::StreamId& stream_id);
 
-  void AddStreamMetadataToCache(
-      const xrepl::StreamId& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
-      EXCLUDES(mutex_);
-
   Status CheckTabletValidForStream(const TabletStreamInfo& producer_info);
 
   void TabletLeaderGetChanges(
@@ -418,7 +408,8 @@ class CDCServiceImpl : public CDCServiceIf {
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
       const TabletIdStreamIdSet& cdc_state_entries_to_delete,
-      const std::unordered_set<TabletId>& failed_tablet_ids);
+      const std::unordered_set<TabletId>& failed_tablet_ids,
+      const StreamIdSet& slot_entries_to_be_deleted);
 
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
@@ -446,11 +437,13 @@ class CDCServiceImpl : public CDCServiceIf {
       const tablet::TabletPeerPtr& tablet_peer);
 
   Result<std::unordered_map<NamespaceId, uint64_t>> GetNamespaceMinRecordIdCommitTimeMap(
-      const CDCStateTableRange& table_range, Status* iteration_status);
+      const CDCStateTableRange& table_range, Status* iteration_status,
+      StreamIdSet* slot_entries_to_be_deleted);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
-      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
+      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr,
+      StreamIdSet* slot_entries_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
       const OpId& checkpoint, const std::string& tablet_id,

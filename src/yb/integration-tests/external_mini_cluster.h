@@ -1042,8 +1042,7 @@ Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout)
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
-  std::unique_ptr<rpc::Messenger>* messenger,
-  const std::vector<std::string>& master_flags = std::vector<std::string>());
+  std::unique_ptr<rpc::Messenger>* messenger);
 
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,

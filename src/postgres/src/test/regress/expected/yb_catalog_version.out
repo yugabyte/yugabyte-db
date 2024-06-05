@@ -713,7 +713,7 @@ CREATE TABLE base (t int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
 CREATE UNIQUE INDEX ON mv(t);
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               45 |                    39
 (1 row)
@@ -721,7 +721,7 @@ CREATE UNIQUE INDEX ON mv(t);
 -- nonconcurrent refreshes should bump catalog version.
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               46 |                    39
 (1 row)
@@ -729,7 +729,7 @@ REFRESH MATERIALIZED VIEW mv;
 -- concurrent refreshes should not bump catalog version.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               46 |                    39
 (1 row)
@@ -746,7 +746,7 @@ ANALYZE analyze_table, analyze_table2;
               47 |                    39
 (1 row)
 
-SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2';
+SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
     relname     | reltuples
 ----------------+-----------
  analyze_table  |       100

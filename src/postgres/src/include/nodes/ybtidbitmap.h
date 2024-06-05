@@ -46,7 +46,6 @@ typedef struct YbTIDBitmap
 	NodeTag		type;			/* to make it a valid Node */
 	SliceSet	ybctid_set;		/* C++ set that contains my ybctids */
 	int			nentries;		/* number of entries in the bitmap */
-	int			maxentries;		/* max entries allowed by work_mem */
 	YbTBMIteratingState iterating PG_USED_FOR_ASSERTS_ONLY;
 								/* yb_tbm_begin_iterate called? */
 	size_t		bytes_consumed;	/* sum of the size of the ybctids */
@@ -84,6 +83,6 @@ extern void yb_tbm_free_iter_result(YbTBMIterateResult *iter);
 extern void yb_tbm_set_work_mem_exceeded(YbTIDBitmap *ybtbm);
 extern size_t yb_tbm_get_average_bytes(YbTIDBitmap *ybtbm);
 
-extern long yb_tbm_calculate_entries(double maxbytes);
+extern long yb_tbm_calculate_entries(double maxbytes, int32 ybctid_width);
 
 #endif							/* TIDBITMAP_H */

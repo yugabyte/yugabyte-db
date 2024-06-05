@@ -650,7 +650,7 @@ class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
 
 TEST_F_EX(
     PgIndexBackfillTest,
-    InsertsWhileCreatingIndexDisableWait,
+    YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndexDisableWait),
     PgIndexBackfillTestDisableWait) {
   constexpr auto kNumTries = 5;
 

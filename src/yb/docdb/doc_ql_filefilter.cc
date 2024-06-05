@@ -21,9 +21,7 @@
 
 #include "yb/rocksdb/db/compaction.h"
 
-#include "yb/util/debug.h"
-
-DEFINE_RUNTIME_bool(docdb_ht_filter_intents, yb::kIsDebug,
+DEFINE_RUNTIME_bool(docdb_ht_filter_intents, true,
                     "Use hybrid time SST filter when scanning intents.");
 
 namespace yb::docdb {

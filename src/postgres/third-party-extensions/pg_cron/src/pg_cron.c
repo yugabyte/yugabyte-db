@@ -93,6 +93,8 @@
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
 
@@ -148,9 +150,10 @@ static bool jobCanceled(CronTask *task);
 static bool jobStartupTimeout(CronTask *task, TimestampTz currentTime);
 static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
+static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
 
 /* global settings */
-char *CronTableDatabaseName = "postgres";
+char *CronTableDatabaseName = "yugabyte";
 static bool CronLogStatement = true;
 static bool CronLogRun = true;
 static bool CronReloadConfig = false;
@@ -165,7 +168,8 @@ static bool RebootJobsScheduled = false;
 static int RunningTaskCount = 0;
 static int MaxRunningTasks = 0;
 static int CronLogMinMessages = WARNING;
-static bool UseBackgroundWorkers = false;
+static bool UseBackgroundWorkers = true;
+static int YbJobListRefreshSeconds = 60;
 
 char  *cron_timezone = NULL;
 
@@ -213,7 +217,7 @@ _PG_init(void)
 		gettext_noop("Database in which pg_cron metadata is kept."),
 		NULL,
 		&CronTableDatabaseName,
-		"postgres",
+		"yugabyte",
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -223,7 +227,7 @@ _PG_init(void)
 		gettext_noop("Log all cron statements prior to execution."),
 		NULL,
 		&CronLogStatement,
-		true,
+		true, /* TODO(hari): false? */
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -263,7 +267,7 @@ _PG_init(void)
 		gettext_noop("Use background workers instead of client sessions."),
 		NULL,
 		&UseBackgroundWorkers,
-		false,
+		true,
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
@@ -295,7 +299,7 @@ _PG_init(void)
 			"cron.max_running_jobs",
 			gettext_noop("Maximum number of jobs that can run concurrently."),
 			NULL,
-			&MaxRunningTasks,
+			&MaxRunningTasks, /* TODO(Hari): We need local and global limits */
 			(max_worker_processes - 1 < 5) ? max_worker_processes - 1 : 5,
 			0,
 			max_worker_processes - 1,
@@ -323,6 +327,18 @@ _PG_init(void)
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		check_timezone, NULL, NULL);
+
+	DefineCustomIntVariable(
+		"cron.yb_job_list_refresh_interval",
+		gettext_noop("The frequency at which the pb_cron leader reloads the job list and picks up new jobs."),
+		NULL,
+		&YbJobListRefreshSeconds,
+		60,
+		1,
+		INT_MAX,
+		PGC_SUSET,
+		GUC_UNIT_S,
+		NULL, NULL, NULL);
 
 	/* set up common data for all our workers */
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
@@ -626,8 +642,14 @@ PgCronLauncherMain(Datum arg)
 
 	MemoryContextSwitchTo(CronLoopContext);
 
+	TimestampTz ybLastRefreshTime = 0;
+
 	while (!got_sigterm)
 	{
+		/* YB Note: The latest entries in the catalog must be read during every run */
+		if (IsYugaByteEnabled())
+			YBCPgResetCatalogReadTime();
+
 		List *taskList = NIL;
 		TimestampTz currentTime = 0;
 
@@ -646,9 +668,19 @@ PgCronLauncherMain(Datum arg)
 		 * Both CronReloadConfig and CronJobCacheValid are triggered by SIGHUP.
 		 * ProcessConfigFile should come first, because RefreshTaskHash depends
 		 * on settings that might have changed.
+		 *
+		 * In Yugabyte mode jobs scheduled from a different nodes cannot invalidate
+		 * the cache on the cron leader. So in addition to the regular invalidations
+		 * we RefreshTaskHash every YbJobListRefreshSeconds.
+		 * NOTE: It can take up to YbJobListRefreshSeconds for change to the jobs
+		 * to take effect.
 		 */
-		if (!CronJobCacheValid)
+		currentTime = GetCurrentTimestamp();
+		if (!CronJobCacheValid ||
+			(IsYugaByteEnabled() &&
+				YbSecondsPassed(ybLastRefreshTime, currentTime) >= YbJobListRefreshSeconds))
 		{
+			ybLastRefreshTime = currentTime;
 			RefreshTaskHash();
 		}
 
@@ -2348,4 +2380,20 @@ jobStartupTimeout(CronTask *task, TimestampTz currentTime)
     }
     else
         return false;
+}
+
+/*
+ * Returns the number of seconds between startTime and stopTime rounded down to
+ * the closest integer.
+ */
+static long
+YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
+{
+	int microsPassed = 0;
+	long secondsPassed = 0;
+
+	TimestampDifference(startTime, stopTime,
+						&secondsPassed, &microsPassed);
+
+	return secondsPassed;
 }

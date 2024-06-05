@@ -14,12 +14,6 @@ const CACertErrorPatterns = [
   'ERR_04120_TLS_HANDSHAKE_ERROR'
 ];
 
-export const CA_CERT_RUNTIME_CONFIG_KEY = 'yb.customCATrustStore.enabled';
-
-export function isCertCAEnabledInRuntimeConfig (runtimeConfig: RunTimeConfig) {
-  return runtimeConfig?.configEntries?.find((c: any) => c.key === CA_CERT_RUNTIME_CONFIG_KEY)?.value === 'true' ?? false;
-};
-
 export const LDAP_CA_CERT_ERR_MSG = (
   <span>
     Cannot connect to LDAP server. Please ask the Admin to add valid CA cert&nbsp;

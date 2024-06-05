@@ -17,7 +17,7 @@ type: docs
 
 CQLSH connection failure has been detected for universe `'$universe_name'` on `$value` T-Server instances.
 
-```expression
+```promql
 ybp_health_check_cqlsh_connectivity_error{universe_uuid="$uuid"} > 0
 ```
 
@@ -25,7 +25,7 @@ ybp_health_check_cqlsh_connectivity_error{universe_uuid="$uuid"} > 0
 
 Database compaction rejections detected for universe `'$universe_name'`.
 
-```expression
+```promql
 sum by (node_prefix) (increase(majority_sst_files_rejections{node_prefix="$node_prefix"}[10m])) > 0
 ```
 
@@ -33,7 +33,7 @@ sum by (node_prefix) (increase(majority_sst_files_rejections{node_prefix="$node_
 
 Test YSQL write/read operation failed on `$value` nodes for universe `'$universe_name'`.
 
-```expression
+```promql
 count by (node_prefix) (yb_node_ysql_write_read{node_prefix="$node_prefix"} < 1)
 ```
 
@@ -41,7 +41,7 @@ count by (node_prefix) (yb_node_ysql_write_read{node_prefix="$node_prefix"} < 1)
 
 Version mismatch has been detected for universe `'$universe_name'` for `$value` Master or T-Server instances.
 
-```expression
+```promql
 ybp_health_check_tserver_version_mismatch{universe_uuid="$uuid"} + ybp_health_check_master_version_mismatch{universe_uuid="$uuid"} > 0
 ```
 
@@ -49,7 +49,7 @@ ybp_health_check_tserver_version_mismatch{universe_uuid="$uuid"} + ybp_health_ch
 
 Client to node certificate for universe `'$universe_name'` expires in `$value` days.
 
-```expression
+```promql
 min by (node_name) (ybp_health_check_c2n_cert_validity_days{universe_uuid="$uuid"} < 30)
 ```
 
@@ -57,7 +57,7 @@ min by (node_name) (ybp_health_check_c2n_cert_validity_days{universe_uuid="$uuid
 
 Failed to issue health check notification for universe `'$universe_name'`. You need to check Health notification settings and YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
-```expression
+```promql
 last_over_time(ybp_health_check_notification_status{universe_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -65,7 +65,7 @@ last_over_time(ybp_health_check_notification_status{universe_uuid = "$uuid"}[1d]
 
 Failed to perform health check for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
-```expression
+```promql
 last_over_time(ybp_health_check_status{universe_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -73,7 +73,7 @@ last_over_time(ybp_health_check_status{universe_uuid = "$uuid"}[1d]) < 1
 
 Encryption at rest configuration for universe `'$universe_name'` expires in `$value` days.
 
-```expression
+```promql
 ybp_universe_encryption_key_expiry_days{universe_uuid="$uuid"} < 3
 ```
 
@@ -81,7 +81,7 @@ ybp_universe_encryption_key_expiry_days{universe_uuid="$uuid"} < 3
 
 Redis connection failure has been detected for universe `'$universe_name'` on `$value` T-Server instances.
 
-```expression
+```promql
 ybp_health_check_redis_connectivity_error{universe_uuid="$uuid"} > 0
 ```
 
@@ -89,7 +89,7 @@ ybp_health_check_redis_connectivity_error{universe_uuid="$uuid"} > 0
 
 Last attempt to run a scheduled backup for universe `'$universe_name'` failed due to other backup or universe operation in progress.
 
-```expression
+```promql
 last_over_time(ybp_schedule_backup_status{universe_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -97,7 +97,7 @@ last_over_time(ybp_schedule_backup_status{universe_uuid = "$uuid"}[1d]) < 1
 
 Node to node certificate for universe `'$universe_name'` expires in `$value` days.
 
-```expression
+```promql
 min by (node_name) (ybp_health_check_n2n_cert_validity_days{universe_uuid="$uuid"} < 30)
 ```
 
@@ -105,7 +105,7 @@ min by (node_name) (ybp_health_check_n2n_cert_validity_days{universe_uuid="$uuid
 
 Core files detected for universe `'$universe_name'` on `$value` T-Server instances.
 
-```expression
+```promql
 ybp_health_check_tserver_core_files{universe_uuid="$uuid"} > 0
 ```
 
@@ -113,7 +113,7 @@ ybp_health_check_tserver_core_files{universe_uuid="$uuid"} > 0
 
 Last attempt to send alert notifications for customer `'yugabyte support'` failed. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
-```expression
+```promql
 last_over_time(ybp_alert_manager_status{customer_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -121,7 +121,7 @@ last_over_time(ybp_alert_manager_status{customer_uuid = "$uuid"}[1d]) < 1
 
 Last backup task for universe `'$universe_name'` failed. You need to check the backup task result for details.
 
-```expression
+```promql
 last_over_time(ybp_create_backup_status{universe_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -129,7 +129,7 @@ last_over_time(ybp_create_backup_status{universe_uuid = "$uuid"}[1d]) < 1
 
 `$value` tablets remain under-replicated for more than 5 minutes in universe `'$universe_name'`.
 
-```expression
+```promql
 max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_underreplicated_tablet{node_prefix="$node_prefix"}[5m])) > 0)
 ```
 
@@ -137,7 +137,7 @@ max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(y
 
 Database memory rejections have been detected for universe `'$universe_name'`.
 
-```expression
+```promql
 sum by (node_prefix) (increase(leader_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) + sum by (node_prefix) (increase(follower_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) + sum by (node_prefix) (increase(operation_memory_pressure_rejections{node_prefix="$node_prefix"}[10m])) > 0
 ```
 
@@ -145,7 +145,7 @@ sum by (node_prefix) (increase(leader_memory_pressure_rejections{node_prefix="$n
 
 Client to node CA certificate for universe `'$universe_name'` expires in `$value` days.
 
-```expression
+```promql
 min by (node_name) (ybp_health_check_c2n_ca_cert_validity_days{universe_uuid="$uuid"} < 30)
 ```
 
@@ -153,7 +153,7 @@ min by (node_name) (ybp_health_check_c2n_ca_cert_validity_days{universe_uuid="$u
 
 Database queues overflow has been detected for universe `'$universe_name'`.
 
-```expression
+```promql
 sum by (node_prefix) (increase(rpcs_queue_overflow{node_prefix="$node_prefix"}[10m])) + sum by (node_prefix) (increase(rpcs_timed_out_in_queue{node_prefix="$node_prefix"}[10m])) > 1
 ```
 
@@ -161,7 +161,7 @@ sum by (node_prefix) (increase(rpcs_queue_overflow{node_prefix="$node_prefix"}[1
 
 Last alert rules synchronization for customer `'yugabyte support'` has failed. YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
-```expression
+```promql
 last_over_time(ybp_alert_config_writer_status[1d]) < 1
 ```
 
@@ -169,7 +169,7 @@ last_over_time(ybp_alert_config_writer_status[1d]) < 1
 
 Last alert query for customer `'yugabyte support'` failed. YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
 
-```expression
+```promql
 last_over_time(ybp_alert_query_status[1d]) < 1
 ```
 
@@ -177,7 +177,7 @@ last_over_time(ybp_alert_query_status[1d]) < 1
 
 Fatal logs have been detected for universe `'$universe_name'` on `$value` Master or T-Server instances.
 
-```expression
+```promql
 sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid="$uuid"} < bool 1) + sum by (universe_uuid) (ybp_health_check_node_tserver_fatal_logs{universe_uuid="$uuid"} < bool 1) > 0
 ```
 
@@ -185,7 +185,7 @@ sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid="$
 
 Master leader is missing for universe `'$universe_name'`.
 
-```expression
+```promql
 max by (node_prefix) (yb_node_is_master_leader{node_prefix="$node_prefix"}) < 1
 ```
 
@@ -193,7 +193,7 @@ max by (node_prefix) (yb_node_is_master_leader{node_prefix="$node_prefix"}) < 1
 
 Universe `'$universe_name'` database node has restarted `$value` times during last 30 minutes.
 
-```expression
+```promql
 max by (node_prefix) (changes(node_boot_time{node_prefix="$node_prefix"}[30m])) > 0
 ```
 
@@ -201,7 +201,7 @@ max by (node_prefix) (changes(node_boot_time{node_prefix="$node_prefix"}[30m])) 
 
 Node to node CA certificate for universe `'$universe_name'` expires in `$value` days.
 
-```expression
+```promql
 min by (node_name) (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid="$uuid"} < 30)
 ```
 
@@ -209,7 +209,7 @@ min by (node_name) (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid="$u
 
 Universe `'$universe_name'` Master or T-Server has restarted `$value` times during last 30 minutes.
 
-```expression
+```promql
 max by (node_prefix) (changes(yb_node_boot_time{node_prefix="$node_prefix"}[30m]) and on (node_prefix) (max_over_time(ybp_universe_update_in_progress{node_prefix="$node_prefix"}[31m]) == 0)) > 0
 ```
 
@@ -217,7 +217,7 @@ max by (node_prefix) (changes(yb_node_boot_time{node_prefix="$node_prefix"}[30m]
 
 More than one out of memory (OOM) kills have been detected for universe `'$universe_name'` on `$value` nodes.
 
-```expression
+```promql
 count by (node_prefix) (yb_node_oom_kills_10min{node_prefix="$node_prefix"} > 1) > 0
 ```
 
@@ -225,7 +225,7 @@ count by (node_prefix) (yb_node_oom_kills_10min{node_prefix="$node_prefix"} > 1)
 
 `$value` database nodes are down for more than 15 minutes for universe `'$universe_name'`.
 
-```expression
+```promql
 count by (node_prefix) (max_over_time(up{export_type="node_export",node_prefix="$node_prefix"}[15m]) < 1) > 0
 ```
 
@@ -233,7 +233,7 @@ count by (node_prefix) (max_over_time(up{export_type="node_export",node_prefix="
 
 Node file descriptors usage for universe `'$universe_name'` is above 70% on `$value` nodes.
 
-```expression
+```promql
 count by (universe_uuid) (ybp_health_check_used_fd_pct{universe_uuid="$uuid"} > 70)
 ```
 
@@ -241,7 +241,7 @@ count by (universe_uuid) (ybp_health_check_used_fd_pct{universe_uuid="$uuid"} > 
 
 Last attempt to send alert notifications to channel `'{{ $labels.source_name }}'` has failed. You need to try sending a test alert to obtain details.
 
-```expression
+```promql
 last_over_time(ybp_alert_manager_channel_status{customer_uuid = "$uuid"}[1d]) < 1
 ```
 
@@ -249,7 +249,7 @@ last_over_time(ybp_alert_manager_channel_status{customer_uuid = "$uuid"}[1d]) < 
 
 Average node CPU usage for universe `'$universe_name'` is more than 90% on `$value` nodes.
 
-```expression
+```promql
 count by(node_prefix) ((100 - (avg by (node_prefix, instance) (avg_over_time(irate(node_cpu_seconds_total{job="node",mode="idle", node_prefix="$node_prefix"}[1m])[30m:])) * 100)) > 90)
 ```
 
@@ -257,7 +257,7 @@ count by(node_prefix) ((100 - (avg by (node_prefix, instance) (avg_over_time(ira
 
 `$value` database Master or T-Server instances are down for more than 15 minutes for universe `'$universe_name'`.
 
-```expression
+```promql
 count by (node_prefix) (label_replace(max_over_time(up{export_type=~"master_export|tserver_export",node_prefix="$node_prefix"}[15m]), "exported_instance", "$1", "instance", "(.*)") < 1 and on (node_prefix, export_type, exported_instance) (min_over_time(ybp_universe_node_function{node_prefix="$node_prefix"}[15m]) == 1)) > 0
 ```
 
@@ -265,7 +265,7 @@ count by (node_prefix) (label_replace(max_over_time(up{export_type=~"master_expo
 
 `$value` nodes have inactive cronjob for universe `'$universe_name'`.
 
-```expression
+```promql
 ybp_universe_inactive_cron_nodes{universe_uuid = "$uuid"} > 0
 ```
 
@@ -273,7 +273,7 @@ ybp_universe_inactive_cron_nodes{universe_uuid = "$uuid"} > 0
 
 Node disk usage for universe `'$universe_name'` is more than 70% on `$value` nodes.
 
-```expression
+```promql
 count by (node_prefix) (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"/mnt/.*", node_prefix="$node_prefix"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/.*", node_prefix="$node_prefix"}) * 100) > 70)
 ```
 
@@ -281,7 +281,7 @@ count by (node_prefix) (100 - (sum without (saved_name) (node_filesystem_free_by
 
 Maximum clock skew for universe `'$universe_name'` is more than 500 milliseconds. The current value is `$value` milliseconds.
 
-```expression
+```promql
 max by (node_prefix) (max_over_time(hybrid_clock_skew{node_prefix="$node_prefix"}[10m])) / 1000 > 500
 ```
 
@@ -289,7 +289,7 @@ max by (node_prefix) (max_over_time(hybrid_clock_skew{node_prefix="$node_prefix"
 
 The tablet leader is missing for more than 5 minutes for `$value` tablets in universe `'$universe_name'`.
 
-```expression
+```promql
 max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_leaderless_tablet{node_prefix="$node_prefix"}[5m])) > 0)
 ```
 

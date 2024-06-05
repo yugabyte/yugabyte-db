@@ -567,8 +567,13 @@ extern bool yb_enable_saop_pushdown;
 
 /*
  * Enables the use of TOAST compression for the Postgres catcache.
-*/
+ */
 extern int yb_toast_catcache_threshold;
+
+/*
+ * Configure size of the parallel range in requests for parallel keys.
+ */
+extern int yb_parallel_range_size;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.

@@ -116,8 +116,9 @@ class TSCallExecutor {
 
   ~TSCallExecutor() {
     // If row_ctx_ was created it is deleted with mem_ctx_, as mem_ctx_ is the parent
-    YbgSetCurrentMemoryContext(mem_ctx_);
+    YbgMemoryContext old_ctx = YbgSetCurrentMemoryContext(mem_ctx_);
     CHECK_OK(DeleteMemoryContext());
+    YbgSetCurrentMemoryContext(old_ctx);
   }
 
   Status AddColumnRef(const PgsqlColRefPB& column_ref) {

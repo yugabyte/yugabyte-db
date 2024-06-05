@@ -4,12 +4,21 @@ import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box, Tooltip } from '@material-ui/core';
 import { YBLabel, YBAutoComplete } from '../../../../../../components';
-import { api, QUERY_KEY } from '../../../utils/api';
+import { api, DBReleasesQueryKey } from '../../../utils/api';
 import { getActiveDBVersions, sortVersionStrings } from './DBVersionHelper';
 import { isVersionStable } from '../../../../../../../utils/universeUtilsTyped';
-import { DEFAULT_ADVANCED_CONFIG, UniverseFormData, YBSoftwareMetadata } from '../../../utils/dto';
-import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-
+import {
+  CloudType,
+  DEFAULT_ADVANCED_CONFIG,
+  UniverseFormData,
+  YBSoftwareMetadata
+} from '../../../utils/dto';
+import {
+  isImgBundleSupportedByProvider,
+  IsOsPatchingEnabled
+} from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { ReleaseState } from '../../../../../releases/components/dtos';
+import { ArchitectureType } from '../../../../../../../components/configRedesign/providerRedesign/constants';
 import {
   SOFTWARE_VERSION_FIELD,
   PROVIDER_FIELD,
@@ -19,7 +28,6 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
 
 import InfoMessageIcon from '../../../../../../../redesign/assets/info-message.svg';
-import { ReleaseState } from '../../../../../releases/components/dtos';
 
 const MAX_RELEASE_TAG_CHAR = 20;
 
@@ -108,8 +116,21 @@ export const DBVersionField = ({
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
   const { data, isLoading } = useQuery(
-    [QUERY_KEY.getDBVersions, isOsPatchingEnabled ? cpuArch : null],
-    () => api.getDBVersions(true, isOsPatchingEnabled ? cpuArch : null, isReleasesEnabled),
+    [DBReleasesQueryKey.provider(provider?.uuid), isOsPatchingEnabled ? cpuArch : null],
+    () =>
+      api.getDBVersions(
+        true,
+        /* Pass x86_64 as default version to search in case of AWS when OS patching is enabled
+          Checking this condition only for AWS as we support OS patching only for AWS based on
+          line 56 from CPUArchField.tsx
+        */
+        isOsPatchingEnabled &&
+          isImgBundleSupportedByProvider(provider) &&
+          provider?.code === CloudType.aws
+          ? cpuArch ?? ArchitectureType.X86_64
+          : null,
+        isReleasesEnabled
+      ),
     {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {

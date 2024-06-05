@@ -23,6 +23,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   ConfigureRegionModal,
   CloudVendorRegionField
@@ -34,7 +35,8 @@ import {
   ProviderCode,
   VPCSetupType,
   KeyPairManagement,
-  KEY_PAIR_MANAGEMENT_OPTIONS
+  KEY_PAIR_MANAGEMENT_OPTIONS,
+  ProviderOperation
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -463,12 +465,13 @@ export const AWSProviderCreateForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message ? (
@@ -480,7 +483,8 @@ export const AWSProviderCreateForm = ({
             <LinuxVersionCatalog
               control={formMethods.control}
               providerType={ProviderCode.AWS}
-              viewMode="CREATE"
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
             />
             <FieldGroup
               heading="SSH Key Pairs"
@@ -595,14 +599,9 @@ export const AWSProviderCreateForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">

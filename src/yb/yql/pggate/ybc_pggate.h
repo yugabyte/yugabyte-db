@@ -498,8 +498,9 @@ YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
                                 YBCPgBoundType end_type, uint64_t end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
-YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
-                            const char *end_value, size_t end_value_len);
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
+                            const char *lower_bound, size_t lower_bound_len,
+                            const char *upper_bound, size_t upper_bound_len);
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
                                     YBCPgExpr *col_values, bool is_inclusive);
@@ -656,8 +657,8 @@ YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
-YBCStatus YBCPgCommitTransaction();
-YBCStatus YBCPgAbortTransaction();
+YBCStatus YBCPgCommitPlainTransaction();
+YBCStatus YBCPgAbortPlainTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);

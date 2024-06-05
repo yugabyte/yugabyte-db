@@ -240,7 +240,7 @@ void PggateTest::BeginTransaction() {
 }
 
 void PggateTest::CommitTransaction() {
-  CHECK_YBC_STATUS(YBCPgCommitTransaction());
+  CHECK_YBC_STATUS(YBCPgCommitPlainTransaction());
 }
 
 void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {

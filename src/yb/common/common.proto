@@ -664,10 +664,10 @@ message WaitStateInfoPB {
   // The metadata is rarely modified.
   optional AshMetadataPB metadata = 1;
   // Represents the state of the curreent rpc/request when it was polled.
-  optional uint32 wait_status_code = 2;
+  optional uint32 wait_state_code = 2;
   // Some additional information that may be persisted as
   // yb_active_universe_history.wait_event_aux
   optional AshAuxDataPB aux_info = 3;
-  // A string representation of wait_status_code for easy human consumption.
-  optional string wait_status_code_as_string = 4;
+  // A string representation of wait_state_code for easy human consumption.
+  optional string wait_state_code_as_string = 4;
 }

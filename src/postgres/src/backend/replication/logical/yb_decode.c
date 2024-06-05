@@ -269,6 +269,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		ctx->reorder, after_op_tuple->t_len + HEAPTUPLESIZE);
 	after_op_tuple_buf->tuple = *after_op_tuple;
 	after_op_tuple_buf->yb_is_omitted = after_op_is_omitted;
+	after_op_tuple_buf->yb_is_omitted_size =
+		(should_handle_omitted_case) ? nattrs : 0;
 
 	before_op_tuple =
 		heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
@@ -276,6 +278,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
 	before_op_tuple_buf->tuple = *before_op_tuple;
 	before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
+	before_op_tuple_buf->yb_is_omitted_size =
+		(should_handle_omitted_case) ? nattrs : 0;
 
 	elog(DEBUG2, "The before_op heap tuple: %s and after_op heap tuple: %s",
 		 YbHeapTupleToString(before_op_tuple, tupdesc),
@@ -491,7 +495,6 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			if (needs_invalidation)
 			{
 				uint64_t	read_time_ht;
-				char		read_time[50];
 				bool		for_startup;
 
 				for_startup = ctx->yb_handle_relcache_invalidation_startup;
@@ -511,10 +514,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 					read_time_ht = record->yb_virtual_wal_record->commit_time;
 				}
 
-				sprintf(read_time, "%" PRIu64 " ht", read_time_ht);
-				elog(DEBUG1, "Setting yb_read_time to %s", read_time);
-				assign_yb_read_time(read_time, NULL);
-				YbRelationCacheInvalidate();
+				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
 
 				/*
 				 * Let the plugin know that the schema for this table has

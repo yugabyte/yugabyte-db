@@ -1,0 +1,16 @@
+title: Edit Universe Spec
+type: object
+required:
+  - clusters
+  - expected_universe_version
+properties:
+  clusters:
+    type: array
+    items:
+      $ref: ./ClusterEditSpec.yaml
+    maxItems: 16
+    minItems: 1
+  expected_universe_version:
+    description: Expected universe version. Set to -1 to ignore version checking.
+    type: integer
+    format: int32

@@ -1242,8 +1242,8 @@ void YBCExecuteUpdateReplace(Relation rel,
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
-	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement delete_stmt = NULL;
+	Oid				relfileNodeId = YbGetRelfileNodeId(rel);
 
 	if (HEAPTUPLE_YBCTID(tuple) == 0)
 		ereport(ERROR,
@@ -1252,7 +1252,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
-								  relid,
+								  relfileNodeId,
 								  YBCIsRegionLocal(rel),
 								  &delete_stmt,
 									YB_TRANSACTIONAL));
@@ -1262,7 +1262,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 										   HEAPTUPLE_YBCTID(tuple), false /* is_null */);
 
 	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(YbGetRelfileNodeId(rel),
+	YBCPgDeleteFromForeignKeyReferenceCache(relfileNodeId,
 											HEAPTUPLE_YBCTID(tuple));
 
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));

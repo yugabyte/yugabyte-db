@@ -41,6 +41,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestVWALRestartOnLongTxns(FeedbackType feedback_type);
   void TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption snapshot_option);
   void TestCommitTimeTieWithPublicationRefreshRecord(bool special_record_in_separate_response);
+  void TestSlotRowDeletion(bool multiple_streams);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -2054,7 +2055,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
   // Get the Consistent Snapshot Time for stream 2.
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_2));
-  auto cdcsdk_consistent_snapshot_time = slot_row.last_pub_refresh_time;
+  auto cdcsdk_consistent_snapshot_time = slot_row->last_pub_refresh_time;
   HybridTime commit_time;
 
   ASSERT_OK(conn.Execute("BEGIN;"));
@@ -2268,8 +2269,8 @@ TEST_F(
 
   ASSERT_OK(UpdateAndPersistLSN(stream_id, last_record_lsn, restart_lsn));
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.restart_lsn, restart_lsn - 1);
-  ASSERT_EQ(slot_row.confirmed_flush_lsn, last_record_lsn);
+  ASSERT_EQ(slot_row->restart_lsn, restart_lsn - 1);
+  ASSERT_EQ(slot_row->confirmed_flush_lsn, last_record_lsn);
 
   // Sleep to ensure that we will receive publication refresh record.
   SleepFor(MonoDelta::FromMicroseconds(2 * publication_refresh_interval));
@@ -2324,7 +2325,7 @@ TEST_F(
 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionForTableCreatedAfterStream) {
-  auto publication_refresh_interval = MonoDelta::FromSeconds(1);
+  auto publication_refresh_interval = MonoDelta::FromSeconds(10);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
@@ -2347,14 +2348,6 @@ TEST_F(
   ASSERT_OK(
       conn.Execute("CREATE TABLE test2 (id int primary key, value_1 int) SPLIT INTO 1 TABLETS"));
   auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
-
-  ASSERT_OK(WaitFor(
-      [&]()-> Result<bool> {
-        auto tables_in_stream = VERIFY_RESULT(GetCDCStreamTableIds(stream_id));
-        return tables_in_stream.size() == 2;
-        },
-      MonoDelta::FromSeconds(60),
-      "Timed out waiting for the table to get added to the stream"));
 
   ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
 
@@ -2397,7 +2390,7 @@ TEST_F(
         records.insert(
             records.end(), change_resp.cdc_sdk_proto_records().begin(),
             change_resp.cdc_sdk_proto_records().end());
-        return records.size() == 5;
+        return records.size() >= 4;
       },
       MonoDelta::FromSeconds(60),
       "Timed out waiting to receive the records of second transaction"));
@@ -2413,6 +2406,12 @@ TEST_F(
   ASSERT_TRUE(has_records_from_test1 && has_records_from_test2);
 
   for (int i = 0; i < 8; i++) {
+    // This is because in TSAN builds, the records of txn 2 are received by the VWAL in two
+    // GetChanges calls instead of one. As a result VWAL does not ship a DDL record for txn 2 in
+    // TSAN builds.
+    if (IsTsan() && i == 0) {
+      ASSERT_EQ(0, count[i]);
+    }
     ASSERT_EQ(expected_count[i], count[i]);
   }
 }
@@ -2546,8 +2545,8 @@ TEST_F(
 
   // The safetime for both the table's tablets should be equal to slot's commit time.
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
-  ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row.record_id_commit_time);
+  ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
+  ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
 }
 
 // This test verifies the behaviour of VWAL when the publication refresh interval is changed when
@@ -2610,7 +2609,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInt
 
   // Verify the value of pub_refresh_times in the state table.
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+  ASSERT_EQ(slot_row->pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
 
   // Update the publication's table list and change the refresh interval.
   ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
@@ -2648,7 +2647,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInt
 
   // Verify the value of pub_refresh_times in the state table.
   slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+  ASSERT_EQ(slot_row->pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
 
   // Update the publication's table list and change the refresh interval.
   ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}));
@@ -2680,7 +2679,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInt
 
   // Verify the value of pub_refresh_times in the state table.
   slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+  ASSERT_EQ(slot_row->pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
 
   // Send acknowledgemetn for txn 1. This should not trim the pub_refresh_times list. Upon restart
   // the very first record to be popped should be a publication refresh record.
@@ -2722,7 +2721,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInt
 
   // Verify that the pub_refresh_times has been trimmed in state table slot entry.
   slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+  ASSERT_EQ(slot_row->pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
 
   ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}));
 
@@ -2752,7 +2751,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInt
 
   // Verify the value of pub_refresh_times in the state table.
   slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  ASSERT_EQ(slot_row.pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
+  ASSERT_EQ(slot_row->pub_refresh_times, GetPubRefreshTimesString(pub_refresh_times));
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestLSNDeterminismWithChangingPubRefreshInterval) {
@@ -2921,6 +2920,68 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTable
   VerifyLastRecordAndProgressOnSlot(stream_id, last_record);
   CheckRecordsConsistencyFromVWAL(get_consistent_changes_resp.records);
   CheckRecordCount(get_consistent_changes_resp, dml_records_per_table);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSlotRowDeletionWithSingleStream) {
+  TestSlotRowDeletion(false);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSlotRowDeletionWithMultipleStreams) {
+  TestSlotRowDeletion(true);
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_streams) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+
+  // Set the replica identity to full, so that cdc_sdk_safe_time will be set.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  if (multiple_streams) {
+    ASSERT_RESULT(CreateConsistentSnapshotStream());
+  }
+
+  ASSERT_OK(WriteRowsWithConn(1, 2, &test_cluster_, &conn));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_GE(change_resp.cdc_sdk_proto_records_size(), 3);
+
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_TRUE(slot_row.has_value());
+
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+
+  // The slot row will be deleted from the state table.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
+        return !slot_row.has_value();
+      },
+      MonoDelta::FromSeconds(10), "Timed out waiting for slot entry deletion from state table"));
+
+  if (multiple_streams) {
+    // Since one stream still exists, the retention barriers will not be lifted.
+    ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    ASSERT_NE(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  } else {
+    // Since the only stream that existed is now deleted, the retention barriers will be unset.
+    VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
+    ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  }
 }
 
 }  // namespace cdc

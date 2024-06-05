@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/consensus/log.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -80,24 +81,10 @@ void AssertIntKey(
   ASSERT_EQ(int_val.int32_value(), value);
 }
 
-Result<xrepl::StreamId> CreateCDCStream(
-    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-    const TableId& table_id,
-    cdc::CDCRequestSource source_type) {
-  CreateCDCStreamRequestPB req;
-  CreateCDCStreamResponsePB resp;
-  req.set_table_id(table_id);
-  req.set_source_type(source_type);
-  req.set_checkpoint_type(IMPLICIT);
-  req.set_record_format(CDCRecordFormat::WAL);
-
-  rpc::RpcController rpc;
-  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  return xrepl::StreamId::FromString(resp.stream_id());
+Result<xrepl::StreamId> CreateXClusterStream(client::YBClient& client, const TableId& table_id) {
+  // Test streams are used as soon as they are created so set state to active.
+  return client::XClusterClient(client).CreateXClusterStream(
+      table_id, /* active */ true, cdc::StreamModeTransactional::kFalse);
 }
 
 void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,

@@ -70,6 +70,7 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
+  cdc_service_proto
   master_proto
   master_rpc
   master_util

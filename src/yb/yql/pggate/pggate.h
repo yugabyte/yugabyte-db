@@ -473,10 +473,10 @@ class PgApiImpl {
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,
-                      Slice start_value,
-                      bool start_inclusive,
-                      Slice end_value,
-                      bool end_inclusive);
+                      Slice lower_bound,
+                      bool lower_bound_inclusive,
+                      Slice upper_bound,
+                      bool upper_bound_inclusive);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
@@ -646,8 +646,8 @@ class PgApiImpl {
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);

@@ -485,13 +485,17 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	/* delink from linked list */
 	dlist_delete(&ct->cache_elem);
 
+	bool need_to_free_ybctid = false;
 	/*
 	 * Free keys when we're dealing with a negative entry, normal entries just
 	 * point into tuple, allocated together with the CatCTup.
+	 * YB Note: for normal entries we may need to free ybctid.
 	 */
 	if (ct->negative)
 		CatCacheFreeKeys(cache->cc_tupdesc, cache->cc_nkeys,
 						 cache->cc_keyno, ct->keys);
+	else if (IsYugaByteEnabled() && HEAPTUPLE_YBCTID(&ct->tuple))
+		need_to_free_ybctid = true;
 
 #ifdef CATCACHE_STATS
 	/*
@@ -501,10 +505,16 @@ CatCacheRemoveCTup(CatCache *cache, CatCTup *ct)
 	if (ct->negative)
 		cache->yb_cc_size_bytes -= sizeof(CatCTup);
 	else
+	{
 		cache->yb_cc_size_bytes -=
 			sizeof(CatCTup) + MAXIMUM_ALIGNOF + ct->tuple.t_len;
+		if (need_to_free_ybctid)
+			cache->yb_cc_size_bytes -= VARSIZE(HEAPTUPLE_YBCTID(&ct->tuple));
+	}
 #endif
 
+	if (need_to_free_ybctid)
+		pfree(DatumGetPointer(HEAPTUPLE_YBCTID(&ct->tuple)));
 	pfree(ct);
 
 	--cache->cc_ntup;
@@ -2341,6 +2351,13 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
 		HEAPTUPLE_COPY_YBITEM(dtp, &ct->tuple);
+#ifdef CATCACHE_STATS
+		/* HEAPTUPLE_COPY_YBITEM makes allocation for ybctid. */
+		bool allocated_ybctid = (IsYugaByteEnabled() &&
+								 HEAPTUPLE_YBCTID(&ct->tuple));
+		if (allocated_ybctid)
+			cache->yb_cc_size_bytes += VARSIZE(HEAPTUPLE_YBCTID(&ct->tuple));
+#endif
 		ct->tuple.t_tableOid = dtp->t_tableOid;
 		ct->tuple.t_data = (HeapTupleHeader)
 			MAXALIGN(((char *) ct) + sizeof(CatCTup));

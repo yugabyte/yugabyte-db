@@ -246,5 +246,7 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
 // to the replication_factor flag.
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
 
+const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
+
 } // namespace master
 } // namespace yb

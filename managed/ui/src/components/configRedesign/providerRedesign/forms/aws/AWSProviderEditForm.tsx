@@ -25,6 +25,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   CloudVendorRegionField,
   ConfigureRegionModal
@@ -34,6 +35,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   YBImageType
 } from '../../constants';
@@ -573,6 +575,7 @@ export const AWSProviderEditForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -580,7 +583,7 @@ export const AWSProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AWS,
                   'regions',
                   isFormDisabled,
@@ -598,9 +601,16 @@ export const AWSProviderEditForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.aws}
-              viewMode="EDIT"
+              providerType={ProviderCode.AWS}
+              providerOperation={ProviderOperation.EDIT}
               providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AWS,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
             <FieldGroup
               heading="SSH Key Pairs"
@@ -789,14 +799,9 @@ export const AWSProviderEditForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">

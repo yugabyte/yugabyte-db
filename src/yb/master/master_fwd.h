@@ -94,6 +94,7 @@ class YsqlBackendsManager;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
+class MasterClusterHandler;
 
 struct XClusterConsumerStreamInfo;
 struct PgTableReadData;

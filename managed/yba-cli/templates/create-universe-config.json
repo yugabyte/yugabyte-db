@@ -1,0 +1,36 @@
+{
+  "name": "<universe-name>",
+  "provider-code": "<provider-code>",
+  "provider-name": "<provider-name>",
+  "yb-db-version": "<YugabyteDB-version>",
+  "replication-factor": [
+    1,
+    3
+  ],
+  "num-nodes": [
+    1,
+    3
+  ],
+  "user-tags": {
+    "<key1>": "<value1>",
+    "<key2>": "<value2>",
+    "<key3>": "<value3>"
+  },
+  "master-gflags": {
+    "gflag1": "value1",
+    "gflag2": "value2",
+    "gflag3": "value3"
+  },
+  "tserver-gflags": {
+    "primary": {
+      "gflag1": "value1",
+      "gflag2": "value2",
+      "gflag3": "value3"
+    },
+    "async" {
+      "gflag1": "value1",
+      "gflag2": "value2",
+      "gflag3": "value3"
+    }
+  }
+}

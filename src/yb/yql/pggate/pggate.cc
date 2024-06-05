@@ -1406,12 +1406,12 @@ Status PgApiImpl::DmlBindHashCode(
 }
 
 Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
-                               Slice start_value,
-                               bool start_inclusive,
-                               Slice end_value,
-                               bool end_inclusive) {
+                               Slice lower_bound,
+                               bool lower_bound_inclusive,
+                               Slice upper_bound,
+                               bool upper_bound_inclusive) {
   return down_cast<PgDmlRead*>(handle)->BindRange(
-      start_value, start_inclusive, end_value, end_inclusive);
+      lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
@@ -2113,16 +2113,16 @@ bool PgApiImpl::IsRestartReadPointRequested() {
   return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
-Status PgApiImpl::CommitTransaction() {
+Status PgApiImpl::CommitPlainTransaction() {
   DCHECK(pg_session_->explicit_row_lock_buffer().IsEmpty());
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  return pg_txn_manager_->CommitTransaction();
+  return pg_txn_manager_->CommitPlainTransaction();
 }
 
-Status PgApiImpl::AbortTransaction() {
+Status PgApiImpl::AbortPlainTransaction() {
   ClearSessionState();
-  return pg_txn_manager_->AbortTransaction();
+  return pg_txn_manager_->AbortPlainTransaction();
 }
 
 Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {

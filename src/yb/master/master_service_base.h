@@ -38,6 +38,7 @@ class TabletHealthManager;
 struct LeaderEpoch;
 class XClusterManager;
 class MasterAutoFlagsManager;
+class MasterClusterHandler;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -124,6 +125,7 @@ class MasterServiceBase {
   TestAsyncRpcManager* handler(TestAsyncRpcManager*);
   MasterAutoFlagsManager* handler(MasterAutoFlagsManager*);
   CloneStateManager* handler(CloneStateManager*);
+  MasterClusterHandler* handler(MasterClusterHandler*);
 
   Master* server_;
 

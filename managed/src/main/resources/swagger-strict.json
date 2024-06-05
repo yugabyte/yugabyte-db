@@ -583,6 +583,10 @@
             "$ref" : "#/definitions/HTTP Auth information",
             "description" : "Authentication Details"
           },
+          "sendResolved" : {
+            "description" : "WARNING: This is a preview API that could change. Send resolved alert notification",
+            "type" : "boolean"
+          },
           "webhookUrl" : {
             "description" : "Webhook URL",
             "type" : "string"
@@ -6148,6 +6152,10 @@
     },
     "KubernetesInfo" : {
       "properties" : {
+        "isKubernetesOperatorControlled" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "kubeConfig" : {
           "readOnly" : true,
           "type" : "string"
@@ -6456,6 +6464,10 @@
         "certManagerIssuer" : {
           "type" : "string"
         },
+        "isKubernetesOperatorControlled" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "kubeConfig" : {
           "readOnly" : true,
           "type" : "string"
@@ -6691,6 +6703,10 @@
           "enum" : [ "FINISHED", "ACTIVE", "PENDING" ],
           "readOnly" : true,
           "type" : "string"
+        },
+        "suppressHealthCheckNotificationsConfig" : {
+          "$ref" : "#/definitions/SuppressHealthCheckNotificationsConfig",
+          "description" : "WARNING: This is a preview API that could change. Whether to suppress health check notifications for universes"
         },
         "uuid" : {
           "description" : "Maintenance window UUID",
@@ -11981,6 +11997,24 @@
         }
       },
       "required" : [ "components", "endDate", "startDate" ],
+      "type" : "object"
+    },
+    "SuppressHealthCheckNotificationsConfig" : {
+      "properties" : {
+        "suppressAllUniverses" : {
+          "description" : "Suppress health check notifications on all the universes (including future universes)",
+          "type" : "boolean"
+        },
+        "universeUUIDSet" : {
+          "description" : "Set of universe uuids to suppress health check notifications on",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
       "type" : "object"
     },
     "SystemdUpgradeParams" : {

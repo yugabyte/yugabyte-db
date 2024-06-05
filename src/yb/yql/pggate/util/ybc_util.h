@@ -301,6 +301,7 @@ const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
+uint8_t YBCGetQueryIdForCatalogRequests();
 
 #ifdef __cplusplus
 } // extern "C"

@@ -71,7 +71,9 @@ spec:
                   required:
                   - startDate
                 components:
-                  description: Components for which logs and events are to be collected.
+                  description: >
+                    Components for which logs and events are to be collected. If not provided, all
+                    components will be collected.
                   type: array
                   items:
                     type: string

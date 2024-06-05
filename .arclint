@@ -36,6 +36,7 @@
      "(^managed/yba-cli/NOTICE$)",
      "(^managed/yba-cli/internal/formatter/tabwriter/*)",
      "(^managed/yba-cli/internal/formatter/templates/*)",
+     "(^managed/yba-cli/templates/*)",
      "(^[.]clang-tidy)",
      "(.*/py.typed)",
      "(^troubleshoot/backend/gradlew)",

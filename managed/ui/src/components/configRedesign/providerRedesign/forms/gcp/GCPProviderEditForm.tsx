@@ -28,10 +28,12 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   UseProviderValidationEnabled,
   addItem,
@@ -181,6 +183,7 @@ export const GCPProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
@@ -227,7 +230,11 @@ export const GCPProviderEditForm = ({
     return <YBLoading />;
   }
 
-  const onFormSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: GCPProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -237,17 +244,21 @@ export const GCPProviderEditForm = ({
     }
 
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload, {
-          shouldValidate: isValidationEnabled,
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: {
-            onError: (err) =>
+            onError: (err) => {
               handleFormSubmitServerError(
                 (err as any)?.response?.data,
                 formMethods,
                 GCPCreateFormErrFields
-              )
+              );
+              setValidationErrorExist(true);
+            }
           }
         });
       } catch (_) {
@@ -256,6 +267,16 @@ export const GCPProviderEditForm = ({
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const onFormReset = () => {
@@ -356,7 +377,10 @@ export const GCPProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="gcpProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="gcpProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
@@ -535,6 +559,7 @@ export const GCPProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.GCP}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -542,7 +567,7 @@ export const GCPProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.GCP,
                   'regions',
                   isFormDisabled,
@@ -561,9 +586,16 @@ export const GCPProviderEditForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.gcp}
-              viewMode="EDIT"
+              providerType={ProviderCode.GCP}
+              providerOperation={ProviderOperation.EDIT}
               providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.GCP,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
             <FieldGroup heading="SSH Key Pairs">
               {sshConfigureMsg}
@@ -724,9 +756,7 @@ export const GCPProviderEditForm = ({
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
@@ -736,13 +766,28 @@ export const GCPProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
