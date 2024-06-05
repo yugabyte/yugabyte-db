@@ -267,6 +267,8 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_UNIONWITH] = "unionWith",
 	[FEATURE_STAGE_UNSET] = "unset",
 	[FEATURE_STAGE_UNWIND] = "unwind",
+	[FEATURE_STAGE_VECTOR_SEARCH_KNN] = "vector_search_knn",
+	[FEATURE_STAGE_VECTOR_SEARCH_MONGO] = "vector_search_mongo",
 
 	/* Feature usage stats */
 	[FEATURE_TTL_PURGER_CALLS] = "ttl_purger_calls"

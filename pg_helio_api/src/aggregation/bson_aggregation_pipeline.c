@@ -584,6 +584,17 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+	},
+	{
+		.stage = "$vectorSearch",
+		.mutateFunc = &HandleMongoNativeVectorSearch,
+		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+
+		/* can always be inlined since it doesn't change the projector */
+		.canInlineLookupStageFunc = &CanInlineLookupStageTrue,
+		.preservesStableSortOrder = false,
+		.canHandleAgnosticQueries = false,
+		.isProjectTransform = false,
 	}
 };
 

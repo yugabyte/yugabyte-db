@@ -76,6 +76,42 @@ static void AddNullVectorCheckToQuery(Query *query, const Expr *vectorSortExpr);
 
 static TargetEntry * AddSortByToQuery(Query *query, const Expr *vectorSortExpr);
 
+static pgbson * ParseAndValidateMongoNativeVectorSearchSpec(const
+															bson_value_t *
+															nativeVectorSearchSpec,
+															char **queryVectorPath,
+															int32_t *resultCount,
+															int32_t *queryVectorLength,
+															pgbson **searchParamPgbson,
+															bson_value_t *filterBson);
+
+
+/* parameters for HandleSearchCore*/
+typedef struct VectorSearchCoreParams
+{
+	/* it's the query spec pgbson that we pass to the bson_extract_vector() method to get the float[] vector. */
+	pgbson *vectorSearchQueryVector;
+
+	/* search path*/
+	const char *queryVectorPath;
+
+	/* query result count */
+	int32_t resultCount;
+
+	/* search param pgbson e.g. {"efSearch": 10} */
+	pgbson *searchParamPgbson;
+
+	/* filter bson */
+	bson_value_t filterBson;
+
+	/* vector search type e.g. "cosmosSearch" or "knnBeta" */
+	const char *searchSpecType;
+} VectorSearchCoreParams;
+
+static Query * HandleSearchCore(VectorSearchCoreParams params, Query *query,
+								RangeTblEntry *rte,
+								AggregationPipelineBuildContext *context);
+
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -202,6 +238,7 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 	}
 	else if (strcmp(searchSpecType, "knnBeta") == 0)
 	{
+		ReportFeatureUsage(FEATURE_STAGE_VECTOR_SEARCH_KNN);
 		ValidateKnnBetaQuerySpec(vectorSearchPgbson,
 								 &vectorPath, &resultCount, &queryVectorLength);
 	}
@@ -224,100 +261,58 @@ HandleSearch(const bson_value_t *existingValue, Query *query,
 						errmsg("Required path 'vector' must be specified")));
 	}
 
-	Relation collectionRelation = RelationIdGetRelation(rte->relid);
-	List *indexIdList = RelationGetIndexList(collectionRelation);
-	RelationClose(collectionRelation);
+	VectorSearchCoreParams params = {
+		.vectorSearchQueryVector = vectorSearchPgbson,
+		.queryVectorPath = vectorPath,
+		.resultCount = resultCount,
+		.searchParamPgbson = searchParamPgbson,
+		.filterBson = filterBson,
+		.searchSpecType = searchSpecType
+	};
+	return HandleSearchCore(params, query, rte, context);
+}
 
-	Expr *processedSortExpr = NULL;
-	ListCell *indexId;
-	Node *queryNode = (Node *) MakeBsonConst(vectorSearchPgbson);
-	Oid vectorAccessMethodOid = InvalidOid;
-	foreach(indexId, indexIdList)
+
+/*
+ * Parses and handles the $vectorSearch stage in the aggregation pipeline.
+ * Converts the query to an
+ * ORDER BY bson_extract_vector(document, 'spec') <=> bson_extract_vector(query, 'spec')
+ * For additional details see query_operator.c
+ */
+Query *
+HandleMongoNativeVectorSearch(const bson_value_t *existingValue, Query *query,
+							  AggregationPipelineBuildContext *context)
+{
+	RangeTblEntry *rte = linitial(query->rtable);
+	if (rte->rtekind != RTE_RELATION || rte->tablesample != NULL ||
+		query->limitCount != NULL || context->stageNum != 0)
 	{
-		FuncExpr *vectorExtractFunc = NULL;
-		Relation indexRelation = RelationIdGetRelation(lfirst_oid(indexId));
-		if (IsMatchingVectorIndex(indexRelation, vectorPath, &vectorExtractFunc))
-		{
-			/* Vector search is on the doc even if there's projectors etc. */
-			processedSortExpr = GenerateVectorSortExpr(
-				vectorPath, vectorExtractFunc, indexRelation,
-				(Node *) MakeSimpleDocumentVar(), queryNode);
-
-			vectorAccessMethodOid = indexRelation->rd_rel->relam;
-		}
-		RelationClose(indexRelation);
-		if (processedSortExpr != NULL)
-		{
-			break;
-		}
-	}
-
-	if (processedSortExpr == NULL)
-	{
+		/* This is incompatible.vector search needs the base relation. */
 		ereport(ERROR, (errcode(MongoBadValue),
-						errmsg(
-							"Similarity index was not found for a vector similarity search query.")));
+						errmsg("$vectorSearch must be the first stage in the pipeline")));
 	}
+	ReportFeatureUsage(FEATURE_STAGE_VECTOR_SEARCH_MONGO);
 
-	/* Add the search param wrapper function to the query */
-	if (vectorAccessMethodOid != InvalidOid)
-	{
-		if (vectorAccessMethodOid == PgVectorIvfFlatIndexAmId())
-		{
-			ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT);
-		}
-		else if (vectorAccessMethodOid == PgVectorHNSWIndexAmId())
-		{
-			ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_HNSW);
-		}
-		else
-		{
-			const char *accessMethodName = get_am_name(vectorAccessMethodOid);
-			ereport(ERROR, (errcode(MongoBadValue),
-							errmsg(
-								"Only ivfflat and hnsw indexes are supported for vector search."),
-							errhint(
-								"unsupported vector index type: %s", accessMethodName)));
-		}
+	char *vectorPath = NULL;
+	int32_t resultCount = -1;
+	int32_t queryVectorLength = -1;
+	bson_value_t filterBson = { 0 };
+	pgbson *searchParamPgbson = NULL;
 
-		/* Create the WHERE bson_search_param(document, searchParamPgbson) and add it to the WHERE */
-		AddSearchParamFunctionToQuery(query, vectorAccessMethodOid, searchParamPgbson);
-	}
+	pgbson *vectorSearchPgbson = ParseAndValidateMongoNativeVectorSearchSpec(
+		existingValue, &vectorPath, &resultCount, &queryVectorLength,
+		&
+		searchParamPgbson, &filterBson);
 
-	/* Add the sort by to the query */
-	TargetEntry *sortEntry = AddSortByToQuery(query, processedSortExpr);
-
-	/* Add the null vector check to the query, so that we don't return documents that don't have the vector field */
-	AddNullVectorCheckToQuery(query, processedSortExpr);
-
-	/* If there's a filter, add it to the query */
-	if (EnableVectorPreFilter &&
-		filterBson.value_type != BSON_TYPE_EOD &&
-		!IsBsonValueEmptyDocument(&filterBson))
-	{
-		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER);
-
-		/* check if the collection is unsharded */
-		if (context->mongoCollection != NULL &&
-			context->mongoCollection->shardKey != NULL)
-		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg(
-								"Filter is not supported for vector search on sharded collection.")));
-		}
-
-		query = GeneratePrefilteringVectorSearchQuery(query, context, &filterBson,
-													  indexIdList, sortEntry);
-	}
-
-	/* Add the limit to the query from k in the search spec */
-	query->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
-										   Int64GetDatum(resultCount), false, true);
-
-	/* Push next stage to a new subquery (since we did a sort) */
-	context->requiresSubQueryAfterProject = true;
-
-	return query;
+	VectorSearchCoreParams params = {
+		.vectorSearchQueryVector = vectorSearchPgbson,
+		.queryVectorPath = vectorPath,
+		.resultCount = resultCount,
+		.searchParamPgbson = searchParamPgbson,
+		.filterBson = filterBson,
+		.searchSpecType = "cosmosSearch",
+	};
+	return HandleSearchCore(params, query, rte, context);
 }
 
 
@@ -935,4 +930,254 @@ AddSortByToQuery(Query *query, const Expr *vectorSortExpr)
 	pfree(parseState);
 	query->sortClause = sortlist;
 	return sortEntry;
+}
+
+
+/**
+ * parse the atlas search spec to cosmos search spec
+ */
+static pgbson *
+ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSearchSpec,
+											char **queryVectorPath,
+											int32_t *resultCount,
+											int32_t *queryVectorLength,
+											pgbson **searchParamPgbson,
+											bson_value_t *filterBson)
+{
+	EnsureTopLevelFieldValueType("vectorSearch", nativeVectorSearchSpec,
+								 BSON_TYPE_DOCUMENT);
+	bson_iter_t nativeVectorSearchIter;
+	BsonValueInitIterator(nativeVectorSearchSpec, &nativeVectorSearchIter);
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	const bson_value_t *vectorValue = NULL;
+
+	while (bson_iter_next(&nativeVectorSearchIter))
+	{
+		const char *key = bson_iter_key(&nativeVectorSearchIter);
+		const bson_value_t *value = bson_iter_value(&nativeVectorSearchIter);
+		if (strcmp(key, "queryVector") == 0)
+		{
+			if (!BsonValueHoldsNumberArray(value, queryVectorLength))
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.queryVector must be an array of numbers.")));
+			}
+
+			if (*queryVectorLength == 0)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.queryVector cannot be an empty array.")));
+			}
+
+			if (*queryVectorLength > 2000)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"Length of the query vector cannot exceed 2000")));
+			}
+			vectorValue = value;
+			PgbsonWriterAppendValue(&writer, "vector", 6, value);
+		}
+		else if (strcmp(key, "numCandidates") == 0)
+		{
+			EnsureTopLevelFieldValueType("numCandidates", value, BSON_TYPE_INT32);
+			if (value->value.v_int32 < HNSW_MIN_EF_SEARCH)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.numCandidates must be greater than or equal to %d.",
+									HNSW_MIN_EF_SEARCH),
+								errhint(
+									"$vectorSearch.numCandidates must be greater than or equal to %d.",
+									HNSW_MIN_EF_SEARCH)));
+			}
+
+			if (value->value.v_int32 > HNSW_MAX_EF_SEARCH)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.numCandidates must be less than or equal to %d.",
+									HNSW_MAX_EF_SEARCH),
+								errhint(
+									"$vectorSearch.numCandidates must be less than or equal to %d.",
+									HNSW_MAX_EF_SEARCH)));
+			}
+
+			PgbsonWriterAppendInt32(&writer, "efSearch", 8,
+									value->value.v_int32);
+			pgbson_writer searchParamWriter;
+			PgbsonWriterInit(&searchParamWriter);
+			PgbsonWriterAppendValue(&searchParamWriter, "efSearch", 8, value);
+			*searchParamPgbson = PgbsonWriterGetPgbson(&searchParamWriter);
+		}
+		else if (strcmp(key, "path") == 0)
+		{
+			EnsureTopLevelFieldValueType("path", value, BSON_TYPE_UTF8);
+			*queryVectorPath = pstrdup(value->value.v_utf8.str);
+
+			if (queryVectorPath == NULL)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.path cannot be empty.")));
+			}
+			PgbsonWriterAppendUtf8(&writer, "path", 4,
+								   value->value.v_utf8.str);
+		}
+		else if (strcmp(key, "limit") == 0)
+		{
+			EnsureTopLevelFieldValueType("limit", value, BSON_TYPE_INT32);
+			if (value->value.v_int32 < 1)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$vectorSearch.limit must be a positive integer.")));
+			}
+			PgbsonWriterAppendInt32(&writer, "k", 1,
+									value->value.v_int32);
+			*resultCount = BsonValueAsInt32(value);
+		}
+		else if (strcmp(key, "index") == 0)
+		{
+			/* Specifying index is not yet supported*/
+			continue;
+		}
+		else if (strcmp(key, "filter") == 0)
+		{
+			if (!EnableVectorPreFilter)
+			{
+				/* Safe guard against the enableVectorPreFilter GUC */
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("$filter is not supported for vector search yet."),
+								errhint(
+									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
+			}
+			EnsureTopLevelFieldValueType("filter", value, BSON_TYPE_DOCUMENT);
+			PgbsonWriterAppendValue(&writer, "filter", 6, value);
+			*filterBson = *value;
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoUnknownBsonField),
+							errmsg(
+								"BSON field '$vectorSearch.%s' is an unknown field",
+								key)));
+		}
+	}
+	if (queryVectorPath == NULL || vectorValue == NULL || *resultCount < 0)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"$path, $queryVector, and $limit are all required fields for using a vector index.")));
+	}
+	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+/* core logic for vector search*/
+static Query *
+HandleSearchCore(VectorSearchCoreParams params, Query *query, RangeTblEntry *rte,
+				 AggregationPipelineBuildContext *context)
+{
+	Relation collectionRelation = RelationIdGetRelation(rte->relid);
+	List *indexIdList = RelationGetIndexList(collectionRelation);
+	RelationClose(collectionRelation);
+
+	Expr *processedSortExpr = NULL;
+	ListCell *indexId;
+	Node *queryNode = (Node *) MakeBsonConst(params.vectorSearchQueryVector);
+	Oid vectorAccessMethodOid = InvalidOid;
+	foreach(indexId, indexIdList)
+	{
+		FuncExpr *vectorExtractFunc = NULL;
+		Relation indexRelation = RelationIdGetRelation(lfirst_oid(indexId));
+		if (IsMatchingVectorIndex(indexRelation, params.queryVectorPath,
+								  &vectorExtractFunc))
+		{
+			/* Vector search is on the doc even if there's projectors etc. */
+			processedSortExpr = GenerateVectorSortExpr(
+				params.queryVectorPath, vectorExtractFunc, indexRelation,
+				(Node *) MakeSimpleDocumentVar(), queryNode);
+
+			vectorAccessMethodOid = indexRelation->rd_rel->relam;
+		}
+		RelationClose(indexRelation);
+		if (processedSortExpr != NULL)
+		{
+			break;
+		}
+	}
+
+	if (processedSortExpr == NULL)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"Similarity index was not found for a vector similarity search query.")));
+	}
+
+	/* Add the search param wrapper function to the query */
+	if (vectorAccessMethodOid != InvalidOid)
+	{
+		if (vectorAccessMethodOid == PgVectorIvfFlatIndexAmId())
+		{
+			ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_IVFFLAT);
+		}
+		else if (vectorAccessMethodOid == PgVectorHNSWIndexAmId())
+		{
+			ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_HNSW);
+		}
+		else
+		{
+			const char *accessMethodName = get_am_name(vectorAccessMethodOid);
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"Only ivfflat and hnsw indexes are supported for vector search."),
+							errhint(
+								"unsupported vector index type: %s", accessMethodName)));
+		}
+
+		/* Create the WHERE bson_search_param(document, searchParamPgbson) and add it to the WHERE */
+		AddSearchParamFunctionToQuery(query, vectorAccessMethodOid,
+									  params.searchParamPgbson);
+	}
+
+	/* Add the sort by to the query */
+	TargetEntry *sortEntry = AddSortByToQuery(query, processedSortExpr);
+
+	/* Add the null vector check to the query, so that we don't return documents that don't have the vector field */
+	AddNullVectorCheckToQuery(query, processedSortExpr);
+
+	/* If there's a filter, add it to the query */
+	if (EnableVectorPreFilter &&
+		params.filterBson.value_type != BSON_TYPE_EOD &&
+		!IsBsonValueEmptyDocument(&params.filterBson))
+	{
+		ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER);
+
+		/* check if the collection is unsharded */
+		if (context->mongoCollection != NULL &&
+			context->mongoCollection->shardKey != NULL)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg(
+								"Filter is not supported for vector search on sharded collection.")));
+		}
+
+		query = GeneratePrefilteringVectorSearchQuery(query, context, &params.filterBson,
+													  indexIdList, sortEntry);
+	}
+
+	/* Add the limit to the query from k in the search spec */
+	query->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
+										   Int64GetDatum(params.resultCount), false,
+										   true);
+
+	/* Push next stage to a new subquery (since we did a sort) */
+	context->requiresSubQueryAfterProject = true;
+
+	return query;
 }

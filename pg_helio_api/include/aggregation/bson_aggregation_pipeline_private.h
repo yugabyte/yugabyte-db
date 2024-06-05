@@ -143,6 +143,10 @@ bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 Query * HandleSearch(const bson_value_t *existingValue, Query *query,
 					 AggregationPipelineBuildContext *context);
 
+/* atlas vector search related aggregation stages */
+Query * HandleMongoNativeVectorSearch(const bson_value_t *existingValue, Query *query,
+									  AggregationPipelineBuildContext *context);
+
 /* Metadata based query generators */
 Query * GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context);
 

@@ -94,7 +94,8 @@ HandleDollarMeta(pgbson *doc, const bson_value_t *operatorValue,
 	{
 		rank = EvaluateMetaTextScore(doc);
 	}
-	else if (StringViewEqualsCString(&valueView, "searchScore"))
+	else if (StringViewEqualsCString(&valueView, "searchScore") ||
+			 StringViewEqualsCString(&valueView, "vectorSearchScore"))
 	{
 		rank = EvaluateMetaSearchScore(doc);
 	}
