@@ -4288,7 +4288,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
-      "expr" : "max(max_over_time(consumer_safe_time_lag{node_prefix=~\"$dbcluster\"}[300s])) / 1000",
+      "expr" : "max(max_over_time(consumer_safe_time_lag{node_prefix=~\"$dbcluster\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -4380,7 +4380,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
-      "expr" : "max(max_over_time(consumer_safe_time_skew{node_prefix=~\"$dbcluster\"}[300s])) / 1000",
+      "expr" : "max(max_over_time(consumer_safe_time_skew{node_prefix=~\"$dbcluster\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {

@@ -2302,13 +2302,11 @@ async_replication_sent_lag:
 
 consumer_safe_time_lag:
   metric: "consumer_safe_time_lag"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
 consumer_safe_time_skew:
   metric: "consumer_safe_time_skew"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
