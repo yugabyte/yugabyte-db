@@ -1,19 +1,39 @@
 ---
 title: Running the TPC-C performance benchmark
 headerTitle: Running the TPC-C performance benchmark
-linkTitle: Benchmarking
+linkTitle: Run benchmark
 headcontent: Detailed steps to run the TPCC benchmark
 menu:
   preview:
     identifier: tpcc-ysql
     parent: tpcc
-    weight: 4
+    weight: 100
 type: docs
 rightNav:
   hideH3: true
 ---
 
-Run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB by following the instructions below.
+To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster spec (size and instance type) depending on your estimated IOPS, estimated data size and expected latency. You can use the table below for reference.
+
+|   Cluster   | Data set size (GB) | DB IOPS  | Recommended workload (warehouses) | Results - tpmc | Results - efficiency | Results - latency |
+| ----------- | ------------------ | -------- | --------------------------------- | -------------- | -------------------- | ----------------- |
+| 3 x 2vCPUs  | 39.90              | 1875.77  | 500                               | 6415.7         | 99.78                | 64.08             |
+| 3 x 4vCPUs  | 75.46              | 3736.53  | 1000                              | 12829.93       | 99.77                | 73.97             |
+| 3 x 8vCPUs  | 141.40             | 7488.01  | 2000                              | 25646.4        | 99.71                | 54.21             |
+| 3 x 16vCPUs | 272.24             | 14987.79 | 4000                              | 51343.5        | 99.81                | 39.46             |
+
+## Instance types
+
+Here are the recommended instance types on different cloud providers for the above-listed vCPU count.
+
+| vCPU |     AWS     |       AZURE       |            GCP             |
+| ---- | ----------- | ----------------- | -------------------------- |
+| 2    | m6i.large   | Standard_D2ds_v5  | n2-standard-2              |
+| 4    | m6i.xlarge  | Standard_D4ds_v5  | n2-standard-4              |
+| 8    | m6i.2xlarge | Standard_D8ds_v5  | n2-standard-8              |
+| 16   | m6i.4xlarge | Standard_D16ds_v5 | n2&#8209;standard&#8209;16 |
+
+Once you have decided on the instance type of the cluster that you need, you can follow the instructions below to run the TPC-C workload.
 
 ## Get TPC-C binaries
 
@@ -25,6 +45,14 @@ $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
 
+## Client machine
+
+The client machine is where the benchmark is run from. It is recommended you choose an 8vCPU machine with at least 16GB memory. These are the recommended instance types for the client machine from different cloud providers.
+
+| vCPU |    AWS     |      AZURE      |     GCP      |
+| ---- | ---------- | --------------- | ------------ |
+| 8    | c5.2xlarge | Standard_F8s_v2 | n2-highcpu-8 |
+
 ## Cluster setup
 
 <!-- begin: nav tabs -->
@@ -33,13 +61,7 @@ $ cd tpcc
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-<details> <summary>Set up a local cluster</summary>
-{{<setup/local collapse="no">}}
-
-{{<note title="Remember">}}
-Pre-compact tables using the [yb-admin](../../../admin/yb-admin/) utility's `compact_table` command.
-{{</note>}}
-</details>
+{{<setup/local>}}
 
 ```bash
 # Store the IP addresses of the nodes in a shell variable to be in the further commands.
@@ -51,10 +73,17 @@ IPS=127.0.0.1,127.0.0.2,127.0.0.3
 {{<nav/panel name="cloud">}}
 {{<setup/cloud>}}
 
-Store the IP addresses of the nodes in a shell variable to be in the further commands.
+{{<warning title="Set up connection options correctly">}}
+- When running the client machine outside the VPC, enable "Public Access" for the cluster. Also, make sure your client's IP is added to the **Allow list**.
+- Add the username (admin) and password from the credential file that you downloaded when you set up your cluster in YB Managed onto the [workload_all.xml](#configure-connection-parameters).
+- Make sure you add the full path of the location of the SSL certificate of your cluster in the `sslCert` tag in the [workload_all.xml](#configure-connection-parameters).
+- If you are planning to do a horizontal scale test, set the Fault-tolerance level to **None** so that you can add a single node to the cluster.
+{{</warning>}}
+
+Store the IP addresses/public address of the cluster in a shell variable to be in the further commands.
 
 ```bash
-IPS=<ip-node-1>,<ip-node-2>,<ip-node-3>
+IPS=<cluster-name/IP>
 ```
 
 {{</nav/panel>}}
@@ -63,309 +92,201 @@ IPS=<ip-node-1>,<ip-node-2>,<ip-node-3>
 
 ## Configure connection parameters
 
-If needed,  options like username, password, port etc can be set up using the configuration file at `config/workload_all.xml`.
+If needed, options like username, password, port etc can be set up using the configuration file at `config/workload_all.xml`.
 
 ```xml
 <port>5433</port>
 <username>yugabyte</username>
 <password>***</password>
+<sslCert>/Users/johnwick/.credentials/root.crt</sslCert>
 ```
 
 ## Initialize the data
 
-{{< tabpane text=true >}}
-{{% tab header="10 warehouses" lang="10-wh" %}}
+Initialize the database needed for the benchmark by following the instructions specific to your cluster.
 
-Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster.
+{{<tabpane text=true >}}
 
-```sh
-$ ./tpccbenchmark --create=true --nodes=${IPS}
-```
+{{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
 
-```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS}
-```
-
-| Cluster | Loader threads | Loading time | Data set size |
-| :------ | :------------: | :----------- | :------------ |
-| 3 nodes, type `c5d.large` | 10 | ~13 minutes | ~20 GB |
-
-The loading time for ten warehouses on a cluster with 3 nodes of type `c5d.4xlarge` is approximately 3 minutes.
-
-{{% /tab %}}
-{{% tab header="100 warehouses" lang="100-wh" %}}
-
-Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader-threads value of 48 was optimal.
+Set up the TPC-C database schema with the following command.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
+Populate the above-created database with data needed for the benchmark with the following command.
+
 ```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=100 --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=500  --loaderthreads 48
 ```
 
-| Cluster | Loader threads | Loading time | Data set size |
-| :------ | :------------- | :----------- | :------------ |
-| 3 nodes, type `c5d.4xlarge` | 48 | ~20 minutes | ~80 GB |
-
-Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The specified 48 threads value is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
-
 {{% /tab %}}
-{{% tab header="1,000 warehouses" lang="1k-wh" %}}
 
-Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node `c5d.4xlarge` cluster, loader threads value of 48 was optimal.
+{{% tab header="3 x 4vCPUs" lang="4vcpu" %}}
+
+Set up the TPC-C database schema with the following command.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
+Populate the above-created database with data needed for the benchmark with the following command.
+
 ```sh
-$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000 --loaderthreads 48
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=1000  --loaderthreads 48
 ```
-
-| Cluster | Loader threads | Loading time | Data set size |
-| :------ | :------------- | :----------- | :------------ |
-| 3 nodes, type `c5d.4xlarge` | 48 | ~3.5 hours | ~420 GB |
-
-Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The specified 48 threads value is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
 
 {{% /tab %}}
-{{% tab header="10,000 warehouses" lang="10k-wh" %}}
 
-Before starting the workload, you need to load the data. In addition, you need to ensure that you exported a list of all IP addresses of all the nodes involved.
+{{% tab header="3 x 8vCPUs" lang="8vcpu" %}}
 
-For 10k warehouses, you would need ten clients of type `c5.4xlarge` to drive the benchmark. For multiple clients, you need to perform three steps.
-
-First, you create the database and the corresponding tables. Execute the following command from one of the clients:
+Set up the TPC-C database schema with the following command.
 
 ```sh
-./tpccbenchmark  --nodes=$IPS  --create=true
+$ ./tpccbenchmark --create=true --nodes=${IPS}
 ```
 
-After the database and tables are created, you can load the data from all ten clients:
+Populate the above-created database with data needed for the benchmark with the following command.
+
+```sh
+$ ./tpccbenchmark --load=true --nodes=${IPS} --warehouses=2000  --loaderthreads 48
+```
+
+{{% /tab %}}
+
+{{% tab header="3 x 16vCPUs" lang="16vcpu" %}}
+
+Set up the TPC-C database schema with the following command.
+
+```sh
+$ ./tpccbenchmark --create=true --nodes=${IPS}
+```
+
+To populate the above-created database with data needed for the benchmark use 2 client machines. Run the following load commands on each of the machines respectively.
 
 | Client | Command |
 | -----: | :------ |
-| 1  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=1    --total-warehouses=10000 --loaderthreads 48 |
-| 2  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=1001 --total-warehouses=10000 --loaderthreads 48 |
-| 3  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=2001 --total-warehouses=10000 --loaderthreads 48 |
-| 4  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=3001 --total-warehouses=10000 --loaderthreads 48 |
-| 5  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=4001 --total-warehouses=10000 --loaderthreads 48 |
-| 6  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=5001 --total-warehouses=10000 --loaderthreads 48 |
-| 7  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=6001 --total-warehouses=10000 --loaderthreads 48 |
-| 8  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=7001 --total-warehouses=10000 --loaderthreads 48 |
-| 9  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=8001 --total-warehouses=10000 --loaderthreads 48 |
-| 10 | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=9001 --total-warehouses=10000 --loaderthreads 48 |
+| 1  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=1 --total-warehouses=2000 --loaderthreads 48 --initial-delay-secs=0 |
+| 2  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=2001 --total-warehouses=2000 --loaderthreads 48 --initial-delay-secs=30 |
 
-Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified, 48 threads, is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
-
-When the loading is completed, execute the following command to enable the foreign keys that were disabled to aid the loading times:
-
-```sh
-./tpccbenchmark  --nodes=$IPS  --enable-foreign-keys=true
-```
-
-| Cluster | Loader threads | Loading time | Data set size |
-| :------ | :------------- | :----------- | :------------ |
-| 30 nodes, type `c5d.4xlarge` | 480 | ~5.5 hours | ~4 TB |
+{{<note>}}
+**initial-delay-secs** has been introduced to avoid a sudden overload on the master to fetch catalogs.
+{{</note>}}
 
 {{% /tab %}}
-{{< /tabpane >}}
+
+{{</tabpane>}}
 
 ## Run the benchmark
 
-{{< tabpane text=true >}}
-{{% tab header="10 warehouses" lang="10-wh" %}}
+Run the benchmark by following instructions specific to your cluster.
 
-You can run the workload against the database as follows:
+{{<tabpane text=true >}}
+
+{{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
 
 ```sh
-$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS}
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=500 --num-connections=50
 ```
 
 {{% /tab %}}
-{{% tab header="100 warehouses" lang="100-wh" %}}
 
-You can run the workload against the database as follows:
+{{% tab header="3 x 4vCPUs" lang="4vcpu" %}}
 
 ```sh
-$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=100
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=1000 --num-connections=100
 ```
 
 {{% /tab %}}
-{{% tab header="1,000 warehouses" lang="1k-wh" %}}
 
-You can run the workload against the database as follows:
+{{% tab header="3 x 8vCPUs" lang="8vcpu" %}}
 
 ```sh
-$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=1000
+$ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehouses=2000 --num-connections=200
 ```
 
 {{% /tab %}}
-{{% tab header="10,000 warehouses" lang="10k-wh" %}}
 
-Before starting the execution, you have to move all the tablet leaders out of the node containing the master leader by running the following command:
+{{% tab header="3 x 16vCPUs" lang="16vcpu" %}}
 
-```sh
-./yb-admin --master_addresses <master-ip1>:7100,<master-ip2>:7100,<master-ip3>:7100 change_leader_blacklist ADD <master-leader-ip>
-```
-
-Make sure that the IP addresses used in the execution phase don't include the `master-leader-ip`.
-You can then run the workload against the database from each client:
+Run the following commands on each of the client machines respectively.
 
 | Client | Command |
 | -----: | :------ |
-| 1  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=1    --total-warehouses=10000 --warmup-time-secs=900 |
-| 2  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=1001 --total-warehouses=10000 --warmup-time-secs=900 |
-| 3  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=2001 --total-warehouses=10000 --warmup-time-secs=900 |
-| 4  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=3001 --total-warehouses=10000 --warmup-time-secs=900 |
-| 5  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=4001 --total-warehouses=10000 --warmup-time-secs=900 |
-| 6  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=5001 --total-warehouses=10000 --warmup-time-secs=720 --initial-delay-secs=180 |
-| 7  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=6001 --total-warehouses=10000 --warmup-time-secs=540 --initial-delay-secs=360 |
-| 8  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=7001 --total-warehouses=10000 --warmup-time-secs=360 --initial-delay-secs=540 |
-| 9  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=8001 --total-warehouses=10000 --warmup-time-secs=180 --initial-delay-secs=720 |
-| 10 | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=9001 --total-warehouses=10000 --warmup-time-secs=0   --initial-delay-secs=900 |
+| 1  | ./tpccbenchmark --execute=true --nodes=$IPS --warehouses=2000 --start-warehouse-id=1    --total-warehouses=4000  --num-connections=200  --warmup-time-secs=300 |
+| 2  | ./tpccbenchmark --execute=true --nodes=$IPS --warehouses=2000 --start-warehouse-id=2001 --total-warehouses=4000  --num-connections=200  --warmup-time-secs=270 |
+
+{{<note>}}
+Since we specified **initial-delay-secs**, to ensure that the tests start together, we adjust that time in the warmup phase.
+{{</note>}}
 
 {{% /tab %}}
-{{< /tabpane >}}
 
-## Benchmark Results
+{{</tabpane>}}
 
-{{< tabpane text=true >}}
-{{% tab header="10 warehouses" lang="10-wh" %}}
+## Analyze the results
 
-**Cluster**: 3 nodes of type `c5d.large`
+{{<tabpane text=true >}}
 
-**TPMC**: 127
+{{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
 
-**Efficiency**: 98.75%
+|                    Metric                    |  Value  |
+| -------------------------------------------- | :------ |
+| Efficiency                                   | 99.78   |
+| TPMC                                         | 6415.7  |
+| Average NewOrder Latency (ms)                | 64.08   |
+| Connection Acquisition NewOrder Latency (ms) | 1.86    |
+| Total YSQL Ops/sec                           | 1875.77 |
 
-**Latencies**:
-
-- **New Order** Avg: 66.286 ms, p99: 212.47 ms
-- **Payment** Avg: 17.406 ms, p99: 186.884 ms
-- **OrderStatus** Avg: 7.308 ms, p99: 86.974 ms
-- **Delivery** Avg: 66.986 ms, p99: 185.919 ms
-- **StockLevel** Avg: 98.32 ms, p99: 192.054 ms
-
-After the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
-
-```output
-21:09:23,588 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000263504, measuredRequests=8554) = 4.752221526539232 requests/sec reqs/sec
-21:09:23,588 (DBWorkload.java:956) INFO  - Num New Order transactions : 3822, time seconds: 1800
-21:09:23,588 (DBWorkload.java:957) INFO  - TPM-C: 127
-21:09:23,588 (DBWorkload.java:958) INFO  - Efficiency : 98.75%
-21:09:23,593 (DBWorkload.java:983) INFO  - NewOrder, Avg Latency: 66.286 msecs, p99 Latency: 212.47 msecs
-21:09:23,596 (DBWorkload.java:983) INFO  - Payment, Avg Latency: 17.406 msecs, p99 Latency: 186.884 msecs
-21:09:23,596 (DBWorkload.java:983) INFO  - OrderStatus, Avg Latency: 7.308 msecs, p99 Latency: 86.974 msecs
-21:09:23,596 (DBWorkload.java:983) INFO  - Delivery, Avg Latency: 66.986 msecs, p99 Latency: 185.919 msecs
-21:09:23,596 (DBWorkload.java:983) INFO  - StockLevel, Avg Latency: 98.32 msecs, p99 Latency: 192.054 msecs
-21:09:23,597 (DBWorkload.java:792) INFO  - Output Raw data into file: results/oltpbench.csv
-```
+On a 2vCPU cluster, 6,415 tpmC was achieved with 99.78% efficiency keeping the new order latency around 64ms.
 
 {{% /tab %}}
-{{% tab header="100 warehouses" lang="100-wh" %}}
 
-**Cluster**: 3 nodes of type `c5d.4xlarge`
+{{% tab header="3 x 4vCPUs" lang="4vcpu" %}}
 
-**TPMC**: 1271.77
+|                    Metric                    |  Value   |
+| -------------------------------------------- | :------- |
+| Efficiency                                   | 99.77    |
+| TPMC                                         | 12829.93 |
+| Average NewOrder Latency (ms)                | 73.97    |
+| Connection Acquisition NewOrder Latency (ms) | 0.66     |
+| Total YSQL Ops/sec                           | 3736.53  |
 
-**Efficiency**: 98.89%
-
-**Latencies**:
-
-* **New Order** Avg: 68.265 msecs, p99: 574.339 msecs
-* **Payment** Avg: 19.969 msecs, p99: 475.311 msecs
-* **OrderStatus** Avg: 13.821 msecs, p99: 571.414 msecs
-* **Delivery** Avg: 67.384 msecs, p99: 724.67 msecs
-* **StockLevel** Avg: 114.032 msecs, p99: 263.849 msecs
-
-Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
-
-```output
-04:54:54,560 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000866600, measuredRequests=85196) = 47.33108832382159 requests/sec reqs/sec
-04:54:54,560 (DBWorkload.java:956) INFO  - Num New Order transactions : 38153, time seconds: 1800
-04:54:54,560 (DBWorkload.java:957) INFO  - TPM-C: 1,271.77
-04:54:54,560 (DBWorkload.java:958) INFO  - Efficiency : 98.89%
-04:54:54,596 (DBWorkload.java:983) INFO  - NewOrder, Avg Latency: 68.265 msecs, p99 Latency: 574.339 msecs
-04:54:54,615 (DBWorkload.java:983) INFO  - Payment, Avg Latency: 19.969 msecs, p99 Latency: 475.311 msecs
-04:54:54,616 (DBWorkload.java:983) INFO  - OrderStatus, Avg Latency: 13.821 msecs, p99 Latency: 571.414 msecs
-04:54:54,617 (DBWorkload.java:983) INFO  - Delivery, Avg Latency: 67.384 msecs, p99 Latency: 724.67 msecs
-04:54:54,618 (DBWorkload.java:983) INFO  - StockLevel, Avg Latency: 114.032 msecs, p99 Latency: 263.849 msecs
-04:54:54,619 (DBWorkload.java:792) INFO  - Output Raw data into file: results/oltpbench.csv
-```
+On a 4vCPU cluster, 12,829 tpmC was achieved with 99.77% efficiency keeping the new order latency around 73ms.
 
 {{% /tab %}}
-{{% tab header="1,000 warehouses" lang="1k-wh" %}}
 
-**Cluster**: 3 nodes of type `c5d.4xlarge`
+{{% tab header="3 x 8vCPUs" lang="8vcpu" %}}
 
-**TPMC**: 12,563.07
+|                    Metric                    |  Value  |
+| -------------------------------------------- | :------ |
+| Efficiency                                   | 99.71   |
+| TPMC                                         | 25646.4 |
+| Average NewOrder Latency (ms)                | 54.21   |
+| Connection Acquisition NewOrder Latency (ms) | 0.55    |
+| Total YSQL Ops/sec                           | 7488.01 |
 
-**Efficiency**: 97.69%
-
-**Latencies**:
-
-- **New Order** Avg: 325.378 ms, p99: 3758.859 ms
-- **Payment** Avg: 277.539 ms, p99: 12667.048 ms
-- **OrderStatus** Avg: 174.173 ms, p99: 4968.783 ms
-- **Delivery** Avg: 310.19 ms, p99: 5259.951 ms
-- **StockLevel** Avg: 652.827 ms, p99: 8455.325 ms
-
-When the execution is completed, the TPM-C number along with the efficiency is displayed, as follows:
-
-```output
-17:18:58,728 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000716759, measuredRequests=842216) = 467.8975914612168 requests/sec reqs/sec
-17:18:58,728 (DBWorkload.java:956) INFO  - Num New Order transactions : 376892, time seconds: 1800
-17:18:58,728 (DBWorkload.java:957) INFO  - TPM-C: 12,563.07
-17:18:58,728 (DBWorkload.java:958) INFO  - Efficiency : 97.69%
-17:18:59,006 (DBWorkload.java:983) INFO  - NewOrder, Avg Latency: 325.378 msecs, p99 Latency: 3758.859 msecs
-17:18:59,138 (DBWorkload.java:983) INFO  - Payment, Avg Latency: 277.539 msecs, p99 Latency: 12667.048 msecs
-17:18:59,147 (DBWorkload.java:983) INFO  - OrderStatus, Avg Latency: 174.173 msecs, p99 Latency: 4968.783 msecs
-17:18:59,166 (DBWorkload.java:983) INFO  - Delivery, Avg Latency: 310.19 msecs, p99 Latency: 5259.951 msecs
-17:18:59,182 (DBWorkload.java:983) INFO  - StockLevel, Avg Latency: 652.827 msecs, p99 Latency: 8455.325 msecs
-17:18:59,183 (DBWorkload.java:792) INFO  - Output Raw data into file: results/oltpbench.csv
-```
+On an 8vCPU cluster, 25,646 tpmC was achieved with 99.71% efficiency keeping the new order latency around 54ms.
 
 {{% /tab %}}
-{{% tab header="10,000 warehouses" lang="10k-wh" %}}
 
-When the execution is completed, you need to copy the `csv` files from each of the nodes to one of the nodes and run `merge-results` to display the merged results.
+{{% tab header="3 x 16vCPUs" lang="16vcpu" %}}
 
-After copying the `csv` files to a directory such as `results-dir`, you can merge the results as follows:
+|                    Metric                    |  Value   |
+| -------------------------------------------- | :------- |
+| Efficiency                                   | 99.81    |
+| TPMC                                         | 51343.5  |
+| Average NewOrder Latency (ms)                | 39.46    |
+| Connection Acquisition NewOrder Latency (ms) | 0.51     |
+| Total YSQL Ops/sec                           | 14987.79 |
 
-```sh
-./tpccbenchmark --merge-results=true --dir=results-dir --warehouses=10000
-```
-
-**Cluster**: 30 nodes of type `c5d.4xlarge`
-
-**TPMC**: 125193.2
-
-**Efficiency**: 97.35%
-
-**Latencies**:
-
-- **New Order** Avg: 114.639 ms, p99: 852.183 ms
-- **Payment** Avg: 114.639 ms, p99 : 852.183 ms
-- **OrderStatus** Avg: 20.86 ms, p99: 49.31 ms
-- **Delivery** Avg: 117.473 ms, p99: 403.404 ms
-- **StockLevel** Avg: 340.232 ms, p99: 1022.881 ms
-
-The output after merging should look similar to the following:
-
-```output
-15:16:07,397 (DBWorkload.java:715) INFO - Skipping benchmark workload execution
-15:16:11,400 (DBWorkload.java:1080) INFO - Num New Order transactions : 3779016, time seconds: 1800
-15:16:11,400 (DBWorkload.java:1081) INFO - TPM-C: 125193.2
-15:16:11,401 (DBWorkload.java:1082) INFO - Efficiency : 97.35%
-15:16:12,861 (DBWorkload.java:1010) INFO - NewOrder, Avg Latency: 114.639 msecs, p99 Latency: 852.183 msecs
-15:16:13,998 (DBWorkload.java:1010) INFO - Payment, Avg Latency: 29.351 msecs, p99 Latency: 50.8 msecs
-15:16:14,095 (DBWorkload.java:1010) INFO - OrderStatus, Avg Latency: 20.86 msecs, p99 Latency: 49.31 msecs
-15:16:14,208 (DBWorkload.java:1010) INFO - Delivery, Avg Latency: 117.473 msecs, p99 Latency: 403.404 msecs
-15:16:14,310 (DBWorkload.java:1010) INFO - StockLevel, Avg Latency: 340.232 msecs, p99 Latency: 1022.881 msecs
-```
+On a 16vCPU cluster, 51,343 tpmC was achieved with 99.81% efficiency keeping the new order latency around 39ms.
 
 {{% /tab %}}
-{{< /tabpane >}}
+
+{{</tabpane>}}
+
+## Conclusion
+
+The TPC-C benchmark provides a rigorous and comprehensive method for evaluating the performance of OLTP systems, focusing on throughput, response time, and data consistency. Such results will help you decide if YugabyteDB is the right database for your high-throughput, transaction-heavy applications.
