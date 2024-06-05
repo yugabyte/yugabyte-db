@@ -1812,6 +1812,22 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> filterIndexTableInfoList(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
+        .collect(Collectors.toList());
+  }
+
+  public static Map<String, String> getIndexTableIdToParentTableIdMap(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .filter(TableInfoUtil::isIndexTable)
+        .collect(
+            Collectors.toMap(
+                tableInfo -> getTableId(tableInfo), tableInfo -> tableInfo.getIndexedTableId()));
+  }
+
   // DR methods.
   // --------------------------------------------------------------------------------
   protected DrConfig getDrConfigFromTaskParams() {

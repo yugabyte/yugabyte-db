@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -74,7 +75,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -235,6 +235,7 @@ public class XClusterConfigController extends AuthenticatedController {
         requestedTableInfoList,
         sourceTableInfoList,
         targetUniverse,
+        sourceUniverse,
         sourceTableIdTargetTableIdMap,
         ybService,
         createFormData.bootstrapParams,
@@ -546,13 +547,8 @@ public class XClusterConfigController extends AuthenticatedController {
             "To add table to an xCluster config used for DR, bootstrapParams in the payload "
                 + "must be passed in");
       }
-      Set<String> allTableIds =
-          bootstrapParams == null
-              ? tableIdsToAdd
-              : Stream.concat(tableIdsToAdd.stream(), bootstrapParams.tables.stream())
-                  .collect(Collectors.toSet());
       mainTableToAddIndexTablesMap =
-          XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, allTableIds);
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, tableIds);
       Set<String> indexTableIdSet =
           mainTableToAddIndexTablesMap.values().stream()
               .flatMap(List::stream)
@@ -562,7 +558,6 @@ public class XClusterConfigController extends AuthenticatedController {
               .filter(tableId -> !xClusterConfig.getTableIds().contains(tableId))
               .collect(Collectors.toSet());
       if (autoIncludeIndexTables) {
-        allTableIds.addAll(indexTableIdSet);
         tableIdsToAdd.addAll(indexTableIdSetToAdd);
       }
 
@@ -578,7 +573,8 @@ public class XClusterConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
       requestedTableInfoList =
-          XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, allTableIds);
+          XClusterConfigTaskBase.filterTableInfoListByTableIds(
+              sourceTableInfoList, new HashSet<>(CollectionUtils.union(tableIds, tableIdsToAdd)));
       CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
       XClusterConfigTaskBase.verifyTablesNotInReplication(
@@ -632,6 +628,50 @@ public class XClusterConfigController extends AuthenticatedController {
                 ybService, allTablesInReplicationInfoList, tablesInReplication, sourceUniverse);
       }
 
+      // Verify that parent table will be part of replication if any index table is part of
+      // replication
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> allIndexTablesInReplicationInfoList =
+          XClusterConfigTaskBase.filterIndexTableInfoList(allTablesInReplicationInfoList);
+      Map<String, String> indexTableIdToParentTableIdMap =
+          XClusterConfigTaskBase.getIndexTableIdToParentTableIdMap(
+              allIndexTablesInReplicationInfoList);
+      indexTableIdToParentTableIdMap.forEach(
+          (indexTableId, parentTableId) -> {
+            if (!tablesInReplication.contains(parentTableId)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "The parent table %s of index table %s is not in replication",
+                      parentTableId, indexTableId));
+            }
+          });
+
+      // Index tables should also be part of replication if parent table requires bootstrap for both
+      // YSQL and YCQL.
+      if (bootstrapParams != null && !CollectionUtils.isEmpty(bootstrapParams.tables)) {
+        Set<String> mainTablesInBootstrapParamsIds =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(
+                    allTablesInReplicationInfoList, bootstrapParams.tables)
+                .stream()
+                .filter(tableInfo -> !TableInfoUtil.isIndexTable(tableInfo))
+                .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+                .collect(Collectors.toSet());
+
+        Map<String, List<String>> mainTableIndexTableInBootstrapMap =
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(
+                ybService, sourceUniverse, mainTablesInBootstrapParamsIds);
+        mainTableIndexTableInBootstrapMap.forEach(
+            (mainTableId, indexTableIds) -> {
+              if (!tablesInReplication.containsAll(indexTableIds)) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "The index tables %s of main table %s are not in replication",
+                        indexTableIds, mainTableId));
+              }
+            });
+      }
+
       // We send null as sourceTableIdTargetTableIdMap because add table does not create tables
       // on the target universe through bootstrapping, and the user is responsible to create the
       // same table on the target universe.
@@ -639,6 +679,7 @@ public class XClusterConfigController extends AuthenticatedController {
           requestedTableInfoList,
           sourceTableInfoList,
           targetUniverse,
+          sourceUniverse,
           sourceTableIdTargetTableIdMap,
           ybService,
           bootstrapParams,
@@ -867,6 +908,7 @@ public class XClusterConfigController extends AuthenticatedController {
         requestedTableInfoList,
         sourceTableInfoList,
         targetUniverse,
+        sourceUniverse,
         sourceTableIdTargetTableIdMap,
         ybService,
         bootstrapParams,
@@ -1534,6 +1576,7 @@ public class XClusterConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       Universe targetUniverse,
+      Universe sourceUniverse,
       Map<String, String> sourceTableIdTargetTableIdMap,
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
@@ -1561,13 +1604,15 @@ public class XClusterConfigController extends AuthenticatedController {
                   HashMap::new,
                   (map, entry) -> map.put(entry.getKey(), entry.getValue()),
                   HashMap::putAll);
-      bootstrapParams.tables =
-          XClusterConfigTaskBase.getTableIdsWithoutTablesOnTargetInReplication(
-              ybService,
-              requestedTableInfoList,
-              sourceTableIdTargetTableIdWithBootstrapMap,
-              targetUniverse,
-              currentReplicationGroupName);
+      if (!bootstrapParams.allowBootstrap) {
+        bootstrapParams.tables =
+            XClusterConfigTaskBase.getTableIdsWithoutTablesOnTargetInReplication(
+                ybService,
+                requestedTableInfoList,
+                sourceTableIdTargetTableIdWithBootstrapMap,
+                targetUniverse,
+                currentReplicationGroupName);
+      }
 
       // If some tables do not exist on the target universe, bootstrapping is required.
       Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
@@ -1627,6 +1672,48 @@ public class XClusterConfigController extends AuthenticatedController {
                     }
                   }
                 });
+      } else if (requestedTableInfoList.get(0).getTableType()
+          == CommonTypes.TableType.YQL_TABLE_TYPE) {
+
+        Set<String> mainTableIdsForBootstrap =
+            sourceTableInfoList.stream()
+                .filter(
+                    tableInfo ->
+                        bootstrapParams.tables.contains(
+                            XClusterConfigTaskBase.getTableId(tableInfo)))
+                .filter(tableInfo -> !TableInfoUtil.isIndexTable(tableInfo))
+                .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+                .collect(Collectors.toSet());
+
+        Map<String, List<String>> mainTableIndexTableInBootstrapMap =
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(
+                ybService, sourceUniverse, mainTableIdsForBootstrap);
+        Set<String> indexTableIdsWithParentTableInBootStrap =
+            mainTableIndexTableInBootstrapMap.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
+
+        Set<String> indexTablesInBootstrapParamsIds =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(
+                    sourceTableInfoList, bootstrapParams.tables)
+                .stream()
+                .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
+                .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+                .collect(Collectors.toSet());
+
+        // Verify that parent table is also added to bootstrap tables list if index table require
+        // bootstrap.
+        indexTablesInBootstrapParamsIds.forEach(
+            indexTableId -> {
+              if (!indexTableIdsWithParentTableInBootStrap.contains(indexTableId)) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "The index table %s which require bootstrap does not have main table in"
+                            + " bootstrap tables list",
+                        indexTableId));
+              }
+            });
       }
     }
   }
