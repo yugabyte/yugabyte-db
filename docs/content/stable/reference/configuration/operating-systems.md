@@ -21,16 +21,16 @@ Unless otherwise noted, operating systems are supported by all supported version
 | :--------------- | :------------- | :------------- | :---- |
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform<br>Default for YBA-deployed nodes |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
-| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | v2.18.0 and later<br>Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
+| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | v2.18.0 and later<br>Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](/preview/releases/#upcoming-release-series) |
 | Amazon Linux 2 (ARM, CIS-hardened) | {{<icon/no>}} | {{<icon/yes>}} | Supported in v2.20.x. Database performance in this environment varies both due to CIS-hardening and ARM. For more information, contact {{% support-general %}}.|
-| CentOS7          | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
-| Oracle Linux 7         | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series)|
+| CentOS7          | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](/preview/releases/#upcoming-release-series) |
+| Oracle Linux 7         | {{<icon/yes>}} |                | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](/preview/releases/#upcoming-release-series)|
 | Oracle Linux 8         | {{<icon/yes>}} |                | |
-| Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
+| Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](/preview/releases/#upcoming-release-series) |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
 | Red Hat Enterprise Linux&nbsp;9.3 | {{<icon/yes>}} |  | v2.20.3 and later.  {{<badge/ea>}} |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<badge/ea>}} |
-| Ubuntu 18        | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](../../../releases/#upcoming-release-series) |
+| Ubuntu 18        | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0; not supported in v2.21.0.0 release and [upcoming release series](/preview/releases/#upcoming-release-series) |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
 

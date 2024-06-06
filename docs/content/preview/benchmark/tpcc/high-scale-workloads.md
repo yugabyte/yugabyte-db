@@ -389,7 +389,7 @@ To accomplish this feat, numerous new features had to be implemented and existin
 - Transaction retries.
 
 {{<note>}}
-The 150K warehouses benchmark was run on [v2.11](../../releases/ybdb-releases/end-of-life/v2.11/).
+The 150K warehouses benchmark was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
