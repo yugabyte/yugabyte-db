@@ -1840,10 +1840,16 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
-  // The reorderbuffer spills transactions with more than max_changes_in_memory (4096) changes
-  // on the disk. This test asserts that such transactions also work correctly.
+  // The reorderbuffer spills transactions with more than yb_reorderbuffer_max_changes_in_memory
+  // changes on the disk. This test asserts that such transactions also work correctly.
   @Test
   public void testReplicationWithSpilledTransaction() throws Exception {
+    // Set the value of ysql_yb_reorderbuffer_max_changes_in_memory to 1000.
+    // The default value of the flag is 4096.
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tServer : tServers) {
+      setServerFlag(tServer, "ysql_yb_reorderbuffer_max_changes_in_memory", "1000");
+    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
