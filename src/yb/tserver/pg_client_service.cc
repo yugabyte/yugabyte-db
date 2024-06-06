@@ -1439,12 +1439,18 @@ class PgClientServiceImpl::Impl {
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        if (local_uuid) {
-          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
-        }
-        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
+      if (!wait_state_ptr) {
+        continue;
       }
+      WaitStateInfoPB wait_state_pb;
+      wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
+      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+        continue;
+      }
+      if (local_uuid) {
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_yql_endpoint_tserver_uuid());
+      }
+      resp->add_wait_states()->CopyFrom(wait_state_pb);
     }
     VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
@@ -1465,7 +1471,7 @@ class PgClientServiceImpl::Impl {
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          ash::RaftLogWaitStatesTracker(), req.export_wait_state_code_as_string(),
           resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
