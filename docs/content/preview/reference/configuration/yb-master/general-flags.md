@@ -16,13 +16,14 @@ The [YB-Master]({{<version>}}/architecture/yb-master/) server acts a catalog ser
 The **yb-master** executable file is located in the **bin** directory of YugabyteDB home.
 {{</note>}}
 
-## Syntax
+
+{{%collapse title="Syntax" %}}
 
 ```sh
 yb-master [ flag  ] | [ flag ]
 ```
 
-### Example
+## Example
 
 ```sh
 ./bin/yb-master \
@@ -32,13 +33,15 @@ yb-master [ flag  ] | [ flag ]
 --replication_factor=3
 ```
 
-### Online help
+## Online help
 
 To display the online help, run `yb-master --help` from the YugabyteDB home directory:
 
 ```sh
 ./bin/yb-master --help
 ```
+
+{{%/collapse%}}
 
 {{<nav/pages>}}
 {{<nav/page title="General" href="../general-flags">}}
