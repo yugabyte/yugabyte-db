@@ -11,13 +11,18 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
 import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
-import { api, QUERY_KEY as TOKEN_KEY } from '../../../redesign/utils/api';
 import {
   TroubleshootingAPI,
   QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
 } from '../../../redesign/features/Troubleshooting/api';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isNonEmptyString } from '../../../utils/ObjectUtils';
+import { toast } from 'react-toastify';
+
+const STATUS = {
+  SUCCESS: 'success',
+  ERROR: 'error'
+};
 
 interface TroubleshootUniverseProps {
   universeUuid: string;
@@ -41,7 +46,6 @@ export const TroubleshootUniverse = ({
   const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
   const { currentCustomer } = useSelector((state: any) => state.customer);
 
-  const sessionInfo = useQuery(TOKEN_KEY.getSessionInfo, () => api.getSessionInfo());
   const troubleshootingUniverseMetadata = useQuery(QUERY_KEY.fetchUniverseMetadataList, () =>
     TroubleshootAPI.fetchUniverseMetadataList()
   );
@@ -82,6 +86,14 @@ export const TroubleshootUniverse = ({
     setShowAttachUniverseDialog(true);
   };
 
+  const onUpdateMetadata = (status: string) => {
+    if (status === STATUS.SUCCESS) {
+      toast.success('Universe is successfully added to troubleshooting service');
+    } else {
+      toast.error('Unable to add universe to troubleshooting service');
+    }
+  };
+
   return currentUniverseMetadata && isNonEmptyString(TpData?.[0]?.tpUrl) ? (
     <TroubleshootAdvisor
       universeUuid={universeUuid}
@@ -104,8 +116,9 @@ export const TroubleshootUniverse = ({
                 customerUuid={currentCustomer.data.uuid}
                 platformUrl={TpData?.[0]?.ybaUrl}
                 apiUrl={`${TpData?.[0]?.tpUrl}/api`}
-                apiToken={sessionInfo?.data?.apiToken}
+                metricsUrl={TpData?.[0]?.metricsUrl}
                 open={showAttachUniverseDialog}
+                onUpdateMetadata={onUpdateMetadata}
                 onClose={onAttachUniverseDialogClose}
                 isDevMode={IN_DEVELOPMENT_MODE}
               />
