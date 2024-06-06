@@ -12211,6 +12211,36 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     WARN_NOT_OK(
         res, "Failed to get current DDL transaction for table " + table->ToString());
     if (res.ok() && res.get() != TransactionId::Nil()) {
+      // When deleting an index, we also need to update the indexed table
+      // to remove this index from it. Updating the indexed table involves
+      // setting up a fully_applied_schema and incrementing its schema version.
+      // Then the indexed table is altered with the new schema asynchronously.
+      // It is possible that the next statement after this drop index statement
+      // starts too soon and reads the fully_applied_schema_version which is
+      // the old schema version of the indexed table and later fails with
+      // "schema version mismatch" error. To mitigate this error, we wait
+      // for the indexed table's fully_applied_schema to be cleared or until
+      // a maximum number of iterations.
+      // Note that if res.get() == TransactionId::Nil() it means DDL atomicity
+      // is disabled, in this case PgClientSession::DropTable will call
+      // WaitUntilIndexPermissionsAtLeast which takes care of the purpose of
+      // doing this wait. Therefore this wait only applies when DDL atomicity
+      // is enabled.
+      if (table->is_index()) {
+        auto table_id = table->indexed_table_id();
+        WARN_NOT_OK(
+          WaitFor(
+              [this, &table_id]() -> Result<bool> {
+                auto indexed_table = GetTableInfo(table_id);
+                return !indexed_table ||
+                       !indexed_table->LockForRead()->pb.has_fully_applied_schema();
+              },
+              20s,
+              Format("Waiting for fully_applied_schema of $0 to clear", table_id),
+              500ms /* initial_delay */,
+              1.0 /* delay_multiplier */),
+          Format("fully_applied_schema of $0 fail to clear", table_id));
+      }
       VLOG(3) << "Check table deleted " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
