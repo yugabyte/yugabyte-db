@@ -83,7 +83,8 @@
 
 /* Cache management header --- pointer is NULL until created */
 static CatCacheHeader *CacheHdr = NULL;
-static long NumCatalogCacheMisses;
+static long YbNumCatalogCacheMisses;
+static long YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 					   int nkeys,
@@ -1821,7 +1822,10 @@ SearchCatCacheMiss(CatCache *cache,
 		relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 		if (IsYugaByteEnabled())
-			NumCatalogCacheMisses++;
+		{
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheIdMisses[cache->id]++;
+		}
 
 		if (yb_debug_log_catcache_events)
 		{
@@ -2667,9 +2671,15 @@ PrintCatCacheListLeakWarning(CatCList *list)
 }
 
 long
-GetCatCacheMisses()
+YbGetCatCacheMisses()
 {
-	return NumCatalogCacheMisses;
+	return YbNumCatalogCacheMisses;
+}
+
+long*
+YbGetCatCacheIdMisses()
+{
+	return YbNumCatalogCacheIdMisses;
 }
 
 YbCatCListIterator
