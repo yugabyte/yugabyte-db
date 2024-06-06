@@ -75,7 +75,7 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
-    "@yugabytedb/troubleshoot-ui": "2.0.9",
+    "@yugabytedb/troubleshoot-ui": "2.0.16",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",
