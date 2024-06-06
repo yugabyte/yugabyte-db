@@ -1103,6 +1103,36 @@ SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 (4 rows)
 
 --
+-- #22622: test local recheck of condition for a column that is not a target
+--
+create table local_recheck_test (k1 character(10), k2 character(10));
+insert into local_recheck_test values ('a', 'a');
+create index on local_recheck_test(k1 ASC);
+create index on local_recheck_test(k2 ASC);
+/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ Index Scan using local_recheck_test_k2_idx on local_recheck_test t (actual rows=1 loops=1)
+   Index Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar) AND (k2 = ANY ('{a,b,c}'::bpchar[])))
+   Storage Index Filter: (k2 ~~ 'a%'::text)
+(3 rows)
+
+-- the second condition is necessary to force a recheck
+-- the first condition is rechecked locally, so k2 must be fetched.
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on local_recheck_test t (actual rows=1 loops=1)
+   Storage Recheck Cond: (k2 = ANY ('{a,b,c}'::bpchar[]))
+   Recheck Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar))
+   ->  Bitmap Index Scan on local_recheck_test_k2_idx (actual rows=1 loops=1)
+         Index Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar) AND (k2 = ANY ('{a,b,c}'::bpchar[])))
+         Storage Index Filter: (k2 ~~ 'a%'::text)
+(6 rows)
+
+--
 -- test pk of different types
 --
 CREATE TABLE pk_int (k_int INT PRIMARY KEY, v_text varchar);
