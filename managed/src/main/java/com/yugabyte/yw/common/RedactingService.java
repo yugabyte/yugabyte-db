@@ -38,11 +38,15 @@ public class RedactingService {
           .add("$..currentPassword")
           .add("$..['config.AWS_ACCESS_KEY_ID']")
           .add("$..['config.AWS_SECRET_ACCESS_KEY']")
+          // Datadog API key
+          .add("$..config.apiKey")
           // GCP private key
           .add("$..['config.config_file_contents.private_key_id']")
           .add("$..['config.config_file_contents.private_key']")
           .add("$..config.private_key_id")
           .add("$..config.private_key")
+          .add("$..credentials.private_key_id")
+          .add("$..credentials.private_key")
           .add("$..GCP_CONFIG.private_key_id")
           .add("$..GCP_CONFIG.private_key")
           .add("$..gceApplicationCredentialsPath")
