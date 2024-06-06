@@ -1,0 +1,19 @@
+{{- $icon := .Get "icon" -}}
+{{- $path := (path.Split $.Page.File).File -}}
+{{- $active := "" -}}
+{{- $path = strings.TrimSuffix ".md" $path -}}
+{{- $page := default $path (.Get "page") -}}
+{{- $href := .Get "href" -}}
+{{- $href_page :=   (path.Split (strings.TrimSuffix "/" $href)).File -}}
+{{/*- warnf "%s-%s-%s" $page $href $href_page -*/}}
+{{- if eq $page $href_page -}}{{$active = "active"}}{{- end -}}
+<li>
+    <a href="{{.Get "href"}}" class="nav-link {{$active}}" aria-hidden="true">
+        {{- if in $icon "/" -}}
+        <img class="icon" src="{{ $icon }}" aria-hidden="true" />
+        {{- else -}}
+        <i class="{{ $icon }}" aria-hidden="true"></i>
+        {{- end -}}
+    {{.Get "title"}}
+    </a>
+</li>
