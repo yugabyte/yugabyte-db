@@ -99,9 +99,10 @@ auto GetColumnValue(const Col& col) {
     ++it;
 
     if (it->expr_case() == decltype(it->expr_case())::kValue) {
+      DCHECK(!column_ids.empty());
       auto result = ResultType {
           .lhs_is_column = true,
-          .column_id = ColumnId(0),
+          .column_id = kInvalidColumnId,
           .column_ids = column_ids,
           .value = &it->value(),
       };
@@ -264,9 +265,8 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
           // IN arguments should have already been de-duplicated and ordered by the executor.
           auto in_size = column_value.value->list_value().elems().size();
           if (in_size > 0) {
-            ColumnId col_id = column_value.column_id;
-            if (col_id != ColumnId(0)) {
-              auto& range = ranges_[col_id];
+            if (column_value.column_ids.empty()) {
+              auto& range = ranges_[column_value.column_id];
               QLLowerBound lower_bound(*column_value.value->list_value().elems().begin(), true);
               range.min_bound = lower_bound;
               auto last = column_value.value->list_value().elems().end();
