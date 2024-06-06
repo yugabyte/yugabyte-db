@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, LinearProgress, makeStyles, Typography, useTheme } from "@material-ui/core";
+import { Box, LinearProgress, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
 import { MigrationAssessmentReport, useGetMigrationAssessmentInfoQuery } from "@app/api/src";
@@ -9,34 +9,6 @@ import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
 import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
 import { GenericFailure, YBButton } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
-
-const useStyles = makeStyles((theme) => ({
-  tabSectionContainer: {
-    display: "flex",
-    alignItems: "center",
-    width: "100%",
-    boxShadow: `inset 0px -1px 0px 0px ${theme.palette.grey[200]}`,
-  },
-  nextSteps: {
-    paddingLeft: theme.spacing(4),
-    marginBottom: theme.spacing(4),
-  },
-  hardComp: {
-    color: theme.palette.error.main,
-  },
-  mediumComp: {
-    color: theme.palette.warning[700],
-  },
-  easyComp: {
-    color: theme.palette.success.main,
-  },
-  label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    marginBottom: theme.spacing(0.75),
-    textAlign: "left",
-  },
-}));
 
 interface MigrationAssessmentProps {
   heading: string;
@@ -54,7 +26,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   /*onStepChange, */
   isFetching = false,
 }) => {
-  const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
 
