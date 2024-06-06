@@ -408,6 +408,45 @@ static const MongoOperatorInfo QueryOperators[] = {
 		true,
 	},
 
+	{
+		{ "$near", QUERY_OPERATOR_NEAR, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  FEATURE_QUERY_OPERATOR_NEAR },
+		{ "$near", QUERY_OPERATOR_NEAR, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "<|-|>", BSON_INDEX_STRATEGY_GEONEAR, false },
+		true,
+	},
+
+	{
+		{ "$nearSphere", QUERY_OPERATOR_NEARSPHERE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  FEATURE_QUERY_OPERATOR_NEARSPHERE },
+		{ "$nearSphere", QUERY_OPERATOR_NEARSPHERE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "<|-|>", BSON_INDEX_STRATEGY_GEONEAR, false },
+		true,
+	},
+
+	{
+		{ "$geoNear", QUERY_OPERATOR_GEONEAR, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  FEATURE_QUERY_OPERATOR_GEONEAR },
+		{ "$geoNear", QUERY_OPERATOR_GEONEAR, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "<|-|>", BSON_INDEX_STRATEGY_GEONEAR, false },
+		true,
+	},
+
 	/*
 	 * $negator operators
 	 */

@@ -65,6 +65,15 @@ typedef enum MongoQueryOperatorType
 	QUERY_OPERATOR_WITHIN,
 	QUERY_OPERATOR_GEOWITHIN,
 	QUERY_OPERATOR_GEOINTERSECTS,
+	QUERY_OPERATOR_NEAR,
+	QUERY_OPERATOR_NEARSPHERE,
+
+	/*
+	 * This is different from geonear agg stage.
+	 * This operator only appears in mongo jstests
+	 * Behaviour is same as nearsphere
+	 */
+	QUERY_OPERATOR_GEONEAR,
 
 	/* Negation operators */
 	QUERY_OPERATOR_NOT_GT,

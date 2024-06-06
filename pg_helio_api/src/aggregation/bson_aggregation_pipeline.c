@@ -77,6 +77,9 @@ typedef bool (*RequiresPersistentCursorFunc)(const bson_value_t *existingValue);
 typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
+/* Validate query tree after parsing. */
+typedef void (*ValidateQueryTree)(const Query *query);
+
 /*
  * Declaration of a given aggregation pipeline stage.
  */
@@ -93,6 +96,9 @@ typedef struct
 
 	/* Optional function for whether lookup stages can be inlined in the substage */
 	CanInlineLookupStage canInlineLookupStageFunc;
+
+	/* Optional function to validate query tree after parsing */
+	ValidateQueryTree validateQueryTree;
 
 	/* Does the stage maintain a stable sort order or modify the input stream */
 	bool preservesStableSortOrder;
@@ -175,6 +181,11 @@ extern bool EnableGroupAddToSetSupport;
 extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 
+static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
+
+static void ValidateQueryTreeForMatchStage(const Query *query);
+
+
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
  */
@@ -190,6 +201,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$addFields",
@@ -199,6 +211,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$bucket",
@@ -208,6 +221,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$bucketAuto",
@@ -217,6 +231,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$changeStream",
@@ -226,6 +241,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$collStats",
@@ -235,6 +251,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$count",
@@ -248,6 +265,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$currentOp",
@@ -262,6 +280,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$densify",
@@ -271,6 +290,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$documents",
@@ -280,6 +300,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$facet",
@@ -293,6 +314,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$fill",
@@ -302,6 +324,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$geoNear",
@@ -311,6 +334,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$graphLookup",
@@ -320,6 +344,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$group",
@@ -334,6 +359,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$indexStats",
@@ -343,6 +369,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$inverseMatch",
@@ -356,6 +383,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$limit",
@@ -369,6 +397,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$listLocalSessions",
@@ -378,6 +407,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$listSessions",
@@ -387,6 +417,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$lookup",
@@ -398,6 +429,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$match",
@@ -411,6 +443,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = &ValidateQueryTreeForMatchStage,
 	},
 	{
 		.stage = "$merge",
@@ -420,6 +453,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$out",
@@ -429,6 +463,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$project",
@@ -440,6 +475,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$redact",
@@ -449,6 +485,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$replaceRoot",
@@ -460,6 +497,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$replaceWith",
@@ -471,6 +509,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sample",
@@ -484,6 +523,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$search",
@@ -495,6 +535,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$searchMeta",
@@ -504,6 +545,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$set",
@@ -513,6 +555,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$setWindowFields",
@@ -522,6 +565,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$skip",
@@ -535,6 +579,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sort",
@@ -548,6 +593,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sortByCount",
@@ -557,6 +603,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unionWith",
@@ -566,6 +613,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unset",
@@ -575,6 +623,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unwind",
@@ -584,6 +633,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$vectorSearch",
@@ -595,6 +645,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.validateQueryTree = NULL,
 	}
 };
 
@@ -1005,6 +1056,11 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			context->requiresPersistentCursor ||
 			definition->requiresPersistentCursor(&stageElement.bsonValue);
 
+		if (definition->validateQueryTree != NULL)
+		{
+			definition->validateQueryTree(query);
+		}
+
 		if (!definition->preservesStableSortOrder)
 		{
 			context->sortSpec.value_type = BSON_TYPE_EOD;
@@ -1358,6 +1414,12 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	if (projection.value_type != BSON_TYPE_EOD)
 	{
 		query = HandleProjectFind(&projection, &filter, query, &context);
+	}
+
+	/* $near and $nearSphere add sort clause to query, for them we need persistent cursor. */
+	if (query->sortClause)
+	{
+		context.requiresPersistentCursor = true;
 	}
 
 	queryData->isStreamableCursor = !context.requiresPersistentCursor;
@@ -2032,6 +2094,7 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	filterContext.simplifyOperators = true;
 	filterContext.coerceOperatorExprIfApplicable = true;
 	filterContext.requiredFilterPathNameHashSet = context->requiredFilterPathNameHashSet;
+	filterContext.query = query;
 
 	bson_iter_t queryDocIterator;
 	BsonValueInitIterator(existingValue, &queryDocIterator);
@@ -2470,9 +2533,6 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	}
 
 	const pgbson *geoNearQueryDoc = PgbsonInitFromDocumentBsonValue(existingValue);
-	GeonearRequest *request = ParseGeonearRequest(geoNearQueryDoc);
-
-	List *quals = NIL;
 
 	/*
 	 * Create a $geoNear query of this form:
@@ -2493,69 +2553,31 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	 * based on the geoNear requirements.
 	 *
 	 */
-	Const *keyConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
-									request->key),
-								false, false);
 	Const *queryConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
 									  geoNearQueryDoc),
 								  false, false);
 
-	/* GeoJSON point enforces 2dsphere index and legacy enforces 2d index usage */
-	Oid bsonValidateFunctionId = request->isGeoJsonPoint ?
-								 BsonValidateGeographyFunctionId() :
-								 BsonValidateGeometryFunctionId();
-
 	TargetEntry *firstEntry = linitial(query->targetList);
 	Var *docExpr = (Var *) firstEntry->expr;
-	Expr *validateExpr = (Expr *) makeFuncExpr(bsonValidateFunctionId,
-											   BsonTypeId(),
-											   list_make2((Expr *) docExpr,
-														  keyConst),
-											   InvalidOid,
-											   InvalidOid,
-											   COERCE_EXPLICIT_CALL);
 
-	/*
-	 * Add the geo index pfe to match to the index
-	 */
-	NullTest *nullTest = makeNode(NullTest);
-	nullTest->argisrow = false;
-	nullTest->nulltesttype = IS_NOT_NULL;
-	nullTest->arg = validateExpr;
-	quals = lappend(quals, nullTest);
-
-	/*
-	 * Add $minDistance and $maxDistance checks as range distance operator
-	 */
-	if (request->minDistance != NULL || request->maxDistance != NULL)
-	{
-		/*
-		 * make the range operator of this form {<key>: <geoNearSpec>}
-		 * here key is usually the path for index. We do this so that index
-		 * support correctly matches the geo index for this operator.
-		 */
-		pgbson_writer writer;
-		PgbsonWriterInit(&writer);
-		PgbsonWriterAppendDocument(&writer, request->key, strlen(request->key),
-								   geoNearQueryDoc);
-		pgbson *rangeQueryDoc = PgbsonWriterGetPgbson(&writer);
-		Const *rangeQueryDocConst = makeConst(BsonTypeId(), -1, InvalidOid, -1,
-											  PointerGetDatum(rangeQueryDoc),
-											  false, false);
-		Expr *distanceRangeOpExpr = make_opclause(BsonGeonearDistanceRangeOperatorId(),
-												  BOOLOID, false,
-												  (Expr *) validateExpr,
-												  (Expr *) rangeQueryDocConst,
-												  InvalidOid, InvalidOid);
-		quals = lappend(quals, distanceRangeOpExpr);
-	}
+	GeonearRequest *request = ParseGeonearRequest(geoNearQueryDoc);
 
 	/* Add any query filters available */
 	if (request->query.value_type != BSON_TYPE_EOD)
 	{
 		query = HandleMatch(&(request->query), query, context);
 		ValidateQueryOperatorsForGeoNear((Node *) query->jointree->quals, NULL);
+
+		if (TargetListContainsGeonearOp(query->targetList))
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg("Too many geoNear expressions")));
+		}
 	}
+
+	List *quals = CreateExprForGeonearAndNearSphere(geoNearQueryDoc, query,
+													(Expr *) docExpr, request);
+
 
 	if (query->jointree->quals != NULL)
 	{
@@ -2563,22 +2585,6 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 	}
 
 	query->jointree->quals = (Node *) make_ands_explicit(quals);
-
-	/* Add the sort clause and also add the expression in targetlist */
-	Expr *opExpr = make_opclause(BsonGeonearDistanceOperatorId(), FLOAT8OID, false,
-								 (Expr *) validateExpr,
-								 (Expr *) queryConst,
-								 InvalidOid, InvalidOid);
-
-	TargetEntry *tle = makeTargetEntry(opExpr, (firstEntry->resno) + 1, "distance", true);
-	tle->ressortgroupref = 1;
-	query->targetList = lappend(query->targetList, tle);
-
-	SortGroupClause *sortGroupClause = makeNode(SortGroupClause);
-	sortGroupClause->eqop = Float8LessOperator;
-	sortGroupClause->sortop = Float8LessOperator;
-	sortGroupClause->tleSortGroupRef = tle->ressortgroupref;
-	query->sortClause = lappend(query->sortClause, sortGroupClause);
 
 	/* Add the geoNear projection function */
 	FuncExpr *projectionExpr = makeFuncExpr(
@@ -4758,4 +4764,72 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 												  true);
 		simplifyRequest->root->parse->rtable = list_make1(newEntry);
 	}
+}
+
+
+/* Check $match stage for sort clause. If there is one, $near or $nearSphere was used which is not allowed. */
+static void
+ValidateQueryTreeForMatchStage(const Query *query)
+{
+	if (!query->sortClause)
+	{
+		return;
+	}
+
+	bool isGeonear = TargetListContainsGeonearOp(query->targetList);
+
+	TargetEntry *targetEntry = linitial(query->targetList);
+	Node *node = (Node *) targetEntry->expr;
+	bool isProjectFromGeoNear = false;
+
+	if (IsA(node, FuncExpr))
+	{
+		isProjectFromGeoNear = CheckFuncExprBsonDollarProjectGeonear((FuncExpr *) node);
+	}
+
+	if (isGeonear &&
+		!isProjectFromGeoNear)
+	{
+		ereport(ERROR, (errcode(MongoLocation5626500),
+						errmsg(
+							"$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.")));
+	}
+}
+
+
+/*
+ * Recursively check all func project func expression to check if it has $geoNear project
+ * bson_dollar_add(bson_dollar_project...)
+ */
+static bool
+CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr)
+{
+	CHECK_FOR_INTERRUPTS();
+	bool isGeoNearProject = false;
+
+	if (funcExpr->funcid == BsonDollarProjectGeonearFunctionOid())
+	{
+		isGeoNearProject = true;
+	}
+	else
+	{
+		/* loop all args */
+		ListCell *cell;
+		foreach(cell, funcExpr->args)
+		{
+			Expr *expr = (Expr *) lfirst(cell);
+			if (IsA(expr, FuncExpr))
+			{
+				isGeoNearProject =
+					CheckFuncExprBsonDollarProjectGeonear((FuncExpr *) expr);
+
+				if (isGeoNearProject)
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	return isGeoNearProject;
 }

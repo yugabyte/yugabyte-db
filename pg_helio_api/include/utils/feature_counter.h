@@ -15,7 +15,7 @@
 #include <port/atomics.h>
 
 #define MAX_FEATURE_NAME_LENGTH 255
-#define MAX_FEATURE_COUNT 216
+#define MAX_FEATURE_COUNT 219
 
 /*
  * IMP: Keep this alphabetically sorted while adding new feature types. Sorting is done for better reability.
@@ -212,6 +212,9 @@ typedef enum
 	/* Feature counter region - Query Operators */
 	FEATURE_QUERY_OPERATOR_GEOINTERSECTS,
 	FEATURE_QUERY_OPERATOR_GEOWITHIN,
+	FEATURE_QUERY_OPERATOR_NEAR,
+	FEATURE_QUERY_OPERATOR_NEARSPHERE,
+	FEATURE_QUERY_OPERATOR_GEONEAR,
 	FEATURE_QUERY_OPERATOR_TEXT,
 
 	/* Feature counter region - Aggregation stages */

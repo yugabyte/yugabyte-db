@@ -79,6 +79,9 @@ typedef struct BsonQueryOperatorContext
 	 * it is set only when the filter of vector search is specified
 	 */
 	HTAB *requiredFilterPathNameHashSet;
+
+	/* The postgres query being built. */
+	Query *query;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);

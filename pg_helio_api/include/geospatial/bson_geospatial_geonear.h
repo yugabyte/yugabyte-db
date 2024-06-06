@@ -106,6 +106,10 @@ void BuildGeoNearRangeDistanceState(GeonearDistanceState *state, const
 float8 GeonearDistanceFromDocument(const GeonearDistanceState *state, const
 								   pgbson *document);
 bool ValidateQueryOperatorsForGeoNear(Node *node, void *state);
+pgbson * ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
+									const char *mongoOperatorName);
+List * CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Query *query,
+										 Expr *docExpr, const GeonearRequest *request);
 
 
 inline static bool
@@ -126,6 +130,40 @@ inline static float8
 ConvertMetersToRadians(float8 meters)
 {
 	return meters / RADIUS_OF_EARTH_M;
+}
+
+
+/*
+ * Check if the sort clause contains a geonear operator
+ */
+inline static bool
+TargetListContainsGeonearOp(const List *targetList)
+{
+	if (!targetList)
+	{
+		return false;
+	}
+
+	TargetEntry *tle;
+	ListCell *cell;
+	foreach(cell, targetList)
+	{
+		tle = (TargetEntry *) lfirst(cell);
+
+		if (tle->ressortgroupref == 1)
+		{
+			if (IsA(tle->expr, OpExpr))
+			{
+				OpExpr *expr = (OpExpr *) tle->expr;
+				if (expr->opno == BsonGeonearDistanceOperatorId())
+				{
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
 }
 
 

@@ -39,6 +39,7 @@
 #include "utils/mongo_errors.h"
 #include "commands/defrem.h"
 #include "geospatial/bson_geospatial_common.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "metadata/collection.h"
 #include "planner/helio_planner.h"
@@ -156,6 +157,10 @@ static Expr * TryProcessOrIntoDollarIn(BsonQueryOperatorContext *context,
 									   List *orQuals);
 static Expr * TryOptimizeDollarOrExpr(BsonQueryOperatorContext *context,
 									  List *orQuals);
+static Expr * ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
+												   BsonQueryOperatorContext *context,
+												   const char *path, const
+												   char *mongoOperatorName);
 static void ValidateOptionsArgument(const bson_value_t *argBsonValue);
 static void ValidateRegexArgument(const bson_value_t *argBsonValue);
 static void EnsureValidTypeNameForDollarType(const char *typeName);
@@ -776,6 +781,7 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = true;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.query = currentQuery;
 
 	Node *queryExpr = queryNode;
 
@@ -1220,6 +1226,15 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		{
 			ereport(ERROR, (errmsg("unrecognized logical operator: %d", operatorType)));
 		}
+	}
+
+	/* Fail if geoNear op was found under $or or $nor along with other filters. */
+	if ((operatorType == QUERY_OPERATOR_OR || operatorType == QUERY_OPERATOR_NOR) &&
+		context->query != NULL &&
+		TargetListContainsGeonearOp(context->query->targetList))
+	{
+		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+							"geo $near must be top-level expr")));
 	}
 
 	return (Expr *) logicalExpr;
@@ -1907,6 +1922,32 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			return WithIndexSupportExpression(context->documentExpr,
 											  geoIntersectsFuncExpr,
 											  path, shapeOperator->isSpherical);
+		}
+
+		case QUERY_OPERATOR_NEAR:
+		case QUERY_OPERATOR_NEARSPHERE:
+		case QUERY_OPERATOR_GEONEAR:
+		{
+			EnsureGeospatialFeatureEnabled();
+
+			if (!IsClusterVersionAtleastThis(1, 18, 0))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg(
+									"$near and $nearSphere are not supported yet.")));
+			}
+
+			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator) &&
+				!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg("near must be first in: { $near: %s }",
+									   BsonValueToJsonForLogging(
+										   bson_iter_value(operatorDocIterator)))));
+			}
+
+			return ParseBsonValueForNearAndCreateOpExpr(operatorDocIterator, context,
+														path, mongoOperatorName);
 		}
 
 		/* logical operators are not supposed to be recognized at this level */
@@ -4354,4 +4395,47 @@ TryOptimizeNotInnerExpr(Expr *innerExpr, BsonQueryOperatorContext *context)
 	return (Expr *) makeFuncExpr(negatorFunc, BOOLOID,
 								 args, InvalidOid, InvalidOid,
 								 COERCE_EXPLICIT_CALL);
+}
+
+
+/* Create quals for $near, $nearSphere and $geoNear. */
+static Expr *
+ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
+									 BsonQueryOperatorContext *context, const char *path,
+									 const char *mongoOperatorName)
+{
+	const pgbson *queryDoc = ConvertQueryToGeoNearQuery(operatorDocIterator, path,
+														mongoOperatorName);
+
+	/* Check if this is not the 1st $near or $nearSphere occurrence in same query. */
+	if (context->query != NULL && context->query->sortClause)
+	{
+		bool isGeonear = TargetListContainsGeonearOp(context->query->targetList);
+
+		if (isGeonear)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg("Too many geoNear expressions")));
+		}
+	}
+
+	/*
+	 * In mongo there are different unsupported errors,
+	 * but we are throwing a generalized single error
+	 * that is thrown by mongo in a majority of contexts.
+	 */
+	if (!context->query)
+	{
+		ereport(ERROR,
+				(errcode(MongoLocation5626500),
+				 errmsg(
+					 "$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.")));
+	}
+
+	GeonearRequest *request = ParseGeonearRequest(queryDoc);
+	Expr *docExpr = context->documentExpr;
+
+	List *quals = CreateExprForGeonearAndNearSphere(queryDoc, context->query, docExpr,
+													request);
+	return make_ands_explicit(quals);
 }
