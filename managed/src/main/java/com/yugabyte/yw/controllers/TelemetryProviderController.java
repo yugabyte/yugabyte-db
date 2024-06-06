@@ -107,6 +107,11 @@ public class TelemetryProviderController extends AuthenticatedController {
     if (provider.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create provider with uuid set");
     }
+    // Validate the telemetry provider config.
+    log.info("Validating telemetry provider config for provider: '{}'.", provider.getName());
+    telemetryProviderService.validateTelemetryProvider(provider);
+
+    // Save TP config to DB after validation.
     provider.setCustomerUUID(customerUUID);
     provider = telemetryProviderService.save(provider);
     auditService()

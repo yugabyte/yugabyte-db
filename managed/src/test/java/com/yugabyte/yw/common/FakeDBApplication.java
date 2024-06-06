@@ -28,6 +28,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,6 +52,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
+  public TelemetryProviderService mockTelemetryProviderService =
+      spy(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
@@ -124,6 +127,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(LdapUniverseSyncHandler.class).toInstance(mockLdapUniverseSyncHandler))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+                .overrides(
+                    bind(TelemetryProviderService.class).toInstance(mockTelemetryProviderService))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
