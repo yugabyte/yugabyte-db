@@ -4,12 +4,8 @@ headerTitle: TPC-C Benchmark on YugabyteDB
 linkTitle: TPC-C
 description: Benchmark YugabyteDB using TPC-C.
 image: /images/section_icons/explore/high_performance.png
-aliases:
-  - /benchmark/tpcc
-  - /benchmark/tpcc-ysql
-  - /preview/benchmark/tpcc-ysql/
 menu:
-  preview:
+  stable:
     identifier: tpcc
     parent: benchmark
     weight: 4
