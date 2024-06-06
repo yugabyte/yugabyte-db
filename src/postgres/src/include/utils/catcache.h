@@ -241,7 +241,8 @@ extern bool RelationHasCachedLists(Relation relation);
 extern void PrintCatCacheLeakWarning(HeapTuple tuple);
 extern void PrintCatCacheListLeakWarning(CatCList *list);
 
-extern long GetCatCacheMisses();
+extern long YbGetCatCacheMisses();
+extern long* YbGetCatCacheIdMisses();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);

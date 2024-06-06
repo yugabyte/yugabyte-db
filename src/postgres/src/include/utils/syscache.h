@@ -124,6 +124,10 @@ extern void YbInitPinnedCacheIfNeeded();
 extern void YbResetPinnedCache();
 extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
 extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
+#ifndef NDEBUG
+extern bool YbCheckCatalogCacheIndexNameTable();
+#endif
+extern const char* YbGetCatalogCacheIndexName(int cache_id);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);
