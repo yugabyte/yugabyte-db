@@ -41,19 +41,21 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
+The connector is compatible with the following versions of YugabyteDB.
+
 | YugabyteDB | Connector |
 | :--- | :--- |
 | 2.14 (EA) | 1.9.5.y.3 |
 | 2.16 | 1.9.5.y.24 |
 | 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220 |
+| 2.20 | 1.9.5.y.220.2 |
 
 {{< note title="Note" >}}
 
-Starting 2.20, the release naming convention has changed and we follow a scheme *major.y.minor* where
-* *major*: Release of Debezium the connector is based on
-* *minor*: YB version the connector would work with
-  * The connector would be backward compatible with the previous YugabyteDB releases unless stated otherwise.
+Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme *major.y.minor*, as follows:
+- *major* - Debezium release the connector is based on
+- *minor* - version of YugabyteDB the connector works with
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
 
 {{< /note >}}
 

@@ -264,12 +264,6 @@ With before image enabled, the update and delete records look like the following
 
 </td> </tr> </table>
 
-### Before image modes
-
-YugabyteDB supports multiple before image modes which can be leveraged by creating a stream ID accordingly.
-
-// TODO Vaibhav: Add information on complete before image modes.
-
 ## Schema evolution
 
 Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas that are not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image is also retained. The YugabyteDB source connector caches schema at the tablet level. This means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, the CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
