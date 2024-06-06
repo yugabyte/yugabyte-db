@@ -13,6 +13,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -122,6 +123,8 @@ public class TroubleshootingPlatformService {
         throw new PlatformServiceException(
             BAD_REQUEST, "Failed to access Troubleshooting Platform");
       }
+    } else {
+      tryForceUnregister(platform);
     }
     platform.delete();
   }
@@ -148,9 +151,12 @@ public class TroubleshootingPlatformService {
     try {
       WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
       ApiHelper apiHelper = new ApiHelper(wsClient);
-      String universeMetadataUrl =
-          platform.getTpUrl() + "/api/universe_metadata?customerUuid=" + platform.getCustomerUUID();
-      JsonNode universeMetadataList = apiHelper.getRequest(universeMetadataUrl);
+      String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
+      JsonNode universeMetadataList =
+          apiHelper.getRequest(
+              universeMetadataUrl,
+              Collections.emptyMap(),
+              ImmutableMap.of("customer_uuid", platform.getCustomerUUID().toString()));
       if (!universeMetadataList.isArray()) {
         return TroubleshootingPlatformExt.InUseStatus.ERROR;
       }
@@ -159,6 +165,27 @@ public class TroubleshootingPlatformService {
           : TroubleshootingPlatformExt.InUseStatus.IN_USE;
     } catch (Exception e) {
       return TroubleshootingPlatformExt.InUseStatus.ERROR;
+    }
+  }
+
+  public void tryForceUnregister(TroubleshootingPlatform platform) {
+    try {
+      WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
+      ApiHelper apiHelper = new ApiHelper(wsClient);
+      String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
+      JsonNode response =
+          apiHelper.deleteRequest(
+              universeMetadataUrl,
+              Collections.emptyMap(),
+              ImmutableMap.of("customer_uuid", platform.getCustomerUUID().toString()));
+      if (response.has("error")) {
+        log.warn(
+            "Failed to delete universe metadata objects from {}. Error: {}",
+            platform.getTpUrl(),
+            response.get("error"));
+      }
+    } catch (Exception e) {
+      log.warn("Failed to delete universe metadata objects from {}", platform.getTpUrl(), e);
     }
   }
 }
