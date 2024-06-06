@@ -121,7 +121,8 @@ export const MetricTypesWithOperations = {
       'tserver_cpu_util_secs',
       'tserver_yb_rpc_connections',
       'tserver_live_tablet_peers',
-      'raft_leader'
+      'raft_leader',
+      'tserver_max_follower_lag'
     ]
   },
   master: {
@@ -144,7 +145,8 @@ export const MetricTypesWithOperations = {
       'master_table_ops',
       'master_cpu_util_secs',
       'master_yb_rpc_connections',
-      'master_leaderless_and_underreplicated_tablets'
+      'master_leaderless_and_underreplicated_tablets',
+      'master_max_follower_lag'
     ]
   },
   master_advanced: {
