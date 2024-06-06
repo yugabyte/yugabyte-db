@@ -1,6 +1,6 @@
 [
     {
-        "group_name": "PG_PARITY",
+        "group_name": "ENHANCED_POSTGRES_COMPATIBILITY",
         "flags": {
             "MASTER": {},
             "TSERVER": {
