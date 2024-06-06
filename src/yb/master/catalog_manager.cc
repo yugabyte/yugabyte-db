@@ -1462,8 +1462,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   xcluster_manager_->Clear();
 
-  std::vector<std::shared_ptr<TSDescriptor>> descs;
-  master_->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);
   }
@@ -6893,8 +6892,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
               << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
 
-    std::vector<std::shared_ptr<TSDescriptor>> descs;
-    master_->ts_manager()->GetAllDescriptors(&descs);
+    auto descs = master_->ts_manager()->GetAllDescriptors();
     for (auto& ts_desc : descs) {
       LOG(INFO) << "Deleting on " << ts_desc->permanent_uuid() << ": "
                 << ts_desc->PendingTabletDeleteToString();
@@ -8985,6 +8983,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->namespace_id() != database->id()) {
         continue;
       }
+      // todo(zdrudi): we're acquiring table locks out of order here.
       auto l = table->LockForWrite();
       if (l->started_deleting()) {
         continue;
@@ -11648,14 +11647,11 @@ void CatalogManager::ReportMetrics() {
   load_balance_policy_->ReportMetrics();
 
   // Report metrics on how many tservers are alive.
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  const auto num_live_servers = ts_descs.size();
+  auto num_live_servers = master_->ts_manager()->NumLiveDescriptors();
   metric_num_tablet_servers_live_->set_value(narrow_cast<uint32_t>(num_live_servers));
-
-  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  auto num_servers = master_->ts_manager()->NumDescriptors();
   metric_num_tablet_servers_dead_->set_value(
-      narrow_cast<uint32_t>(ts_descs.size() - num_live_servers));
+      narrow_cast<uint32_t>(num_servers - num_live_servers));
 }
 
 void CatalogManager::ResetMetrics() {

@@ -167,9 +167,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
 }
 
 void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
-  TSDescriptorVector descs;
-  const auto& ts_manager = catalog_manager_->master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
   for (auto& ts_desc : descs) {
     if (!ts_desc->IsLive()) {
       ts_desc->ClearMetrics();

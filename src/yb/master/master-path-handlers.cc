@@ -762,9 +762,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   auto live_id = cluster_config_result->replication_info().live_replicas().placement_uuid();
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
@@ -838,11 +836,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     jw.String(cluster_config_result.status().ToString());
     return;
   }
-
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
-
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
@@ -994,9 +988,7 @@ void MasterPathHandlers::HandleHealthCheck(
     return;
   }
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto* ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   const auto& live_placement_uuid =
       cluster_config_result->replication_info().live_replicas().placement_uuid();
@@ -3094,9 +3086,7 @@ void MasterPathHandlers::HandlePrettyLB(
   std::stringstream *output = &resp->output;
 
   // Don't render if there are more than 5 tservers.
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   if (descs.size() > 5) {
     *output << "<div class='alert alert-warning'>"
@@ -3266,9 +3256,7 @@ void MasterPathHandlers::HandlePrettyLB(
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
