@@ -1676,13 +1676,16 @@ Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/ea>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this flag:
+
+- you should also enable [packed row](../../../architecture/docdb/packed-rows) for colocated tables by setting `ysql_enable_packed_row_for_colocated_table = true`.
+- it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
 
 Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<badge/ea>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+{{<badge/ea>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE. When enabling this flag, you should also enable [packed row](../../../architecture/docdb/packed-rows) for colocated tables by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
 Default: false
 
