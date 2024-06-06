@@ -613,15 +613,6 @@
     showSection = true
 
 [[preview_tutorials]]
-  name = "Key benefits"
-  weight = 2
-  identifier = "features"
-  url = "/preview/features/"
-  [preview_tutorials.params]
-    showSection = true
-    hideChildren = true
-
-[[preview_tutorials]]
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
@@ -940,15 +931,6 @@
   url = "/stable/"
   [stable.params]
     showSection = true
-
-[[stable]]
-  name = "Key benefits"
-  weight = 3
-  identifier = "features"
-  url = "/stable/features/"
-  [stable.params]
-    showSection = true
-    hideChildren = true
 
 [[stable]]
   name = "Quick Start"
