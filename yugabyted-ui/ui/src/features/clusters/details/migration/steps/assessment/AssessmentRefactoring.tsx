@@ -90,7 +90,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         </Box>
 
         <Box my={4}>
-          <ResponsiveContainer width="100%" height={graphData.length * 80}>
+          <ResponsiveContainer width="100%" height={graphData.length * 60}>
             <BarChart
               data={graphData}
               layout="vertical"
@@ -98,7 +98,6 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                 right: 30,
                 left: 50,
               }}
-              barSize={16}
               barCategoryGap={34}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />

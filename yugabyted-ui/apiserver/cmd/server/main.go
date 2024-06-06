@@ -258,7 +258,7 @@ func main() {
     e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
 
     // Get Voyager assessment report
-    e.GET("/api/migration_assesment_v2", c.GetVoyagerAssessmentReport)
+    e.GET("/api/migration_assessment_v2", c.GetVoyagerAssessmentReport)
 
     // Get Migrate schema task details
     e.GET("/api/migrate_schema", c.GetMigrateSchemaInfo)

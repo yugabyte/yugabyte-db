@@ -2,17 +2,15 @@ import React, { FC } from "react";
 import { Box, LinearProgress, makeStyles, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
-import { useGetMigrationAssessmentInfoQuery } from "@app/api/src";
+import { MigrationAssessmentReport, useGetMigrationAssessmentInfoQuery } from "@app/api/src";
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
 import { MigrationSourceEnv } from "./AssessmentSourceEnv";
 import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
 import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
-import { GenericFailure } from "@app/components";
+import { GenericFailure, YBButton } from "@app/components";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
-  heading: {
-    marginBottom: theme.spacing(2),
-  },
   tabSectionContainer: {
     display: "flex",
     alignItems: "center",
@@ -52,21 +50,13 @@ interface MigrationAssessmentProps {
 export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   /* heading, */
   migration,
-  /* onRefetch,
-  onStepChange, */
+  onRefetch,
+  /*onStepChange, */
   isFetching = false,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
-
-  /* const {
-    data,
-    isFetching: isFetchingAPI,
-    isError: isErrorMigrationAssessmentDetails,
-  } = useGetVoyagerMigrationAssesmentDetailsQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
-  }); */
 
   const {
     data: newMigrationAPIData,
@@ -75,14 +65,18 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   } = useGetMigrationAssessmentInfoQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
-  const newMigrationAPI = newMigrationAPIData?.data;
+
+  const newMigrationAPI = (newMigrationAPIData as MigrationAssessmentReport | undefined)/* ?.data */;
 
   return (
     <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
-      <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Typography variant="h4" className={classes.heading}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+        <Typography variant="h4">
           {t("clusterDetail.voyager.planAndAssess.heading")}
         </Typography>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+          {t("clusterDetail.performance.actions.refresh")}
+        </YBButton>
         {/* {newMigrationAPI?.completedTime && (
           <Typography variant="body1" className={classes.label}>
             {newMigrationAPI.completedTime}

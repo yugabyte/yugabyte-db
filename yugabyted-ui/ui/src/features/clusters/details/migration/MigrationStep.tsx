@@ -6,6 +6,7 @@ import { MigrationAssessment } from "./steps/assessment/MigrationAssessment";
 import { MigrationSchema } from "./steps/MigrationSchema";
 import { MigrationVerify } from "./steps/MigrationVerify";
 import {
+  useGetMigrationAssessmentInfoQuery,
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
   useGetVoyagerMigrationAssesmentDetailsQuery,
@@ -37,6 +38,13 @@ export const MigrationStep: FC<MigrationStepProps> = ({
     { query: { enabled: false } }
   );
 
+  const { refetch: refetchMigrationAssesmentInfo } = useGetMigrationAssessmentInfoQuery(
+    {
+      uuid: migration.migration_uuid || "migration_uuid_not_found",
+    },
+    { query: { enabled: false } }
+  );
+
   const { refetch: refetchMigrationSchemaTasks } = useGetVoyagerMigrateSchemaTasksQuery(
     {
       uuid: migration.migration_uuid || "migration_uuid_not_found",
@@ -55,6 +63,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
     // Refetch all migration apis to avoid inconsistent states
     onRefetch();
     refetchMigrationAssesmentDetails();
+    refetchMigrationAssesmentInfo();
     refetchMigrationSchemaTasks();
     refetchMigrationMetrics();
   }, []);
