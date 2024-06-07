@@ -44,7 +44,7 @@ For the "preview" release series of YugabyteDB, as reflected in this main docume
 
 ## Quick Start
 
-You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore/ysql/) steps.
+You can explore the basics of the YSQL API using the [Quick Start](/preview/quick-start/) steps.
 
 ## The SQL language
 

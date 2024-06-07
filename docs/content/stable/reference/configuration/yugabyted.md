@@ -764,8 +764,8 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default : `false`
 
---enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
-: Enable PostgreSQL compatibility features. Default: `false`
+--enable_pg_parity_early_access *PostgreSQL-compatibilty*
+: Enable Enhanced Postgres Compatibility Mode. Default: `false`
 
 #### Advanced flags
 
