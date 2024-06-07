@@ -29,7 +29,7 @@ then
   fi
   openapi_format_cmd="openapi-format"
 else
-  openapi_format_cmd="$NPM_BIN/npx openapi-format"
+  openapi_format_cmd="$NPM_BIN/npx openapi-format@$openapi_format_ver"
 fi
 
 # Format all the required YML files.
