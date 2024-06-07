@@ -11,13 +11,9 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
 import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
-import {
-  TroubleshootingAPI,
-  QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
-} from '../../../redesign/features/Troubleshooting/api';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import { isNonEmptyString } from '../../../utils/ObjectUtils';
 import { toast } from 'react-toastify';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 const STATUS = {
   SUCCESS: 'success',
@@ -28,6 +24,9 @@ interface TroubleshootUniverseProps {
   universeUuid: string;
   appName: AppName;
   timezone: string;
+  apiUrl: string;
+  platformUrl: string;
+  metricsUrl: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -39,35 +38,25 @@ const useStyles = makeStyles((theme) => ({
 export const TroubleshootUniverse = ({
   universeUuid,
   appName,
-  timezone
+  timezone,
+  apiUrl,
+  platformUrl,
+  metricsUrl
 }: TroubleshootUniverseProps) => {
   const helperClasses = useStyles();
-  const [TpData, setTpData] = useState<any>([]);
-  const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
   const { currentCustomer } = useSelector((state: any) => state.customer);
+  const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
 
   const troubleshootingUniverseMetadata = useQuery(QUERY_KEY.fetchUniverseMetadataList, () =>
-    TroubleshootAPI.fetchUniverseMetadataList()
-  );
-  const TpList = useQuery(
-    TROUBLESHOOTING_QUERY_KEY.fetchTpList,
-    () => TroubleshootingAPI.fetchTpList(),
-    {
-      onSuccess: (data) => {
-        setTpData(data);
-      }
-    }
+    TroubleshootAPI.fetchUniverseMetadataList(apiUrl, currentCustomer.data.uuid)
   );
 
-  if (troubleshootingUniverseMetadata.isError || TpList.isError) {
+  if (troubleshootingUniverseMetadata.isError) {
     return <YBErrorIndicator />;
   }
   if (
     troubleshootingUniverseMetadata.isLoading ||
-    TpList.isLoading ||
-    (troubleshootingUniverseMetadata.isIdle &&
-      troubleshootingUniverseMetadata.data === undefined) ||
-    (TpList.isIdle && TpList.data === undefined)
+    (troubleshootingUniverseMetadata.isIdle && troubleshootingUniverseMetadata.data === undefined)
   ) {
     return <YBLoading />;
   }
@@ -94,45 +83,35 @@ export const TroubleshootUniverse = ({
     }
   };
 
-  return currentUniverseMetadata && isNonEmptyString(TpData?.[0]?.tpUrl) ? (
+  return isNonEmptyObject(currentUniverseMetadata) ? (
     <TroubleshootAdvisor
       universeUuid={universeUuid}
       appName={appName}
       timezone={timezone}
-      apiUrl={`${TpData[0].tpUrl}/api`}
+      apiUrl={apiUrl}
     />
   ) : (
     <YBPanelItem
       body={
-        isNonEmptyString(TpData?.[0]?.tpUrl) ? (
-          <Box>
-            {'Universe is currently not registered to the troubleshooting service, '}
-            <a onClick={onAttachUniverse} className={helperClasses.register}>
-              {' please register here'}
-            </a>
-            {showAttachUniverseDialog && (
-              <AttachUniverse
-                universeUuid={universeUuid}
-                customerUuid={currentCustomer.data.uuid}
-                platformUrl={TpData?.[0]?.ybaUrl}
-                apiUrl={`${TpData?.[0]?.tpUrl}/api`}
-                metricsUrl={TpData?.[0]?.metricsUrl}
-                open={showAttachUniverseDialog}
-                onUpdateMetadata={onUpdateMetadata}
-                onClose={onAttachUniverseDialogClose}
-                isDevMode={IN_DEVELOPMENT_MODE}
-              />
-            )}
-          </Box>
-        ) : (
-          <Box>
-            {'Please'}
-            <a href={`/config/troubleshoot/config`} className={helperClasses.register}>
-              {' register '}
-            </a>
-            {'YB Anywhere instance to Troubleshooting Platform Service'}
-          </Box>
-        )
+        <Box>
+          {'Universe is currently not registered to the troubleshooting service, '}
+          <a onClick={onAttachUniverse} className={helperClasses.register}>
+            {' please register here'}
+          </a>
+          {showAttachUniverseDialog && (
+            <AttachUniverse
+              universeUuid={universeUuid}
+              customerUuid={currentCustomer.data.uuid}
+              platformUrl={platformUrl}
+              apiUrl={apiUrl}
+              metricsUrl={metricsUrl}
+              open={showAttachUniverseDialog}
+              onUpdateMetadata={onUpdateMetadata}
+              onClose={onAttachUniverseDialogClose}
+              isDevMode={IN_DEVELOPMENT_MODE}
+            />
+          )}
+        </Box>
       }
     />
   );

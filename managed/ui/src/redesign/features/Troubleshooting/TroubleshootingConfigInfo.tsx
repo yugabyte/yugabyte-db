@@ -5,7 +5,6 @@ import { YBButton, YBInput, YBLabel } from '../../components';
 import { YBPanelItem } from '../../../components/panels';
 import { DeleteTPConfigDialog } from './TroubleshootingDialog/DeleteTPConfigDialog';
 import { EditTPConfigDialog } from './TroubleshootingDialog/EditTPConfigDialog';
-import { ROOT_URL } from '../../../config';
 
 const useStyles = makeStyles((theme) => ({
   infoBox: {
@@ -47,13 +46,6 @@ export const TroubleshootingConfigInfo = ({
   const helperClasses = useStyles();
   const [showEditTPConfigDialog, setShowEditTPConfigDialog] = useState<boolean>(false);
   const [showDeleteTPConfigDialog, setShowDeleteTPConfigDialog] = useState<boolean>(false);
-
-  // TODO: Checkin the code and remove all console logs after we verify from internal dev portal
-  console.warn('ROOT_URL', ROOT_URL);
-  const splitUrl = ROOT_URL.split('/api/');
-  console.warn('splitUrl', splitUrl);
-  const baseUrl = window.location.origin;
-  console.warn('baseUrl', baseUrl);
 
   const onEditTPConfigButtonClick = () => {
     setShowEditTPConfigDialog(true);

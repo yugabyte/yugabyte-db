@@ -533,6 +533,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Troubleshooting Platform service successfully",
         "registrationFailed": "Failed to register to Troubleshooting Platform service",
         "tpServiceUrlLabel": "Troubleshooting Platform Service URL",

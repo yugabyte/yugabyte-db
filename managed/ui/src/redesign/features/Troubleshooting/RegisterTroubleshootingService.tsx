@@ -74,6 +74,7 @@ export const RegisterTroubleshootingService = ({
                 style={{ width: '300px' }}
                 placeholder={t('clusterDetail.troubleshoot.urlPlaceholder')}
                 type="text"
+                helperText={t('clusterDetail.troubleshoot.tpServiceUrlHelperText')}
                 rules={{
                   required: t('clusterDetail.troubleshoot.urlRequired')
                 }}
