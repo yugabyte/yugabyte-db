@@ -81,11 +81,11 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Assessment"]]) {
       return ""; // Tooltip for assessment
-    } else if (step === migrationSteps[MigrationStep["Migrate Schema"]]) {
+    } else if (step === migrationSteps[MigrationStep["Schema Migration"]]) {
       return ""; // Tooltip for migrate schema
-    } else if (step === migrationSteps[MigrationStep["Migrate Data"]]) {
+    } else if (step === migrationSteps[MigrationStep["Data Migration"]]) {
       return ""; // Tooltip for migrate data
-    } else if (step === migrationSteps[MigrationStep["Verify"]]) {
+    } else if (step === migrationSteps[MigrationStep["Verification"]]) {
       return ""; // Tooltip for verify
     } else {
       return undefined;
@@ -112,7 +112,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               } else {
                 notStarted = true;
               }
-            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+            } else if (stepIndex === MigrationStep["Schema Migration"]) {
               if ((migrationSchemaData as MigrateSchemaTaskInfo)?.overall_status === "complete") {
                 completed = true;
               } else if (
@@ -122,7 +122,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               } else {
                 notStarted = true;
               }
-            } else if (stepIndex === MigrationStep["Migrate Data"]) {
+            } else if (stepIndex === MigrationStep["Data Migration"]) {
               if (!migrationMetricsData?.metrics?.length) {
                 notStarted = true;
               } else {
@@ -149,7 +149,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
                   running = true;
                 }
               }
-            } else if (stepIndex === MigrationStep["Verify"]) {
+            } else if (stepIndex === MigrationStep["Verification"]) {
               // Verify will be disabled
               disabled = true;
             }
