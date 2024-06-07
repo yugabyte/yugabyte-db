@@ -1543,8 +1543,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      // Verify kubernetes overrides.
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        if (opType == UniverseOpType.EDIT
+            && cluster.userIntent.deviceInfo != null
+            && cluster.userIntent.deviceInfo.volumeSize != null
+            && cluster.userIntent.deviceInfo.volumeSize
+                < univCluster.userIntent.deviceInfo.volumeSize) {
+          String errMsg =
+              String.format(
+                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                  univCluster.userIntent.deviceInfo.volumeSize,
+                  cluster.userIntent.deviceInfo.volumeSize);
+          throw new IllegalStateException(errMsg);
+        }
+        // Verify kubernetes overrides.
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
@@ -1554,17 +1566,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         } else {
           if (opType == UniverseOpType.EDIT) {
-            if (cluster.userIntent.deviceInfo != null
-                && cluster.userIntent.deviceInfo.volumeSize != null
-                && cluster.userIntent.deviceInfo.volumeSize
-                    < univCluster.userIntent.deviceInfo.volumeSize) {
-              String errMsg =
-                  String.format(
-                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                      univCluster.userIntent.deviceInfo.volumeSize,
-                      cluster.userIntent.deviceInfo.volumeSize);
-              throw new IllegalStateException(errMsg);
-            }
             // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
