@@ -3,13 +3,18 @@ package api.v2.handlers;
 
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
+import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeRespMapper;
+import api.v2.mappers.UniverseSoftwareUpgradePrecheckMapper;
 import api.v2.mappers.UniverseSoftwareUpgradeStartMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.models.UniverseEditGFlags;
+import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
+import api.v2.models.UniverseSoftwareUpgradePrecheckReq;
+import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.YBATask;
@@ -18,14 +23,20 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
@@ -34,6 +45,7 @@ import play.mvc.Http;
 @Slf4j
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public UpgradeUniverseHandler v1Handler;
+  @Inject private RuntimeConfGetter confGetter;
 
   public YBATask editGFlags(
       Http.Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
@@ -143,5 +155,39 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     log.info("Started thirdparty software upgrade task {}", mapper.writeValueAsString(ybaTask));
     return ybaTask;
+  }
+
+  public YBATask rollbackSoftwareUpgrade(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req)
+      throws Exception {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    RollbackUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toRollbackUpgradeParams(
+            universe.getUniverseDetails());
+    UniverseRollbackUpgradeMapper.INSTANCE.copyToV1RollbackUpgradeParams(req, v1Params);
+    UUID taskUuid = v1Handler.rollbackUpgrade(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started software rollback task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
+      Http.Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseSoftwareUpgradePrecheckReq precheckReq)
+      throws Exception {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      Release.getByVersionOrBadRequest(precheckReq.getYbSoftwareVersion());
+    }
+    SoftwareUpgradeInfoRequest v1Params =
+        UniverseSoftwareUpgradePrecheckMapper.INSTANCE.toSoftwareUpgradeInfoRequest(precheckReq);
+    SoftwareUpgradeInfoResponse v1Resp = v1Handler.softwareUpgradeInfo(cUUID, uniUUID, v1Params);
+    return UniverseSoftwareUpgradePrecheckMapper.INSTANCE.toUniverseSoftwareUpgradePrecheckResp(
+        v1Resp);
   }
 }

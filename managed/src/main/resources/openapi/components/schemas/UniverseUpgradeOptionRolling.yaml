@@ -1,0 +1,11 @@
+title: UniverseUpgradeOptionRolling
+description: |-
+  UniverseUpgradeOptionRolling
+  Option for an upgrade to be rolling (one node at a time) or non-rolling (all nodes at once, with downtime)
+properties:
+  rolling_upgrade:
+    description: |
+      Perform a rolling upgrade where only one node is upgraded at a time. This is the default
+      behavior. False will perform a non-rolling upgrade where all nodes are upgraded at the same
+    type: boolean
+    default: true
