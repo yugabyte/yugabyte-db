@@ -1,10 +1,10 @@
-/**
-  * Compile the code in ES5 and minify it and then add the minify code at the
-  * end in the sidebar-tree.html file under `/layouts/partials/`.
-  */
-(() => {
-  'use strict';
+/* global jQuery */
 
+/**
+ * Compile the code in ES5 and minify it and then add the minify code at the
+ * end in the sidebar-tree.html file under `/layouts/partials/`.
+ */
+(() => {
   /**
    * Check anchor multilines.
    */
@@ -29,7 +29,7 @@
    * return string
    */
   function ybGetCookie(cname) {
-    const cookieName = cname + '=';
+    const cookieName = `${cname}=`;
     const decodedCookie = decodeURIComponent(document.cookie);
     const splittedCookie = decodedCookie.split(';');
     const splittedLength = splittedCookie.length;
@@ -62,13 +62,8 @@
   /**
    * Create Cookie.
    */
-  function ybSetCookie(name, value, monthToLive) {
-    let cookie = name + '=' + encodeURIComponent(value);
-    if (typeof monthToLive !== 'number') {
-      monthToLive = 3;
-    }
-    cookie += '; max-age=' + (monthToLive * 30 * (24 * 60 * 60));
-    cookie += '; path=/';
+  function ybSetCookie(name, value, monthToLive = 3) {
+    let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
     if (location.hostname !== 'localhost') {
       cookie += '; secure=true';
     }
@@ -150,6 +145,7 @@
   const leftNavWidth = ybGetCookie('leftMenuWidth');
   const navSidebar = document.querySelector('aside.td-sidebar');
   const sidenavCollapse = document.querySelector('.side-nav-collapse-toggle-2');
+  const sidenavExpand = document.querySelector('.left-sidebar-wrap');
 
   if (!navSidebar) {
     return;
@@ -159,6 +155,7 @@
     navSidebar.classList.add('toggled-sidebar');
     if (leftNavVisible === 'hide') {
       navSidebar.classList.add('stick-bar');
+      sidenavExpand.classList.add('click-to-expand');
       ybSideNavVisibility(leftNavVisible);
     }
   }
@@ -168,8 +165,8 @@
     if (leftNavVisible === 'hide') {
       navSidebar.setAttribute('data-pwidth', leftNavWidth);
     } else {
-      navSidebar.style.width = leftNavWidth + 'px';
-      navSidebar.style.maxWidth = leftNavWidth + 'px';
+      navSidebar.style.width = `${leftNavWidth}px`;
+      navSidebar.style.maxWidth = `${leftNavWidth}px`;
     }
 
     setTimeout(() => {
@@ -188,9 +185,18 @@
     if (navSidebar.classList.contains('stick-bar')) {
       ybSetCookie('leftMenuShowHide', 'hide', 3);
       ybSideNavVisibility('hide');
+      sidenavExpand.classList.add('click-to-expand');
     } else {
       ybSetCookie('leftMenuShowHide', 'show', 3);
       ybSideNavVisibility('show');
+      sidenavExpand.classList.remove('click-to-expand');
+    }
+  });
+
+  // Expand left navigation on clicking anywhere in whole left sidebar.
+  sidenavExpand.addEventListener('click', (event) => {
+    if (event.target.classList.contains('left-sidebar-wrap') && event.target.classList.contains('click-to-expand')) {
+      sidenavCollapse.click();
     }
   });
 })();

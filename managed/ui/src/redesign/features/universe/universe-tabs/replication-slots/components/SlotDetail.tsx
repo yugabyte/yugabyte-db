@@ -140,19 +140,16 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
 
   if (isUniverseDataLoading || isReplicationSlotLoading || isMetricsLoading) return <YBLoading />;
   const slotDetail = replicationSlotData?.replicationSlots?.find((r) => r?.streamID === streamID);
-  const isSlotExpired = Number(_.last(metricsData?.[CDC_EXPIRY_TIME_KEY]?.data[0]?.y)) <= 0;
 
   const slotStatus = slotDetail?.state ? (
     <Typography
       className={
-        isSlotExpired
-          ? classes.expiryStatus
-          : [SlotState.INITIATED, SlotState.ACTIVE].includes(slotDetail?.state)
+        [SlotState.INITIATED, SlotState.ACTIVE].includes(slotDetail?.state)
           ? classes.successStatus
           : classes.errorStatus
       }
     >
-      {isSlotExpired ? _.capitalize(SlotState.EXPIRED) : _.capitalize(slotDetail?.state)}
+      {_.capitalize(slotDetail?.state)}
     </Typography>
   ) : null;
 

@@ -250,6 +250,7 @@ message GetTransactionStatusRequestPB {
   optional fixed64 propagated_hybrid_time = 3;
   // Reserved for xcluster deprecated field external_hybrid_time.
   reserved 4;
+  optional int64 raft_config_opid_index = 5;
 }
 
 message GetTransactionStatusResponsePB {
@@ -278,6 +279,8 @@ message GetTransactionStatusResponsePB {
   // Note: The field might not be present on older versions of YB and hence its existence
   // should be checked before usage by the reader.
   repeated AppStatusPB deadlock_reason = 8;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 9;
 }
 
 message GetOldTransactionsRequestPB {

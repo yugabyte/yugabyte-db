@@ -40,7 +40,8 @@ class CloneStateManagerExternalFunctionsBase {
   virtual Status ListSnapshotSchedules(ListSnapshotSchedulesResponsePB* resp) = 0;
   virtual Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) = 0;
   virtual Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId&, HybridTime) = 0;
-  virtual Status ListRestorations(const TxnSnapshotId&, ListSnapshotRestorationsResponsePB*) = 0;
+  virtual Status ListRestorations(
+      const TxnSnapshotRestorationId&, ListSnapshotRestorationsResponsePB*) = 0;
 
   // Catalog manager.
   virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId&) = 0;
@@ -59,9 +60,10 @@ class CloneStateManagerExternalFunctionsBase {
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       CoarseTimePoint deadline, const LeaderEpoch& epoch) = 0;
 
-  virtual Result<SnapshotInfoPB> GenerateSnapshotInfoFromSchedule(
-    const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
-    CoarseTimePoint deadline) = 0;
+  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+      GenerateSnapshotInfoFromSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+      CoarseTimePoint deadline) = 0;
 
   virtual Status DoImportSnapshotMeta(
     const SnapshotInfoPB& snapshot_pb, const LeaderEpoch& epoch,

@@ -70,7 +70,6 @@ Postgres' SQL grammar was slightly extended to make writing migrations easier. I
 * `CREATE TABLE`:
     * Reloptions `table_oid=<OID>` and `row_type_oid=<OID>` are required.
     * Only PK and index constraints are allowed, they should have a name and `table_oid=<OID>`.
-    * `oids=true` is allowed, `oid` should be the only PK column in that case.
     * Creating shared relations is allowed via `TABLESPACE pg_global`.
 
 * `CREATE VIEW`:
@@ -82,15 +81,18 @@ Postgres' SQL grammar was slightly extended to make writing migrations easier. I
 
 For use cases other than `CREATE TABLE` and `CREATE VIEW` - e.g. for adding a function -
 explicit `INSERT INTO` should be used. For that, `INSERT` is allowed to specify oid column,
-and `ON CONFLICT DO NOTHING` clause.
+and `ON CONFLICT DO NOTHING` clause. If an explicit oid value is not available, use `pg_nextoid()`
+in the `INSERT`.
+
+When oid is not specified  explicity (for `CREATE VIEW`, or `INSERT` with `pg_nextoid()`), it's
+auto-generated sequentially in `[FirstUnpinnedObjectId; FirstNormalObjectId)` range starting at
+where initdb left off. Naturally, the created object will be unpinned (droppable). If this is
+not desired, explicitly specifiy an oid (< `FirstUnpinnedObjectId`) during the `INSERT`.
 
 Sometimes, `INSERT ON CONFLICT DO NOTHING` alone is not enough - e.g.
 `pg_depend` has no sensible primary key to cause conflict, and `pg_amop` has auto-generated OIDs. In
 such cases, use `DO` procedure block to check for rows being present already.
 See `V3__5408__jsonb_path.sql` for an example of both.
-
-If oid is not specified (for `CREATE VIEW`, or if it's omitted in `INSERT`), it's auto-generated
-sequentially in `[10000; 16384)` range starting at where initdb left off.
 
 You should use modifications other than `CREATE TABLE`, `CREATE VIEW`, `CREATE EXTENSION`, `INSERT`
 and `UPDATE` with great care, as they weren't tested to work as expected. Also, don't forget to

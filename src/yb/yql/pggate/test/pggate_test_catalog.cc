@@ -446,10 +446,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // COPYDB ----------------------------------------------------------------------------------------
   LOG(INFO) << "Create another database from default database";
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(copy_db_name, copy_db_oid,
-                                          kDefaultDatabaseOid, kInvalidOid /* next_oid */,
-                                          false /* colocated */,
-                                          &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      copy_db_name, copy_db_oid, kDefaultDatabaseOid, kDefaultTemplateDatabaseName,
+      kInvalidOid /* next_oid */, false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   // Fresh state of cache must be read after new DB creation.
   YBCPgResetCatalogReadTime();
@@ -498,9 +497,9 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   const YBCPgOid db_oid = 101;
   YBCPgStatement pg_stmt;
 
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name, db_oid,
-                                          kInvalidOid /* source_database_oid */,
-                                          100 /* next_oid */, false /* colocated */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      db_name, db_oid, kInvalidOid /* source_database_oid */, kDefaultTemplateDatabaseName,
+      100 /* next_oid */, false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   pg_stmt = nullptr;
 

@@ -915,11 +915,16 @@ endif()
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are
 # symlinks to it.  It decides to act as yb-master or yb-tserver based on its argv[0].
 #
-# In the command below, yb-master is the CMake target that we use as a base to determine the set of
-# object files to be linked into the LTO executable, yb-server is the name of the LTO executable,
-# and yb-master/yb-tserver are names of symlinks to create in the "bin" directory, pointing to the
-# LTO executable.
-yb_add_lto_target(yb-master yb-server "yb-master;yb-tserver")
+# In the command below, yb-master-dynamic is the CMake target that we use as a base to determine the
+# set of object files to be linked into the LTO executable, yb-server is the name of the LTO
+# executable, and yb-master/yb-tserver are names of symlinks to create in the "bin" directory,
+# pointing to the LTO executable.
+yb_add_lto_target(yb-master-dynamic yb-server "yb-master;yb-tserver")
+
+# Here is how to add LTO-linked tests if necessary. Note that each test might take more than a
+# minute to link, so these LTO-enabled tests should only be enabled when debugging. An example of an
+# issue that requires debugging a test with LTO is #22191.
+# yb_add_lto_target(date_time-test date_time-test-lto "")
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

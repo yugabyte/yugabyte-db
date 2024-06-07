@@ -1955,9 +1955,11 @@ static Bitmapset *
 YBTupleTableBuildExtraUpdatedCols(Relation rel, HeapTuple oldtuple,
 								  TupleTableSlot *slot, Bitmapset *updatedCols)
 {
-	bool	   shouldFree = true;
-	HeapTuple  tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	bool	   shouldFree;
+	HeapTuple  tuple;
 	Bitmapset *result;
+
+	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(rel);
@@ -3160,7 +3162,8 @@ yb_skip_transaction_control_check:
 		ExecCheckTupleVisible(context->estate, relation, existing);
 	else
 	{
-		ybOldTuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &ybShouldFree);
+		ybOldTuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot,
+											false, &ybShouldFree);
 		ExecStoreHeapTuple(ybOldTuple, existing, false /* shouldFree */);
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(ybOldTuple);
 	}
@@ -3178,6 +3181,8 @@ yb_skip_transaction_control_check:
 
 	if (!ExecQual(onConflictSetWhere, econtext))
 	{
+		if (ybShouldFree)
+			pfree(ybOldTuple);
 		ExecClearTuple(existing);	/* see return below */
 		InstrCountFiltered1(&mtstate->ps, 1);
 		return true;			/* done with the tuple */
@@ -5195,8 +5200,8 @@ static void YbPostProcessDml(CmdType cmd_type,
 static void
 YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel, TupleTableSlot *slot)
 {
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	bool	  shouldFree;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(rel);

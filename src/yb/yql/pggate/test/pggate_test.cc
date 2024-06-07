@@ -218,8 +218,9 @@ void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
 void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
-      db_name.c_str(), db_oid, 0 /* source_database_oid */, 0 /* next_oid */, false /* colocated */,
-      &pg_stmt));
+      db_name.c_str(), db_oid, 0 /* source_database_oid */,
+      kDefaultTemplateDatabaseName /* source_database_name */, 0 /* next_oid */,
+      false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
 }
 
@@ -240,7 +241,7 @@ void PggateTest::BeginTransaction() {
 }
 
 void PggateTest::CommitTransaction() {
-  CHECK_YBC_STATUS(YBCPgCommitTransaction());
+  CHECK_YBC_STATUS(YBCPgCommitPlainTransaction());
 }
 
 void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {

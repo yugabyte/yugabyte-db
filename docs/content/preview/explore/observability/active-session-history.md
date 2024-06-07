@@ -25,19 +25,6 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
 
-## Key terminology
-
-The following terms include definitions of some important column identifiers related to ASH.
-
-- `root_request_id`: A unique ID for the top-level request. Typically this corresponds to a user issued DML query, (either via YSQL or YCQL APIs).
-Note that not all background operations are currently supported.
-
-- `rpc_request_id`: When processing a root or top-level request, many internal requests may be generated. Each of these requests will have a different ID.
-
-- `query_id`: A hash code to identify identical normalized queries as there may be many active requests in the system (that is, with different `root_request_id`'s) with the same `query_id`.
-
-- `top_level_node_id`: ID of the node where the top-level YSQL/YCQL query (corresponding to `query_id`) is being processed.
-
 ## Configure ASH
 
 To use ASH, enable and configure the following flags for each node of your cluster.
@@ -45,8 +32,8 @@ To use ASH, enable and configure the following flags for each node of your clust
 | Flag | Description |
 | :--- | :---------- |
 | allowed_preview_flags_csv | Pass the flags `ysql_yb_ash_enable_infra` and `ysql_yb_enable_ash` in this flag in CSV format. |
-| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a system restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Start sampling and instrumentation (that is, periodically check and keep track) of YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a system restart. |
+| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
+| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Start sampling and instrumentation (that is, periodically check and keep track) of YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
 
 ### Additional flags
 
@@ -54,9 +41,9 @@ You can also use the following flags based on your requirements.
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16000. Changing this flag requires a system restart. |
-| ysql_yb_ash_sampling_interval_ms | Time (in milliseconds) duration between two sampling events (ysql, ycql, yb-tserver). <br>Default: 1000. Changing this flag doesn't require a system restart. |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a system restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16000. Changing this flag requires a VM restart. |
+| ysql_yb_ash_sampling_interval_ms | Time (in milliseconds) duration between two sampling events (ysql, ycql, yb-tserver). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
 
 ## Limitations
 
@@ -73,7 +60,7 @@ Work done in the TServer process is tracked, even for remote-bootstrap etc. Howe
 copy/export done using scripts outside of the TServer process is not tracked.
 -->
 
-## YSQL/YCQL views
+## YSQL views
 
 ASH exposes the following views in each node to analyze and troubleshoot performance issues.
 
@@ -84,36 +71,17 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | Column | Type | Description |
 | :----- | :--- | :---------- |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
-| rpc_request_id | integer | Request ID per RPC. This is not globally unique. However, it is a monotonically increasing number for the lifetime of a YB-TServer. If a YB-TServer restarts, the number starts from 0 again, so it may not be unique across time. However, if there are no restarts, the combination of the server/rpc_request_id is unique. This could be used for advanced use cases later. For example, understanding if the same RPC is being sampled multiple times. |
+| rpc_request_id | integer | ID for internal requests, it is a monotonically increasing number for the lifetime of a YB-TServer. |
 | wait_event_component | text | There are three components: YSQL, YCQL, and YB-TServer. |
 | wait_event_class | text | Every wait event has a class associated with it. |
 | wait_event | text | Provides insight into what the RPC is waiting on. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for YB-TServer wait events. |
 | top_level_node_id | UUID | 16-byte YB-TServer UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](#ycql-stat-statements). For background activities, query ID is a known constant (for example, log appender is 1, flush is 2, compaction is 3, consensus is 4, and so on). |
-| ysql_session_id | bigint | Same as `PgClientSessionId` (displayed as `Session id` in logs). This is 0 for YCQL and background activities, as it is a YSQL-specific field. |
-| client_node_ip | text | Client IP for the RPC. For YSQL, it is the client node from where the query is generated. For YB-TServer, the YSQL/TServer node from where the RPC originated. |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/ycql_stat_statements. A known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
+| ysql_session_id | bigint | YSQL session identifier. Zero for YCQL and background activities. |
+| client_node_ip | text | Client IP for the RPC. For YSQL, it is the client node from where the query is generated. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
-
-<!--
-This is not ASH related. We need to mostly create a new page
-### yb_local_tablets
-
-This view provides tablet ID metadata, state, and role information. This information is also available on the `<yb-tserver_ip>:9000/tablets` endpoint. You can join the `wait_event_aux` with `tablet_id` in case of [YB-TServer wait events](#yb-tserver).
-
-Note that this is not an ASH-specific view, but can be used to extract more information from the ASH data.
-
-| Column | Type | Description |
-| :----- | :--- | :---------- |
-| tablet_id | text | 16 byte UUID of the tablet. Same as `/tablets` endpoint. |
-| table_id | text | 16 byte UUID of the table which the tablet is part of. |
-| table_type | text | Type of the table. Can be YSQL, YCQL, System, or Unknown. |
-| namespace_name | text | Name of the database or the keyspace. |
-| ysql_schema_name | text | YSQL schema name. Empty for YCQL, System, and Unknown table types. |
-| table_name | text | Name of the table which the tablet is part of. |
-| partition_key_start| bytea | Start key of the partition (inclusive). |
-| partition_key_end  | bytea | End key of the partition (exclusive).| -->
 
 ## Wait events
 
@@ -121,7 +89,9 @@ List of wait events by the following request types.
 
 ### YSQL
 
-| Class | Wait Event | Type | AUX | Description |
+These are only the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+
+| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
 | TServer Wait | StorageRead | Network  |  | Waiting for a DocDB read operation |
 | TServer Wait | CatalogRead | Network  |   | Waiting for a catalog read operation |
@@ -129,12 +99,11 @@ List of wait events by the following request types.
 | TServer Wait | StorageFlush  | Network |  | Waiting for a storage flush request |
 | YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
 | YSQLQuery | yb_ash_metadata | LWLock |  | Waiting to update ASH metadata for a query |
-| Timeout | YBTxnConflictBackoff | Timeout |  | PG process sleeping due to conflict in DocDB |
-| Timeout | PgSleep | Timeout |  | PG process sleeping due to pg_sleep(N) |
+| Timeout | YBTxnConflictBackoff | Timeout |  | Waiting due to conflict in DocDB |
 
 ### YB-TServer
 
-| Class | Wait Event | Type | AUX | Description |
+| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 |:---------------- | :--------- |:--------------- | :--- | :---------- |
 | Common | OnCpu_Passive | CPU | | Waiting for a thread to pick it up |
 | Common | OnCpu_Active | CPU |  | RPC is being actively processed on a thread |
@@ -155,7 +124,7 @@ List of wait events by the following request types.
 
 ### YCQL
 
-| Class | Wait Event | Type | AUX | Description |
+| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
 | YCQLQuery | YCQL_Parse | CPU  | | CQL call is being actively processed |
 | YCQLQuery | YCQL_Read | Network | \<table&#8209;id> | Waiting for DocDB read operation |
@@ -164,25 +133,6 @@ List of wait events by the following request types.
 | YBClient | YBCSyncLeaderMasterRpc  | Network |  | Waiting on an RPC to the master/master-service  |
 | YBClient | YBCFindMasterProxy | Network  | | Waiting on establishing the proxy to master leader |
 
-<!-- #### ycql_stat_statements
-
-This is not ASH related. We need to mostly create a new page
-
-This view provides YCQL statement metrics that can be joined with YCQL wait events in the [yb_active_session_history](#yb-active-session-history) table.
-
-Note that this is not an ASH-specific view, but can be used to extract more information from the ASH data.
-
-| Column | Type | Description |
-| :----- | :--- | :---------- |
-| queryid | int8 | Hash code to identify identical normalized queries. |
-| query | text | Text of a representative statement. |
-| is_prepared  | bool | Indicates whether the statement is a prepared statement or an unprepared query. |
-| calls | int8 | Number of times the statement is executed.|
-| total_time | float8 | Total time spent executing the statement, in milliseconds. |
-| min_time | float8 | Minimum time spent executing the statement, in milliseconds. |
-| max_time | float8 | Maximum time spent executing the statement, in milliseconds. |
-| mean_time | float8 | Mean time spent executing the statement, in milliseconds. |
-| stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. | -->
 
 ## Examples
 
@@ -190,176 +140,274 @@ Note that this is not an ASH-specific view, but can be used to extract more info
 
 Make sure you have an active ysqlsh session (`./bin/ysqlsh`) to run the following examples.
 
-- Distribution of wait events on each component for each query_id
+### Distribution of wait events for each query_id
 
-    ```sql
-    SELECT
-        query_id,
-        wait_event_component,
-        wait_event,
-        wait_event_type,
-        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY query_id,     wait_event_component), 2) AS percentage
-    FROM
-        yb_active_session_history
-    GROUP BY
-        query_id,
-        wait_event_component,
-        wait_event,
-        wait_event_type
-    ORDER BY
-        query_id,
-        wait_event_component,
-        wait_event_type;
-    ```
+Check the distribution of wait events for each query_id, only for the last 20 minutes.
 
-    ```output
-    query_id             | wait_event_component |             wait_event             | wait_event_type | percentage
-    ---------------------+----------------------+------------------------------------+-----------------+------------
-    -8743373368438010782 | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-    -6991556726170825105 | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-    -1970690938654296136 | TServer              | Raft_ApplyingEdits                 | Cpu             |       6.91
-    -1970690938654296136 | TServer              | OnCpu_Active                       | Cpu             |      13.29
-    -1970690938654296136 | TServer              | OnCpu_Passive                      | Cpu             |      16.59
-    -1970690938654296136 | TServer              | RocksDB_NewIterator                | DiskIO          |       0.36
-    -1970690938654296136 | TServer              | ConflictResolution_ResolveConficts | Network         |       1.19
-    -1970690938654296136 | TServer              | Raft_WaitingForReplication         | Network         |      60.89
-    -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |       0.19
-    -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |       0.59
-    -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-                       0 | TServer              | OnCpu_Active                       | Cpu             |      90.75
-                       0 | TServer              | OnCpu_Passive                      | Cpu             |       9.25
-                       1 | TServer              | WAL_Append                         | DiskIO          |      43.23
-                       1 | TServer              | WAL_Sync                           | DiskIO          |      56.66
-                       1 | TServer              | Idle                               | WaitOnCondition |       0.10
-                       4 | TServer              | OnCpu_Active                       | Cpu             |      83.46
-                       4 | TServer              | OnCpu_Passive                      | Cpu             |      15.46
-                       4 | TServer              | Raft_ApplyingEdits                 | Cpu             |       0.17
-                       4 | TServer              | ReplicaState_TakeUpdateLock        | WaitOnCondition |       0.91
-     2721988341380097743 | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-     6107501747146929242 | TServer              | OnCpu_Active                       | Cpu             |      87.76
-     6107501747146929242 | TServer              | OnCpu_Passive                      | Cpu             |       6.74
-     6107501747146929242 | TServer              | RocksDB_NewIterator                | DiskIO          |       2.08
-     6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |       1.97
-     6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |       1.46
-     6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |      24.58
-     6107501747146929242 | YSQL                 | yb_ash_metadata                    | LWLock          |       0.01
-     6107501747146929242 | YSQL                 | StorageRead                        | Network         |      75.41
-     6424016913938255253 | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-    (30 rows)
+```sql
+SELECT
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    yb_active_session_history
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query_id,
+    wait_event_component,
+    wait_event_type;
+```
 
-    ```
+```output
+ query_id             | wait_event_component |             wait_event             | wait_event_type | percentage
+ ---------------------+----------------------+------------------------------------+-----------------+------------
+ -4157456334073660389 | YSQL                 | CatalogRead                        | Network         |     3
+ -1970690938654296136 | TServer              | Raft_ApplyingEdits                 | Cpu             |    54
+ -1970690938654296136 | TServer              | OnCpu_Active                       | Cpu             |   107
+ -1970690938654296136 | TServer              | OnCpu_Passive                      | Cpu             |   144
+ -1970690938654296136 | TServer              | RocksDB_NewIterator                | DiskIO          |     6
+ -1970690938654296136 | TServer              | ConflictResolution_ResolveConficts | Network         |    18
+ -1970690938654296136 | TServer              | Raft_WaitingForReplication         | Network         |   194
+ -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |    18
+ -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |     5
+ -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |  1023
+                    0 | TServer              | OnCpu_Passive                      | Cpu             |    10
+                    0 | TServer              | OnCpu_Active                       | Cpu             |     9
+  6107501747146929242 | TServer              | OnCpu_Active                       | Cpu             |   208
+  6107501747146929242 | TServer              | RocksDB_NewIterator                | DiskIO          |     5
+  6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
+  6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
+  6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
+  6107501747146929242 | YSQL                 | StorageRead                        | Network         |   658
+  6107501747146929242 | YSQL                 | CatalogRead                        | Network         |     1
+```
 
-- Distribution of wait events on each component for each query
+### Distribution of wait events for each query
 
-    ```sql
-    SELECT
-        SUBSTRING(query, 1, 50) AS query,
-        wait_event_component,
-        wait_event,
-        wait_event_type,
-        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY query, wait_event_component), 2) AS percentage
-    FROM
-        yb_active_session_history
-    JOIN
-        pg_stat_statements
-    ON
-        query_id = queryid
-    GROUP BY
-        query,
-        wait_event_component,
-        wait_event,
-        wait_event_type
-    ORDER BY
-        query,
-        wait_event_component,
-        wait_event_type;
-    ```
+As ASH's query_id is the same as [pg_stat_statement's](../../query-1-performance/pg-stat-statements/) queryid, you can join with pg_stat_statements to view the distribution of wait events for each query. This may help in finding what's wrong with a particular query, or determine where most of the time is being spent on. In this example, you can see that in YB-TServer, most of the time is spent on the wait event `ConflictResolution_WaitOnConflictingTxns` which suggests that there are a lot of conflicts in the [DocDB storage layer](../../../architecture/docdb/).
 
-    ```output
-                        query                          | wait_event_component |             wait_event             | wait_event_type | percentage
-    ---------------------------------------------------+----------------------+------------------------------------+-----------------+------------
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | Raft_ApplyingEdits                 | Cpu             |       6.85
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | OnCpu_Active                       | Cpu             |      13.31
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | OnCpu_Passive                      | Cpu             |      16.50
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | RocksDB_NewIterator                | DiskIO          |       0.34
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | ConflictResolution_ResolveConficts | Network         |       1.22
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | Raft_WaitingForReplication         | Network         |      60.97
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |       0.20
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | TServer              | Rpc_Done                           | WaitOnCondition |       0.61
-    INSERT INTO postgresqlkeyvalue (k, v) VALUES ($1,  | YSQL                 | QueryProcessing                    | Cpu             |     100.00
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | TServer              | OnCpu_Active                       | Cpu             |      87.69
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | TServer              | OnCpu_Passive                      | Cpu             |       6.76
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | TServer              | RocksDB_NewIterator                | DiskIO          |       2.14
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |       1.45
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | TServer              | Rpc_Done                           | WaitOnCondition |       1.97
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | YSQL                 | QueryProcessing                    | Cpu             |      24.62
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | YSQL                 | yb_ash_metadata                    | LWLock          |       0.01
-    SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | YSQL                 | StorageRead                        | Network         |      75.38
-   (17 rows)
+```sql
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    yb_active_session_history
+JOIN
+    pg_stat_statements
+ON
+    query_id = queryid
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query,
+    wait_event_component,
+    wait_event_type;
+```
 
-    ```
+```output
+                query                          | wait_event_component |             wait_event                   | wait_event_type | percentage
+-----------------------------------------------+----------------------+------------------------------------------+-----------------+------------
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | OnCpu_Passive                            | Cpu             |    46
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_ApplyingEdits                       | Cpu             |    34
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | OnCpu_Active                             | Cpu             |    39
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | RocksDB_NewIterator                      | DiskIO          |     3
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_ResolveConficts       | Network         |    99
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_WaitingForReplication               | Network         |    38
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  1359
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | Rpc_Done                                 | WaitOnCondition |     5
+ UPDATE test_table set v = v + $1 where k = $2 | TServer              | LockedBatchEntry_Lock                    | WaitOnCondition |   141
+ UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | QueryProcessing                          | Cpu             |  1929
+```
 
-- Distribution of requests to all the tablets (finding out a hot shard)
+### Detect a hot shard
 
-    ```sql
-    SELECT
-        wait_event_aux,
-        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) AS percentage
-    FROM
-        yb_active_session_history
-    WHERE
-        wait_event_component = 'TServer' AND
-        wait_event_aux IS NOT NULL
-    GROUP BY
-        wait_event_aux
-    ORDER BY
-        percentage DESC;
-    ```
+In this example, you can see that a particular tablet is getting a lot of requests as compared to the other tablets. The `wait_event_aux` field contains the `tablet_id` in case of YB-TServer events.
 
-    ```output
-    wait_event_aux  | percentage
-   -----------------+------------
-    1ee7c269d3a74cc |      67.68
-    7f6f448e2280406 |      14.67
-    90d9b0138a1c49d |       4.41
-    1a0da03e370b4d3 |       4.41
-    24db684f73c9479 |       4.24
-    49434b5d87ff4f3 |       4.14
-    f30265abd9764da |       0.14
-    090e43c5da98421 |       0.07
-    3d6615f3d97f4be |       0.07
-    55e32f4ad65649a |       0.03
-    7f2aaf8f96564bd |       0.03
-    c1f70242f8cf463 |       0.03
-    779602f85a6a466 |       0.03
-    fbfc62e86fa2444 |       0.03
-    (14 rows)
-    ```
+```sql
+SELECT
+    wait_event_aux AS tablet_id,
+    COUNT(*)
+FROM
+    yb_active_session_history
+WHERE
+    wait_event_component = 'TServer' AND
+    wait_event_aux IS NOT NULL
+GROUP BY
+    wait_event_aux
+ORDER BY
+    count DESC;
+```
 
-- Distribution of type of wait events per component
+```output
+    tablet_id    | count
+-----------------+-------
+ 09f26a0bb117411 | 33129
+ a1d82ef77aa64a8 |  5235
+ 31bc90e0c59e4da |  2431
+ 7b49c915e7fe4f1 |  1518
+ 6b6a264711a84d2 |   403
+ 96948dbb19674cb |   338
+ e112a0dd35994e5 |   320
+ f901168f334f432 |   315
+ bddebf9b7d9b485 |   310
+ 04a37ec2cecf49e |    70
+ 70f6e424970c44c |    66
+ 77bdebc4f7e3400 |    65
+ b4ae6f1115fc4a9 |    63
+ 8674a0708cba422 |    63
+ 9cf4fc4a834040d |    61
+ e66879054249434 |    61
+ c2cfa997bf63463 |    59
+ 9d64f3479792499 |    58
+ e70fd34078e84fe |    58
+ 8ea1aa0f2e4749a |    56
+ b3bbaec3014f4f1 |    53
+ d3bbd37828ab422 |    53
+ 542c6f91ff6a403 |    52
+ 27780cde5a1b445 |    50
+ 4a64a9f25e414ce |    44
+ 09bb0274a41146a |     5
+ d58c56ce3fc7458 |     4
+ 0350744dad944bd |     4
+ 219fd39bafee44a |     3
+```
 
-    ```sql
-    SELECT
-        wait_event_component,
-        wait_event_type,
-        ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY wait_event_component), 2) AS percentage
-    FROM
-        yb_active_session_history
-    GROUP BY
-        wait_event_component,
-        wait_event_type
-    ORDER BY
-        wait_event_component;
-    ```
+You can join with `yb_local_tablets` to get more information about the table type, table_name, and partition keys. As the `wait_event_aux` has only the first 15 characters of the `tablet_id` as a string, you have to join with only the first 15 characters from `yb_local_tablets`.
 
-    ```output
-    wait_event_component | wait_event_type | percentage
-   ----------------------+-----------------+------------
-    TServer              | Cpu             |      33.48
-    TServer              | DiskIO          |      55.95
-    TServer              | WaitOnCondition |       0.53
-    TServer              | Network         |      10.04
-    YSQL                 | Network         |      78.27
-    YSQL                 | Cpu             |      21.73
-   (6 rows)
-   ```
+```sql
+SELECT
+    tablet_id,
+    table_type,
+    namespace_name,
+    table_name,
+    partition_key_start,
+    partition_key_end,
+    COUNT(*)
+FROM
+    yb_active_session_history
+JOIN
+    yb_local_tablets
+ON
+    wait_event_aux = SUBSTRING(tablet_id, 1, 15)
+GROUP BY
+    tablet_id,
+    table_type,
+    namespace_name,
+    table_name,
+    partition_key_start,
+    partition_key_end
+ORDER BY
+    table_name,
+    count DESC;
+```
+
+```output
+            tablet_id             | table_type | namespace_name |  table_name  | partition_key_start | partition_key_end | count
+----------------------------------+------------+----------------+--------------+---------------------+-------------------+-------
+ 09f26a0bb117411fa068df13420ea643 | YSQL       | yugabyte       | test_table   |                     | \x2aaa            | 33129
+ d58c56ce3fc74584bd2eb892cea51e2a | YSQL       | yugabyte       | test_table   | \x5555              | \x8000            |    10
+ 0350744dad944bd9ba70c91432c5d8e2 | YSQL       | yugabyte       | test_table   | \xaaaa              | \xd555            |     9
+ 219fd39bafee44a59117c4089a2f71bf | YSQL       | yugabyte       | test_table   | \x2aaa              | \x5555            |     8
+ 09bb0274a41146abbb6fe70e41b4f3c1 | YSQL       | yugabyte       | test_table   | \xd555              |                   |     7
+ a1d82ef77aa64a85987eef4aa2322c11 | System     | system         | transactions | \xf555              |                   |  7973
+ 31bc90e0c59e4da5b36e38e9e48554a0 | System     | system         | transactions | \x9555              | \xa000            |  5169
+ 7b49c915e7fe4f13afdee958028d4446 | System     | system         | transactions | \xb555              | \xc000            |  4256
+ 6b6a264711a84d25b3226f78b9dd4d6f | System     | system         | transactions |                     | \x0aaa            |   403
+ 96948dbb19674cb596c7f69177533000 | System     | system         | transactions | \x7555              | \x8000            |   338
+ e112a0dd35994e5990b25c4ae8a00eb6 | System     | system         | transactions | \x5555              | \x6000            |   320
+ f901168f334f43289007ee8385fedb67 | System     | system         | transactions | \x8aaa              | \x9555            |   315
+ bddebf9b7d9b4858b4e502b8a1d93e01 | System     | system         | transactions | \x6aaa              | \x7555            |   310
+ 04a37ec2cecf49e5bdb974ee80bb5c97 | System     | system         | transactions | \x2000              | \x2aaa            |    73
+ 70f6e424970c44c391edbbc18225ccb0 | System     | system         | transactions | \x0aaa              | \x1555            |    69
+ 77bdebc4f7e340068ad3d8c6ccf74b35 | System     | system         | transactions | \xeaaa              | \xf555            |    69
+ b4ae6f1115fc4a94b2d9e7aa514b5f28 | System     | system         | transactions | \xe000              | \xeaaa            |    67
+ 8674a0708cba4228bd1d435a642134bb | System     | system         | transactions | \xaaaa              | \xb555            |    66
+ 8ea1aa0f2e4749a4802986fefbf54d43 | System     | system         | transactions | \xd555              | \xe000            |    66
+ e70fd34078e84fef945f28fe6b004309 | System     | system         | transactions | \x8000              | \x8aaa            |    64
+ e66879054249434da01b3e7a314b983c | System     | system         | transactions | \x4000              | \x4aaa            |    63
+ 9d64f34797924998911922563d3ad0ec | System     | system         | transactions | \xa000              | \xaaaa            |    63
+ 9cf4fc4a834040df91987b26bf9831ed | System     | system         | transactions | \x4aaa              | \x5555            |    63
+ c2cfa997bf634637880137870cee25a1 | System     | system         | transactions | \xcaaa              | \xd555            |    61
+ d3bbd37828ab4225a68bf4dd54924138 | System     | system         | transactions | \x1555              | \x2000            |    56
+ b3bbaec3014f4f1aa01e04b42c5f40c7 | System     | system         | transactions | \x3555              | \x4000            |    56
+ 542c6f91ff6a403399ddf46e4d5f29bb | System     | system         | transactions | \x6000              | \x6aaa            |    56
+ 27780cde5a1b445d83ff83c865b9bea5 | System     | system         | transactions | \xc000              | \xcaaa            |    51
+ 4a64a9f25e414ce7a649be2e6d24c7ee | System     | system         | transactions | \x2aaa              | \x3555            |    46
+```
+
+You can see that only a single tablet of the table `test_table` is getting most of the requests, and you have the partition range of that particular tablet.
+
+### Distribution of the type of the wait events for each component
+
+Detect where most time is being spent to help understand if the issue is related to disk IO, network operations, waiting for a condition or lock, or intense CPU work.
+
+```sql
+SELECT
+    wait_event_component,
+    wait_event_type,
+    COUNT(*)
+FROM
+    yb_active_session_history
+GROUP BY
+    wait_event_component,
+    wait_event_type
+ORDER BY
+    wait_event_component,
+    count;
+```
+
+```output
+ wait_event_component | wait_event_type | count
+----------------------+-----------------+-------
+ TServer              | WaitOnCondition |    47
+ TServer              | Network         |   910
+ TServer              | Cpu             |  2665
+ TServer              | DiskIO          |  8193
+ YSQL                 | LWLock          |     1
+ YSQL                 | Cpu             |  1479
+ YSQL                 | Network         |  4575
+```
+
+### Detect which client/application is sending the most amount of queries
+
+Suppose you have a rogue application which is sending a lot of queries, you can identify the application using the following example query:
+
+```sql
+SELECT
+    client_node_ip,
+    COUNT(*)
+FROM
+    yb_active_session_history
+WHERE
+    client_node_ip IS NOT NULL
+GROUP BY
+    client_node_ip;
+```
+
+```output
+ client_node_ip  |  count
+-----------------+-------
+ 127.0.0.2:56471 |    92
+ 127.0.0.1:56473 |   106
+ 127.0.0.1:56477 |    91
+ 127.0.0.2:56481 |    51
+ 127.0.0.3:56475 |    53
+ 127.0.0.3:56485 |    18
+ 127.0.0.3:56479 | 10997
+```

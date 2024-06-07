@@ -207,11 +207,11 @@ INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
 INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
 INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
 
-EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
 
-EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
 

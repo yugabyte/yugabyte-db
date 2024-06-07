@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -117,16 +118,13 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock RuntimeConfGetter mockConfGetter;
   @Mock Config mockConfigUniverseScope;
   @Mock private NodeUniverseManager mockNodeUniverseManager;
+  @Mock private MaintenanceService mockMaintenanceService;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
-
-    ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
-    when(mockNodeUniverseManager.uploadFileToNode(any(), any(), anyString(), any(), any(), any()))
-        .thenReturn(dummyShellUploadResponse);
 
     report = spy(new HealthCheckerReport());
 
@@ -182,7 +180,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockNodeUniverseManager,
             executorService,
             executorService,
-            mockFileHelperService) {
+            mockFileHelperService,
+            mockMaintenanceService) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);

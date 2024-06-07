@@ -236,7 +236,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * In case of prepared statements, the 'Parse' phase might be skipped.
 	 * We set the ASH metadata here if it's not been set yet.
 	 */
-	if (yb_enable_ash && MyProc->yb_is_ash_metadata_set == false)
+	if (yb_enable_ash && MyProc->yb_ash_metadata.query_id == YBCGetQueryIdForCatalogRequests())
 	{
 		/* Query id can be zero here only if pg_stat_statements is disabled */
 		uint64 query_id = queryDesc->plannedstmt->queryId != 0
@@ -299,25 +299,24 @@ static void
 yb_set_ash_metadata(uint64 query_id)
 {
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-
 	MyProc->yb_ash_metadata.query_id = query_id;
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
-	MyProc->yb_is_ash_metadata_set = true;
-
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 static void
 yb_unset_ash_metadata()
 {
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-
 	/*
-	 * when yb_is_ash_metadata_set is set to false, it ensures that we
-	 * won't read the ASH metadata. So it's fine to not null out the values.
+	 * TODO(asaha): add an assert
+	 * Assert(MyProc->yb_ash_metadata.query_id != YBCGetQueryIdForCatalogRequests());
+	 * after fixing GH#21031
 	 */
-	MyProc->yb_is_ash_metadata_set = false;
 
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	MyProc->yb_ash_metadata.query_id = YBCGetQueryIdForCatalogRequests();
+	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
+		sizeof(MyProc->yb_ash_metadata.root_request_id));
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
@@ -364,6 +363,24 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 
 	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
 											redacted_query_len, 0));
+}
+
+/*
+ * Events such as ClientRead can take up a lot of space in the circular buffer
+ * if there is an idle session. We don't want to include such wait events.
+ * This list may increase in the future.
+ */
+bool
+YbAshShouldIgnoreWaitEvent(uint32 wait_event_info)
+{
+	switch (wait_event_info)
+	{
+		case WAIT_EVENT_CLIENT_READ:
+			return true;
+		default:
+			return false;
+	}
+	return false;
 }
 
 static void
@@ -648,7 +665,11 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			Assert(metadata->addr_family == AF_UNIX);
+			/*
+			 * internal operations such as flushes and compactions are not tied to any client
+			 * and they might have the addr_family as AF_UNSPEC
+			 */
+			Assert(metadata->addr_family == AF_UNIX || metadata->addr_family == AF_UNSPEC);
 			nulls[j++] = true;
 		}
 

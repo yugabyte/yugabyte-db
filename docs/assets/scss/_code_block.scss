@@ -225,6 +225,10 @@ main {
       }
     }
 
+    div.highlight pre.can-be-copied[data-code="2"] {
+      margin-bottom: -13px;
+    }
+
     pre.can-be-copied {
       width: calc(100% + 20px);
       padding-right: 20px !important;
@@ -233,10 +237,6 @@ main {
 
       &[data-code="1"] {
         margin-bottom: -35px;
-      }
-
-      &[data-code="2"] {
-        margin-bottom: -13px;
       }
 
       &::after {

@@ -97,8 +97,8 @@ class PgDmlRead : public PgDml {
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
   // remaining from the previous range scan.
-  Status BindRange(const Slice &start_value, bool start_inclusive,
-                   const Slice &end_value, bool end_inclusive);
+  Status BindRange(const Slice &lower_bound, bool lower_bound_inclusive,
+                   const Slice &upper_bound, bool upper_bound_inclusive);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.

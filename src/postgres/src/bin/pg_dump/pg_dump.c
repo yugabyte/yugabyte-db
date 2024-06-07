@@ -261,10 +261,7 @@ static void dumpTrigger(Archive *fout, const TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 static void dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo);
-#endif
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *tbinfo);
 static void dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, const TableInfo *tbinfo);
@@ -6723,8 +6720,6 @@ getTables(Archive *fout, int *numTables)
  *
  *	numTablegroups is set to the number of tablegroups read in
  */
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 TablegroupInfo *
 getTablegroups(Archive *fout, int *numTablegroups)
 {
@@ -6735,11 +6730,10 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	TablegroupInfo *tbinfo;
 	int			i_grpname;
 	int			i_oid;
+	int			i_tableoid;
 	int			i_grpowner;
 	int			i_grpacl;
-	int			i_grpracl;
-	int			i_grpinitacl;
-	int			i_grpinitracl;
+	int			i_grpacldefault;
 	int			i_grpoptions;
 	int			i_grptablespace;
 
@@ -6752,41 +6746,18 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	query = createPQExpBuffer();
 
 	Assert(fout->remoteVersion >= 90600);
-	PQExpBuffer acl_subquery = createPQExpBuffer();
-	PQExpBuffer racl_subquery = createPQExpBuffer();
-	PQExpBuffer init_acl_subquery = createPQExpBuffer();
-	PQExpBuffer init_racl_subquery = createPQExpBuffer();
-
-	buildACLQueries(acl_subquery, racl_subquery, init_acl_subquery,
-					init_racl_subquery, "tg.grpacl", "tg.grpowner", "pip.initprivs", "'g'",
-					fout->dopt->binary_upgrade);
 
 	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
 	appendPQExpBuffer(query,
-					  "SELECT grpname, tg.oid, grpoptions, "
-					  "(%s grpowner) AS owner, "
+					  "SELECT grpname, oid, tableoid, grpoptions, "
+					  "grpowner, "
 					  "(%s) AS grptablespace, "
-					  "%s AS acl, "
-					  "%s AS racl, "
-					  "%s AS initacl, "
-					  "%s AS initracl "
-					  "FROM %s AS tg "
-					  "LEFT JOIN pg_init_privs pip ON "
-					  "tg.oid = pip.objoid",
-					  username_subquery,
+					  "grpacl, acldefault('L', grpowner) AS acldefault "
+					  "FROM %s",
 					  pg_yb_tablegroup_exists ?
 						  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace" :
 						  "NULL",
-					  acl_subquery->data,
-					  racl_subquery->data,
-					  init_acl_subquery->data,
-					  init_racl_subquery->data,
 					  pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
-
-	destroyPQExpBuffer(acl_subquery);
-	destroyPQExpBuffer(racl_subquery);
-	destroyPQExpBuffer(init_acl_subquery);
-	destroyPQExpBuffer(init_racl_subquery);
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -6797,32 +6768,27 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	i_grpname = PQfnumber(res, "grpname");
 	i_oid = PQfnumber(res, "oid");
-	i_grpowner = PQfnumber(res, "owner");
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_grpowner = PQfnumber(res, "grpowner");
 	i_grpoptions = PQfnumber(res, "grpoptions");
-	i_grpacl = PQfnumber(res, "acl");
-	i_grpracl = PQfnumber(res, "racl");
-	i_grpinitacl = PQfnumber(res, "initacl");
-	i_grpinitracl = PQfnumber(res, "initracl");
+	i_grpacl = PQfnumber(res, "grpacl");
+	i_grpacldefault = PQfnumber(res, "acldefault");
 	i_grptablespace = PQfnumber(res, "grptablespace");
 
 	for (i = 0; i < ntups; i++)
 	{
 		tbinfo[i].dobj.objType = DO_TABLEGROUP;
-
 		tbinfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		tbinfo[i].dobj.catId.tableoid = atooid(PQgetvalue(res, i, i_tableoid));
 
 		/* add the object to a global lookup map */
 		AssignDumpId(&tbinfo[i].dobj);
 
 		tbinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_grpname));
-		tbinfo[i].grpowner = pg_strdup(PQgetvalue(res, i, i_grpowner));
+		tbinfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_grpacl));
+		tbinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_grpacldefault));
+		tbinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_grpowner));
 		tbinfo[i].grptablespace = pg_strdup(PQgetvalue(res, i, i_grptablespace));
-
-		tbinfo[i].grpacl = pg_strdup(PQgetvalue(res, i, i_grpacl));
-		tbinfo[i].grpracl = pg_strdup(PQgetvalue(res, i, i_grpracl));
-		tbinfo[i].grpinitacl = pg_strdup(PQgetvalue(res, i, i_grpinitacl));
-		tbinfo[i].grpinitracl = pg_strdup(PQgetvalue(res, i, i_grpinitracl));
-
 		tbinfo[i].grpoptions = pg_strdup(PQgetvalue(res, i, i_grpoptions));
 
 		/* Decide whether we want to dump it */
@@ -6835,7 +6801,6 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	return tbinfo;
 }
-#endif
 
 /*
  * getOwnedSeqs
@@ -10183,10 +10148,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpTableAttach(fout, (const TableAttachInfo *) dobj);
 			break;
 		case DO_TABLEGROUP:
-#ifdef YB_TODO
-			/* Need rework to match Pg15 */
-			dumpTablegroup(fout, (TablegroupInfo *) dobj);
-#endif
+			dumpTablegroup(fout, (const TablegroupInfo *) dobj);
 			break;
 		case DO_ATTRDEF:
 			dumpAttrDef(fout, (const AttrDefInfo *) dobj);
@@ -14777,11 +14739,9 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	 * copy the results into pg_init_privs.  This is how we preserve the
 	 * contents of that catalog across binary upgrades.
 	 */
-	if (dopt->binary_upgrade && privtype == 'e' &&
+	if ((dopt->binary_upgrade || dopt->include_yb_metadata) && privtype == 'e' &&
 		initprivs && *initprivs != '\0')
 	{
-#ifdef YB_TODO
-		/* Investigate this when extensions are working. */
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(name, subname, nspname, type,
 							  initprivs, acldefault, owner,
@@ -14789,7 +14749,6 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
-#endif
 	}
 
 	/*
@@ -15433,8 +15392,6 @@ createDummyViewAsClause(Archive *fout, const TableInfo *tbinfo)
 	return result;
 }
 
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 /*
  * dumpTablegroup
  *    write the declaration of one user-defined tablegroup
@@ -15491,7 +15448,7 @@ dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 					 ARCHIVE_OPTS(.tag = tginfo->dobj.name, /* Name */
 								  .namespace = NULL, /* Namespace */
 								  .tablespace = tginfo->grptablespace,	/* Tablespace */
-								  .owner = tginfo->grpowner,		/* Owner */
+								  .owner = tginfo->rolname,			/* Owner */
 								  .description = "TABLEGROUP",		/* Desc */
 								  .section = SECTION_PRE_DATA,		/* Section */
 								  .createStmt = q->data,			/* Create */
@@ -15502,22 +15459,14 @@ dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 								  .dumpFn = NULL,					/* Dumper */
 								  .dumpArg = NULL));				/* Dumper Arg */
 
-	if (tginfo->grpacl && (tginfo->dobj.dump & DUMP_COMPONENT_ACL))
+	if (tginfo->dobj.dump & DUMP_COMPONENT_ACL)
 		dumpACL(fout, tginfo->dobj.dumpId, InvalidDumpId, "LARGE OBJECT",
-				tginfo->dobj.name,
-				NULL, /* subname */
-				NULL, /* Namespace */
-				tginfo->grpowner, /* Owner */
-				tginfo->grpacl, /* ACLs */
-				tginfo->grpracl, /* rACLs */
-				tginfo->grpinitacl, /* initACLs */
-				tginfo->grpinitracl /* initrACLs */);
+				tginfo->dobj.name, NULL, NULL, tginfo->rolname, &tginfo->dacl);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	free(namecopy);
 }
-#endif
 
 /*
  * dumpTableSchema
@@ -16003,20 +15952,16 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			}
 			/* else - single shard table - supported, no need to add anything */
 
-#ifdef YB_TODO
-			/* Need rework to match Pg15 */
 			if (!is_colocated_database && !dopt->no_tablegroups && dopt->include_yb_metadata &&
 				OidIsValid(yb_properties->tablegroup_oid))
 			{
 				TablegroupInfo *tablegroup = findTablegroupByOid(yb_properties->tablegroup_oid);
 				if (tablegroup == NULL)
-					fatal("could not find tablegroup definition with OID %u\n",
-						  yb_properties->tablegroup_oid);
+					pg_fatal("could not find tablegroup definition with OID %u",
+							 yb_properties->tablegroup_oid);
 				appendPQExpBuffer(q, "\nTABLEGROUP %s", tablegroup->dobj.name);
 			}
-#endif
 		}
-
 
 		/* Dump generic options if any */
 		if (ftoptions && ftoptions[0])
@@ -19114,12 +19059,9 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 	ExtensionInfo *extinfo;
 	PQExpBuffer	   update_query = createPQExpBuffer();
 	char		 **extconfigarray = NULL;
-#ifdef YB_TODO
-	/* Need rework to match Pg15 */
 	int			   nconfigitems;
 	Oid			   tbloid;
 	TableInfo	  *tblinfo;
-#endif
 
 	Assert(yb_dumpable_extensions_with_config_relations &&
 		   yb_num_dumpable_extensions_with_config_relations > 0);
@@ -19132,26 +19074,22 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		appendPQExpBuffer(update_query,
 						  "UPDATE pg_extension SET extconfig = ARRAY[");
 		/* Shouldn't happen. */
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
-			fatal("error parsing OIDs of configuration relations "
-				  "of extension with OID %u\n", extinfo->dobj.catId.oid);
+			pg_fatal("error parsing OIDs of configuration relations "
+					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
 
-		/* Need rework to match Pg15 */
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
 			tblinfo = findTableByOid(tbloid);
 			if (!tblinfo)
-				fatal("configuration relation with OID %u of extension with OID %u not found\n",
-					  tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
+				pg_fatal("configuration relation with OID %u of extension with OID %u not found\n",
+						 tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
 			if (j)
 				appendPQExpBuffer(update_query, ",");
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
 			appendPQExpBuffer(update_query, "::regclass::oid");
 		}
-#endif
 		appendPQExpBuffer(update_query,
 						  "]::oid[] WHERE extname = ");
 		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);

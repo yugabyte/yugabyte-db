@@ -14,59 +14,21 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
-#include "access/htup_details.h"
 #include "access/xact.h"
-#include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_extension.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
-#include "commands/explain.h"
 #include "executor/spi.h"
-#include "utils/builtins.h"
-#include "utils/datetime.h"
-#include "utils/fmgroids.h"
-#include "utils/jsonb.h"
-#include "utils/memutils.h"
+#include "utils/fmgrprotos.h"
 
 #include "pg_yb_utils.h"
 
+#include "extension_util.h"
+#include "json_util.h"
+#include "source_ddl_end_handler.h"
+
 PG_MODULE_MAGIC;
 
-#define EXTENSION_NAME		 "yb_xcluster_ddl_replication"
-#define DDL_QUEUE_TABLE_NAME "ddl_queue"
-#define REPLICATED_DDLS_TABLE_NAME "replicated_ddls"
-
-#define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
-	do \
-	{ \
-		context_new = AllocSetContextCreate(GetCurrentMemoryContext(), desc, \
-											ALLOCSET_DEFAULT_SIZES); \
-		context_old = MemoryContextSwitchTo(context_new); \
-		GetUserIdAndSecContext(&save_userid, &save_sec_context); \
-		SetUserIdAndSecContext(XClusterExtensionOwner(), \
-							   SECURITY_RESTRICTED_OPERATION); \
-		if (SPI_connect() != SPI_OK_CONNECT) \
-			elog(ERROR, "SPI_connect failed"); \
-	} while (false)
-
-#define CLOSE_MEM_CONTEXT_AND_SPI \
-	do \
-	{ \
-		if (SPI_finish() != SPI_OK_FINISH) \
-			elog(ERROR, "SPI_finish() failed"); \
-		SetUserIdAndSecContext(save_userid, save_sec_context); \
-		MemoryContextSwitchTo(context_old); \
-		MemoryContextDelete(context_new); \
-	} while (false)
-
-// Handle old PG11 and newer PG15 code.
-#if (PG_VERSION_NUM < 120000)
-#define table_open(r, l) heap_open(r, l)
-#define table_close(r, l) heap_close(r, l)
-#endif
-
+/* Extension variables. */
 typedef enum ClusterReplicationRole
 {
 	REPLICATION_ROLE_DISABLED,
@@ -82,24 +44,13 @@ static const struct config_enum_entry replication_roles[] = {
 	{"BIDIRECTIONAL", REPLICATION_ROLE_BIDIRECTIONAL, /* hidden */ true},
 	{NULL, 0, false}};
 
-/* Extension variables. */
 static int ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
 char *DDLQueuePrimaryKeyStartTime = NULL;
 char *DDLQueuePrimaryKeyQueryId = NULL;
-static Oid CachedExtensionOwnerOid = 0; /* Cached for a pg connection. */
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
-static int64 GetInt64FromVariable(const char *var, const char *var_name);
-static Oid XClusterExtensionOwner(void);
-
-/* Json util functions. */
-static void AddNumericJsonEntry(
-	JsonbParseState *state, char *key_buf, int64 val);
-static void AddStringJsonEntry(
-	JsonbParseState *state, char *key_buf, const char *val);
-static void AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val);
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -199,53 +150,39 @@ InsertIntoDDLQueue(Jsonb *yb_data)
 	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
 }
 
-/* Returns whether or not to continue with processing the DDL. */
-bool
-HandleCreateTable()
+/*
+ * Reports an error if the query string has multiple commands in it, or a
+ * command tag that doesn't match up with the one captured from the event
+ * trigger.
+ *
+ * Some clients can send multiple commands together as one single query string.
+ * This can cause issues for this extension:
+ * - If the query has a mix of DDL and DML commands, then we'd end up
+ *   replicating those rows twice.
+ * - Even if the query has multiple DDLs in it, it is simpler to handle these
+ *   individually. Eg. we may need to add additional modifications for each
+ *   individual DDL (eg setting oids).
+ */
+void
+DisallowMultiStatementQueries(CommandTag command_tag)
 {
-	// TODO(jhe): Is there an alternate method to get this info?
-	// TODO(jhe): Can we use ddl_deparse on command to handle each separately?
-	StringInfoData query_buf;
-	initStringInfo(&query_buf);
-	appendStringInfo(
-		&query_buf, "SELECT objid FROM pg_catalog.pg_event_trigger_ddl_commands()");
-	int exec_res = SPI_execute(query_buf.data, true, 0);
-	if (exec_res != SPI_OK_SELECT)
-		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
-
-	TupleDesc spiTupDesc = SPI_tuptable->tupdesc;
-	bool found_yb_relation = false;
-	for (int row = 0; row < SPI_processed; row++)
+	List *parse_tree = pg_parse_query(debug_query_string);
+	ListCell *lc;
+	int count = 0;
+	foreach (lc, parse_tree)
 	{
-		HeapTuple spiTuple = SPI_tuptable->vals[row];
-		bool is_null;
-		Oid objid =
-			DatumGetObjectId(SPI_getbinval(spiTuple, spiTupDesc, 1, &is_null));
+		++count;
+		RawStmt *stmt = (RawStmt *) lfirst(lc);
+		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
 
-		Relation rel = RelationIdGetRelation(objid);
-		// Ignore temporary tables and primary indexes (same as main table).
-		if (!IsYBBackedRelation(rel) ||
-			(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary))
-		{
-			RelationClose(rel);
-			continue;
-		}
-
-		// Also need to check colocated until that is supported.
-		YbTableProperties table_props = YbGetTableProperties(rel);
-		bool is_colocated = table_props->is_colocated;
-		RelationClose(rel);
-		if (is_colocated)
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("Colocated objects are not yet supported by "
-									"yb_xcluster_ddl_replication")));
-
-		found_yb_relation = true;
+		if (count > 1 || command_tag != stmt_command_tag)
+			elog(ERROR,
+				 "Database is replicating DDLs for xCluster. In this mode only "
+				 "a single DDL command is allowed in the query string.\n"
+				 "Please run the commands one at a time.\n"
+				 " Full query string: %s",
+				 debug_query_string);
 	}
-
-	// If all the objects are temporary, then stop processing early as we don't
-	// need to replicate this ddl query at all.
-	return found_yb_relation;
 }
 
 void
@@ -285,17 +222,12 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	{
 		(void) AddBoolJsonEntry(state, "manual_replication", true);
 	}
-	else if (trig_data->tag == CMDTAG_CREATE_TABLE)
-	{
-		if (!HandleCreateTable())
-			goto exit;
-	}
 	else
 	{
-		elog(ERROR,
-			"Unsupported DDL: %s\nTo manually replicate, run DDL with "
-			"SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true",
-			GetCommandTagName(trig_data->tag));
+		DisallowMultiStatementQueries(trig_data->tag);
+		bool should_replicate_ddl = ProcessSourceEventTriggerDDLCommands(state);
+		if (!should_replicate_ddl)
+			goto exit;
 	}
 
 	// Construct the jsonb and insert completed row into ddl_queue table.
@@ -381,101 +313,4 @@ IsInIgnoreList(EventTriggerData *trig_data)
 		return true;
 	}
 	return false;
-}
-
-static int64
-GetInt64FromVariable(const char *var, const char *var_name)
-{
-	if (!var || strcmp(var, "") == 0)
-		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
-
-	char *endp = NULL;
-	int64 ret = strtoll(var, &endp, 10);
-	if (*endp != '\0')
-		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Error parsing %s: %s", var_name, var)));
-
-	return ret;
-}
-
-/*
- * XClusterExtensionOwner returns the oid of the user that owns the extension.
- */
-static Oid
-XClusterExtensionOwner(void)
-{
-	if (CachedExtensionOwnerOid > 0)
-		return CachedExtensionOwnerOid;
-
-	Relation extensionRelation = table_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyData entry[1];
-	ScanKeyInit(&entry[0], Anum_pg_extension_extname, BTEqualStrategyNumber,
-				F_NAMEEQ, CStringGetDatum(EXTENSION_NAME));
-
-	SysScanDesc scanDescriptor = systable_beginscan(
-		extensionRelation, ExtensionNameIndexId, true, NULL, 1, entry);
-
-	HeapTuple extensionTuple = systable_getnext(scanDescriptor);
-	if (!HeapTupleIsValid(extensionTuple))
-	{
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("%s extension is not loaded", EXTENSION_NAME)));
-	}
-
-	Form_pg_extension extensionForm =
-		(Form_pg_extension) GETSTRUCT(extensionTuple);
-	Oid extensionOwner = extensionForm->extowner;
-
-	systable_endscan(scanDescriptor);
-	table_close(extensionRelation, AccessShareLock);
-
-	// Cache this value for future calls.
-	CachedExtensionOwnerOid = extensionOwner;
-	return extensionOwner;
-}
-
-static void
-AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvNumeric;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.numeric =
-		DatumGetNumeric(DirectFunctionCall1(int8_numeric, val));
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
-}
-
-static void
-AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvBool;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.boolean = val;
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
-}
-
-static void
-AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val)
-{
-	JsonbPair pair;
-	pair.key.type = jbvString;
-	pair.value.type = jbvString;
-	pair.key.val.string.len = strlen(key_buf);
-	pair.key.val.string.val = pstrdup(key_buf);
-	pair.value.val.string.len = strlen(val);
-	pair.value.val.string.val = pstrdup(val);
-
-	(void) pushJsonbValue(&state, WJB_KEY, &pair.key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair.value);
 }

@@ -496,6 +496,23 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     }
   }
 
+  /*
+   * Regression test for #22010
+   *
+   * We do not expect read restarts even in the long string case
+   * since the RETUNRING output is cached in a temporary table
+   * and only sent back to the client after the update is done.
+   */
+  @Test
+  public void testUpdateLong() throws Exception {
+    new RegularDmlStatementTester(
+        getConnectionBuilder(),
+        "UPDATE test_rr set i=1 RETURNING *",
+        getLongString(),
+        false /* is_deadlock_possible */
+    ).runTest();
+  }
+
   //
   // Helpers methods
   //

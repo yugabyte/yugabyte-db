@@ -34,7 +34,7 @@ For specific scenarios such as creating large numbers of tables, high rates of D
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/).
 
 ## Create a universe
 
@@ -58,7 +58,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 - Enter a name for the universe.
 
-- Choose the [provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/) to use to create the universe.
+- Choose the [provider configuration](../../configure-yugabyte-platform/) to use to create the universe.
 
 - Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
 

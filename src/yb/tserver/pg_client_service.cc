@@ -66,7 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -86,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::IsDebug(),
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -705,7 +705,7 @@ class PgClientServiceImpl::Impl {
       return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
     }
 
-    std::set<std::string> tserver_uuids;
+    std::unordered_set<std::string> tserver_uuids;
     for (const auto& tablet_location_pb : resp.tablet_locations()) {
       for (const auto& replica : tablet_location_pb.replicas()) {
         if (replica.role() == PeerRole::LEADER) {
@@ -713,20 +713,13 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
-
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    remote_tservers.reserve(tserver_uuids.size());
-    for(const auto& ts_uuid : tserver_uuids) {
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(ts_uuid)));
-    }
-    return remote_tservers;
+    return tablet_server_.GetRemoteTabletServers(tserver_uuids);
   }
 
   Status GetLockStatus(
       const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context) {
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     GetLockStatusRequestPB lock_status_req;
     lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
@@ -739,12 +732,6 @@ class PgClientServiceImpl::Impl {
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
-      std::vector<RemoteTabletServerPtr> remote_tservers;
-      remote_tservers.reserve(live_tservers.size());
-      for (const auto& live_ts : live_tservers) {
-        const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-        remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-      }
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
     const auto& min_txn_age_ms = req.min_txn_age_ms();
@@ -763,12 +750,11 @@ class PgClientServiceImpl::Impl {
 
     std::vector<std::future<Result<OldTxnsRespInfo>>> res_futures;
     std::unordered_set<TabletId> status_tablet_ids;
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+    for (const auto& remote_tserver : remote_tservers) {
       auto txn_status_tablets = VERIFY_RESULT(
             client().GetTransactionStatusTablets(remote_tserver->cloud_info_pb()));
 
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
@@ -802,8 +788,9 @@ class PgClientServiceImpl::Impl {
 
       std::visit([&](auto&& old_txns_resp) {
         if (old_txns_resp->has_error()) {
-          // Ignore leadership errors as we broadcast the request to all tservers.
-          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+          // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
+          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
+              old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
             it = res_futures.erase(it);
             return;
           }
@@ -879,8 +866,9 @@ class PgClientServiceImpl::Impl {
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
-    auto remote_tservers = VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(&lock_status_req));
-    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
+    auto remote_tservers_with_locks = VERIFY_RESULT(
+        ReplaceSplitTabletsAndGetLocations(&lock_status_req));
+    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers_with_locks);
   }
 
   // Merges the src PgGetLockStatusResponsePB into dest, while preserving existing entries in dest.
@@ -904,7 +892,8 @@ class PgClientServiceImpl::Impl {
       AtomicFlagSleepMs(&FLAGS_TEST_delay_before_get_locks_status_ms);
     }
 
-    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString();
+    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString()
+            << ", with existing response state " << resp->ShortDebugString();
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
@@ -914,6 +903,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::shared_ptr<GetLockStatusResponsePB>> node_responses;
     node_responses.reserve(remote_tservers.size());
     for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       auto status_promise = std::make_shared<std::promise<Status>>();
       status_futures.push_back(status_promise->get_future());
@@ -1025,8 +1015,9 @@ class PgClientServiceImpl::Impl {
     // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
     // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
     // remove !req.transaction_ids().empty() in the below check.
-    RSTATUS_DCHECK(seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
-           "Host node uuid not set for all involved transactions");
+    RSTATUS_DCHECK(
+        seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
+        Format("Host node uuid not set for transactions: $0", yb::ToString(seen_transactions)));
     return Status::OK();
   }
 
@@ -1385,12 +1376,24 @@ class PgClientServiceImpl::Impl {
     return (
         !call.has_wait_state() ||
         // Ignore log-appenders which are just Idle
-        call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+        call.wait_state().wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
         // Ignore ActiveSessionHistory/Perform calls, if desired.
         (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
          call.wait_state().aux_info().has_method() &&
          (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
           call.wait_state().aux_info().method() == "Perform")));
+  }
+
+  void PopulateWaitStates(
+      const PgActiveSessionHistoryRequestPB& req, const yb::rpc::RpcConnectionPB& conn,
+      tserver::WaitStatesPB* resp) {
+    for (const auto& call : conn.calls_in_flight()) {
+      if (ShouldIgnoreCall(req, call)) {
+        VLOG(3) << "Ignoring " << call.wait_state().DebugString();
+      }
+      auto* wait_state = resp->add_wait_states();
+      wait_state->CopyFrom(call.wait_state());
+    }
   }
 
   void GetRpcsWaitStates(
@@ -1410,44 +1413,25 @@ class PgClientServiceImpl::Impl {
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
     dump_req.set_get_local_calls(true);
+    dump_req.set_export_wait_state_code_as_string(req.export_wait_state_code_as_string());
 
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
-    size_t ignored_calls = 0;
-    size_t ignored_calls_no_wait_state = 0;
-    for (const auto& conns : dump_resp.inbound_connections()) {
-      for (const auto& call : conns.calls_in_flight()) {
-        if (ShouldIgnoreCall(req, call)) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-      }
+    for (const auto& conn : dump_resp.inbound_connections()) {
+      PopulateWaitStates(req, conn, resp);
     }
+
     if (dump_resp.has_local_calls()) {
-      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
-        if (ShouldIgnoreCall(req, call)) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-      }
+      PopulateWaitStates(req, dump_resp.local_calls(), resp);
     }
-    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls_no_wait_state > 0)
-        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
-        << " without wait state";
-    VLOG(2) << __PRETTY_FUNCTION__
-            << " wait-states: " << yb::ToString(resp->wait_states());
+
+    VLOG(3) << __PRETTY_FUNCTION__ << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddWaitStatesToResponse(const ash::WaitStateTracker& tracker, tserver::WaitStatesPB* resp) {
-    Result<Uuid> local_uuid = Uuid::FromHexString(instance_id_);
+  void AddWaitStatesToResponse(
+      const ash::WaitStateTracker& tracker, bool export_wait_state_names,
+      tserver::WaitStatesPB* resp) {
+    Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
@@ -1455,9 +1439,10 @@ class PgClientServiceImpl::Impl {
         if (local_uuid) {
           wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
         }
-        wait_state_ptr->ToPB(resp->add_wait_states());
+        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
       }
     }
+    VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
 
   Status ActiveSessionHistory(
@@ -1466,16 +1451,18 @@ class PgClientServiceImpl::Impl {
     if (req.fetch_tserver_states()) {
       GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
       AddWaitStatesToResponse(
-          ash::SharedMemoryPgPerformTracker(), resp->mutable_tserver_wait_states());
+          ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
-          ash::FlushAndCompactionWaitStatesTracker(),
+          ash::FlushAndCompactionWaitStatesTracker(), req.export_wait_state_code_as_string(),
           resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), resp->mutable_raft_log_appender_wait_states());
+          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
@@ -1561,22 +1548,15 @@ class PgClientServiceImpl::Impl {
                   TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
             }
             const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
-            callback(client().GetRemoteTabletServer(permanent_uuid));
+            auto remote_ts_or_status = tablet_server_.GetRemoteTabletServers({permanent_uuid});
+            if (!remote_ts_or_status.ok()) {
+              return callback(remote_ts_or_status.status());
+            }
+            callback((*remote_ts_or_status)[0]);
           },
           // Force a client cache refresh so as to not hit NOT_LEADER error.
           client::UseCache::kFalse);
     });
-  }
-
-  Result<std::vector<RemoteTabletServerPtr>> GetAllLiveTservers() {
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-    }
-    return remote_tservers;
   }
 
   Status GetActiveTransactionList(
@@ -1612,7 +1592,7 @@ class PgClientServiceImpl::Impl {
 
     std::vector<RemoteTabletServerPtr> remote_tservers;
     if (req.status_tablet_id().empty()) {
-      remote_tservers = VERIFY_RESULT(GetAllLiveTservers());
+      remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     } else {
       const auto& remote_ts = VERIFY_RESULT(GetTServerHostingStatusTablet(
           req.status_tablet_id(), context->GetClientDeadline()).get());
@@ -1623,6 +1603,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::future<Status>> status_future;
     std::vector<tserver::CancelTransactionResponsePB> node_resp(remote_tservers.size());
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
+      RETURN_NOT_OK(remote_tservers[i]->InitProxy(&client()));
       const auto& proxy = remote_tservers[i]->proxy();
       auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(

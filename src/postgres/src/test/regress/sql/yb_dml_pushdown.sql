@@ -1,3 +1,5 @@
+-- Disable query identifiers in EXPLAIN VERBOSE output
+SET compute_query_id to regress;
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
 --

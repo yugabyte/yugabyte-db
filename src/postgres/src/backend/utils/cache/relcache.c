@@ -1401,7 +1401,14 @@ YbCleanupTupleCache(YbTupleCache *cache)
 	if (!cache->rel)
 		return;
 
+	if (cache->data)
+	{
+		hash_destroy(cache->data);
+		cache->data = NULL;
+	}
+
 	table_close(cache->rel, AccessShareLock);
+	cache->rel = NULL;
 }
 
 typedef struct YbUpdateRelationCacheState {
@@ -4438,6 +4445,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		MemoryContextDelete(relation->rd_pddcxt);
 	if (relation->rd_partcheckcxt)
 		MemoryContextDelete(relation->rd_partcheckcxt);
+	if (relation->yb_table_properties)
+		pfree(relation->yb_table_properties);
 	pfree(relation);
 }
 
@@ -5650,7 +5659,7 @@ RelationBuildLocalRelation(const char *relname,
 	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
-	
+
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
 	 * places.  For a mapped relation, we set relfilenode to zero and rely on
@@ -6157,7 +6166,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) && 
+		needNewCacheFile = !load_relcache_init_file(true) &&
 			!YbNeedAdditionalCatalogTables() &&
 			*YBCGetGFlags()->ysql_use_relcache_file;
 	}
@@ -6199,7 +6208,7 @@ RelationCacheInitializePhase3(void)
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
 		bool preload_rel_cache =
-			needNewCacheFile || 
+			needNewCacheFile ||
 			YBCIsInitDbModeEnvVarSet() ||
 			YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file;
@@ -7611,8 +7620,18 @@ RelationGetIdentityKeyBitmap(Relation relation)
 	if (!RelationGetForm(relation)->relhasindex)
 		return NULL;
 
-	/* Historic snapshot must be set. */
-	Assert(HistoricSnapshotActive());
+	/*
+	 * YB NOTE: We do not rely on the historical snapshot mechanism of PG. We
+	 * utilize the yb_read_time variable to read the catalog entries at the time
+	 * of the transaction.
+	 *
+	 * YB_TODO(#22555): Update the function to handle replica identity CHANGE.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		/* Historic snapshot must be set. */
+		Assert(HistoricSnapshotActive());
+	}
 
 	replidindex = RelationGetReplicaIndex(relation);
 
@@ -8219,7 +8238,7 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() || 
+		(YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 
@@ -8558,6 +8577,9 @@ load_relcache_init_file(bool shared)
 		rel->rd_droppedSubid = InvalidSubTransactionId;
 		rel->rd_amcache = NULL;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
+
+		/* YB properties will be loaded lazily */
+		rel->yb_table_properties = NULL;
 
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in

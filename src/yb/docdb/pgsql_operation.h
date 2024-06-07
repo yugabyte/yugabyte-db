@@ -47,12 +47,7 @@ class PgsqlWriteOperation :
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
                       DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context,
-                      rpc::Sidecars* sidecars)
-      : DocOperationBase(request),
-        doc_read_context_(std::move(doc_read_context)),
-        txn_op_context_(txn_op_context),
-        sidecars_(sidecars) {
-  }
+                      rpc::Sidecars* sidecars);
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
   Status Init(PgsqlResponsePB* response);
@@ -145,6 +140,7 @@ class PgsqlWriteOperation :
   int64_t result_rows_ = 0;
   WriteBufferPos row_num_pos_;
   WriteBuffer* write_buffer_ = nullptr;
+  const bool ysql_skip_row_lock_for_update_;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {

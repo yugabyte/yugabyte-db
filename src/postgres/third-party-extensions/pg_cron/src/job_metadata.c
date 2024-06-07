@@ -57,6 +57,10 @@
 #include "commands/dbcommands.h"
 #include "catalog/pg_authid.h"
 
+/* YB includes */
+#include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
+
 #if (PG_VERSION_NUM < 120000)
 #define table_open(r, l) heap_open(r, l)
 #define table_close(r, l) heap_close(r, l)
@@ -660,7 +664,10 @@ cron_unschedule(PG_FUNCTION_ARGS)
 
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
-	simple_heap_delete(cronJobsTable, &heapTuple->t_self);
+	if (IsYugaByteEnabled())
+		YBCDeleteSysCatalogTuple(cronJobsTable, heapTuple);
+	else
+		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 
 	systable_endscan(scanDescriptor);
 	table_close(cronJobsTable, NoLock);
@@ -731,7 +738,10 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 
 	EnsureDeletePermission(cronJobsTable, heapTuple);
 
-	simple_heap_delete(cronJobsTable, &heapTuple->t_self);
+	if (IsYugaByteEnabled())
+		YBCDeleteSysCatalogTuple(cronJobsTable, heapTuple);
+	else
+		simple_heap_delete(cronJobsTable, &heapTuple->t_self);
 
 	systable_endscan(scanDescriptor);
 	table_close(cronJobsTable, NoLock);

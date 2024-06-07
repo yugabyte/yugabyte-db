@@ -328,6 +328,8 @@ message GetChangesRequestPB {
   optional uint32 auto_flags_config_version = 13;
 
   optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
+
+  optional int64 raft_config_opid_index = 15;
 }
 
 message KeyValuePairPB {
@@ -545,6 +547,8 @@ message GetChangesResponsePB {
 
   // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
   optional uint32 auto_flags_config_version = 12;
+
+  optional yb.tserver.TabletConsensusInfoPB tablet_consensus_info = 13;
 }
 
 message GetCheckpointRequestPB {

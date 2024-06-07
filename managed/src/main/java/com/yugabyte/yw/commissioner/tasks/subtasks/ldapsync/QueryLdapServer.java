@@ -59,15 +59,39 @@ public class QueryLdapServer extends AbstractTaskBase {
             ldapUnivSyncFormData.getLdapBasedn(),
             ldapUnivSyncFormData.getLdapSearchFilter(),
             SearchScope.SUBTREE,
-            ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());
+            "*");
 
     while (cursor.next()) {
       Entry entry = cursor.get();
       if (enabledDetailedLogs) {
         log.debug("LDAP user entry retrieved: {}", entry.toString());
       }
+
+      // search for the userfield in the DN
       String dn = entry.getDn().toString();
       String userKey = retrieveValueFromDN(dn, ldapUnivSyncFormData.getLdapUserfield());
+      if (StringUtils.isEmpty(userKey)) {
+        if (enabledDetailedLogs) {
+          log.debug(
+              "User dn {} does not contain {}(userfield). Fetching user attributes...",
+              dn,
+              ldapUnivSyncFormData.getLdapUserfield());
+        }
+        // if userfield is not found in the DN, search in the rest of the attributes
+        Attribute userAttribute = entry.get(ldapUnivSyncFormData.getLdapUserfield());
+        if (userAttribute != null) {
+          userKey = userAttribute.get().getString();
+          if (enabledDetailedLogs) {
+            log.debug("User name: {} retrieved from user attribute: {}", userKey, userAttribute);
+          }
+        }
+      }
+      if (enabledDetailedLogs && StringUtils.isEmpty(userKey)) {
+        log.warn(
+            "User {} does not contain '{}'(userfield). Skipping the user from the sync...",
+            dn,
+            ldapUnivSyncFormData.getLdapUserfield());
+      }
 
       if (!StringUtils.isEmpty(userKey)) {
         Attribute groups = entry.get(ldapUnivSyncFormData.getLdapGroupMemberOfAttribute());

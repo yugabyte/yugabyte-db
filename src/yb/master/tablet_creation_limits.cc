@@ -19,6 +19,10 @@
 
 #include "yb/util/atomic.h"
 
+DEFINE_RUNTIME_bool(enforce_tablet_replica_limits, false,
+                    "Whether to enforce the tablet replica limits.");
+TAG_FLAG(enforce_tablet_replica_limits, advanced);
+
 namespace yb::master {
 
 using tserver::AggregatedClusterInfo;
@@ -70,9 +74,17 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
   };
 }
 
+// TODO(zdrudi): This function is passed a filtered version of TSDescriptorVector - blacklisted and
+// non-live tservers are removed.  But tablet replicas hosted on blacklisted tservers aren't going
+// to be deleted so they should be counted towards the total number of live tablet replicas.  Alter
+// this function to take the complete, unfiltered TSDescriptorVector and put logic directly into
+// ComputeAggregatedClusterInfo to do the right thing with blacklisted and non-live tservers.
 Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
+  if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
+    return Status::OK();
+  }
   auto limits = tserver::GetTabletReplicaPerResourceLimits();
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();

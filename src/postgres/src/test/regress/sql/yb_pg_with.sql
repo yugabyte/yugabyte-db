@@ -2,6 +2,7 @@
 -- Tests for common table expressions (WITH query, ... SELECT ...)
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- Basic WITH
 WITH q1(x,y) AS (SELECT 1,2)
 SELECT * FROM q1, q1 AS q2;

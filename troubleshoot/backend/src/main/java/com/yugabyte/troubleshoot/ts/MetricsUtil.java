@@ -1,6 +1,7 @@
 package com.yugabyte.troubleshoot.ts;
 
 import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Counter;
 import io.prometheus.client.Summary;
 
 public class MetricsUtil {
@@ -13,6 +14,12 @@ public class MetricsUtil {
     return Summary.build(name, description)
         .quantile(0.5, 0.05)
         .quantile(0.9, 0.01)
+        .labelNames(labelNames)
+        .register(CollectorRegistry.defaultRegistry);
+  }
+
+  public static Counter buildCounter(String name, String description, String... labelNames) {
+    return Counter.build(name, description)
         .labelNames(labelNames)
         .register(CollectorRegistry.defaultRegistry);
   }

@@ -108,8 +108,16 @@ body {
               vertical-align: middle !important;
               padding: 0;
 
-              @media (max-width: 1199px) and (min-width: 992px) {
+              @media (max-width: 1229px){
                 width: 300px !important;
+              }
+              
+              @media (max-width: 1129px){
+                width: 180px !important;
+              }
+              
+              @media (max-width: 991px){
+                width: 350px !important;
               }
 
               @media (max-width: 767px) {
@@ -154,6 +162,10 @@ body {
 
               &:last-child {
                 margin-right: 0;
+              }
+              
+              @media(max-width:1129px) {
+                margin-right: 10px;
               }
 
               @media (max-width: 991px) {

@@ -180,6 +180,8 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       overrideWidth={'800px'}
       overrideHeight={'810px'}
+      submitTestId="AddLinuxVersionModal-Submit"
+      cancelTestId="AddLinuxVersionModal-Cancel"
       onSubmit={() => {
         handleSubmit((values) => {
           onSubmit(values);
@@ -202,6 +204,9 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
             disabled={isEditMode || isYBAManagedBundle}
+            inputProps={{
+              'data-testid': 'AddLinuxVersionModal-LinuxVersionNameInput'
+            }}
           />
         </div>
         {providerType !== ProviderCode.AWS && (
@@ -213,6 +218,9 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               className={classes.nameInput}
               placeholder={t('form.machineImageIdPlaceholder')}
               disabled={isYBAManagedBundle}
+              inputProps={{
+                'data-testid': 'AddLinuxVersionModal-MachineImageID'
+              }}
             />
           </div>
         )}
@@ -271,6 +279,9 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 placeholder={t('form.sshUserPlaceholder')}
                 fullWidth
                 disabled={isYBAManagedBundle}
+                inputProps={{
+                  'data-testid': 'AddLinuxVersionModal-SSHUser'
+                }}
               />
             </Grid>
           </Grid>
@@ -286,6 +297,9 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 placeholder={t('form.sshPortPlaceholder')}
                 disabled={isYBAManagedBundle}
                 fullWidth
+                inputProps={{
+                  'data-testid': 'AddLinuxVersionModal-SSHPort'
+                }}
               />
             </Grid>
           </Grid>
@@ -301,7 +315,13 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 </FieldLabel>
               </Grid>
               <Grid item xs={9}>
-                <YBToggleField name={'details.useIMDSv2'} control={formControl} />
+                <YBToggleField
+                  name={'details.useIMDSv2'}
+                  control={formControl}
+                  inputProps={{
+                    'data-testid': 'AddLinuxVersionModal-useIMDSv2'
+                  }}
+                />
               </Grid>
             </Grid>
           </div>

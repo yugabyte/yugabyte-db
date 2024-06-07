@@ -47,6 +47,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/stack_trace_tracker.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -61,6 +62,7 @@ using std::vector;
 
 using namespace std::literals;
 
+DECLARE_bool(track_stack_traces);
 DECLARE_bool(TEST_disable_thread_stack_collection_wait);
 
 namespace yb {
@@ -504,7 +506,7 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   }
 }
 
-TEST_F(DebugUtilTest, TestGetStackTraceWhileCreatingThreads) {
+TEST_F(DebugUtilTest, YB_DISABLE_TEST_ON_MACOS(TestGetStackTraceWhileCreatingThreads)) {
   // This test makes sure we can collect stack traces while threads are being created.
   // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
   // stack traces from the other 10 threads.
@@ -565,4 +567,33 @@ TEST_F(DebugUtilTest, TestGetStackTraceWhileCreatingThreads) {
   }
   thread_holder.Stop();
 }
+
+TEST_F(DebugUtilTest, TestTrackedStackTraces) {
+  constexpr size_t kNumIterations = 100;
+  constexpr size_t kWeight = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_track_stack_traces) = true;
+
+  for (size_t i = 0; i < kNumIterations; ++i) {
+    TrackStackTrace(StackTraceTrackingGroup::kDebugging, kWeight);
+  }
+
+  DumpTrackedStackTracesToLog(StackTraceTrackingGroup::kDebugging);
+
+  auto traces = GetTrackedStackTraces();
+  // There may be I/O traces tracked during test setup, but kDebugging should never be in
+  // checked in code, so we can rely on there only be one kDebugging trace.
+  bool found_debugging_trace = false;
+  for (size_t i = 0; i < traces.size(); ++i) {
+    auto& trace = traces[i];
+    if (trace.group == StackTraceTrackingGroup::kDebugging) {
+      ASSERT_FALSE(found_debugging_trace);
+      found_debugging_trace = true;
+      ASSERT_EQ(trace.count, kNumIterations);
+      ASSERT_EQ(trace.weight, kNumIterations * kWeight);
+    }
+  }
+  ASSERT_TRUE(found_debugging_trace);
+}
+
 } // namespace yb

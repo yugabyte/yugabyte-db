@@ -222,8 +222,10 @@ YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  YBCPgOid database_oid,
                                  YBCPgOid source_database_oid,
+                                 const char *source_database_name,
                                  YBCPgOid next_oid,
                                  const bool colocated,
+                                 const int64_t clone_time,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -497,8 +499,9 @@ YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
                                 YBCPgBoundType end_type, uint64_t end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
-YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
-                            const char *end_value, size_t end_value_len);
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
+                            const char *lower_bound, size_t lower_bound_len,
+                            const char *upper_bound, size_t upper_bound_len);
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
                                     YBCPgExpr *col_values, bool is_inclusive);
@@ -655,8 +658,8 @@ YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
-YBCStatus YBCPgCommitTransaction();
-YBCStatus YBCPgAbortTransaction();
+YBCStatus YBCPgCommitPlainTransaction();
+YBCStatus YBCPgAbortPlainTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
@@ -739,6 +742,12 @@ YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* de
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
                                           bool relation_is_region_local);
+
+// Explicit Row-level Locking.
+YBCStatus YBCAddExplicitRowLockIntent(
+    YBCPgOid table_relfilenode_oid, uint64_t ybctid,
+    YBCPgOid database_oid, const YBCPgExplicitRowLockParams *params, bool is_region_local);
+YBCStatus YBCFlushExplicitRowLockIntents();
 
 bool YBCIsInitDbModeEnvVarSet();
 
@@ -828,6 +837,7 @@ YBCStatus YBCGetTableKeyRanges(
 // Replication Slots.
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);

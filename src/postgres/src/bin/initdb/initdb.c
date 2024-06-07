@@ -3095,10 +3095,8 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	#ifdef YB_TODO
 	/* Enable pg_stat_statements */
 	enable_pg_stat_statements(cmdfd);
-	#endif
 
 	if (!IsYugaByteGlobalClusterInitdb())
 	{

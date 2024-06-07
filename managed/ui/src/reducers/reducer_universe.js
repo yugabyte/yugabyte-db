@@ -44,8 +44,8 @@ import {
   GET_MASTER_LEADER,
   GET_MASTER_LEADER_RESPONSE,
   RESET_MASTER_LEADER,
-  GET_MASTER_NODES_INFO,
-  GET_MASTER_NODES_INFO_RESPONSE,
+  GET_MASTER_INFO,
+  GET_MASTER_INFO_RESPONSE,
   PERFORM_UNIVERSE_NODE_ACTION,
   PERFORM_UNIVERSE_NODE_ACTION_RESPONSE,
   FETCH_UNIVERSE_BACKUPS,
@@ -95,7 +95,7 @@ const INITIAL_STATE = {
   error: null,
   formSubmitSuccess: false,
   universeConfigTemplate: getInitialState({}),
-  universeMasterNodes: getInitialState([]),
+  universeMasterInfo: getInitialState([]),
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
@@ -205,10 +205,10 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'universeMasterLeader', action);
     case RESET_MASTER_LEADER:
       return { ...state, universeMasterLeader: getInitialState({}) };
-    case GET_MASTER_NODES_INFO:
-      return setLoadingState(state, 'universeMasterNodes', []);
-    case GET_MASTER_NODES_INFO_RESPONSE:
-      return setPromiseResponse(state, 'universeMasterNodes', action);
+    case GET_MASTER_INFO:
+      return setLoadingState(state, 'universeMasterInfo', []);
+    case GET_MASTER_INFO_RESPONSE:
+      return setPromiseResponse(state, 'universeMasterInfo', action);
     case GET_NODE_INSTANCE_LIST:
       return setLoadingState(state, 'nodeInstanceList', []);
     case GET_NODE_INSTANCE_LIST_RESPONSE:

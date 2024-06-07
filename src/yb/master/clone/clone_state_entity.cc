@@ -28,4 +28,44 @@ void CloneStateInfo::Load(const SysCloneStatePB& metadata) {
 CloneStateInfo::CloneStateInfo(std::string id):
     clone_request_id_(std::move(id)) {}
 
+std::vector<CloneStateInfo::TabletData> CloneStateInfo::GetTabletData() {
+  std::lock_guard l(mutex_);
+  return tablet_data_;
+}
+
+void CloneStateInfo::AddTabletData(TabletData tablet_data) {
+  std::lock_guard l(mutex_);
+  tablet_data_.push_back(std::move(tablet_data));
+}
+
+const TxnSnapshotId& CloneStateInfo::SourceSnapshotId() {
+  std::lock_guard l(mutex_);
+  return source_snapshot_id_;
+}
+
+void CloneStateInfo::SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id) {
+  std::lock_guard l(mutex_);
+  source_snapshot_id_ = source_snapshot_id;
+}
+
+const TxnSnapshotId& CloneStateInfo::TargetSnapshotId() {
+  std::lock_guard l(mutex_);
+  return target_snapshot_id_;
+}
+
+void CloneStateInfo::SetTargetSnapshotId(const TxnSnapshotId& target_snapshot_id) {
+  std::lock_guard l(mutex_);
+  target_snapshot_id_ = target_snapshot_id;
+}
+
+const TxnSnapshotRestorationId& CloneStateInfo::RestorationId() {
+  std::lock_guard l(mutex_);
+  return restoration_id_;
+}
+
+void CloneStateInfo::SetRestorationId(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard l(mutex_);
+  restoration_id_ = restoration_id;
+}
+
 }  // namespace yb::master

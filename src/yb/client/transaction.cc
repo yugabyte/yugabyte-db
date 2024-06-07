@@ -169,7 +169,7 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
 
 bool CanAbortTransaction(const Status& status,
                          const TransactionMetadata& txn_metadata,
-                         const YBSubTransaction& subtransaction) {
+                         const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
@@ -183,7 +183,8 @@ bool CanAbortTransaction(const Status& status,
   if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
     return false;
   }
-  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED && subtransaction.active()) {
+  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED &&
+      subtransaction_pb && subtransaction_pb->subtransaction_id() > kMinSubTransactionId) {
     return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
            txn_err.value() != TransactionErrorCode::kConflict;
   }
@@ -452,16 +453,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       // there multiple tablets that will process first request.
       SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
     }
-
-    {
-      ops_info->metadata = {
-        .transaction = metadata_,
-        .subtransaction = subtransaction_.active()
-            ? boost::make_optional(subtransaction_.get())
-            : boost::none,
-      };
-    }
-
+    // Populate the transaction's metadata alone for the passed 'ops_info'.
+    // 'ops_info->metadata.subtransaction_pb' has already been set upsteam in Batcher::FlushAsync.
+    ops_info->metadata.transaction = metadata_;
     return true;
   }
 
@@ -471,8 +465,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void Flushed(
-      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) EXCLUDES(mutex_) override {
+      const internal::InFlightOps& ops,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const ReadHybridTime& used_read_time, const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -531,7 +526,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        if (CanAbortTransaction(status, metadata_, subtransaction_)) {
+        if (CanAbortTransaction(status, metadata_, subtransaction_pb)) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
@@ -920,6 +915,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
+  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
+    if (!subtransaction_.active()) {
+      return boost::none;
+    }
+    SubTransactionMetadataPB subtxn_metadata_pb;
+    subtransaction_.get().ToPB(&subtxn_metadata_pb);
+    return subtxn_metadata_pb;
+  }
+
   Status SetPgTxnStart(int64_t pg_txn_start_us) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
@@ -950,8 +954,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     });
   }
 
-  bool HasSubTransaction(SubTransactionId id) EXCLUDES(mutex_) {
-    SharedLock<std::shared_mutex> lock(mutex_);
+  bool HasSubTransaction(SubTransactionId id) {
     return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
   }
 
@@ -2466,6 +2469,10 @@ void YBTransaction::EnsureTraceCreated() {
 
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
+}
+
+boost::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
+  return impl_->GetSubTransactionMetadataPB();
 }
 
 Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) {

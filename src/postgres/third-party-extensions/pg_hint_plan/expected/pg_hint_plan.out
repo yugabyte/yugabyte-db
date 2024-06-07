@@ -2,6 +2,7 @@
 -- <https://github.com/ossc-db/pg_hint_plan/>.
 SET search_path TO public;
 SET client_min_messages TO log;
+SET yb_enable_bitmapscan = true;
 \set SHOW_CONTEXT always
 -- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
 -- However, since YB does not support merge join nested loop joins will be used.

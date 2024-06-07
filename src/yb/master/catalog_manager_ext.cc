@@ -15,6 +15,7 @@
 #include <regex>
 #include <set>
 #include <unordered_set>
+#include <google/protobuf/repeated_field.h>
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/colocated_util.h"
@@ -165,6 +166,8 @@ DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
 
 namespace yb {
 
+using google::protobuf::RepeatedPtrField;
+
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
 using client::internal::RemoteTabletServer;
@@ -186,9 +189,10 @@ struct TableWithTabletsEntries {
   }
   TableWithTabletsEntries() {}
 
-  // Add the table with table_id and its tablets entries to snapshot_info
-  void AddToSnapshotInfo(const TableId& table_id, SnapshotInfoPB* snapshot_info) {
-    BackupRowEntryPB* table_backup_entry = snapshot_info->add_backup_entries();
+  // Add the table with table_id and its tablets entries to a list of backup entries.
+  void AddToBackupEntries(
+      const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>* backup_entries) {
+    BackupRowEntryPB* table_backup_entry = backup_entries->Add();
     std::string output;
     table_entry.AppendToString(&output);
     *table_backup_entry->mutable_entry() =
@@ -196,11 +200,11 @@ struct TableWithTabletsEntries {
     if (table_entry.schema().has_pgschema_name() && table_entry.schema().pgschema_name() != "") {
       table_backup_entry->set_pg_schema_name(table_entry.schema().pgschema_name());
     }
-    for (const auto& sysTabletEntry : tablets_entries) {
+    for (const auto& tablet_entry : tablets_entries) {
       std::string output;
-      sysTabletEntry.second.AppendToString(&output);
-      *snapshot_info->add_backup_entries()->mutable_entry() =
-          ToSysRowEntry(sysTabletEntry.first, SysRowEntryType::TABLET, std::move(output));
+      tablet_entry.second.AppendToString(&output);
+      *backup_entries->Add()->mutable_entry() =
+          ToSysRowEntry(tablet_entry.first, SysRowEntryType::TABLET, std::move(output));
     }
   }
 
@@ -1348,41 +1352,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
-Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoFromSchedule(
-    const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
-    CoarseTimePoint deadline) {
-  LOG(INFO) << Format(
-      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and export "
-      "time: $1",
-      snapshot_schedule_id, export_time);
-  auto suitable_snapshot = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshot(
-      snapshot_schedule_id, export_time, LeaderTerm(), deadline));
-  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(suitable_snapshot.id()));
-  LOG(INFO) << Format("Found suitable snapshot: $0", snapshot_id);
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-  LOG(INFO) << Format(
-      "Opening Temporary SysCatalog DocDB for : $0 , export_time: $1", snapshot_id, export_time);
-  // Open a temporary on the side DocDb for the sys.catalog using the data files of snapshot_id and
-  // reading sys.catalog data as of read_time.
-  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, export_time));
-  rocksdb::Options rocksdb_options;
-  tablet->InitRocksDBOptions(&rocksdb_options, /*log_prefix*/ " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
-  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
-  auto db_pending_op = ScopedRWOperation();
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
-
-  SnapshotInfoPB snapshot_info = VERIFY_RESULT(
-      GenerateSnapshotInfoPbAsOfTime(snapshot_id, export_time, doc_db, db_pending_op));
-  LOG(INFO) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
-  return snapshot_info;
-}
-
-Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
-    const TxnSnapshotId& snapshot_id, HybridTime read_time, const docdb::DocDB& doc_db,
-    std::reference_wrapper<const ScopedRWOperation> db_pending_op) {
-  // Get the SnapshotInfoPB of snapshot_id to set some fields in snapshot_info (all fields except
-  // backup_entries which will be populated from iterating over DocDB).
+Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id) {
   ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
@@ -1393,39 +1363,111 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
     return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
   }
   SnapshotInfoPB snapshot_info = resp.snapshots()[0];
-  // Get the namespace_id that this snapshot covers.
-  auto namespace_it = std::find_if(
-      snapshot_info.backup_entries().begin(), snapshot_info.backup_entries().end(),
-      [](const BackupRowEntryPB& backup_entry) {
-        return backup_entry.entry().type() == SysRowEntryType::NAMESPACE;
-      });
-  if (namespace_it == snapshot_info.backup_entries().end()) {
+  RSTATUS_DCHECK(
+      snapshot_info.entry().tablet_snapshots().empty(), IllegalState,
+      "Expected tablet_snapshots field to be cleared by ListSnapshots");
+  RSTATUS_DCHECK(
+      snapshot_info.entry().entries().empty(), IllegalState,
+      "Expected entries field to be cleared by ListSnapshots");
+
+  return snapshot_info;
+}
+
+Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+    CatalogManager::GenerateSnapshotInfoFromSchedule(
+    const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
+    CoarseTimePoint deadline) {
+  LOG(INFO) << Format(
+      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and read_time: $1",
+      snapshot_schedule_id, read_time);
+
+  // Find or create a snapshot that covers read_time.
+  auto suitable_snapshot = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshot(
+      snapshot_schedule_id, read_time, LeaderTerm(), deadline));
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(suitable_snapshot.id()));
+  LOG(INFO) << Format("Found suitable snapshot: $0", snapshot_id);
+
+  ListSnapshotSchedulesResponsePB resp;
+  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, &resp));
+  const auto& filter = resp.schedules(0).options().filter().tables().tables();
+  if (filter.empty() || filter.begin()->namespace_().id().empty()) {
     return STATUS_FORMAT(
-        NotFound, Format("No namespace entry found in snapshot: $0", snapshot_info.id()));
+        IllegalState, "No namespace found in filter for schedule id $0", snapshot_schedule_id);
   }
-  NamespaceId namespace_id = namespace_it->entry().id();
-  // Remove backup_entries from original snapshot as they will be generated as of
-  // read_time.
+  const NamespaceId& source_ns_id = filter.begin()->namespace_().id();
+
+  // Get the SnapshotInfoPB, save the set of tablets it contained, and clear backup_entries.
+  // backup_entries will be repopulated with the set of tablets that were running at read_time
+  // later when reading from DocDB as of read_time.
+  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForBackup(snapshot_id));
+  std::unordered_set<TabletId> snapshotted_tablets;
+  for (auto& backup_entry : snapshot_info.backup_entries()) {
+    if (backup_entry.entry().type() == SysRowEntryType::TABLET) {
+      snapshotted_tablets.insert(backup_entry.entry().id());
+    }
+  }
   snapshot_info.clear_backup_entries();
+
+  // Set backup_entries based on what entries were running in the sys catalog as of read_time.
+  *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
+      GetBackupEntriesAsOfTime(snapshot_id, source_ns_id, read_time));
+  VLOG_WITH_FUNC(1) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
+
+  // Compute the set of tablets that were running as of read_time but were not snapshotted because
+  // they were hidden before the snapshot was taken.
+  std::unordered_set<TabletId> not_snapshotted_tablets;
+  for (const auto& backup_entry : snapshot_info.backup_entries()) {
+    if (backup_entry.entry().type() == SysRowEntryType::TABLET &&
+        !snapshotted_tablets.contains(backup_entry.entry().id())) {
+      not_snapshotted_tablets.insert(backup_entry.entry().id());
+    }
+  }
+  return std::make_pair(std::move(snapshot_info), std::move(not_snapshotted_tablets));
+}
+
+Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfTime(
+    const TxnSnapshotId& snapshot_id, const NamespaceId& source_ns_id, HybridTime read_time) {
+  // Open a temporary on-the-side DocDB for the sys.catalog using the data files of snapshot_id and
+  // read sys.catalog data as of export_time to get the list of tablets that were running at that
+  // time.
+  RepeatedPtrField<BackupRowEntryPB> backup_entries;
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  LOG(INFO) << Format("Opening temporary SysCatalog DocDB for snapshot $0 at read_time $1",
+      snapshot_id, read_time);
+  auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(tablet.get(), snapshot_id, read_time));
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
   const docdb::DocReadContext& doc_read_cntxt = doc_read_context();
   dockv::ReaderProjection projection(doc_read_cntxt.schema());
+
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
+
   // Pass 1: Get the SysNamespaceEntryPB of the selected database.
   docdb::DocRowwiseIterator namespace_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  bool found_ns = false;
   RETURN_NOT_OK(EnumerateSysCatalog(
       &namespace_iter, doc_read_cntxt.schema(), SysRowEntryType::NAMESPACE,
-      [namespace_id, &snapshot_info](const Slice& id, const Slice& data) -> Status {
-        if (id.ToBuffer() == namespace_id) {
+      [&source_ns_id, &backup_entries, &found_ns](const Slice& id, const Slice& data) -> Status {
+        if (id.ToBuffer() == source_ns_id) {
+          if (found_ns) {
+            LOG(WARNING) << "Found duplicate backup entry for namespace " << source_ns_id;
+          }
           auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysNamespaceEntryPB>(data));
           VLOG_WITH_FUNC(1) << "Found SysNamespaceEntryPB: " << pb.ShortDebugString();
-          SysRowEntry* ns_entry = snapshot_info.add_backup_entries()->mutable_entry();
+          SysRowEntry* ns_entry = backup_entries.Add()->mutable_entry();
           ns_entry->set_id(id.ToBuffer());
           ns_entry->set_type(SysRowEntryType::NAMESPACE);
           ns_entry->set_data(data.ToBuffer());
+          found_ns = true;
         }
         return Status::OK();
       }));
+  RSTATUS_DCHECK(found_ns, IllegalState,
+      Format("Did not find backup entry for namespace $0", source_ns_id));
+
   // Pass 2: Get all the SysTablesEntry of the database that are in running state and not Hidden as
   // of read_time.
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
@@ -1437,10 +1479,10 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [namespace_id, &tables_to_tablets, &colocation_parent_table_id](
+      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
-        if (pb.namespace_id() == namespace_id && pb.state() == SysTablesEntryPB::RUNNING &&
+        if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
             pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
           VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
@@ -1454,6 +1496,7 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
         }
         return Status::OK();
       }));
+
   // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
   // the running tables from pass 2.
   docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
@@ -1461,10 +1504,10 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
-      [namespace_id, &tables_to_tablets](const Slice& id, const Slice& data) -> Status {
+      [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
         // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
-        //  according to their state.
+        // according to their state.
         if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
             pb.hide_hybrid_time() == 0) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
@@ -1481,14 +1524,14 @@ Result<SnapshotInfoPB> CatalogManager::GenerateSnapshotInfoPbAsOfTime(
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry
   // Start with the colocation_parent_table_id if the database is colocated.
   if (colocation_parent_table_id) {
-    tables_to_tablets[colocation_parent_table_id.value()].AddToSnapshotInfo(
-        colocation_parent_table_id.value(), &snapshot_info);
+    tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
+        colocation_parent_table_id.value(), &backup_entries);
     tables_to_tablets.erase(colocation_parent_table_id.value());
   }
   for (auto& sys_table_entry : tables_to_tablets) {
-    sys_table_entry.second.AddToSnapshotInfo(sys_table_entry.first, &snapshot_info);
+    sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, &backup_entries);
   }
-  return snapshot_info;
+  return backup_entries;
 }
 
 Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
@@ -2601,17 +2644,6 @@ const docdb::DocReadContext& CatalogManager::doc_read_context() {
   return sys_catalog()->doc_read_context();
 }
 
-TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
-  TabletInfos result;
-  result.reserve(ids.size());
-  SharedLock lock(mutex_);
-  for (const auto& id : ids) {
-    auto it = tablet_map_->find(id);
-    result.push_back(it != tablet_map_->end() ? it->second : nullptr);
-  }
-  return result;
-}
-
 Result<SchemaVersion> CatalogManager::GetTableSchemaVersion(const TableId& table_id) {
   auto table = VERIFY_RESULT(FindTableById(table_id));
   auto lock = table->LockForRead();
@@ -2652,24 +2684,32 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
   WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
+Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(
+    tablet::Tablet* tablet, const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  std::string log_prefix = LogPrefix();
+  // Remove ": " to patch suffix.
+  log_prefix.erase(log_prefix.size() - 2);
+
+  // Restore master snapshot and load it to RocksDB.
+  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, restore_at));
+  rocksdb::Options rocksdb_options;
+  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+
+  return rocksdb::DB::Open(rocksdb_options, dir);
+}
+
 Status CatalogManager::RestoreSysCatalogCommon(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
     std::reference_wrapper<const ScopedRWOperation> tablet_pending_op,
     RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
     docdb::KeyValuePairPB* restore_kv) {
   // Restore master snapshot and load it to RocksDB.
-  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
-      restoration->snapshot_id, restoration->restore_at));
-  rocksdb::Options rocksdb_options;
-  std::string log_prefix = LogPrefix();
-  // Remove ": " to patch suffix.
-  log_prefix.erase(log_prefix.size() - 2);
-  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(
+      tablet, restoration->snapshot_id, restoration->restore_at));
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
   // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
   auto db_pending_op = ScopedRWOperation();
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   auto schema_packing_provider = &tablet->GetSchemaPackingProvider();
@@ -3366,8 +3406,7 @@ bool ShouldResendRegistry(
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                              TSHeartbeatResponsePB* resp) {
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
   RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);

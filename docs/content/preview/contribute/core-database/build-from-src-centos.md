@@ -52,7 +52,56 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 The following instructions are for CentOS 7.
 
-## Install necessary packages
+## TLDR
+
+{{% readfile "includes/tldr.md" %}}
+
+```sh
+# Modify to your preference:
+shellrc=~/.bashrc
+
+sudo yum update -y
+sudo yum groupinstall -y 'Development Tools'
+sudo yum install -y centos-release-scl epel-release
+packages=(
+  ccache
+  cmake3
+  devtoolset-11
+  devtoolset-11-libatomic-devel
+  git
+  golang
+  java-1.8.0-openjdk
+  libatomic
+  ninja-build
+  npm
+  patchelf
+  rh-maven35
+  rh-python38
+  rsync
+  which
+)
+sudo yum install -y "${packages[@]}"
+sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
+sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
+sudo mkdir /opt/yb-build
+
+# If you'd like to use an unprivileged user for development, manually
+# run/modify instructions from here onwards (change $USER, make sure shell
+# variables are set appropriately when switching users).
+sudo chown "$USER" /opt/yb-build
+source <(echo 'source /opt/rh/rh-python38/enable' \
+         | tee -a "$shellrc")
+source <(echo 'source /opt/rh/rh-maven35/enable' \
+         | tee -a "$shellrc")
+source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
+         | tee -a "$shellrc")
+
+git clone https://github.com/yugabyte/yugabyte-db
+cd yugabyte-db
+./yb_release
+```
+
+## Detailed instructions
 
 Update and install basic development packages as follows:
 

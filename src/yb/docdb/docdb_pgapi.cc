@@ -239,6 +239,12 @@ Status SetValueFromQLBinary(
   return Status::OK();
 }
 
+void DeleteMemoryContextIfSet() {
+  if (YBCPgGetThreadLocalCurrentMemoryContext() != nullptr) {
+    YbgDeleteMemoryContext();
+  }
+}
+
 namespace {
 
 // Given a 'ql_value', interpret the binary value in it as an array of type

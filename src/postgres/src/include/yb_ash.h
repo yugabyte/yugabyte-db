@@ -30,6 +30,9 @@
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
+#define YbAshIsClientAddrSet() \
+	(YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra && !IsBootstrapProcessingMode())
+
 /* GUC variables */
 extern bool yb_ash_enable_infra;
 extern bool yb_enable_ash;
@@ -45,6 +48,7 @@ extern void YbAshMain(Datum main_arg);
 
 extern void YbAshInstallHooks(void);
 extern void YbAshSetSessionId(uint64 session_id);
+extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 
 extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,

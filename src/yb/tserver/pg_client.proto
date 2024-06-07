@@ -222,6 +222,8 @@ message PgCreateDatabaseRequestPB {
   uint32 source_database_oid = 5;
   uint32 next_oid = 6;
   bool colocated = 7;
+  fixed64 clone_time = 8;
+  string source_database_name = 9;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -247,6 +249,7 @@ message PgCreateReplicationSlotRequestPB {
   uint32 database_oid = 2;
   string replication_slot_name = 3;
   PgReplicationSlotSnapshotActionPB snapshot_action = 4;
+  string output_plugin_name = 5;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -523,6 +526,7 @@ message PgReplicationSlotInfoPB {
   map<uint32, PgReplicaIdentityPB> replica_identity_map = 8;
   uint64 record_id_commit_time_ht = 9;
   uint64 last_pub_refresh_time = 10;
+  string output_plugin_name = 11;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -855,6 +859,7 @@ message PgActiveSessionHistoryRequestPB {
   bool fetch_cql_states = 3;
   bool ignore_ash_and_perform_calls = 4;
   bool fetch_raft_log_appender_states = 5;
+  bool export_wait_state_code_as_string = 6;
 }
 
 message WaitStatesPB {

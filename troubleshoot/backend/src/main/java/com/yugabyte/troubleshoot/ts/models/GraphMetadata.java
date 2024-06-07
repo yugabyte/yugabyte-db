@@ -13,4 +13,5 @@ public class GraphMetadata {
   String name;
   Double threshold;
   Map<GraphLabel, List<String>> filters;
+  List<GraphLabel> groupBy;
 }

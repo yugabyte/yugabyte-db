@@ -54,6 +54,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/dockv/partial_row.h"
@@ -69,12 +70,14 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
@@ -103,6 +106,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
@@ -137,6 +141,8 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
+DECLARE_bool(enable_metacache_partial_refresh);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -168,6 +174,9 @@ constexpr int kNumTablets = 2;
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
 const std::string kPgsqlSchemaName = "my_schema";
+const std::string kPgsqlTableName = "table";
+const std::string kPgsqlTableId = "tableid";
+const std::string kPgsqlNamespaceName = "test_namespace";
 
 } // namespace
 
@@ -205,6 +214,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
     ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
+    ASSERT_NO_FATALS(CreatePgSqlTable());
   }
 
   void DoTearDown() override {
@@ -396,6 +406,42 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     }
 
     ASSERT_OK(table->Create(table_name, num_tablets, schema_, client_.get()));
+  }
+
+  void CreatePgSqlTable() {
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    ASSERT_OK(client_->CreateNamespace(
+        kPgsqlNamespaceName, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */,
+        "" /* src_ns_id */, boost::none /* next_pg_oid */, nullptr /* txn */, false));
+    std::string kNamespaceId;
+    {
+      auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
+      for (const auto& ns : namespaces) {
+        if (ns.id.name() == kPgsqlNamespaceName) {
+          kNamespaceId = ns.id.id();
+          break;
+        }
+      }
+    }
+    auto pgsql_table_name =
+        YBTableName(YQL_DATABASE_PGSQL, kNamespaceId, kPgsqlNamespaceName, kPgsqlTableName);
+
+    YBSchemaBuilder schema_builder;
+    schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
+    schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
+    schema_builder.SetSchemaName(kPgsqlSchemaName);
+    EXPECT_OK(client_->CreateNamespaceIfNotExists(
+        kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
+        kNamespaceId));
+    YBSchema schema;
+    EXPECT_OK(schema_builder.Build(&schema));
+    EXPECT_OK(table_creator->table_name(pgsql_table_name)
+                  .table_id(kPgsqlTableId)
+                  .schema(&schema)
+                  .table_type(YBTableType::PGSQL_TABLE_TYPE)
+                  .set_range_partition_columns({"key"})
+                  .num_tablets(1)
+                  .Create());
   }
 
   // Kills a tablet server.
@@ -720,17 +766,18 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
   // General cases.
   for (bool is_inclusive : { true, false }) {
     for (size_t idx = 0; idx < partitions.size(); ++idx) {
-      // Special case, tested seprately at the end.
-      if (idx == 0 && !is_inclusive) {
-        continue;
-      }
-
       auto check_key = [&partitions, &req, idx, is_inclusive](const std::string& key) -> Status {
-        SCHECK_FORMAT((idx > 0 || is_inclusive), IllegalState, "", "");
+        SCHECK(!key.empty(), IllegalState, "Invalid key");
         req.clear_upper_bound();
         req.mutable_upper_bound()->set_key(key);
         req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
-        auto* expected = is_inclusive ? &partitions[idx] : &partitions[idx - 1];
+        auto* expected = &partitions[idx];
+        // If the key is the same as the lower partition bound and exclusive, the previous partition
+        // is the correct target.
+        if (!is_inclusive && *expected == key) {
+          SCHECK_GT(idx, 0, IllegalState, "Invalid partitions, first partition key must be empty");
+          expected = &partitions[idx - 1];
+        }
         auto result = VERIFY_RESULT_REF(TEST_FindPartitionKeyByUpperBound(partitions, req));
         SCHECK_EQ(*expected, result, IllegalState, Format(
             "idx = $0, is_inclusive = $1, upper_bound = \"$2\"",
@@ -745,12 +792,6 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
           PartitionSchema::DecodeMultiColumnHashValue(partitions[idx + 1]) :
           std::numeric_limits<decltype(start)>::max()) - 1;
 
-      // 0. Special case: upper bound is empty means upper bound matches first partition start.
-      if (key.empty()) {
-        ASSERT_EQ(idx, 0);
-        ASSERT_OK(check_key(key));
-      }
-
       // 1. Upper bound matches partition start.
       ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(start)));
 
@@ -762,21 +803,6 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
       ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(middle)));
     }
   }
-
-  // Special case: upper_bound is exclusive and points to the first partition.
-  // Generates crash in DEBUG and returns InvalidArgument for release builds.
-  req.clear_upper_bound();
-  req.mutable_upper_bound()->set_key(partitions.front());
-  req.mutable_upper_bound()->set_is_inclusive(false);
-#ifndef NDEBUG
-  ASSERT_DEATH({
-#endif
-  auto result = TEST_FindPartitionKeyByUpperBound(partitions, req);
-  ASSERT_NOK(result);
-  ASSERT_TRUE(result.status().IsInvalidArgument());
-#ifndef NDEBUG
-  }, ".*Upper bound must not be exclusive when it points to the first partition.*");
-#endif
 }
 
 TEST_F(ClientTest, TestListTables) {
@@ -1657,38 +1683,27 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
   ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
-TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  std::promise<Result<xrepl::StreamId>> promise;
-  std::unordered_map<std::string, std::string> options;
-  client_->CreateCDCStream(
-      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
-      [&promise](const auto& stream) { promise.set_value(stream); });
-  auto stream = promise.get_future().get();
-  ASSERT_OK(stream);
-  ASSERT_FALSE(stream->IsNil());
+TEST_F(ClientTest, TestCreateXClusterStream) {
+  auto stream_id = ASSERT_RESULT(XClusterClient(*client_).CreateXClusterStream(
+      client_table_.table()->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+  ASSERT_FALSE(stream_id.IsNil());
 }
 
-TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  std::promise<Result<xrepl::StreamId>> promise;
-  std::unordered_map<std::string, std::string> options;
-  client_->CreateCDCStream(
-      "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
-      [&promise](const auto& stream) { promise.set_value(stream); });
-  auto stream = promise.get_future().get();
-  ASSERT_NOK(stream);
-  ASSERT_TRUE(TableNotFound(stream.status())) << stream.status();
+TEST_F(ClientTest, TestCreateXClusterStreamMissingTable) {
+  auto result = XClusterClient(*client_).CreateXClusterStream(
+      "MissingTableId", /*active=*/true, cdc::StreamModeTransactional::kFalse);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(TableNotFound(result.status())) << result.status();
 }
 
-TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
-  std::unordered_map<std::string, std::string> options;
-  auto result = client_->CreateCDCStream(
-      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse);
-  ASSERT_TRUE(result.ok());
+TEST_F(ClientTest, TestDeleteXClusterStream) {
+  auto stream_id = ASSERT_RESULT(XClusterClient(*client_).CreateXClusterStream(
+      client_table_.table()->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
 
-  // Delete the created CDC stream.
-  Synchronizer sync;
-  client_->DeleteCDCStream(*result, sync.AsStatusCallback());
-  ASSERT_OK(sync.Wait());
+  ASSERT_NOK_STR_CONTAINS(
+      client_->DeleteCDCStream(stream_id, /*force_delete=*/false),
+      "Cannot delete an xCluster Stream in replication");
+  ASSERT_OK(client_->DeleteCDCStream(stream_id, /*force_delete=*/true));
 }
 
 TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
@@ -2742,6 +2757,148 @@ TEST_F(ClientTest, RefreshPartitions) {
   }, kLookupTimeout, "Tablet lookup responses"));
 
   LOG(INFO) << "num_lookups_done: " << num_lookups_done;
+}
+
+Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
+    const TabletId& tablet_id, bool use_cache, YBClient* client) {
+  std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
+  auto future = tablet_lookup_promise.get_future();
+  client->LookupTabletById(
+      tablet_id, /* table =*/ nullptr, master::IncludeInactive::kTrue,
+      master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(1000),
+      [&tablet_lookup_promise](const Result<client::internal::RemoteTabletPtr>& result) {
+        tablet_lookup_promise.set_value(result);
+      },
+      client::UseCache(use_cache));
+  return VERIFY_RESULT(future.get());
+}
+
+// Without the ability to refresh the metacache using piggybacked TabletConsensusInfo from
+// an RPC sent to the wrong leader, the logic for the tablet invoker to find the next valid tablet
+// server to send a write request to is as follows:
+// 1. Select the leader, provided:
+//    a. One exists, and
+//    b. It hasn't failed, and
+//    c. It isn't currently marked as a follower.
+// 2. If there's no good leader select another replica, provided:
+//    a. It hasn't failed, and
+//    b. It hasn't rejected our write due to being a follower.
+// 3. If we're out of appropriate replicas, force a lookup to the master
+//    to fetch new consensus configuration information.
+// The tablet invoker always tries the replicas in the order that they are stored inside the
+// replicas_ field of RemoteTablet. With the current logic, what should happen is that whenever
+// the tablet_invoker sees that a tablet server it selected for a leader_only request was not the
+// leader, it will refresh its metacache using the piggybacked TabletConsensusInfo from that
+// tablet server, thus it will have the latest information about who the leader really is, and
+// thus should always succeed with exactly 2 RPCs.
+TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) =
+      true;
+  shared_ptr<YBTable> pgsql_table;
+  EXPECT_OK(client_->OpenTable(kPgsqlTableId, &pgsql_table));
+  std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  rpc::Sidecars sidecars;
+  auto create_insert_pgsql_row = [&](const std::string& key) -> YBPgsqlWriteOpPtr {
+    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, &sidecars);
+    PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+    psql_write_request->add_range_column_values()->mutable_value()->set_string_value(key);
+    PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+    pgsql_column->set_column_id(pgsql_table->schema().ColumnId(1));
+    pgsql_column->mutable_expr()->mutable_value()->set_int64_value(3);
+    return pgsql_write_op;
+  };
+
+  // Create a Write Op to write a row to pgsql_table with key pgsql_key1
+  auto write_op = create_insert_pgsql_row("pgsql_key1");
+  session->Apply(write_op);
+  FlushSessionOrDie(session);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(kPgsqlTableId, 0, &tablets));
+  const auto& tablet = tablets.Get(0);
+
+  // The metacache is populated after the row is written, so we can directly
+  // get the remote tablet from the metacache of our current client.
+  auto remote_tablet = ASSERT_RESULT(GetRemoteTablet(tablet.tablet_id(), true, client_.get()));
+
+  // Step 1: Find the leader's uuid from the list of replicas that came back.
+  int leader_index = -1;
+  auto replicas = remote_tablet->replicas_;
+  std::vector<std::string> tserver_uuids;
+  std::string leader_server_uuid;
+  for (unsigned int i = 0; i < replicas.size(); i++) {
+    tserver_uuids.push_back(replicas[i]->ts->permanent_uuid());
+    if (replicas[i]->role == PeerRole::LEADER) {
+      leader_server_uuid = replicas[i]->ts->permanent_uuid();
+      leader_index = i;
+    }
+  }
+  ASSERT_NE(leader_index, -1);
+
+  // Step 2: Change the leadership of the tablet replicas using leader step down, so that without
+  // the ability of refreshing metacache using piggybacked TabletConsensusInfo that was sent back
+  // from a wrong leader, the tablet invoker will always try at 3 times to correctly finish the
+  // write request.
+  int target_index = -1;
+  switch (leader_index) {
+    case 0:
+    case 1:
+      // If the current leader is the first or second replica, make the third replica the new
+      // leader. With the previous logic, if the previous leader is the first replica, Tablet
+      // Invoker will try the previous leader, fail, second replica, fail and try the third replica
+      // and succeed. If the previous leader is the second replica, the invoker will try the second
+      // replica, fail, then go back to the first replica, fail, then since the second replica is
+      // marked as follower, it will skip and try the third and succeed. After the ability of
+      // partially refreshing the meta-cache using piggybacked TabletConsensusInfo is added, the
+      // invoker should go directly to the third replica after the first failure.
+      target_index = 2;
+      break;
+    case 2:
+      // If the previous leader is the third replica, make the second replica the new leader.
+      // Previously, invoker will try previous leader, then try the first replica, then try the
+      // second replica. The current code will allow it to try the second replica directly after the
+      // NOT_THE_LEADER error returned from the request to the third replica.
+      target_index = 1;
+      break;
+    default:
+      break;
+  }
+  ASSERT_NE(target_index, -1);
+
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  const auto proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  const master::MasterClusterProxy master_proxy(
+      proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+  const auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, proxy_cache_.get()));
+  auto target_details = ts_map.at(tserver_uuids[target_index]).get();
+  auto leader_ts = ts_map.at(leader_server_uuid).get();
+  // Step down to target replica and wait until the leader is elected on the target.
+  // Wait for all peers to get ready.
+  ASSERT_OK(
+      (itest::WaitForAllPeersToCatchup(tablet.tablet_id(), TServerDetailsVector(ts_map), timeout)));
+  ASSERT_OK(itest::LeaderStepDown(
+      leader_ts, tablet.tablet_id(), target_details, timeout, false, nullptr));
+  ASSERT_OK(itest::WaitUntilLeader(target_details, tablet.tablet_id(), timeout));
+
+  // Step 3: Send another write RPC, this time the metacache will have stale leader, thus
+  // it will get a NOT_THE_LEADER error and refresh itself with the attached config, and
+  // succeed on the second try.
+  write_op = create_insert_pgsql_row("pgsql_key2");
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+  Synchronizer sync;
+  int attempt_num = 0;
+  sync_point_instance->SetCallBack(
+      "TabletInvoker::Done",
+      [sync_point_instance, callback = sync.AsStdStatusCallback(), &attempt_num](void* arg) {
+        attempt_num = *reinterpret_cast<int*>(arg);
+        sync_point_instance->DisableProcessing();
+        callback(Status::OK());
+      });
+  sync_point_instance->EnableProcessing();
+  session->Apply(write_op);
+  FlushSessionOrDie(session);
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(attempt_num, 2);
 }
 
 class ColocationClientTest: public ClientTest {

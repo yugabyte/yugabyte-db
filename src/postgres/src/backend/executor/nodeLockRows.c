@@ -211,11 +211,13 @@ lnext:
 		if (!IsolationUsesXactSnapshot())
 			lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
-		if (IsYBBackedRelation(erm->relation)) {
-			test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy,
-													estate);
+		if (IsYBBackedRelation(erm->relation))
+		{
+			test = YBCLockTuple(
+				erm->relation, datum, erm->markType, erm->waitPolicy, estate);
 		}
-		else {
+		else
+		{
 			test = table_tuple_lock(erm->relation, &tid, estate->es_snapshot,
 									markSlot, estate->es_output_cid,
 									lockmode, erm->waitPolicy,
@@ -470,4 +472,18 @@ ExecReScanLockRows(LockRowsState *node)
 	 */
 	if (node->ps.lefttree->chgParam == NULL)
 		ExecReScan(node->ps.lefttree);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecShutdownLockRows
+ *
+ *		YB: This flushes the explicit row lock buffer once there are no
+ *    more rows to be locked.
+ *
+ * ----------------------------------------------------------------
+ */
+void
+ExecShutdownLockRows(LockRowsState *node)
+{
+	YBCFlushTupleLocks();
 }

@@ -122,7 +122,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
     return (
       <>
         <Typography className={classes.headerFont}>
-          {isNewUniverse ? t('universeForm.createUniverse') : getValues(UNIVERSE_NAME_FIELD)}
+          {isNewUniverse ? (
+            t('universeForm.createUniverse')
+          ) : (
+            <a href={`/universes/${universeUUID}`} className={classes.headerText}>
+              {getValues(UNIVERSE_NAME_FIELD)}
+            </a>
+          )}
         </Typography>
         {!isNewUniverse && (
           <Typography className={classes.subHeaderFont}>

@@ -71,7 +71,13 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ReleasesUtils releasesUtils;
 
-  @ApiOperation(value = "Create a release", response = YBPSuccess.class, nickname = "createRelease")
+  @Deprecated
+  @ApiOperation(
+      value =
+          "Deprecated: sinceVersion 2024.1. Use ReleasesController.create instead. Create a"
+              + " release",
+      response = YBPSuccess.class,
+      nickname = "createRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -105,9 +111,12 @@ public class ReleaseController extends AuthenticatedController {
     }
 
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      // Validate the version
       LOG.warn("creating new style release with legacy api");
       versionDataList.forEach(
           data -> {
+            // Validate the version
+            releasesUtils.validateVersionAgainstCurrentYBA(data.version);
             if (Release.getByVersion(data.version) != null) {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Release " + data.version + "already exists");
@@ -206,8 +215,11 @@ public class ReleaseController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @Deprecated
   @ApiOperation(
-      value = "List all releases",
+      value =
+          "Deprecated: sinceVersion: 2024.1. Use ReleasesController.list instead. List all"
+              + " releases",
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfReleases")
@@ -233,10 +245,7 @@ public class ReleaseController extends AuthenticatedController {
                   })
               .collect(
                   Collectors.toMap(
-                      entry ->
-                          entry.getReleaseTag() == null
-                              ? entry.getVersion()
-                              : String.format("%s-%s", entry.getVersion(), entry.getReleaseTag()),
+                      entry -> entry.getVersion(),
                       entry -> releasesUtils.releaseToReleaseMetadata(entry)));
     } else {
       Map<String, Object> releases = releaseManager.getReleaseMetadata();
@@ -305,8 +314,11 @@ public class ReleaseController extends AuthenticatedController {
     return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
+  @Deprecated
   @ApiOperation(
-      value = "Update a release",
+      value =
+          "Deprecated: sinceVersion: 2024.1. Use ReleasesController.update instead. Update a"
+              + " release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "updateRelease")
   @ApiImplicitParams({
@@ -372,8 +384,11 @@ public class ReleaseController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @Deprecated
   @ApiOperation(
-      value = "Delete a release",
+      value =
+          "Deprecated: sinceVersion: 2024.1. Use ReleasesController.delete instead. Delete a"
+              + " release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "deleteRelease")
   @AuthzPath({

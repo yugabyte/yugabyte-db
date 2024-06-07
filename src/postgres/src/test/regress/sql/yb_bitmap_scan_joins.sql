@@ -3,6 +3,7 @@
 --
 SET yb_explain_hide_non_deterministic_fields = true;
 SET enable_bitmapscan = true;
+SET yb_enable_bitmapscan = true;
 SET yb_prefer_bnl = false;
 
 CREATE TABLE joina (k INT, a INT, b INT, PRIMARY KEY (k ASC));

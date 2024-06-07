@@ -30,6 +30,10 @@ export const useFormMainStyles = makeStyles((theme) => ({
     fontWeight: 500
   },
 
+  headerText: {
+    color: theme.palette.common.black
+  },
+
   subHeaderFont: {
     color: '#9f9ea7',
     fontFamily: 'Rubik,Helvetica Neue,sans-serif',

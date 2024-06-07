@@ -1204,6 +1204,12 @@ typedef struct YbPathInfo {
 	List		   *yb_uniqkeys;		/* list keys that are distinct */
 } YbPathInfo;
 
+typedef struct YbPlanInfo {
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int 		estimated_docdb_result_width;
+} YbPlanInfo;
+
 /*
  * Info propagated for YugabyteDB, for index scans.
  *
@@ -1271,10 +1277,8 @@ typedef struct Path
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
 
+	YbPlanInfo	yb_plan_info;
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
-	double		yb_estimated_num_nexts;
-	double		yb_estimated_num_seeks;
-	int			yb_estimated_docdb_result_width;
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1347,9 +1351,8 @@ typedef struct IndexPath
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
-	double		yb_estimated_num_nexts;
-	double		yb_estimated_num_seeks;
-	int			yb_estimated_docdb_result_width;
+	int			ybctid_width;
+	YbPlanInfo	yb_plan_info;
 	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 
@@ -1455,6 +1458,7 @@ typedef struct BitmapAndPath
 	Path		path;
 	List	   *bitmapquals;	/* IndexPaths and BitmapOrPaths */
 	Selectivity bitmapselectivity;
+	int			ybctid_width;
 } BitmapAndPath;
 
 /*
@@ -1468,6 +1472,7 @@ typedef struct BitmapOrPath
 	Path		path;
 	List	   *bitmapquals;	/* IndexPaths and BitmapAndPaths */
 	Selectivity bitmapselectivity;
+	int			ybctid_width;
 } BitmapOrPath;
 
 /*

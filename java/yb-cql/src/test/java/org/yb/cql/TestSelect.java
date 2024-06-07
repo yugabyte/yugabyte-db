@@ -3264,4 +3264,15 @@ public class TestSelect extends BaseCQLTest {
     session.execute("CREATE TABLE test_tbl (id int primary key, v int);");
     session.execute("SELECT * FROM test_tbl GROUP BY v;");
   }
+
+  @Test
+  public void testInvalidTimestampBadLexicalCast() throws Exception {
+    // Create test table.
+    session.execute("CREATE TABLE test_tbl (c1 int PRIMARY KEY, c2 timestamp)");
+    // Test invalid TimeZone. (See CE-389 for details.)
+    runInvalidStmt(
+        "SELECT * FROM test_tbl WHERE c2 >= '2021-10-10 10:00:00 UTC_b'",
+        "Invalid timestamp: " +
+        "bad lexical cast: source type value could not be interpreted as target");
+  }
 }

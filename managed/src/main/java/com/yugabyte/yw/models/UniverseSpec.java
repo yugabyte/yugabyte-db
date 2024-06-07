@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseContainer.ImportExportRelease;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
@@ -101,7 +101,7 @@ public class UniverseSpec {
 
   public PlatformPaths oldPlatformPaths;
 
-  private ReleaseContainer ybReleaseMetadata;
+  private ImportExportRelease ybReleaseMetadata;
 
   private boolean skipReleases;
 
@@ -720,12 +720,19 @@ public class UniverseSpec {
         String universeVersion =
             this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
         if (releaseManager.getReleaseByVersion(universeVersion) == null) {
-          if (ybReleaseMetadata.isLegacy()) {
-            releaseManager.addReleaseWithMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          if (ybReleaseMetadata.releaseMetadata != null) {
+            releaseManager.addReleaseWithMetadata(
+                universeVersion, ybReleaseMetadata.releaseMetadata);
+          } else {
+            ybReleaseMetadata.release.save();
+            if (ybReleaseMetadata.releaseArtifact != null) {
+              ybReleaseMetadata.releaseArtifact.save();
+            }
           }
         } else {
-          if (ybReleaseMetadata.isLegacy()) {
-            releaseManager.updateReleaseMetadata(universeVersion, ybReleaseMetadata.getMetadata());
+          if (ybReleaseMetadata.releaseMetadata != null) {
+            releaseManager.updateReleaseMetadata(
+                universeVersion, ybReleaseMetadata.releaseMetadata);
           }
         }
       }

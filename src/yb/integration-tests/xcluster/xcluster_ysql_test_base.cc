@@ -383,7 +383,7 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
       strings::Substitute("Unable to find table $0 in namespace $1", table_name, namespace_name));
 }
 
-Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTableName& table_name) {
+Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster& cluster, const YBTableName& table_name) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 
@@ -393,8 +393,8 @@ Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTabl
   req.set_include_not_running(true);
 
   master::MasterDdlProxy master_proxy(
-      &cluster->client_->proxy_cache(),
-      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -411,6 +411,13 @@ Result<bool> XClusterYsqlTestBase::IsTableDeleted(Cluster* cluster, const YBTabl
     }
   }
   return true;
+}
+
+Status XClusterYsqlTestBase::WaitForTableToFullyDelete(
+    Cluster& cluster, const client::YBTableName& table_name, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [&]() -> Result<bool> { return IsTableDeleted(cluster, producer_table_->name()); }, timeout,
+      "Wait for table to transition to deleted.");
 }
 
 Status XClusterYsqlTestBase::DropYsqlTable(
@@ -831,7 +838,8 @@ Status XClusterYsqlTestBase::SetUpWithParams(
 
 Status XClusterYsqlTestBase::SetUpClusters() {
   static const SetupParams default_params;
-  return SetUpClusters(default_params); }
+  return SetUpClusters(default_params);
+}
 
 Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
   SCHECK(
@@ -877,25 +885,52 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
   return PostSetUp();
 }
 
-Status XClusterYsqlTestBase::CheckpointReplicationGroup() {
+Status XClusterYsqlTestBase::CheckpointReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
-  auto namespace_id_out = VERIFY_RESULT(
-      client::XClusterClient(*producer_client())
-          .XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {namespace_name}));
-  SCHECK_EQ(namespace_id_out.size(), 1, IllegalState, "Namespace count does not match");
-  SCHECK_EQ(namespace_id_out[0], producer_namespace_id, IllegalState, "NamespaceId does not match");
-
-  std::promise<Result<bool>> promise;
-  auto future = promise.get_future();
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .IsXClusterBootstrapRequired(
-                        CoarseMonoClock::now() + MonoDelta::FromSeconds(kRpcTimeout),
-                        kReplicationGroupId, producer_namespace_id,
-                        [&promise](Result<bool> res) { promise.set_value(res); }));
-  auto bootstrap_required = VERIFY_RESULT(future.get());
+                    .CreateOutboundReplicationGroup(replication_group_id, {producer_namespace_id}));
+
+  auto bootstrap_required =
+      VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));
   SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
 
   return Status::OK();
+}
+
+Result<bool> XClusterYsqlTestBase::IsXClusterBootstrapRequired(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const NamespaceId& source_namespace_id) {
+  std::promise<Result<bool>> promise;
+  auto future = promise.get_future();
+  RETURN_NOT_OK(client::XClusterClient(*producer_client())
+                    .IsBootstrapRequired(
+                        CoarseMonoClock::now() + MonoDelta::FromSeconds(kRpcTimeout),
+                        replication_group_id, source_namespace_id,
+                        [&promise](Result<bool> res) { promise.set_value(res); }));
+  return future.get();
+}
+
+Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
+    const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id) {
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  auto target_master_address = consumer_cluster()->GetMasterAddresses();
+
+  RETURN_NOT_OK(source_xcluster_client.AddNamespaceToXClusterReplication(
+      kReplicationGroupId, target_master_address, source_namespace_id));
+  RETURN_NOT_OK(LoggedWaitFor(
+      [this, &target_master_address]() -> Result<bool> {
+        auto result = VERIFY_RESULT(
+            client::XClusterClient(*producer_client())
+                .IsAlterXClusterReplicationDone(kReplicationGroupId, target_master_address));
+        if (!result.status().ok()) {
+          return result.status();
+        }
+        return result.done();
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "IsAlterXClusterReplicationDone"));
+
+  return WaitForValidSafeTimeOnAllTServers(target_namespace_id);
 }
 
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
@@ -917,8 +952,9 @@ Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
 }
 
 Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
-    const std::string& target_master_addresses) {
-  RETURN_NOT_OK(SetupCertificates(kReplicationGroupId));
+    const std::string& target_master_addresses,
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  RETURN_NOT_OK(SetupCertificates(replication_group_id));
 
   auto master_addr = target_master_addresses;
   if (master_addr.empty()) {
@@ -926,7 +962,7 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   }
 
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .CreateXClusterReplication(kReplicationGroupId, master_addr));
+                    .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
   return WaitForCreateReplicationToFinish(master_addr);
 }

@@ -1,6 +1,6 @@
 ---
-title: Going beyond SQL
-linkTitle: Going beyond SQL
+title: Going beyond PostgreSQL
+linkTitle: Beyond PostgreSQL
 description: Exclusive advanced features of YugabyteDB
 headcontent: Explore exclusive advanced features in YugabyteDB
 menu:

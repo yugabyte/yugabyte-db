@@ -368,12 +368,9 @@ typedef struct _tablegroupInfo
 	 * These fields are collected for every tablegroup in the database.
 	 */
 	DumpableObject dobj;
-	char	   *grpowner;		/* name of owner, or empty string */
+	DumpableAcl	   dacl;
+	const char *rolname;
 	char	   *grptablespace;
-	char	   *grpacl;
-	char	   *grpracl;
-	char	   *grpinitacl;
-	char	   *grpinitracl;
 	char	   *grpoptions;		/* options specified by WITH (...) */
 } TablegroupInfo;
 
@@ -765,9 +762,6 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
-#endif
 
 #endif							/* PG_DUMP_H */

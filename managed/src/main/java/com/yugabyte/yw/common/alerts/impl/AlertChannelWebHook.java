@@ -42,6 +42,11 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelWebHookParams params = (AlertChannelWebHookParams) channel.getParams();
+
+    if (!params.isSendResolved() && alert.getState() == Alert.State.RESOLVED) {
+      return;
+    }
+
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
     Context context = new Context(channel, channelTemplates, variables);
     String text = getNotificationText(alert, context, false);

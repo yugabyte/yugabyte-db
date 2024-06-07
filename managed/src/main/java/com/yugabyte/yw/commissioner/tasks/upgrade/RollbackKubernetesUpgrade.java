@@ -43,6 +43,20 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  protected String getTargetSoftwareVersion() {
+    Universe universe = getUniverse();
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
+        universe.getUniverseDetails().prevYBSoftwareConfig;
+    String newVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (prevYBSoftwareConfig != null
+        && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
+      newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+    }
+    return newVersion;
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

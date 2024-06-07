@@ -9,6 +9,8 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -211,6 +213,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result bootstrap(UUID customerUUID, UUID providerUUID, Http.Request request) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -236,6 +239,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
     return YBPSuccess.empty();

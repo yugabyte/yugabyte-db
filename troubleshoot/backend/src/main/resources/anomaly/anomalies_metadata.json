@@ -169,13 +169,118 @@
       },
       {
         "possibleCause": "ASH events ratio for the query changed",
-        "possibleCauseDescription": "Various query processing step times can change due to various resons.",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
         "troubleshootingRecommendations": [
           {
             "recommendation": "Check ASH graph for this query",
             "supportingGraphs": [
               {
-                "name": "active_session_history",
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "1d3ad67b-fdf8-4766-9bf8-6c516f3475fb",
+    "category": "SQL",
+    "type": "SQL_QUERY_LOCK_CONTENTION",
+    "title": "SQL query lock contention detected",
+    "mainGraphs": [
+      {
+        "name": "active_session_history_tserver",
+        "filters": {
+          "universeUuid": [],
+          "queryId": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "NONE",
+      "splitType": "NONE",
+      "splitCount": 0,
+      "returnAggregatedValue": false,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Load increase",
+        "possibleCauseDescription": "RPS for this query or overall RPS increased significantly - more conflicts between queries",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "query_rps",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Query execution time increased",
+        "possibleCauseDescription": "Query execution takes longer, which is causing more conflicts between queries",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Query Latency graph",
+            "supportingGraphs": [
+              {
+                "name": "query_latency",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
                 "filters": {
                   "universeUuid": [],
                   "queryId": []
@@ -297,6 +402,29 @@
             "recommendation": "Check load balancing status in Master UI"
           }
         ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph per query/client",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -344,6 +472,30 @@
           },
           {
             "recommendation": "Check query stats UI to see - which query/set of queries is distributed unevenly"
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Particular clients started to send more queries, etc.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph per query/client",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": []
+                },
+                "groupBy": ["clientNodeIp"]
+              }
+            ]
           }
         ]
       }

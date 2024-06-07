@@ -1,4 +1,4 @@
--- Hypothetical on partitioned tabled
+-- Hypothetical on partitioned tables
 CREATE TABLE hypo_part(id1 integer, id2 integer, id3 integer)
     PARTITION BY LIST (id1);
 CREATE TABLE hypo_part_1

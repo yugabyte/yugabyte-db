@@ -73,7 +73,7 @@ Status SystemTablet::HandleQLReadRequest(const docdb::ReadOperationData& read_op
   auto pending_op = ScopedRWOperation();
   return AbstractTablet::HandleQLReadRequest(
       read_operation_data, ql_read_request, TransactionOperationContext(), YQLTable(), pending_op,
-      result, rows_data);
+      result, rows_data, nullptr /* statistics */);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

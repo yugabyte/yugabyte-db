@@ -2907,7 +2907,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 		char	   *sql;
 
 		sql = strVal(list_nth(fdw_private, FdwScanPrivateSelectSql));
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
 
@@ -2927,7 +2927,7 @@ postgresExplainForeignModify(ModifyTableState *mtstate,
 		char	   *sql = strVal(list_nth(fdw_private,
 										  FdwModifyPrivateUpdateSql));
 
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 
 		/*
 		 * For INSERT we should always have batch size >= 1, but UPDATE and
@@ -2953,7 +2953,7 @@ postgresExplainDirectModify(ForeignScanState *node, ExplainState *es)
 	{
 		fdw_private = ((ForeignScan *) node->ss.ps.plan)->fdw_private;
 		sql = strVal(list_nth(fdw_private, FdwDirectModifyPrivateUpdateSql));
-		ExplainPropertyText("Storage SQL", sql, es);
+		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
 

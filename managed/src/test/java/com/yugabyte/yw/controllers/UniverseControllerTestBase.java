@@ -158,6 +158,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
+    when(mockRuntimeConfig.getString("yb.filepaths.tmpDirectory")).thenReturn("/tmp");
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     KubernetesManager kubernetesManager = mock(KubernetesManager.class);

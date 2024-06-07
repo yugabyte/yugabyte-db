@@ -47,9 +47,14 @@ ${BIN_DIR}/${OS_ARCH}/${BIN_NAME}: ${GO_SOURCE_FILES}
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-cli/pkg/components/yba.BuildID=${BUILD_ID}' \
 	-X 'main.Version=${VERSION}'"
 
+.PHONY: doc
+doc:
+	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
+	sed -i 's/\x1B\[32m//g' docs/*
+	sed -i 's/\x1B\[0m//g' docs/*
 
 package: ${PACKAGE_NAME}
-${PACKAGE_NAME}: yba
+${PACKAGE_NAME}: yba doc
 	@mkdir -p $(PACKAGE_DIR)
 ifneq ("$(shell cmp -s ${BIN_DIR}/${OS_ARCH}/${BIN_NAME} ${PACKAGE_DIR}/${BIN_NAME}; echo $$?)", "0")
 	@echo "Packaging ${BIN_NAME} into ${PACKAGE_DIR}"
@@ -82,10 +87,6 @@ updateclient:
 .PHONY: build
 build:
 	go build -ldflags="-X 'main.Version=v${VERSION}'" -o ${BIN_NAME}
-
-.PHONY: doc
-doc:
-	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
 
 .PHONY: license
 license:

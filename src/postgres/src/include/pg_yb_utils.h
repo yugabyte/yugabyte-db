@@ -117,16 +117,13 @@ extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
 
+/* YB_TODO: Remove this. */
+#define YbFirstBootstrapObjectId 10000
+
 /*
  * Iterate over databases and execute a given code snippet.
  * Should terminate with YB_FOR_EACH_DB_END.
  */
-/* YB_TODO: Remove these. */
-#define YB_HACK_INVALID_FLAG -1
-#define YbHeapTupleGetOid(x) -1
-
-#define YbFirstBootstrapObjectId 10000
-
 #define YB_FOR_EACH_DB(pg_db_tuple) \
 	{ \
 		/* Shared operations shouldn't be used during initdb. */ \
@@ -570,8 +567,13 @@ extern bool yb_enable_saop_pushdown;
 
 /*
  * Enables the use of TOAST compression for the Postgres catcache.
-*/
+ */
 extern int yb_toast_catcache_threshold;
+
+/*
+ * Configure size of the parallel range in requests for parallel keys.
+ */
+extern int yb_parallel_range_size;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -1143,4 +1145,7 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
+
+extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
+
 #endif /* PG_YB_UTILS_H */

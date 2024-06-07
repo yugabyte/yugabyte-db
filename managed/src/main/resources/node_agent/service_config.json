@@ -1,0 +1,21 @@
+{
+    "methodConfig": [
+      {
+        "name": [
+          {
+            "service": "nodeagent.server.NodeAgent"
+          }
+        ],
+        "retryPolicy": {
+          "maxAttempts": 5,
+          "initialBackoff": "2s",
+          "maxBackoff": "10s",
+          "backoffMultiplier": 2,
+          "retryableStatusCodes": [
+            "UNAVAILABLE",
+            "RESOURCE_EXHAUSTED"
+          ]
+        }
+      }
+    ]
+  }

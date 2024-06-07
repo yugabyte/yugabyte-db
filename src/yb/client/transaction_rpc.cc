@@ -75,6 +75,10 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
     rpc::Rpc::Abort();
   }
 
+  internal::TabletInvoker& GetInvoker() {
+    return invoker_;
+  }
+
  private:
   void SendRpcToTserver(int attempt_num) override {
     InvokeAsync(invoker_.proxy().get(),
@@ -110,6 +114,25 @@ class TransactionRpc : public TransactionRpcBase {
 
   const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
+  }
+
+  bool RefreshMetaCacheWithResponse() override {
+    if constexpr (tserver::HasTabletConsensusInfo<typename Traits::Response>::value) {
+      DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
+      if (resp_.has_tablet_consensus_info()) {
+        return GetInvoker().RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+      }
+      VLOG(1) << "Partial refresh of tablet for " << Traits::kName
+              << " RPC failed because the response did not "
+                 "have a tablet_consensus_info";
+    }
+    return false;
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    if constexpr (tserver::HasRaftConfigOpidIndex<typename Traits::Request>::value) {
+      req_.set_raft_config_opid_index(opid_index);
+    }
   }
 
  private:

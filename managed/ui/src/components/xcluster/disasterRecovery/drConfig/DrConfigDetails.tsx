@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
-import { makeStyles, Tab, useTheme } from '@material-ui/core';
+import { Box, makeStyles, Tab, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { getXClusterConfig } from '../utils';
 
 import { ReplicationTables } from '../../configDetails/ReplicationTables';
 import { XClusterMetrics } from '../../sharedComponents/XClusterMetrics/XClusterMetrics';
 
-import { DrConfig } from '../dtos';
+import { DrConfig, DrConfigState } from '../dtos';
 
 interface DrConfigDetailsProps {
   drConfig: DrConfig;
@@ -56,11 +56,19 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           onChange={handleTabChange}
           aria-label={t('aria.drConfigTabs')}
         >
-          <Tab label={t('tab.metrics')} value={DrConfigTab.METRICS} />
-          <Tab label={t('tab.tables')} value={DrConfigTab.TABLES} />
+          <Tab label={t('tab.metrics.label')} value={DrConfigTab.METRICS} />
+          <Tab label={t('tab.tables.label')} value={DrConfigTab.TABLES} />
         </TabList>
         <TabPanel value={DrConfigTab.METRICS}>
-          <XClusterMetrics xClusterConfig={xClusterConfig} isDrInterface={true} />
+          {drConfig.state === DrConfigState.FAILOVER_IN_PROGRESS ? (
+            <Box display="flex" justifyContent="center">
+              <Typography variant="body1">
+                {t('tab.metrics.metricsUnavailableDuringFailover')}
+              </Typography>
+            </Box>
+          ) : (
+            <XClusterMetrics xClusterConfig={xClusterConfig} isDrInterface={true} />
+          )}
         </TabPanel>
         <TabPanel value={DrConfigTab.TABLES}>
           <ReplicationTables

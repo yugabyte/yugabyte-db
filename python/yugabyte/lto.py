@@ -266,12 +266,6 @@ class LinkHelper:
 
     new_args: LinkCommand
 
-    # Build directory of the Postgres backend.
-    pg_backend_build_dir: str
-
-    # The command for linking the yb_pgbackend library.
-    yb_pgbackend_link_cmd: List[str]
-
     lto_output_suffix: Optional[str]
     lto_output_path: Optional[str]
 
@@ -291,6 +285,9 @@ class LinkHelper:
     processed_shared_lib_deps_for: Set[str]
 
     thirdparty_installed_dir: str
+
+    # Whether the original linking command includes the libyb_pgbackend library.
+    yb_pgbackend_needed: bool
 
     def __init__(
             self,
@@ -312,8 +309,6 @@ class LinkHelper:
         self.original_link_args = process_original_link_cmd(initial_node.link_cmd)
         self.new_args = LinkCommand([self.clang_cpp_path])
         self.obj_file_graph_nodes = set()
-        self.pg_backend_build_dir, self.yb_pgbackend_link_cmd = get_yb_pgbackend_link_cmd(
-            self.build_root)
 
         self.lto_output_suffix = lto_output_suffix
         self.lto_output_path = lto_output_path
@@ -331,6 +326,7 @@ class LinkHelper:
         if not self.thirdparty_installed_dir:
             self.thirdparty_installed_dir = os.path.join(self.thirdparty_path, 'installed')
         self.static_lib_paths = get_static_lib_paths(self.thirdparty_installed_dir)
+        self.yb_pgbackend_needed = False
 
     def convert_to_static_lib(self, arg: str) -> Optional[str]:
         """
@@ -386,7 +382,7 @@ class LinkHelper:
 
         self.processed_shared_lib_deps_for.add(shared_library_path)
         if not os.path.exists(shared_library_path):
-            logging.info("File does ont exist, not running ldd: %s", shared_library_path)
+            logging.info("File does not exist, not running ldd: %s", shared_library_path)
             return
 
         with open(shared_library_path, 'rb') as shared_library_file:
@@ -482,6 +478,9 @@ class LinkHelper:
 
                 if is_yb_library(arg):
                     logging.info("Skipping YB library: %s", arg)
+                    if os.path.splitext(os.path.basename(arg))[0] == 'libyb_pgbackend':
+                        logging.info("Recording the need for the yb_pgbackend library")
+                        self.yb_pgbackend_needed = True
                     continue
 
                 if arg.endswith('.cc.o'):
@@ -520,17 +519,20 @@ class LinkHelper:
                 if node.node_type == NodeType.OBJECT:
                     self.new_args.add_new_arg(node.path)
 
-            for arg in self.yb_pgbackend_link_cmd:
-                if arg.endswith('.o'):
-                    if os.path.basename(arg) == 'main_cpp_wrapper.cc.o':
-                        # TOOD: why is this file even linked into libyb_pgbackend?
+            if self.yb_pgbackend_needed:
+                pg_backend_build_dir, yb_pgbackend_link_cmd = get_yb_pgbackend_link_cmd(
+                    self.build_root)
+                for arg in yb_pgbackend_link_cmd:
+                    if arg.endswith('.o'):
+                        if os.path.basename(arg) == 'main_cpp_wrapper.cc.o':
+                            # TOOD: why is this file even linked into libyb_pgbackend?
+                            continue
+                        self.new_args.append(os.path.join(pg_backend_build_dir, arg))
                         continue
-                    self.new_args.append(os.path.join(self.pg_backend_build_dir, arg))
-                    continue
-                if (arg.startswith('-l') and
-                        not self.new_args.contains(arg) and
-                        not arg.startswith('-lyb_')):
-                    self.process_arg(arg)
+                    if (arg.startswith('-l') and
+                            not self.new_args.contains(arg) and
+                            not arg.startswith('-lyb_')):
+                        self.process_arg(arg)
 
     def add_pgcommon_srv_library(self) -> None:
         common_dir = os.path.join(self.build_root, 'postgres_build', 'src', 'common')
@@ -565,12 +567,17 @@ class LinkHelper:
                 self.new_args.append(static_lib_path)
 
         self.add_pgcommon_srv_library()
+        self.new_args.append('-fwhole-program')
+        if self.yb_pgbackend_needed:
+            # We are most likely building the main server process, so add other Postgres libraries
+            # as well.
+            self.new_args.extend([
+                '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
+                '-l:libpgport.a',
+                '-l:libpq.a'
+            ])
 
         self.new_args.extend([
-            '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
-            '-l:libpgport.a',
-            '-l:libpq.a',
-            '-fwhole-program',
             '-Wl,-v',
             '-nostdlib++',
             # For __res_nsearch, ns_initparse, ns_parserr, ns_name_uncompress.
@@ -663,7 +670,7 @@ def link_whole_program(
         lto_output_suffix: Optional[str],
         lto_output_path: Optional[str],
         lto_type: str,
-        symlink_as: List[str]) -> None:
+        symlink_as: Optional[List[str]]) -> None:
     if os.environ.get('YB_SKIP_FINAL_LTO_LINK') == '1':
         raise ValueError('YB_SKIP_FINAL_LTO_LINK is set, the final LTO linking step should not '
                          'have been invoked. Perhaps yb_build.sh should be invoked with '
@@ -703,8 +710,9 @@ def link_whole_program(
             return
         link_helper.run_linker()
 
-    for symlink_name in symlink_as:
-        create_symlink(
-            os.path.basename(link_helper.final_output_name),
-            os.path.join(os.path.dirname(link_helper.final_output_name),
-                         symlink_name))
+    if symlink_as is not None:
+        for symlink_name in symlink_as:
+            create_symlink(
+                os.path.basename(link_helper.final_output_name),
+                os.path.join(os.path.dirname(link_helper.final_output_name),
+                             symlink_name))

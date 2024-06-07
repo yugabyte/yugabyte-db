@@ -113,4 +113,6 @@ Status SetValueFromQLBinaryHelper(
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>> &composite_atts_map,
     DatumMessagePB *cdc_datum_message = NULL);
 
+void DeleteMemoryContextIfSet();
+
 } // namespace yb::docdb

@@ -632,12 +632,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean ignoreStopError) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
-
-    // Check that installed MASTER software version is consistent.
-    createSoftwareInstallTasks(
-        nodeSet, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
-
     if (currentNode.masterState != MasterState.Configured) {
+      // Check that installed MASTER software version is consistent.
+      createSoftwareInstallTasks(
+          nodeSet, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
+
       // TODO Configuration subtasks may be skipped if it is already a master.
       // Update master configuration on the node.
       createConfigureServerTasks(
@@ -673,7 +672,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopServerTasks(
-                Collections.singleton(stoppingNode), ServerType.MASTER, ignoreStopError)
+                Collections.singleton(stoppingNode),
+                ServerType.MASTER,
+                params -> {
+                  params.isIgnoreError = ignoreStopError;
+                  params.deconfigure = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -753,7 +757,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
         createStopServerTasks(
-                Collections.singleton(currentNode), ServerType.MASTER, ignoreStopError)
+                Collections.singleton(currentNode),
+                ServerType.MASTER,
+                params -> {
+                  params.isIgnoreError = ignoreStopError;
+                  params.deconfigure = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -1007,6 +1016,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .userIntent
                 .deviceInfo
                 .numVolumes;
+      }
+
+      if (StringUtils.isNotEmpty(node.machineImage)) {
+        params.machineImage = node.machineImage;
       }
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -1316,6 +1329,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
       params.sshPortOverride = node.sshPortOverride;
+      // Whether to install OpenTelemetry Collector on nodes or not.
+      params.otelCollectorEnabled = taskParams().otelCollectorEnabled;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -2465,20 +2480,45 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           targetDiskUsagePercentage);
       return;
     }
-    Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(clusterNodes);
-    if (nodesToBeRemoved.isEmpty()) {
+
+    boolean masterChanged = true;
+    boolean tserverChanged = true;
+    boolean isDedicated = cluster.userIntent.dedicatedNodes;
+    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(clusterNodes);
+    Set<NodeDetails> mastersToBeRemoved = PlacementInfoUtil.getMastersToBeRemoved(clusterNodes);
+    if (CollectionUtils.isEmpty(mastersToBeRemoved)
+        && CollectionUtils.isEmpty(tserversToBeRemoved)) {
       log.debug("No nodes are getting removed");
-      if (cluster.userIntent.providerType != CloudType.onprem) {
-        DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
-        DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
-        if (taskDeviceInfo == null
-            || existingDeviceInfo == null
-            || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
-                && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
-          log.debug("No change in the volume configuration");
-          return;
+    }
+    if (cluster.userIntent.providerType != CloudType.onprem) {
+      DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
+      DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
+      if (taskDeviceInfo == null
+          || existingDeviceInfo == null
+          || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+              && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+        log.debug("No change in the volume configuration");
+        tserverChanged = CollectionUtils.isNotEmpty(tserversToBeRemoved);
+        if (!isDedicated) {
+          masterChanged = CollectionUtils.isNotEmpty(mastersToBeRemoved);
+        } else {
+          DeviceInfo taskMasterDeviceInfo = cluster.userIntent.masterDeviceInfo;
+          DeviceInfo existingMasterDeviceInfo =
+              universe.getCluster(cluster.uuid).userIntent.masterDeviceInfo;
+          if (taskMasterDeviceInfo == null
+              || existingMasterDeviceInfo == null
+              || (Objects.equals(
+                      taskMasterDeviceInfo.numVolumes, existingMasterDeviceInfo.numVolumes)
+                  && Objects.equals(
+                      taskMasterDeviceInfo.volumeSize, existingMasterDeviceInfo.volumeSize))) {
+            log.debug("No change in the master volume configuration");
+            masterChanged = CollectionUtils.isNotEmpty(mastersToBeRemoved);
+          }
         }
       }
+    }
+    if (!masterChanged && !tserverChanged) {
+      return;
     }
     SubTaskGroup validateSubTaskGroup =
         createSubTaskGroup(
@@ -2487,6 +2527,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
     params.clusterUuid = cluster.uuid;
     params.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    params.mastersChanged = masterChanged;
+    params.tserversChanged = tserverChanged;
     params.targetDiskUsagePercentage = targetDiskUsagePercentage;
     ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
     task.initialize(params);

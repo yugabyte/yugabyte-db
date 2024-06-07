@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -166,6 +167,8 @@ public class HealthChecker {
 
   private final FileHelperService fileHelperService;
 
+  private final MaintenanceService maintenanceService;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -179,7 +182,8 @@ public class HealthChecker {
       RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
-      FileHelperService fileHelperService) {
+      FileHelperService fileHelperService,
+      MaintenanceService maintenanceService) {
     this(
         environment,
         config,
@@ -193,7 +197,8 @@ public class HealthChecker {
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
-        fileHelperService);
+        fileHelperService,
+        maintenanceService);
   }
 
   HealthChecker(
@@ -209,7 +214,8 @@ public class HealthChecker {
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
-      FileHelperService fileHelperService) {
+      FileHelperService fileHelperService,
+      MaintenanceService maintenanceService) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -223,6 +229,7 @@ public class HealthChecker {
     this.nodeExecutor = nodeExecutor;
     this.nodeUniverseManager = nodeUniverseManager;
     this.fileHelperService = fileHelperService;
+    this.maintenanceService = maintenanceService;
   }
 
   public void initialize() {
@@ -617,7 +624,15 @@ public class HealthChecker {
     }
 
     boolean silenceEmails = ((System.currentTimeMillis() / 1000) <= disabledUntilSecs);
-    return silenceEmails ? null : String.join(",", destinations);
+
+    // Check if there is an active maintenance window for this universe which is supposed to
+    // suppress health check alerts.
+    boolean maintenanceWindowActiveForUniverse =
+        maintenanceService.isHealthCheckNotificationSuppressedForUniverse(u);
+
+    return (silenceEmails || maintenanceWindowActiveForUniverse)
+        ? null
+        : String.join(",", destinations);
   }
 
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
@@ -915,15 +930,13 @@ public class HealthChecker {
           generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
 
     String scriptPath =
@@ -937,15 +950,13 @@ public class HealthChecker {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
 
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 

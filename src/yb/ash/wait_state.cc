@@ -53,18 +53,21 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
-DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(),
+DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
-DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::IsDebug(),
+DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
 DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
     "If enabled, add a sleep/delay when we enter the specified wait state.");
-DEFINE_test_flag(bool, export_ash_uuids_as_hex_strings, yb::IsDebug(),
-    "Exports wait-state name as a human understandable string.");
+DEPRECATE_FLAG(bool, TEST_export_ash_uuids_as_hex_strings, "04_2024");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
+DEFINE_test_flag(bool, ash_fetch_wait_states_for_raft_log, false, "Should ASH fetch "
+      "background task states, such as raft log sync/append.");
+DEFINE_test_flag(bool, ash_fetch_wait_states_for_rocksdb_flush_and_compaction, false,
+      "Should ASH fetch background task states, such as rocksdb flush and compaction.");
 
 namespace yb::ash {
 

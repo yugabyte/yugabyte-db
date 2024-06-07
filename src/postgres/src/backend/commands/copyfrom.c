@@ -1211,10 +1211,10 @@ yb_process_more_batches:
 					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
 						/*YB_TODO(later): Remove the conversion to heap tuple.*/
+						bool shouldFree;
 						TupleDesc tupDesc = RelationGetDescr(cstate->rel);
-						bool shouldFree = true;
 						HeapTuple tuple =
-							ExecFetchSlotHeapTuple(myslot, true, &shouldFree);
+							ExecFetchSlotHeapTuple(myslot, false, &shouldFree);
 
 						/* Update the tuple with table oid */
 						myslot->tts_tableOid =

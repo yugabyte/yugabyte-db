@@ -369,14 +369,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> customCAStoreEnabled =
-      new ConfKeyInfo<>(
-          "yb.customCATrustStore.enabled",
-          ScopeType.GLOBAL,
-          "Enable YBA's custom CA trust-store",
-          "Enable YBA's custom CA trust-store",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
       new ConfKeyInfo<>(
           "yb.certVerifyBackupRestore.is_enforced",
@@ -711,14 +703,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "How frequently do we check for completed tasks in database",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static ConfKeyInfo<Boolean> editProviderNewEnabled =
-      new ConfKeyInfo<>(
-          "yb.edit_provider.new.enabled",
-          ScopeType.GLOBAL,
-          "Enable New Edit Provider",
-          "Enable new edit provider workflow",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<List> tagList =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.tag_filter",
@@ -846,14 +830,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
-      new ConfKeyInfo<>(
-          "yb.provider.allow_used_provider_edit",
-          ScopeType.GLOBAL,
-          "Allow editing of used providers",
-          "Provider associated with universes can be edited",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<String> ybdbReleasePathRegex =
       new ConfKeyInfo<>(
           "yb.regex.release_pattern.ybdb",
@@ -1251,20 +1227,19 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.security.oidc_enable_auto_create_users",
           ScopeType.GLOBAL,
           "Auto create user on SSO login",
-          "Enable user creation on OIDC login",
+          "Enable user creation on SSO login",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-  // TODO(bhavin192): this could be removed or moved to customer keys
-  // later.
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  // TODO(bhavin192): this could be moved to customer keys later, and
+  // become public.
   public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
       new ConfKeyInfo<>(
           "yb.provider.kubernetes_provider_validation",
           ScopeType.GLOBAL,
           "Kubernetes provider validation",
-          "Hidden as the feature is work in progress"
-              + " and returns a mock response with validation errors.",
+          "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
       new ConfKeyInfo<>(
           "ybc.upgrade.poll_result_tries",

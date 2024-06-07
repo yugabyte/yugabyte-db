@@ -56,8 +56,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 class PgSession;
 
 struct PgMemctxComparator {
@@ -243,8 +242,10 @@ class PgApiImpl {
   Status NewCreateDatabase(const char *database_name,
                            PgOid database_oid,
                            PgOid source_database_oid,
+                           const char *source_database_name,
                            PgOid next_oid,
                            const bool colocated,
+                           const int64_t clone_time,
                            PgStatement **handle);
   Status ExecCreateDatabase(PgStatement *handle);
 
@@ -473,10 +474,10 @@ class PgApiImpl {
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,
-                      Slice start_value,
-                      bool start_inclusive,
-                      Slice end_value,
-                      bool end_inclusive);
+                      Slice lower_bound,
+                      bool lower_bound_inclusive,
+                      Slice upper_bound,
+                      bool upper_bound_inclusive);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
@@ -646,8 +647,8 @@ class PgApiImpl {
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
@@ -710,6 +711,11 @@ class PgApiImpl {
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
   void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
 
+  Status AddExplicitRowLockIntent(
+      const PgObjectId& table_id, const Slice& ybctid,
+      const PgExplicitRowLockParams& params, bool is_region_local);
+  Status FlushExplicitRowLockIntents();
+
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
@@ -759,6 +765,7 @@ class PgApiImpl {
 
   // Create Replication Slot.
   Status NewCreateReplicationSlot(const char *slot_name,
+                                  const char *plugin_name,
                                   const PgOid database_oid,
                                   YBCPgReplicationSlotSnapshotAction snapshot_action,
                                   PgStatement **handle);
@@ -795,6 +802,8 @@ class PgApiImpl {
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
+  void ClearSessionState();
+
   class Interrupter;
 
   class TupleIdBuilder {
@@ -845,5 +854,4 @@ class PgApiImpl {
   TupleIdBuilder tuple_id_builder_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

@@ -261,6 +261,10 @@ Status MiniCluster::StartAsync(
   }
 
   running_ = true;
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  messenger_ = VERIFY_RESULT(builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
   return Status::OK();
 }
 
@@ -396,31 +400,8 @@ Status MiniCluster::AddTabletServer() {
   return AddTabletServer(*options);
 }
 
-namespace {
-
-Status ChangeClusterConfig(
-    master::CatalogManagerIf* catalog_manager,
-    std::function<void(SysClusterConfigEntryPB*)> config_changer) {
-  GetMasterClusterConfigResponsePB config_resp;
-  RETURN_NOT_OK(catalog_manager->GetClusterConfig(&config_resp));
-
-  ChangeMasterClusterConfigRequestPB change_req;
-  *change_req.mutable_cluster_config() = std::move(*config_resp.mutable_cluster_config());
-  SysClusterConfigEntryPB* config = change_req.mutable_cluster_config();
-
-  config_changer(config);
-
-  ChangeMasterClusterConfigResponsePB change_resp;
-  return catalog_manager->SetClusterConfig(&change_req, &change_resp);
-}
-
-} // namespace
-
 Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
-  RETURN_NOT_OK(ChangeClusterConfig(
-      &master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+  RETURN_NOT_OK(ChangeClusterConfig([&ts](SysClusterConfigEntryPB* config) {
         // Add tserver to blacklist.
         HostPortPB* blacklist_host_pb = config->mutable_server_blacklist()->mutable_hosts()->Add();
         blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
@@ -435,10 +416,8 @@ Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
 }
 
 Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
   RETURN_NOT_OK(
-      ChangeClusterConfig(&master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+      ChangeClusterConfig([&ts](SysClusterConfigEntryPB* config) {
         // Add tserver to blacklist.
         HostPortPB* blacklist_host_pb = config->mutable_leader_blacklist()->mutable_hosts()->Add();
         blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
@@ -453,10 +432,8 @@ Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
 }
 
 Status MiniCluster::ClearBlacklist() {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
   RETURN_NOT_OK(
-      ChangeClusterConfig(&master->catalog_manager(), [](SysClusterConfigEntryPB* config) {
+      ChangeClusterConfig([](SysClusterConfigEntryPB* config) {
         config->mutable_server_blacklist()->Clear();
         config->mutable_leader_blacklist()->Clear();
       }));
@@ -552,6 +529,8 @@ void MiniCluster::StopSync() {
     master_server->Shutdown();
   }
 
+  messenger_->Shutdown();
+
   running_ = false;
 }
 
@@ -591,6 +570,8 @@ void MiniCluster::Shutdown() {
     yb_controller->Shutdown();
   }
   yb_controllers_.clear();
+
+  messenger_->Shutdown();
 
   running_ = false;
 }
@@ -801,6 +782,23 @@ void MiniCluster::EnsurePortsAllocated(size_t new_num_masters, size_t new_num_ts
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
+
+Status MiniCluster::ChangeClusterConfig(
+    std::function<void(SysClusterConfigEntryPB*)> config_changer) {
+  auto proxy = master::MasterClusterProxy(
+      proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+  rpc::RpcController rpc;
+  master::GetMasterClusterConfigRequestPB get_req;
+  master::GetMasterClusterConfigResponsePB get_resp;
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(get_req, &get_resp, &rpc));
+  ChangeMasterClusterConfigRequestPB change_req;
+  change_req.mutable_cluster_config()->Swap(get_resp.mutable_cluster_config());
+  config_changer(change_req.mutable_cluster_config());
+  rpc.Reset();
+  ChangeMasterClusterConfigResponsePB change_resp;
+  return proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc);
+}
+
 
 Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
   auto master_leader = VERIFY_RESULT(GetLeaderMiniMaster())->master();

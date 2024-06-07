@@ -61,6 +61,14 @@ CREATE TABLE fast_emp4000 (
 	home_base	 box
 );
 
+\set filename :abs_srcdir '/data/rect.data'
+COPY slow_emp4000 FROM :'filename';
+
+INSERT INTO fast_emp4000 SELECT * FROM slow_emp4000;
+
+ANALYZE slow_emp4000;
+ANALYZE fast_emp4000;
+
 --
 -- GIN over int[] and text[]
 --

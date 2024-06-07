@@ -1,11 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 package api.v2.mappers;
 
+import api.v2.models.CloudSpecificInfo;
+import api.v2.models.EncryptionAtRestInfo;
 import api.v2.models.EncryptionAtRestSpec;
 import api.v2.models.EncryptionInTransitSpec;
 import api.v2.models.NodeDetails;
 import api.v2.models.NodeDetails.MasterStateEnum;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YcqlSpec;
@@ -19,10 +22,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
 import org.mapstruct.DecoratedWith;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.control.DeepClone;
@@ -69,20 +76,26 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "overridePrebuiltAmiDbVersion", source = "overridePrebuiltAmiDBVersion")
   @Mapping(target = "encryptionAtRestSpec", source = "encryptionAtRestConfig")
   @Mapping(target = "encryptionInTransitSpec", source = ".")
+  @Mapping(target = "networkingSpec.communicationPorts", source = "communicationPorts")
   @Mapping(target = "ysql", source = ".")
   @Mapping(target = "ycql", source = ".")
   UniverseSpec toV2UniverseSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
-  @Mapping(target = ".", source = "spec")
-  @Mapping(target = ".", source = "arch")
-  UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
-      UniverseCreateSpec universeCreateSpec);
-
   @InheritInverseConfiguration(name = "toV2UniverseSpec")
   UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParams(UniverseSpec universeSpec);
 
+  // This mapping is overridden in the Decorator, and only that version is used.
+  @InheritInverseConfiguration(name = "toV2UniverseCreateSpec")
+  UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
+      UniverseCreateSpec universeCreateSpec);
+
+  UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
+      UniverseEditSpec universeEditSpec,
+      @MappingTarget UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams);
+
   @Mapping(target = "universeUuid", source = "universeUUID")
   @Mapping(target = "updatingTaskUuid", source = "updatingTaskUUID")
+  @Mapping(target = "encryptionAtRestInfo", source = "encryptionAtRestConfig")
   UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
   // below methods are used implicitly to generate other mapping
@@ -109,7 +122,17 @@ public interface UniverseDefinitionTaskParamsMapper {
   EncryptionAtRestSpec toV2EncryptionAtRestSpec(EncryptionAtRestConfig v1EncryptionAtRestConfig);
 
   @InheritInverseConfiguration
+  @Mapping(target = "type", constant = "DATA_KEY")
+  @Mapping(
+      target = "opType",
+      expression =
+          "java(v2EncryptionAtRestSpec.getKmsConfigUuid() != null ?"
+              + " com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType.ENABLE :"
+              + " com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType.DISABLE)")
   EncryptionAtRestConfig toV1EncryptionAtRestConfig(EncryptionAtRestSpec v2EncryptionAtRestSpec);
+
+  @Mapping(target = "encryptionAtRestStatus", source = "encryptionAtRestEnabled")
+  EncryptionAtRestInfo toV2EncryptionAtRestInfo(EncryptionAtRestConfig v1EncryptionAtRestConfig);
 
   // copy EIT from primary cluster to top-level in v2
   default EncryptionInTransitSpec toV2EncryptionInTransitSpec(
@@ -162,6 +185,20 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "disksAreMountedByUuid", source = "disksAreMountedByUUID")
   NodeDetails toV2NodeDetails(com.yugabyte.yw.models.helpers.NodeDetails v1NodeDetails);
 
+  @Mapping(target = "assignPublicIp", source = "assignPublicIP")
+  @Mapping(target = "instanceType", source = "instance_type")
+  @Mapping(target = "mountRoots", source = "mount_roots")
+  @Mapping(target = "privateDns", source = "private_dns")
+  @Mapping(target = "privateIp", source = "private_ip")
+  @Mapping(target = "publicDns", source = "public_dns")
+  @Mapping(target = "publicIp", source = "public_ip")
+  @Mapping(target = "rootVolume", source = "root_volume")
+  @Mapping(target = "secondaryPrivateIp", source = "secondary_private_ip")
+  @Mapping(target = "secondarySubnetId", source = "secondary_subnet_id")
+  @Mapping(target = "subnetId", source = "subnet_id")
+  CloudSpecificInfo toV2CloudSpecificInfo(
+      com.yugabyte.yw.models.helpers.CloudSpecificInfo cloudSpecificInfo);
+
   @ValueMappings({
     @ValueMapping(target = "TOBEADDED", source = "ToBeAdded"),
     @ValueMapping(target = "INSTANCECREATED", source = "InstanceCreated"),
@@ -199,4 +236,11 @@ public interface UniverseDefinitionTaskParamsMapper {
   })
   NodeDetails.StateEnum toV2NodeState(
       com.yugabyte.yw.models.helpers.NodeDetails.NodeState v1NodeState);
+
+  default OffsetDateTime toOffsetDateTime(Date date) {
+    if (date == null) {
+      return null;
+    }
+    return date.toInstant().atOffset(ZoneOffset.UTC);
+  }
 }

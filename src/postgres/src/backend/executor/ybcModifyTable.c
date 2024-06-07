@@ -470,8 +470,8 @@ YBCTupleTableInsert(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 					YBCPgStatement blockInsertStmt,
 					EState *estate)
 {
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	bool	  shouldFree;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -887,13 +887,15 @@ bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	Oid				relid = RelationGetRelid(rel);
 	YBCPgStatement	update_stmt = NULL;
 	Datum			ybctid;
+	bool			shouldFree;
+	HeapTuple 		tuple;
+
 
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
 
-	/* YB_TODO: Should materialize arg be true - check other usages as well that you have introduced? */
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+	/* tuple will be used transitorily, don't materialize it */
+	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(rel);
@@ -1210,6 +1212,9 @@ void YBCExecuteUpdateReplace(Relation rel,
 							 TupleTableSlot *slot,
 							 EState *estate)
 {
+	bool	  shouldFree;
+	HeapTuple tuple;
+
 	YBCExecuteDelete(rel,
 					 planSlot,
 					 NIL /* returning_columns */,
@@ -1217,8 +1222,9 @@ void YBCExecuteUpdateReplace(Relation rel,
 					 YB_TRANSACTIONAL,
 					 false /* changingPart */,
 					 estate);
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+
+	/* tuple will be used transitorily, don't materialize it */
+	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(rel);
@@ -1236,8 +1242,8 @@ void YBCExecuteUpdateReplace(Relation rel,
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
-	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement delete_stmt = NULL;
+	Oid				relfileNodeId = YbGetRelfileNodeId(rel);
 
 	if (HEAPTUPLE_YBCTID(tuple) == 0)
 		ereport(ERROR,
@@ -1246,7 +1252,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
-								  relid,
+								  relfileNodeId,
 								  YBCIsRegionLocal(rel),
 								  &delete_stmt,
 									YB_TRANSACTIONAL));
@@ -1256,7 +1262,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 										   HEAPTUPLE_YBCTID(tuple), false /* is_null */);
 
 	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(YbGetRelfileNodeId(rel),
+	YBCPgDeleteFromForeignKeyReferenceCache(relfileNodeId,
 											HEAPTUPLE_YBCTID(tuple));
 
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));

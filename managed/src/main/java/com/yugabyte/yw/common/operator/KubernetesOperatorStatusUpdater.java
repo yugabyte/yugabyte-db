@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common.operator;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.directory.api.util.Strings;
 
 @Slf4j
@@ -50,10 +53,13 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
   private final Config k8sClientConfig;
   private final OperatorUtils operatorUtils;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   public KubernetesOperatorStatusUpdater(
-      RuntimeConfGetter confGetter, OperatorUtils operatorUtils) {
+      RuntimeConfGetter confGetter,
+      OperatorUtils operatorUtils,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
     if (namespace == null || namespace.trim().isEmpty()) {
@@ -63,6 +69,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
     }
     k8sClientConfig = confBuilder.build();
     this.operatorUtils = operatorUtils;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
 
     // Get Yugaware pod and namespace
     this.yugawarePod = System.getProperty("HOSTNAME");
@@ -192,7 +199,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           String.format(
               "Queued task %s on universe resource: %s, namespace: %s",
               taskName, universeName.name, universeName.namespace);
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
+      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr, false);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -228,7 +235,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       // TODO: Check if this is universe create and set to provisioning.
       ybuStatus.setUniverseState(state.getUniverseStateString());
       ybUniverse.setStatus(ybuStatus);
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
+      this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr, false);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -279,7 +286,13 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         action.setMessage(message);
       }
       // Updating Kubernetes Custom Resource (if done through operator).
-      this.updateUniverseStatus(client, ybUniverse, universe, universeName, message);
+      this.updateUniverseStatus(
+          client,
+          ybUniverse,
+          universe,
+          universeName,
+          message,
+          state.equals(UniverseState.ERROR_CREATING) ? false : true);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
     }
@@ -290,12 +303,39 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       YBUniverse ybUniverse,
       Universe u,
       KubernetesResourceDetails universeName,
-      String eventMsg) {
+      String eventMsg,
+      boolean updateEndpoints) {
     try {
       // TODO: We should be able to only update these when needed.
       if (u != null) {
-        List<String> cqlEndpoints = Arrays.asList(u.getYQLServerAddresses().split(","));
-        List<String> sqlEndpoints = Arrays.asList(u.getYSQLServerAddresses().split(","));
+        List<String> cqlEndpoints = new ArrayList<>();
+        List<String> sqlEndpoints = new ArrayList<>();
+        if (updateEndpoints) {
+          cqlEndpoints.addAll(Arrays.asList(u.getYQLServerAddresses().split(",")));
+          try {
+            String cqlServiceEndpoints =
+                kubernetesManagerFactory
+                    .getManager()
+                    .getKubernetesServiceIPPort(ServerType.YQLSERVER, u);
+            if (StringUtils.isNotBlank(cqlServiceEndpoints)) {
+              cqlEndpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
+            }
+          } catch (Exception e) {
+          }
+
+          sqlEndpoints.addAll(Arrays.asList(u.getYSQLServerAddresses().split(",")));
+          try {
+            String sqlServiceEndpoints =
+                kubernetesManagerFactory
+                    .getManager()
+                    .getKubernetesServiceIPPort(ServerType.YSQLSERVER, u);
+            if (StringUtils.isNotBlank(sqlServiceEndpoints)) {
+              sqlEndpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
+            }
+          } catch (Exception e) {
+          }
+        }
+
         YBUniverseStatus ybUniverseStatus = getOrCreateUniverseStatus(ybUniverse);
         ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
         ybUniverseStatus.setSqlEndpoints(sqlEndpoints);

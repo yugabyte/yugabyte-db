@@ -8,6 +8,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -178,12 +180,14 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   public void testUpgrade() throws Exception {
     PingResponse pingResponse1 = mock(PingResponse.class);
     PingResponse pingResponse2 = mock(PingResponse.class);
+    ShellResponse shellResponse = ShellResponse.create(0, "Done!");
     Path nodeAgentPackage = Paths.get("/tmp/node_agent-2.13.0.0-b12-linux-amd64.tar.gz");
     FileUtils.touch(nodeAgentPackage.toFile());
     ServerInfo serverInfo1 = ServerInfo.newBuilder().setRestartNeeded(true).build();
     ServerInfo serverInfo2 = ServerInfo.newBuilder().setRestartNeeded(false).build();
     when(pingResponse1.getServerInfo()).thenReturn(serverInfo1);
     when(pingResponse2.getServerInfo()).thenReturn(serverInfo2);
+    when(mockNodeAgentClient.executeCommand(any(), any())).thenReturn(shellResponse);
     when(mockNodeAgentClient.waitForServerReady(any(), any()))
         .thenReturn(pingResponse2 /* heartbeat call */)
         .thenReturn(pingResponse1 /* after upgrade */)
@@ -228,7 +232,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertEquals(State.READY, nodeAgent.getState());
     assertFalse("Merged cert file still exists", mergedCertFile.toFile().exists());
     assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
-    verify(mockNodeAgentClient, times(3)).uploadFile(any(), any(), any());
+    verify(mockNodeAgentClient, times(3)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
   }

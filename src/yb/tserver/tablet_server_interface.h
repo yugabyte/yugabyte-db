@@ -77,6 +77,15 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 
+  // Returns connection info of all live tservers available at this server.
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers() const = 0;
+
+  // Returns connection info for the passed in 'ts_uuids', if available. If unavailable,
+  // returns a bad status.
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers(const std::unordered_set<std::string>& ts_uuids) const = 0;
+
   virtual const std::shared_ptr<MemTracker>& mem_tracker() const = 0;
 
   virtual void SetPublisher(rpc::Publisher service) = 0;

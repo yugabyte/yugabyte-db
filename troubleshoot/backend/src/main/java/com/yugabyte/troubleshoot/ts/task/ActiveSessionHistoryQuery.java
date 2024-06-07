@@ -49,8 +49,9 @@ public class ActiveSessionHistoryQuery {
 
   static final String ASH_QUERY_NO_TIMESTAMP =
       "select sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class,"
-          + " wait_event, top_level_node_id, query_id, ysql_session_id, client_node_ip,"
-          + " wait_event_aux, sample_weight from pg_catalog.yb_active_session_history";
+          + " wait_event_type, wait_event, top_level_node_id, query_id, ysql_session_id,"
+          + " client_node_ip, wait_event_aux, sample_weight"
+          + " from pg_catalog.yb_active_session_history";
 
   static final String ASH_SAMPLE_TIME_FILTER = " where sample_time >= ";
 
@@ -61,6 +62,7 @@ public class ActiveSessionHistoryQuery {
   private static final String PRC_REQUEST_ID = "rpc_request_id";
   private static final String WAIT_EVENT_COMPONENT = "wait_event_component";
   private static final String WAIT_EVENT_CLASS = "wait_event_class";
+  private static final String WAIT_EVENT_TYPE = "wait_event_type";
   private static final String WAIT_EVENT = "wait_event";
   private static final String TOP_LEVEL_NODE_ID = "top_level_node_id";
   private static final String QUERY_ID = "query_id";
@@ -232,6 +234,7 @@ public class ActiveSessionHistoryQuery {
                   .setRootRequestId(UUID.fromString(statsJson.get(ROOT_REQUEST_ID).asText()))
                   .setWaitEventComponent(statsJson.get(WAIT_EVENT_COMPONENT).asText())
                   .setWaitEventClass(statsJson.get(WAIT_EVENT_CLASS).asText())
+                  .setWaitEventType(statsJson.get(WAIT_EVENT_TYPE).asText())
                   .setWaitEvent(statsJson.get(WAIT_EVENT).asText())
                   .setTopLevelNodeId(UUID.fromString(statsJson.get(TOP_LEVEL_NODE_ID).asText()))
                   .setQueryId(statsJson.get(QUERY_ID).asLong())

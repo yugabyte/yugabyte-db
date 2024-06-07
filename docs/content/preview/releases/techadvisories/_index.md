@@ -17,8 +17,20 @@ It is strongly recommended that you take appropriate measures as outlined in the
 ## List of advisories
 
 {{%table%}}
-| Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
-| :------------------------------------- | :------- | :-----: | :---------------: | :--- |
+| Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
+| :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 22057>}}
+|Risk of data loss when upgrading to or from version 2.20.3.0 or 2.21.0
+| {{<product "ysql">}}
+| {{<release "2.20.3.0, 2.21.0">}}
+| {{<nobreak "06 May 2024">}}
+|
+| {{<ta REOL-24>}}
+|Replicated End of Life
+| {{<product "yba">}}
+| {{<release "All">}}
+| {{<nobreak "30 Apr 2024">}}
+|
 | {{<ta 21297>}}
 |Missing writes during Batch Execution in a transaction
 | {{<product "ysql">}}

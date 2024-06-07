@@ -18,6 +18,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
@@ -331,8 +332,8 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
     auto s = table_stream_status.ShortDebugString();
   }
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   const auto& consumer_registry = cluster_config.consumer_registry();
 
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
@@ -366,36 +367,47 @@ Status XClusterTargetManager::PopulateXClusterStatus(XClusterStatus& xcluster_st
     }
 
     for (const auto& source_table_id : replication_info.tables()) {
-      InboundXClusterReplicationGroupTableStatus table_statuses;
-      table_statuses.source_table_id = source_table_id;
+      NamespaceName namespace_name = "<Unknown>";
+
+      InboundXClusterReplicationGroupTableStatus table_status;
+      table_status.source_table_id = source_table_id;
 
       auto* stream_id_it = FindOrNull(replication_info.table_streams(), source_table_id);
       if (stream_id_it) {
-        table_statuses.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(*stream_id_it));
-        auto it = FindOrNull(stream_status, table_statuses.stream_id);
-        table_statuses.status = it ? *it : "OK";
+        table_status.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(*stream_id_it));
+        auto it = FindOrNull(stream_status, table_status.stream_id);
+        table_status.status = it ? *it : "OK";
 
         if (producer_map) {
           auto* stream_info =
-              FindOrNull(producer_map->stream_map(), table_statuses.stream_id.ToString());
+              FindOrNull(producer_map->stream_map(), table_status.stream_id.ToString());
           if (stream_info) {
-            table_statuses.target_table_id = stream_info->consumer_table_id();
-            table_statuses.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
-            table_statuses.local_tserver_optimized = stream_info->local_tserver_optimized();
-            table_statuses.source_schema_version =
+            table_status.target_table_id = stream_info->consumer_table_id();
+
+            auto table_info_res = catalog_manager_.GetTableById(table_status.target_table_id);
+            if (table_info_res) {
+              const auto& table_info = table_info_res.get();
+              namespace_name = table_info->namespace_name();
+              table_status.full_table_name = GetFullTableName(*table_info);
+            }
+
+            table_status.target_tablet_count = stream_info->consumer_producer_tablet_map_size();
+            table_status.local_tserver_optimized = stream_info->local_tserver_optimized();
+            table_status.source_schema_version =
                 stream_info->schema_versions().current_producer_schema_version();
-            table_statuses.target_schema_version =
+            table_status.target_schema_version =
                 stream_info->schema_versions().current_consumer_schema_version();
             for (const auto& [_, producer_tablets] : stream_info->consumer_producer_tablet_map()) {
-              table_statuses.source_tablet_count += producer_tablets.tablets_size();
+              table_status.source_tablet_count += producer_tablets.tablets_size();
             }
           }
         }
       } else {
-        table_statuses.status = "Not Ready";
+        table_status.status = "Not Ready";
       }
 
-      replication_group_status.table_statuses.push_back(std::move(table_statuses));
+      replication_group_status.table_statuses_by_namespace[namespace_name].push_back(
+          std::move(table_status));
     }
 
     xcluster_status.inbound_replication_group_statuses.push_back(
@@ -410,8 +422,8 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   GetReplicationStatusRequestPB req;
   RETURN_NOT_OK(catalog_manager_.GetReplicationStatus(&req, &replication_status, /*rpc=*/nullptr));
 
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(catalog_manager_.GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config =
+      VERIFY_RESULT(catalog_manager_.GetClusterConfig());
 
   jw.String("replication_status");
   jw.Protobuf(replication_status);

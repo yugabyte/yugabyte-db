@@ -141,7 +141,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
         destroyParams.nodeName = params.nodeName;
         destroyParams.nodeUuid = params.nodeUuid;
         destroyParams.setUniverseUUID(params.getUniverseUUID());
-        destroyParams.isForceDelete = true;
+        destroyParams.isForceDelete = false;
         destroyParams.deleteNode = false;
         destroyParams.deleteRootVolumes = true;
         destroyParams.instanceType = params.instanceType;

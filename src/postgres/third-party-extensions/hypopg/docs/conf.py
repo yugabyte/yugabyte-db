@@ -50,7 +50,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'HypoPG'
-copyright = '2015-2022, Julien Rouhaud'
+copyright = '2015-2024, Julien Rouhaud'
 author = 'Julien Rouhaud'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -88,14 +88,9 @@ todo_include_todos = True
 #
 #html_theme = 'alabaster'
 
-# on_rtd is whether we are on readthedocs.io, this line of code grabbed from
-# docs.readthedocs.io
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-
-if False: # not on_rtd: # only import and set the theme if we're building docs locally
-    import sphinx_rtd_theme
-    html_theme = 'sphinx_rtd_theme'
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+import sphinx_rtd_theme
+html_theme = 'sphinx_rtd_theme'
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # otherwise, readthedocs.io uses their theme by default, so no need to specify it
 

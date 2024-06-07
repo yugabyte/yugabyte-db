@@ -27,6 +27,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/tostring.h"
+#include "yb/util/metric_entity.h"
+
+DECLARE_bool(TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files);
 
 namespace yb {
 
@@ -1809,6 +1812,9 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCheckpointPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -1947,6 +1953,9 @@ CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(
     CDCSDKYsqlTest, TestHighIntentCountPersistencyAllNodesRestart);
 
 void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType checkpoint_type) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   // Disable lb as we move tablets around
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -2566,6 +2575,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeArrayCompositeType)) {
 // Test GetChanges() can return records of a transaction with size was greater than
 // 'consensus_max_batch_size_bytes'.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize)) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1000;
@@ -2618,6 +2630,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCompaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_cdc_immediate_transaction_cleanup_cleanup_intent_files) = true;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   // We want to force every GetChanges to update the cdc_state table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -2849,24 +2864,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  RpcController rpc;
-  CreateCDCStreamRequestPB create_req;
-  CreateCDCStreamResponsePB create_resp;
-  create_req.set_table_id(table_id);
-  create_req.set_source_type(XCLUSTER);
-  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+  auto stream_id = ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_id));
 
   // Insert some records.
   ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
-  rpc.Reset();
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp_1;
-  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets[0].tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
   change_req.set_serve_as_proxy(true);
+  RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp_1, &rpc));
   ASSERT_FALSE(change_resp_1.has_error());
@@ -2896,7 +2906,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
 
   GetChangesResponsePB change_resp_2;
   rpc.Reset();
-  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets[0].tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(
       0);
@@ -4252,6 +4262,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
   int64_t total_traffic_sent = 0;
   uint64_t total_change_event_count = 0;
 
+  std::stringstream output;
+  MetricPrometheusOptions opts;
+  PrometheusWriter writer(&output, opts);
+
+  std::unordered_map<std::string, std::string> attr;
+  auto aggregation_level = kStreamLevel;
 
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     ASSERT_OK(
@@ -4277,9 +4293,24 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
           return current_expiry_time > metrics[idx]->cdcsdk_expiry_time_ms->value();
         },
         MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
-  }
 
+    attr["namespace_name"] = kNamespaceName;
+    attr["stream_id"] = stream_id.ToString();
+    attr["metric_type"] = "cdcsdk";
+
+    ASSERT_OK(metrics[idx]->cdcsdk_change_event_count->WriteForPrometheus(
+        &writer, attr, opts, aggregation_level));
+    ASSERT_OK(metrics[idx]->cdcsdk_traffic_sent->WriteForPrometheus(
+        &writer, attr, opts, aggregation_level));
+  }
+  auto aggregated_change_event_count =
+      writer.TEST_GetAggregatedValue("cdcsdk_change_event_count", stream_id.ToString());
+  auto aggregated_traffic_sent =
+      writer.TEST_GetAggregatedValue("cdcsdk_traffic_sent", stream_id.ToString());
+
+  ASSERT_GT(aggregated_traffic_sent, 100);
   ASSERT_GT(total_record_size, 100);
+  ASSERT_GT(aggregated_change_event_count, 100);
   ASSERT_GT(total_change_event_count, 100);
   ASSERT_TRUE(current_traffic_sent_bytes < total_traffic_sent);
 }
@@ -7948,6 +7979,8 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->xmin.value(), 1);
   ASSERT_EQ(entry_1->record_id_commit_time.value(), checkpoint.snapshot_time());
   ASSERT_EQ(entry_1->cdc_sdk_safe_time.value(), checkpoint.snapshot_time());
+  ASSERT_EQ(entry_1->last_pub_refresh_time.value(), checkpoint.snapshot_time());
+  ASSERT_TRUE(entry_1->pub_refresh_times.value().empty());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
   auto stream_id_2 = ASSERT_RESULT(CreateDBStream());

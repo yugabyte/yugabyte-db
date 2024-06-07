@@ -93,6 +93,7 @@ static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
 static Oid *YBCGetTableOids(List *tables);
+static void YBCRefreshReplicaIdentities();
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
@@ -170,11 +171,24 @@ YBCGetTables(List *publication_names)
 
 	Assert(IsTransactionState());
 
-	yb_publications =
-		YBGetPublicationsByNames(publication_names, false /* missing_ok */);
+	if (publication_names != NIL)
+	{
+		yb_publications =
+			YBGetPublicationsByNames(publication_names, false /* missing_ok */);
 
-	tables = yb_pg_get_publications_tables(yb_publications);
-	list_free(yb_publications);
+		tables = yb_pg_get_publications_tables(yb_publications);
+		list_free(yb_publications);
+	}
+	else
+	{
+		/*
+		 * When the plugin does not provide a publication list, we assume that
+		 * it targets all the tables present in the database and it uses
+		 * publish_via_partition_root = false (default).
+		 */
+		tables = GetAllTablesPublicationRelations(false /* pubviaroot */);
+	}
+
 
 	return tables;
 }
@@ -230,7 +244,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
-			// Get tables in publication and call UpdatePublicationTableList
+			/* Get tables in publication and call UpdatePublicationTableList. */
 			tables = YBCGetTables(publication_names);
 			table_oids = YBCGetTableOids(tables);
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
@@ -240,6 +254,9 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			list_free(tables);
 			AbortCurrentTransaction();
 
+			// Refresh the replica identities.
+			YBCRefreshReplicaIdentities();
+
 			needs_publication_table_list_refresh = false;
 		}
 
@@ -247,6 +264,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
+		YbWalSndTotalTimeInYBDecodeMicros = 0;
+		YbWalSndTotalTimeInReorderBufferMicros = 0;
 		YbWalSndTotalTimeInSendingMicros = 0;
 		last_getconsistentchanges_response_receipt_time = GetCurrentTimestamp();
 	}
@@ -293,6 +312,41 @@ PreProcessBeforeFetchingNextBatch()
 	long secs;
 	int microsecs;
 
+	/* Log the summary of time spent in processing the previous batch. */
+	if (log_min_messages <= DEBUG1 &&
+		last_getconsistentchanges_response_receipt_time != 0)
+	{
+		TimestampDifference(last_getconsistentchanges_response_receipt_time,
+							GetCurrentTimestamp(), &secs, &microsecs);
+
+		/*
+		 * Note that this processing time does not include the time taken for
+		 * the conversion from QLValuePB (proto) to PG datum values. This is
+		 * done in ybc_pggate and is logged separately.
+		 *
+		 * The time being logged here is the total time it took for processing
+		 * and sending a whole batch AFTER converting all the values to the PG
+		 * format.
+		 */
+		elog(DEBUG1,
+			 "Walsender processing time for the last batch is (%ld s, %d us)",
+			 secs, microsecs);
+		elog(DEBUG1,
+			 "More Information: "
+			 "batch_size: %d, "
+			 "yb_decode: %" PRIu64 " us, "
+			 "reorder buffer: %" PRIu64 " us, "
+			 "socket: %" PRIu64 " us.",
+			 (cached_records) ? cached_records->row_count : 0,
+			 YbWalSndTotalTimeInYBDecodeMicros,
+			 YbWalSndTotalTimeInReorderBufferMicros,
+			 YbWalSndTotalTimeInSendingMicros);
+	}
+
+	/* We no longer need the earlier record batch. */
+	if (cached_records)
+		MemoryContextReset(cached_records_context);
+
 	if (last_getconsistentchanges_response_empty)
 	{
 		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
@@ -309,23 +363,6 @@ PreProcessBeforeFetchingNextBatch()
 	}
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
-
-	/* Log the summary of time spent in processing the previous batch. */
-	if (log_min_messages <= DEBUG1 &&
-		last_getconsistentchanges_response_receipt_time != 0)
-	{
-		TimestampDifference(last_getconsistentchanges_response_receipt_time,
-							GetCurrentTimestamp(), &secs, &microsecs);
-		elog(DEBUG1,
-			 "Walsender processing time for the last batch is (%ld s, %d us)",
-			 secs, microsecs);
-		elog(DEBUG1, "Time spent in sending data (socket): %" PRIu64 " us",
-			 YbWalSndTotalTimeInSendingMicros);
-	}
-
-	/* We no longer need the earlier record batch. */
-	if (cached_records)
-		MemoryContextReset(cached_records_context);
 }
 
 static void
@@ -478,17 +515,15 @@ static void
 CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 {
 	ListCell					*cell;
-	ListCell					*next;
 	YBUnackedTransactionInfo	*txn;
 
-	for (cell = list_head(unacked_transactions); cell; cell = next)
+	foreach(cell, unacked_transactions)
 	{
 		txn = (YBUnackedTransactionInfo *) lfirst(cell);
-		next = lnext(unacked_transactions, cell);
 
 		if (txn->commit_lsn <= confirmed_flush)
 			unacked_transactions =
-				list_delete_cell(unacked_transactions, cell);
+				foreach_delete_current(unacked_transactions, cell);
 		else
 			break;
 	}
@@ -511,4 +546,28 @@ YBCGetTableOids(List *tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
 	
 	return table_oids;
+}
+
+static void 
+YBCRefreshReplicaIdentities()
+{
+	YBCReplicationSlotDescriptor 	*yb_replication_slot;
+	int							 	replica_identity_idx = 0;
+
+	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
+
+	for (replica_identity_idx = 0;
+	 replica_identity_idx <
+	 yb_replication_slot->replica_identities_count;
+	 replica_identity_idx++)
+	{
+		YBCPgReplicaIdentityDescriptor *desc =
+			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		YBCPgReplicaIdentityDescriptor *value =
+			hash_search(MyReplicationSlot->data.yb_replica_identities,
+						&desc->table_oid, HASH_ENTER, NULL);
+		value->table_oid = desc->table_oid;
+		value->identity_type = desc->identity_type;
+	}
 }

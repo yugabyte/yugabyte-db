@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
@@ -588,14 +588,6 @@ Enables automatic tablet splitting of tables covered by Point In Time Recovery s
 
 Default: `true`
 
-##### --enable_tablet_split_of_xcluster_replicated_tables
-
-Enables automatic tablet splitting for tables that are part of an xCluster replication setup.
-
-Default: `false`
-
-To enable tablet splitting on cross cluster replicated tables, this flag should be set to `true` on both the producer and consumer clusters, as they will perform splits independently of each other. Both the producer and consumer clusters must be running v2.14.0+ to enable the feature (relevant in case of cluster upgrades).
-
 ##### --prevent_split_for_ttl_tables_for_seconds
 
 Number of seconds between checks for whether to split a tablet with a default TTL. Checks are disabled if this value is set to 0.
@@ -842,6 +834,12 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
 Default: 60000 (1 minute)
+
+##### hide_dead_node_threshold_mins
+
+After this many minutes of no heartbeat from a node, hide it from the UI (we presume it has been removed from the cluster). If -1, this flag is ignored and the node is never hidden from the UI
+
+Default: 1440 (1 day)
 
 ## Admin UI
 

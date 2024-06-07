@@ -177,7 +177,7 @@ html {
 @media (max-width: 1199px) {
   .td-main {
     .content-parent {
-      max-width: calc(100% - 250px);
+      // max-width: calc(100% - 250px);max-width
       justify-content: center;
       padding-left: 20px;
       padding-right: 20px;
@@ -190,7 +190,7 @@ html {
 
       main {
         width: 100%;
-        max-width: 828px;
+        // max-width: 828px;max-width
       }
     }
   }
@@ -255,7 +255,7 @@ html {
 
 @media (max-width: 1300px) and(min-width: 1200px) {
   .td-main .content-parent {
-    padding: 0 85px;
+    // padding: 0 85px;padding
   }
 }
 

@@ -31,7 +31,7 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Create Kubernetes provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/).
+Before you start creating a universe, ensure that you performed steps described in [Create Kubernetes provider configuration](../../configure-yugabyte-platform/kubernetes/).
 
 Note that the provider example used in this document has a cluster-level admin access.
 
@@ -57,7 +57,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 Complete the **Instance Configuration** section as follows:
 
-- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
+- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/kubernetes/#configure-region-and-zones)).
 - **Volume Info** - specify the number of volumes multiplied by size. The default is 1 x 100GB.
 
 ### Security Configurations
@@ -133,12 +133,12 @@ Optionally, use the **Helm Overrides** section, as follows:
       iam.gke.io/gke-metadata-server-enabled: "true"
     ```
 
-    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
+    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/kubernetes/), add the names using the following steps:
 
     1. Add the Kubernetes service account to the namespaces where the pods are created.
     1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
 
-    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides).
+    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
 
 - Select **Force Apply** if you want to override any previous overrides.
 

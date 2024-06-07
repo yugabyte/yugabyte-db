@@ -135,6 +135,22 @@ class XClusterManager : public XClusterManagerIf,
       const IsCreateXClusterReplicationDoneRequestPB* req,
       IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status AddNamespaceToXClusterReplication(
+      const AddNamespaceToXClusterReplicationRequestPB* req,
+      AddNamespaceToXClusterReplicationResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status IsAlterXClusterReplicationDone(
+      const IsAlterXClusterReplicationDoneRequestPB* req,
+      IsAlterXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const RepairOutboundXClusterReplicationGroupAddTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupAddTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);

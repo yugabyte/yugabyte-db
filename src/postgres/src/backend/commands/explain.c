@@ -127,13 +127,11 @@ static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
+static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									double yb_estimated_num_nexts,
-									double yb_estimated_num_seeks,
-									int yb_estimated_docdb_result_width,
-									ExplainState *es);
+									YbPlanInfo *yb_plan_info, ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
 static void ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
@@ -2354,9 +2352,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										indexscan->yb_estimated_num_nexts,
-										indexscan->yb_estimated_num_seeks,
-										indexscan->yb_estimated_docdb_result_width,
+										&indexscan->yb_plan_info,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2367,9 +2363,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										indexonlyscan->yb_estimated_num_nexts,
-										indexonlyscan->yb_estimated_num_seeks,
-										indexonlyscan->yb_estimated_docdb_result_width,
+										&indexonlyscan->yb_plan_info,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2632,6 +2626,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 	const bool is_yb_rpc_stats_required = es->rpc && es->analyze &&
 										  planstate->instrument->nloops > 0;
+	const bool is_yb_planning_stats_required = es->yb_debug &&
+											   yb_enable_base_scans_cost_model;
 
 	/* quals, sort keys, etc */
 	switch (nodeTag(plan))
@@ -2666,18 +2662,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
-			if (es->yb_debug && yb_enable_base_scans_cost_model)
-			{
-				ExplainPropertyFloat(
-					"Estimated Seeks", NULL,
-					((IndexScan *) plan)->yb_estimated_num_seeks, 0, es);
-				ExplainPropertyFloat(
-					"Estimated Nexts", NULL,
-					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
-				ExplainPropertyInteger(
-					"Estimated Docdb Result Width", NULL,
-					((IndexScan *) plan)->yb_estimated_docdb_result_width, es);
-			}
+			if (is_yb_planning_stats_required)
+				show_yb_planning_stats(&((IndexScan *) plan)->yb_plan_info, es);
 			break;
 		case T_IndexOnlyScan:
 			show_scan_qual(((IndexOnlyScan *) plan)->indexqual,
@@ -2709,18 +2695,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
-			if (es->yb_debug && yb_enable_base_scans_cost_model)
-			{
-				ExplainPropertyFloat(
-					"Estimated Seeks", NULL,
-					((IndexOnlyScan *) plan)->yb_estimated_num_seeks, 0, es);
-				ExplainPropertyFloat(
-					"Estimated Nexts", NULL,
-					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
-				ExplainPropertyInteger(
-					"Estimated Docdb Result Width", NULL,
-					((IndexOnlyScan *) plan)->yb_estimated_docdb_result_width, es);
-			}
+			if (is_yb_planning_stats_required)
+				show_yb_planning_stats(&((IndexOnlyScan *) plan)->yb_plan_info, es);
 			break;
 		case T_BitmapIndexScan:
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
@@ -2731,8 +2707,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Index Cond", planstate, ancestors, es);
 			show_scan_qual(((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Storage Index Filter", planstate, ancestors, es);
-			if (es->rpc && es->analyze)
+			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
+			if (is_yb_planning_stats_required)
+				show_yb_planning_stats(&((YbBitmapIndexScan *) plan)->yb_plan_info, es);
 			break;
 		case T_BitmapHeapScan:
 			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
@@ -2784,6 +2762,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_yb_rpc_stats(planstate, es);
 			if (es->analyze)
 				show_ybtidbitmap_info(bitmapscanstate, es);
+			if (is_yb_planning_stats_required)
+				show_yb_planning_stats(&bitmapplan->yb_plan_info, es);
 			break;
 		}
 		case T_SampleScan:
@@ -2816,18 +2796,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
-			if (es->yb_debug && yb_enable_base_scans_cost_model)
-			{
-				ExplainPropertyFloat(
-					"Estimated Seeks", NULL,
-					((YbSeqScan *) plan)->yb_estimated_num_seeks, 0, es);
-				ExplainPropertyFloat(
-					"Estimated Nexts", NULL,
-					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
-				ExplainPropertyInteger(
-					"Estimated Docdb Result Width", NULL,
-					((YbSeqScan *) plan)->yb_estimated_docdb_result_width, es);
-			}
+			if (is_yb_planning_stats_required)
+				show_yb_planning_stats(&((YbSeqScan *) plan)->yb_plan_info, es);
 			break;
 		case T_Gather:
 			{
@@ -2958,7 +2928,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
-						   "Storage Filter", planstate, ancestors, es);
+						   "Remote Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
@@ -4775,6 +4745,17 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 	}
 }
 
+static void
+show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
+{
+	ExplainPropertyFloat("Estimated Seeks", NULL,
+						 planinfo->estimated_num_seeks, 0, es);
+	ExplainPropertyFloat("Estimated Nexts", NULL,
+						 planinfo->estimated_num_nexts, 0, es);
+	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
+						   planinfo->estimated_docdb_result_width, es);
+}
+
 /*
  * Show WAL usage details.
  */
@@ -4875,8 +4856,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
-						int yb_estimated_docdb_result_width, ExplainState *es)
+						YbPlanInfo *yb_plan_info, ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
 
@@ -4908,11 +4888,7 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
 		if (es->yb_debug && yb_enable_base_scans_cost_model)
-		{
-			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
-			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);
-			ExplainPropertyInteger("Estimated Docdb Result Width", NULL, yb_estimated_docdb_result_width, es);
-		}
+			show_yb_planning_stats(yb_plan_info, es);
 	}
 }
 

@@ -44,12 +44,14 @@ interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;
   providerType: ProviderCode;
   viewMode: 'CREATE' | 'EDIT';
+  inUseImageBundleUuids: Set<string>;
 }
 
 export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
   control,
   providerType,
-  viewMode
+  viewMode,
+  inUseImageBundleUuids
 }) => {
   const { replace, update, remove } = useFieldArray({
     control,
@@ -139,6 +141,8 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
           setDeleteImageBundleDetails(img);
         }}
         viewMode={viewMode}
+        inUseImageBundleUuids={inUseImageBundleUuids}
+        showMoreActions={true}
         errors={errors as any}
       />
       <div style={{ marginTop: '24px' }} />
@@ -154,6 +158,8 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
             setDeleteImageBundleDetails(img);
           }}
           viewMode={viewMode}
+          inUseImageBundleUuids={inUseImageBundleUuids}
+          showMoreActions={true}
           errors={errors as any}
         />
       )}
@@ -222,42 +228,59 @@ const LinuxVersionCardStyles = makeStyles((theme) => ({
   }
 }));
 
-interface LinuxVersionCardProps {
+interface LinuxVersionCardCommonProps {
   setImageAsDefault: (img: ImageBundle) => void;
   images: ImageBundle[];
   archType: string;
   setEditDetails: (img: ImageBundle) => void;
   viewMode: 'CREATE' | 'EDIT';
   onDelete: (img: ImageBundle) => void;
-  showMoreActions?: boolean;
+
   showTitle?: boolean;
   errors?: any[];
 }
+type LinuxVersionCardProps =
+  | (LinuxVersionCardCommonProps & {
+      showMoreActions: false;
+    })
+  | (LinuxVersionCardCommonProps & { inUseImageBundleUuids: Set<string>; showMoreActions: true });
 
-export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
-  images,
-  archType,
-  setEditDetails,
-  setImageAsDefault,
-  onDelete,
-  showMoreActions = true,
-  showTitle = true,
-  viewMode,
-  errors = []
-}) => {
+export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
+  const {
+    images,
+    archType,
+    setEditDetails,
+    setImageAsDefault,
+    onDelete,
+    showMoreActions,
+    showTitle = true,
+    viewMode,
+    errors = []
+  } = props;
+  const inUseImageBundleUuids = props.showMoreActions
+    ? props.inUseImageBundleUuids
+    : new Set<string>();
   const classes = LinuxVersionCardStyles();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
 
   const [showRetiredVersions, toggleShowRetiredVersions] = useToggle(false);
-
   const formatActions = (image: ImageBundle, index: number) => {
     return (
       <div className={classes.actionButtons}>
-        {
-          !isEmpty(errors[index]) ? <YBPopover hoverMsg={<div> {split(errors[index]?.message, ValidationErrMsgDelimiter).map(msg => <div>{msg}</div>)}</div>}>
+        {!isEmpty(errors[index]) ? (
+          <YBPopover
+            hoverMsg={
+              <div>
+                {' '}
+                {split(errors[index]?.message, ValidationErrMsgDelimiter).map((msg) => (
+                  <div>{msg}</div>
+                ))}
+              </div>
+            }
+          >
             <img src={ErrorIcon} />
-          </YBPopover> : null
-        }
+          </YBPopover>
+        ) : null}
         <MoreActionsMenu
           menuOptions={[
             {
@@ -266,6 +289,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 setEditDetails(image);
               },
               icon: <Edit />,
+              dataTestId: `LinuxVersionsCard${index}-Edit`,
               menuItemWrapper(elem) {
                 return (
                   <RbacValidator
@@ -280,7 +304,8 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                     {elem}
                   </RbacValidator>
                 );
-              }
+              },
+              disabled: inUseImageBundleUuids.has(image.uuid)
             },
             {
               text: t('setDefault'),
@@ -288,6 +313,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 setImageAsDefault(image);
               },
               disabled: image.useAsDefault,
+              dataTestId: `LinuxVersionsCard${index}-SetDefault`,
               menuItemWrapper(elem) {
                 if (!image.useAsDefault) return elem;
                 return (
@@ -318,6 +344,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                 onDelete(image);
               },
               icon: <Delete />,
+              dataTestId: `LinuxVersionsCard${index}-Delete`,
               menuItemWrapper(elem) {
                 return (
                   <RbacValidator
@@ -332,11 +359,16 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
                     {elem}
                   </RbacValidator>
                 );
-              }
+              },
+              disabled: inUseImageBundleUuids.has(image.uuid)
             }
           ]}
         >
-          <YBButton variant="secondary" className={classes.moreOptionsBut}>
+          <YBButton
+            variant="secondary"
+            className={classes.moreOptionsBut}
+            data-testid={`LinuxVersionsCard${index}-MoreButton`}
+          >
             <img alt="More" src={MoreIcon} width="20" />
           </YBButton>
         </MoreActionsMenu>

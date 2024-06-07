@@ -2265,7 +2265,7 @@ TEST_F_EX(
   TablegroupId next_tg_id = GetPgsqlTablegroupId(database_oid, next_tg_oid);
 
   // Force CREATE TABLEGROUP to fail, and delay the cleanup.
-  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "3000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   ASSERT_OK(conn.TestFailDdl("CREATE TABLEGROUP tg2"));
 
   // Forcing PG to reuse tablegroup OID.
@@ -2274,7 +2274,8 @@ TEST_F_EX(
   // Cleanup hasn't been processed yet, so this fails.
   ASSERT_NOK_STR_CONTAINS(conn.Execute("CREATE TABLEGROUP tg3"), "Duplicate tablegroup");
 
-  // Wait for cleanup thread to delete a table.
+  // Wait for cleanup thread to delete the table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
   // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
   const auto tg_parent_table_id = GetTablegroupParentTableId(next_tg_id);
   ASSERT_OK(WaitFor(

@@ -98,9 +98,6 @@ public class YBClient implements AutoCloseable {
   // Redis key column name.
   public static final String REDIS_KEY_COLUMN_NAME = "key";
 
-  // Number of response errors to tolerate.
-  private static final int MAX_ERRORS_TO_IGNORE = 2500;
-
   // Log errors every so many errors.
   private static final int LOG_ERRORS_EVERY_NUM_ITERS = 100;
 
@@ -1244,12 +1241,12 @@ public class YBClient implements AutoCloseable {
    * @return true if the condition is true within the time frame, false otherwise.
    */
   private boolean waitForCondition(Condition condition, final long timeoutMs) {
-    Exception finalException = null;
-    long start = System.currentTimeMillis();
     int numErrors = 0;
     int numIters = 0;
-    String errorMessage = null;
+    Exception exception = null;
+    long start = System.currentTimeMillis();
     do {
+      exception = null;
       try {
         if (injectWaitError) {
           Thread.sleep(AsyncYBClient.sleepTime);
@@ -1262,39 +1259,27 @@ public class YBClient implements AutoCloseable {
           return true;
         }
       } catch (Exception e) {
-        // We will get exceptions if we cannot connect to the other end. Catch them and save for
-        // final debug if we never succeed.
-        finalException = e;
         numErrors++;
         if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
-          LOG.warn("Hit {} errors so far. Latest is : {}.", numErrors, finalException.toString());
+          LOG.warn("Hit {} errors so far. Latest is : {}.", numErrors, e.getMessage());
         }
-        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
-          errorMessage = "Hit too many errors, final exception is " + finalException.toString();
-          break;
-        }
+        exception = e;
       }
-
       numIters++;
       if (numIters % LOG_EVERY_NUM_ITERS == 0) {
         LOG.info("Tried operation {} times so far.", numIters);
       }
-
-      // Need to wait even when ping has an exception, so the sleep is outside the above try block.
+      // Sleep before next retry.
       try {
         Thread.sleep(AsyncYBClient.sleepTime);
       } catch (Exception e) {}
-    } while (System.currentTimeMillis() - start < timeoutMs);
-
-    if (errorMessage == null) {
-      LOG.error("Timed out waiting for operation. Final exception was {}.",
-                finalException != null ? finalException.toString() : "none");
+    } while(System.currentTimeMillis() - start < timeoutMs);
+    if (exception == null) {
+      LOG.error("Timed out waiting for condition");
     } else {
-      LOG.error(errorMessage);
+      LOG.error("Hit too many errors, final exception is {}.", exception.getMessage());
     }
-
     LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
-
     return false;
   }
 
@@ -1703,6 +1688,16 @@ public class YBClient implements AutoCloseable {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationRemoveTables(
         replicationGroupName, sourceTableIdsToRemove);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
+    String replicationGroupName,
+    Set<String> sourceTableIdsToRemove,
+    boolean removeTableIgnoreErrors) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationRemoveTables(
+        replicationGroupName, sourceTableIdsToRemove, removeTableIgnoreErrors);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

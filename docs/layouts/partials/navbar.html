@@ -47,6 +47,10 @@
 			</form>
 		</div>
 
+    {{- if .Site.Params.kapa_ai -}}
+      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Use Experimental AI"><img width="16" height="16" src="/icons/pixi-dust.svg" alt="Use Experimental AI"><span>Use Experimental AI</span></span></div>
+    {{- end -}}
+
     <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
       <ul class="navbar-nav right-nav">
         {{- range .Site.Menus.top_nav -}}

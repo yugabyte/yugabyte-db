@@ -185,7 +185,7 @@ SELECT * FROM settings;
  random_page_cost               | 4         | Query Tuning / Planner Cost Constants
  seq_page_cost                  | 1         | Query Tuning / Planner Cost Constants
  enable_async_append            | on        | Query Tuning / Planner Method Configuration
- enable_bitmapscan              | off       | Query Tuning / Planner Method Configuration
+ enable_bitmapscan              | on        | Query Tuning / Planner Method Configuration
  enable_gathermerge             | on        | Query Tuning / Planner Method Configuration
  enable_hashagg                 | on        | Query Tuning / Planner Method Configuration
  enable_hashjoin                | on        | Query Tuning / Planner Method Configuration

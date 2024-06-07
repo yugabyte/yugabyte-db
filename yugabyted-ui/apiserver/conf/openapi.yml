@@ -1989,7 +1989,7 @@ components:
           schema:
             type: object
             properties:
-              schedules:
+              backup:
                 type: array
                 uniqueItems: true
                 items:
@@ -2005,7 +2005,7 @@ components:
           schema:
             type: object
             properties:
-              schedules:
+              restore:
                 type: array
                 uniqueItems: true
                 items:

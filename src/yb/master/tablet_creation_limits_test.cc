@@ -74,6 +74,7 @@ void SetExistingTabletCount(int num_live_replicas, TSDescriptorVector* ts_descri
 void SetTabletLimits(uint32_t tablet_replicas_per_core, uint32_t tablet_replicas_per_gib) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = tablet_replicas_per_core;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_gib_limit) = tablet_replicas_per_gib;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
 }
 
 TEST(HomogeneousTabletLimitsTest, RF1OneTablet) {
@@ -151,6 +152,19 @@ TEST(HomogeneousTabletLimitsTest, RF1WithReadTServer) {
   // We don't have room for two tablet replicas. We can't use the read tserver because it is
   // reserved for read replicas.
   EXPECT_NOK(CanCreateTabletReplicas(2, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, EnforcementFlagIndependentOfLimitFlags) {
+  int64_t cores = 1;
+  int64_t memory = 1_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(1, kLivePlacementUUID, cores, memory));
+  auto replication_info = CreateReplicationInfo(1, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 1, /* tablet_replicas_per_gib */ 1);
+  SetExistingTabletCount(1, &ts_descriptors);
+  EXPECT_NOK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = false;
+  EXPECT_OK(CanCreateTabletReplicas(1, replication_info, ts_descriptors));
 }
 
 TEST(ComputeAggregatedClusterInfoTest, SingleTS) {

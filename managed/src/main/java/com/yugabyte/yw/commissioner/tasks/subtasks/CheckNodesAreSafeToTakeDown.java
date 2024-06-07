@@ -73,7 +73,9 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     Set<NodeDetails> allNodes = new HashSet<>(taskParams().masters);
     allNodes.addAll(taskParams().tservers);
     for (NodeDetails node : allNodes) {
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+      NodeDetails nodeInUniverse = universe.getNode(node.nodeName);
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universe.getCluster(nodeInUniverse.placementUuid);
       if (!isApiSupported(cluster.userIntent.ybSoftwareVersion)) {
         log.debug(
             "API is not supported for current version {}", cluster.userIntent.ybSoftwareVersion);
@@ -197,10 +199,13 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   }
 
   private String getIp(Universe universe, NodeDetails nodeDetails, boolean cloudEnabled) {
-    if (GFlagsUtil.isUseSecondaryIP(universe, nodeDetails, cloudEnabled)) {
-      return nodeDetails.cloudInfo.secondary_private_ip;
+    // For K8s the NodeDetails are only populated with nodeName, so need to fetch details
+    // from Universe, which works for both K8s and VMs.
+    NodeDetails nodeInUniverse = universe.getNode(nodeDetails.nodeName);
+    if (GFlagsUtil.isUseSecondaryIP(universe, nodeInUniverse, cloudEnabled)) {
+      return nodeInUniverse.cloudInfo.secondary_private_ip;
     }
-    return nodeDetails.cloudInfo.private_ip;
+    return nodeInUniverse.cloudInfo.private_ip;
   }
 
   public static boolean isApiSupported(String dbVersion) {
