@@ -49,6 +49,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/memory/memory.h"
 
@@ -186,6 +187,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     if (status.ok()) {
       auto start_time = CoarseMonoClock::Now();
       status = context_->ReadConflicts(this);
+      DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::Resolve");
       status_manager_.RecordConflictResolutionScanLatency(
           MonoDelta(CoarseMonoClock::Now() - start_time));
     }
@@ -298,9 +300,22 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   void EnsureIntentIteratorCreated() {
     if (!intent_iter_.Initialized()) {
+      // The intent interator should not be created with key bounds set to doc_db_.key_bounds. Else
+      // it could miss detecting conflicts against existing intents for the empty doc key, and could
+      // lead to violation of isolation guarantees.
+      //
+      // For instance, consider an in progress serializable transaction that executed a
+      // 'select * from <table>;'. It would have the following intent entry -
+      //
+      // SubDocKey(DocKey([], []), []) [kStrongRead] <ht> -> <transaction>
+      //
+      // All new transactions trying to perform an update/insert look to acquire a weak lock on
+      // the empty doc key - 'DocKey([], []), [])'. The created intent iterator should see existing
+      // intent records against the empty doc key to perform conflict resolution correctly. Hence,
+      // the iterator should be created with KeyBounds::kNoBounds instead.
       intent_iter_ = CreateRocksDBIterator(
           doc_db_.intents,
-          doc_db_.key_bounds,
+          &KeyBounds::kNoBounds,
           BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none /* user_key_for_filter */,
           rocksdb::kDefaultQueryId,
