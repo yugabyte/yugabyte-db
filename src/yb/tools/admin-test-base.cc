@@ -20,8 +20,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
-namespace yb {
-namespace tools {
+namespace yb::tools {
 
 namespace {
 
@@ -55,16 +54,6 @@ Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& 
   return result;
 }
 
-Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
-  rapidjson::Document result;
-  if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Failed to parse json output (error code $0). Raw string: $1",
-        result.GetParseError(), raw);
-  }
-  return result;
-}
-
 Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
   if (!cql_driver_) {
     std::vector<std::string> hosts;
@@ -82,21 +71,4 @@ Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
   return result;
 }
 
-Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
-  auto it = value.FindMember(name);
-  if (it == value.MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
-  auto it = value->FindMember(name);
-  if (it.operator==(value->MemberEnd())) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-}  // namespace tools
-}  // namespace yb
+}  // namespace yb::tools
