@@ -158,7 +158,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricPrometheusOptions& opts);
+                            const MetricPrometheusOptions& opts,
+                            std::vector<MetricMap>* owned_metric_map_holder = nullptr);
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
