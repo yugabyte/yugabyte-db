@@ -339,7 +339,7 @@ YugabyteDB supports streaming of changes from [colocated tables](../../architect
 
 {{< note title="Note" >}}
 
-If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, one cannot deploy a new connector for this newly created table.
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, you can't deploy a new connector for the newly created table.
 
 To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
 
