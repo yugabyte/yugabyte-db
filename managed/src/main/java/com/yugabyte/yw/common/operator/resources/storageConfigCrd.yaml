@@ -1,0 +1,77 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: storageconfigs.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: storageconfigs
+    singular: storageconfig
+    kind: StorageConfig
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: Custom resource definition for YugabyteDB backup storage configuration.
+          type: object
+          properties:
+            status:
+              description: >
+                Storage configuration status for the storage configuration custom resource.
+              type: object
+              properties:
+                message:
+                  description: String log message from storage configuration controller.
+                  type: string
+                success:
+                  description: >
+                    Boolean indicating if the storage configuration was successfully created.
+                  type: boolean
+                resourceUUID:
+                  description: Internal UUID of the storage configuration resource.
+                  type: string
+            spec:
+              type: object
+              properties:
+                config_type:
+                  description:
+                    Type of storage configuration to be created.
+                    Allowed values - STORAGE_S3, STORAGE_NFS, STORAGE_GCS, STORAGE_AZ
+                  type: string
+                  enum:
+                    - STORAGE_S3
+                    - STORAGE_NFS
+                    - STORAGE_GCS
+                    - STORAGE_AZ
+                data:
+                  type: object
+                  description: Data object to create storage configuration.
+                  properties:
+                    AWS_ACCESS_KEY_ID:
+                      description: AWS access key id for the S3 storage configuration.
+                      type: string
+                    AWS_SECRET_ACCESS_KEY:
+                      description: AWS secret access key for the S3 storage configuration.
+                      type: string
+                    BACKUP_LOCATION:
+                      description: Backup location for the storage configuration.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: BACKUP_LOCATION cannot be changed
+                        rule: self == oldSelf
+                    GCS_CREDENTIALS_JSON:
+                      description: GCS credentials JSON for the GCS storage configuration.
+                      type: string
+                    AZURE_STORAGE_SAS_TOKEN:
+                      description: Azure SAS token for the Azure storage configuration.
+                      type: string
+                  required:
+                  - BACKUP_LOCATION

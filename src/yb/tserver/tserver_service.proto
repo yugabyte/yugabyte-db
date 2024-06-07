@@ -1,0 +1,529 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/tablet/operations.proto";
+import "yb/tserver/tserver.proto";
+import "yb/tserver/tserver_types.proto";
+
+service TabletServerService {
+  rpc Write(WriteRequestPB) returns (WriteResponsePB);
+  rpc Read(ReadRequestPB) returns (ReadResponsePB);
+  rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
+      returns (VerifyTableRowRangeResponsePB);
+
+  rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);
+  rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
+  rpc GetLogLocation(GetLogLocationRequestPB) returns (GetLogLocationResponsePB);
+
+  // Run full-scan data checksum on a tablet to verify data integrity.
+  //
+  // TODO: Consider refactoring this as a scan that runs a checksum aggregation
+  // function.
+  rpc Checksum(ChecksumRequestPB) returns (ChecksumResponsePB);
+
+  rpc ListTabletsForTabletServer(ListTabletsForTabletServerRequestPB)
+      returns (ListTabletsForTabletServerResponsePB);
+
+  rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
+  rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
+  // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
+  rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
+  // Returns the oldest transactions (older than a specified age) from a specified status tablet.
+  rpc GetOldTransactions(GetOldTransactionsRequestPB) returns (GetOldTransactionsResponsePB);
+  // Returns the oldest single shard waiters (older than a specified age) by querying the
+  // waiting transaction registry at the Tablet Server.
+  rpc GetOldSingleShardWaiters(GetOldSingleShardWaitersRequestPB)
+      returns (GetOldSingleShardWaitersResponsePB);
+  // Returns transaction status at participant, i.e. number of replicated batches or whether it was
+  // aborted.
+  rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
+      returns (GetTransactionStatusAtParticipantResponsePB);
+  rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
+  // Change the status tablet id used for a transaction.
+  rpc UpdateTransactionStatusLocation(UpdateTransactionStatusLocationRequestPB)
+      returns (UpdateTransactionStatusLocationResponsePB);
+  rpc UpdateTransactionWaitingForStatus(UpdateTransactionWaitingForStatusRequestPB)
+      returns (UpdateTransactionWaitingForStatusResponsePB);
+  rpc ProbeTransactionDeadlock(ProbeTransactionDeadlockRequestPB)
+      returns (ProbeTransactionDeadlockResponsePB);
+  rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
+  rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
+  rpc GetMasterAddresses(GetMasterAddressesRequestPB) returns (GetMasterAddressesResponsePB);
+
+  rpc Publish(PublishRequestPB) returns (PublishResponsePB);
+
+  rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
+
+  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
+
+  rpc GetSharedData(GetSharedDataRequestPB) returns (GetSharedDataResponsePB);
+
+  rpc GetTserverCatalogVersionInfo(GetTserverCatalogVersionInfoRequestPB)
+      returns (GetTserverCatalogVersionInfoResponsePB);
+
+  rpc ListMasterServers(ListMasterServersRequestPB) returns (ListMasterServersResponsePB);
+
+  // Returns all lock information requested, based on persisted intents and any requests waiting on
+  // a persisted intent. These intents may correspond to explicit or implicit locks.
+  rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
+
+  rpc CancelTransaction(CancelTransactionRequestPB) returns (CancelTransactionResponsePB);
+
+  // Returns the schema version on the XCluster consumer side that is
+  // compatible with the schema provided in the request.
+  rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
+      returns (GetCompatibleSchemaVersionResponsePB);
+
+  rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
+      returns (StartRemoteSnapshotTransferResponsePB);
+
+  rpc GetTabletKeyRanges(GetTabletKeyRangesRequestPB) returns (GetTabletKeyRangesResponsePB);
+
+  rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
+      returns (CheckTserverTabletHealthResponsePB);
+
+  rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
+      returns (ClearAllMetaCachesOnServerResponsePB);
+
+  rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
+}
+
+// Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
+// shouldn't be set together nor should be left empty together.
+message GetLockStatusRequestPB {
+  message TransactionInfoPB {
+    optional bytes id = 1;
+    optional SubtxnSetPB aborted = 2;
+  }
+
+  message TabletTransactionInfoPB {
+    repeated TransactionInfoPB transactions = 1;
+  }
+
+  // Tablets to scan. Limit per tablet results to the specified transaction_ids in
+  // TabletTransactionInfoPB when non-empty. If empty and 'max_single_shard_waiter_start_time_us'
+  // is left at default, include lock info of all transactions at that tablet.
+  map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
+
+  optional bool include_trace = 2 [ default = false ];
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // Limit results to the specified transaction_ids when transactions_by_tablet is empty.
+  repeated bytes transaction_ids = 4;
+
+  // Sets the maximum start time of single shard waiters that should be returned, i.e, all
+  // single shard waiters with start time before the specified value will be returned. All
+  // tablets listed in 'transactions_by_tablet' would be scanned.
+  optional fixed64 max_single_shard_waiter_start_time_us = 5 [ default = 0 ];
+
+  // Limit number of locks returned per transaction at each tablet.
+  // If the field is set to 0, the result set isn't limited and all locks are returned.
+  optional uint32 max_txn_locks_per_tablet = 6 [ default = 0 ];
+}
+
+message GetLockStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional string trace_buffer = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+message GetLogLocationRequestPB {
+}
+
+message GetLogLocationResponsePB {
+  optional string log_location = 1;
+}
+
+message ChecksumRequestPB {
+  reserved 1, 2, 3, 4, 5;
+
+  optional bytes tablet_id = 6;
+  optional YBConsistencyLevel consistency_level = 7;
+}
+
+message ChecksumResponsePB {
+  reserved 3, 4, 5;
+
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  // The (possibly partial) checksum of the tablet data.
+  // This checksum is only complete if 'has_more_results' is false.
+  optional uint64 checksum = 2;
+}
+
+message ListTabletsForTabletServerRequestPB {
+}
+
+message ListTabletsForTabletServerResponsePB {
+  // An entry for each tablet.
+  message Entry {
+    optional string table_name = 1;
+    optional bytes tablet_id = 2;
+    optional bool is_leader = 3;
+    optional tablet.RaftGroupStatePB state = 4;
+    optional uint64 num_sst_files = 5;
+    optional uint64 num_log_segments = 6;
+    optional uint64 num_memtables_intents = 7;
+    optional uint64 num_memtables_regular = 8;
+    optional bool has_leader_lease = 9;
+  }
+
+  repeated Entry entries = 1;
+}
+
+message ImportDataRequestPB {
+  optional string tablet_id = 1;
+  optional string source_dir = 2;
+}
+
+message ImportDataResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
+message UpdateTransactionRequestPB {
+  optional bytes tablet_id = 1;
+  optional tablet.TransactionStatePB state = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+  // Reserved for xcluster deprecated field is_external.
+  reserved 4;
+  optional fixed64 start_time = 5;
+}
+
+message UpdateTransactionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message GetTransactionStatusRequestPB {
+  optional bytes tablet_id = 1;
+  repeated bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+  // Reserved for xcluster deprecated field external_hybrid_time.
+  reserved 4;
+  optional int64 raft_config_opid_index = 5;
+}
+
+message GetTransactionStatusResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  // For backward compatibility we use multiple repeated fields instead of one field
+  // with custom message.
+  repeated TransactionStatus status = 2;
+  // For description of status_hybrid_time see comment in TransactionStatusResult.
+  repeated fixed64 status_hybrid_time = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+
+  repeated int64 num_replicated_batches = 5;
+
+  // Size could be less than status size. In this case appropriates values should be interpreted
+  // as invalid hybrid time.
+  repeated fixed64 coordinator_safe_time = 6;
+
+  repeated SubtxnSetPB aborted_subtxn_set = 7;
+
+  // Status containing deadlock info if the transaction was aborted due to deadlock. Else, it is
+  // set to Status::OK().
+  //
+  // Note: The field might not be present on older versions of YB and hence its existence
+  // should be checked before usage by the reader.
+  repeated AppStatusPB deadlock_reason = 8;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 9;
+}
+
+message GetOldTransactionsRequestPB {
+  optional bytes tablet_id = 1;
+  optional uint32 min_txn_age_ms = 2;
+  optional uint32 max_num_txns = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+// TODO(pglocks): Add term field to the response so that we can filter out responses from stale
+// status tablet leader peers.
+//
+// Refer https://github.com/yugabyte/yugabyte-db/issues/18140 for details.
+message GetOldTransactionsResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldTransactionMetadataPB {
+    optional bytes transaction_id = 1;
+    repeated bytes tablets = 2;
+    optional SubtxnSetPB aborted_subtxn_set = 3;
+    optional fixed64 start_time = 4;
+    optional string host_node_uuid = 5;
+  }
+  repeated OldTransactionMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message GetOldSingleShardWaitersRequestPB {
+  optional uint32 min_txn_age_ms = 1;
+  optional uint32 max_num_txns = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message GetOldSingleShardWaitersResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldSingleShardWaiterMetadataPB {
+    optional bytes tablet = 1;
+    optional fixed64 start_time = 2;
+    optional string host_node_uuid = 3;
+  }
+  repeated OldSingleShardWaiterMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message UpdateTransactionWaitingForStatusRequestPB {
+  message BlockingTransaction {
+    optional bytes transaction_id = 1;
+    optional bytes status_tablet_id = 2;
+    optional SubtxnSetPB subtxn_set = 3;
+  }
+  message WaitingTransaction {
+    optional bytes transaction_id = 1;
+    repeated BlockingTransaction blocking_transaction = 2;
+    optional fixed64 wait_start_time = 3;
+    optional int64 request_id = 4;
+  }
+
+  optional fixed64 propagated_hybrid_time = 1;
+
+  optional bytes tablet_id = 2;
+
+  repeated WaitingTransaction waiting_transactions = 3;
+
+  optional bytes tserver_uuid = 4;
+
+  optional bool is_full_update = 5 [ default = false];
+}
+
+message UpdateTransactionWaitingForStatusResponsePB {
+  optional fixed64 propagated_hybrid_time = 1;
+
+  optional TabletServerErrorPB error = 2;
+}
+
+message ProbeTransactionDeadlockRequestPB {
+  optional fixed64 propagated_hybrid_time = 1;
+
+  optional bytes tablet_id = 2;
+
+  optional bytes probe_origin_txn_id = 3;
+
+  optional bytes blocking_txn_id = 4;
+
+  optional bytes detector_id = 5;
+
+  optional fixed32 probe_num = 6;
+
+  optional fixed32 min_probe_num = 7;
+
+  optional SubtxnSetPB blocking_subtxn_set = 8;
+}
+
+message ProbeTransactionDeadlockResponsePB {
+  optional fixed64 propagated_hybrid_time = 1;
+
+  optional TabletServerErrorPB error = 2;
+
+  // If empty, no deadlock was detected. Otherwise, includes reverse ordered list of the deadlock
+  // participants detected by the probe recipient. The probe sender should append its own txn to
+  // this list before responding to its own probe sender.
+  repeated bytes deadlocked_txn_ids = 3; // deprecated in favor of deadlock field below
+
+  message DeadlockedTxnInfo {
+    optional bytes id = 1;
+
+    optional bytes tablet_id = 2;
+
+    optional bytes detector_id = 3;
+
+    optional fixed64 txn_start_us = 4;
+  }
+
+  repeated DeadlockedTxnInfo deadlock = 4;
+}
+
+message GetTransactionStatusAtParticipantRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+  optional int64 required_num_replicated_batches = 4;
+}
+
+message GetTransactionStatusAtParticipantResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional int64 num_replicated_batches = 3;
+  optional fixed64 status_hybrid_time = 4;
+  optional bool aborted = 5;
+}
+
+message AbortTransactionRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // Status containing deadlock info if the transaction is being aborted due to deadlock.
+  optional AppStatusPB deadlock_reason = 4;
+}
+
+message AbortTransactionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  optional TransactionStatus status = 2;
+  // For description of status_hybrid_time see comment in TransactionStatusResult.
+  optional fixed64 status_hybrid_time = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 coordinator_safe_time = 5;
+}
+
+message UpdateTransactionStatusLocationRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // ID of new status tablet that the transaction will be using.
+  optional bytes new_status_tablet_id = 4;
+}
+
+message UpdateTransactionStatusLocationResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
+message GetSplitKeyRequestPB {
+  required bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional bool is_manual_split = 3;
+}
+
+message GetSplitKeyResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional bytes split_partition_key = 2;
+  optional bytes split_encoded_key = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message GetSharedDataRequestPB {
+}
+
+message GetSharedDataResponsePB {
+  optional bytes data = 1;
+}
+
+message GetTserverCatalogVersionInfoRequestPB {
+  // If true, we only ask for the size of the catalog version map in tserver. Otherwise,
+  // we ask for database catalog version info from the tserver.
+  optional bool size_only = 1;
+  // If set we ask for the catalog version of the given database from the tserver.
+  // If not set or has value 0, we ask for the catalog version map of all databases
+  // from the tserver.
+  optional uint32 db_oid = 2 [default = 0];
+}
+
+message GetTserverCatalogVersionInfoResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  repeated TServerDBCatalogVersionInfo entries = 2;
+  optional uint32 num_entries = 3;
+}
+
+message CancelTransactionRequestPB {
+  optional bytes transaction_id = 1;
+
+  // When the field is not populated, the cancel request is broadcast to all the status tablets
+  // hosted by the TabletServer.
+  optional bytes status_tablet_id = 2;
+}
+
+message CancelTransactionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
+message StartRemoteSnapshotTransferRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  required bytes snapshot_id = 3;
+
+  // Identification for the host we are bootstrapping from.
+  required bytes source_peer_uuid = 4;
+  repeated HostPortPB source_private_addr = 5;
+  repeated HostPortPB source_broadcast_addr = 6;
+  optional CloudInfoPB source_cloud_info = 7;
+
+  // When importing a snapshot from producer to consumer, the consumer universe
+  // actually creates a new snapshot with a separate ID. Thus, when downloading
+  // files from producer to consumer, we want to account for the new_snapshot_id
+  // generated on the consumer universe.
+  optional bytes new_snapshot_id = 8;
+}
+
+message StartRemoteSnapshotTransferResponsePB {
+  optional TabletServerErrorPB error = 1;
+}

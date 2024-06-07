@@ -1,0 +1,116 @@
+sha: ac36057f7cdded0732719fb2a9a03d95bbcfa6f6
+archives:
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: clang16
+    tag: v20240417035943-ac36057f7c-almalinux8-x86_64-clang16
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: clang17
+    tag: v20240417035946-ac36057f7c-almalinux8-x86_64-clang17
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc11
+    tag: v20240417035947-ac36057f7c-almalinux8-x86_64-gcc11
+
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: clang16
+    tag: v20240417040006-ac36057f7c-almalinux9-x86_64-clang16
+
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: clang17
+    tag: v20240417040007-ac36057f7c-almalinux9-x86_64-clang17
+
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: gcc12
+    tag: v20240417040009-ac36057f7c-almalinux9-x86_64-gcc12
+
+  - os_type: centos7
+    architecture: aarch64
+    compiler_type: clang16
+    tag: v20240417040129-ac36057f7c-centos7-aarch64-clang16
+
+  - os_type: centos7
+    architecture: aarch64
+    compiler_type: clang16
+    lto_type: full
+    tag: v20240417040131-ac36057f7c-centos7-aarch64-clang16-full-lto
+
+  - os_type: centos7
+    architecture: aarch64
+    compiler_type: clang17
+    tag: v20240417040133-ac36057f7c-centos7-aarch64-clang17
+
+  - os_type: centos7
+    architecture: aarch64
+    compiler_type: clang17
+    lto_type: full
+    tag: v20240417040130-ac36057f7c-centos7-aarch64-clang17-full-lto
+
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang16
+    tag: v20240417035953-ac36057f7c-centos7-x86_64-clang16
+
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang16
+    lto_type: full
+    tag: v20240417035952-ac36057f7c-centos7-x86_64-clang16-full-lto
+
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang17
+    tag: v20240417035956-ac36057f7c-centos7-x86_64-clang17
+
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang17
+    lto_type: full
+    tag: v20240417035955-ac36057f7c-centos7-x86_64-clang17-full-lto
+
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: gcc11
+    tag: v20240417035953-ac36057f7c-centos7-x86_64-gcc11
+
+  - os_type: macos
+    architecture: arm64
+    compiler_type: clang
+    tag: v20240417044652-ac36057f7c-macos-arm64
+
+  - os_type: macos
+    architecture: x86_64
+    compiler_type: clang
+    tag: v20240417040018-ac36057f7c-macos-x86_64
+
+  - os_type: ubuntu20.04
+    architecture: x86_64
+    compiler_type: clang16
+    tag: v20240417035952-ac36057f7c-ubuntu2004-x86_64-clang16
+
+  - os_type: ubuntu22.04
+    architecture: x86_64
+    compiler_type: clang16
+    tag: v20240417035939-ac36057f7c-ubuntu2204-x86_64-clang16
+
+  - os_type: ubuntu22.04
+    architecture: x86_64
+    compiler_type: clang17
+    tag: v20240417035947-ac36057f7c-ubuntu2204-x86_64-clang17
+
+  - os_type: ubuntu22.04
+    architecture: x86_64
+    compiler_type: gcc11
+    tag: v20240417035948-ac36057f7c-ubuntu2204-x86_64-gcc11
+
+  - os_type: ubuntu23.04
+    architecture: x86_64
+    compiler_type: gcc13
+    tag: v20240417035954-ac36057f7c-ubuntu2304-x86_64-gcc13

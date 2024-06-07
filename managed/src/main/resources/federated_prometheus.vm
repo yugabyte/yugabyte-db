@@ -1,0 +1,35 @@
+# Copyright (c) YugaByte, Inc.
+
+global:
+ scrape_interval:     ${interval}s
+ evaluation_interval: ${interval}s
+
+ external_labels:
+   monitor: 'swamper'
+
+# A list of scrape configurations.
+scrape_configs:
+ - job_name: "federate"
+   scrape_interval: ${interval}s
+   honor_labels: true
+   metrics_path: '/federate'
+   #if ($https == true)
+   scheme: https
+   tls_config:
+     insecure_skip_verify: true
+   #end
+   #if ($auth == true)
+   basic_auth:
+     username: '$username'
+     password: '$password'
+   #end
+
+   params:
+     'match[]':
+       - '{job="yugabyte"}'
+       - '{job="node"}'
+       - '{job="node-agent"}'
+
+   static_configs:
+     - targets:
+       - '$address'

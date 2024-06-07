@@ -1,0 +1,419 @@
+CREATE TABLE s_10000 (id int, r int, val1 int, val2 int, val3 int, val4 int, PRIMARY KEY (id, r));
+CREATE TABLE s_1000 (id int PRIMARY KEY, val int);
+CREATE TABLE s_100 (id int PRIMARY KEY, val int);
+INSERT INTO s_10000 SELECT i, i, i, i % 1000, i % 100, i % 10 FROM (SELECT generate_series(1, 10000) i) t;
+INSERT INTO s_1000 SELECT i, i FROM (SELECT generate_series(1, 1000) i) t;
+INSERT INTO s_100 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;
+SET yb_enable_optimizer_statistics = FALSE;
+ANALYZE;
+\i sql/yb_planner_size_estimates_cmds.sql
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000;
+                                        QUERY PLAN
+-------------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1000.00 rows=10000 width=24) (actual rows=10000 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_1000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=0.00..100.00 rows=1000 width=8) (actual rows=1000 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_100;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=0.00..10.00 rows=100 width=8) (actual rows=100 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 4000;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=4000 loops=1)
+   Storage Filter: (val1 <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 4000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Storage Filter: (val <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 4000;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
+   Storage Filter: (val <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val1 <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 40;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 40;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1050.00 rows=10000 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((val1 <= 40) AND (val1 > 20))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20 AND val1 > 10;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1075.00 rows=10000 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 4000;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=4000 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 4000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 4000;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=100 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1025.00 rows=10000 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 40;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=0.00..102.50 rows=1000 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 40;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=0.00..10.25 rows=100 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1050.00 rows=10000 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((id <= 40) AND (id > 20))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20 AND id > 10;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=0.00..1075.00 rows=10000 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((id <= 40) AND (id > 20) AND (id > 10))
+(2 rows)
+
+CREATE INDEX s_10000_val1 on s_10000(val1);
+CREATE INDEX s_10000_val2 on s_10000(val2);
+CREATE INDEX s_10000_val3 on s_10000(val3);
+-- PK index should prioritize primary key index in YB if selectivity is same for both indexes.
+-- This is because PK index in YB is always an IndexOnlyScan whereas secondary index could be an
+-- IndexScan and not an Index only scan if necessary columns are not included.
+-- a. SINGLE ROW SELECTIVITY
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND r = 2200 AND val2 = 200;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_pkey on s_10000  (cost=0.00..4.12 rows=1 width=24) (actual rows=1 loops=1)
+   Index Cond: ((id = 2200) AND (r = 2200))
+   Storage Filter: (val2 = 200)
+(3 rows)
+
+-- b. SINGLE KEY SELECTIVITY
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND val2 = 200;
+                                               QUERY PLAN
+--------------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_val2 on s_10000  (cost=0.00..16.75 rows=100 width=24) (actual rows=1 loops=1)
+   Index Cond: (val2 = 200)
+   Storage Filter: (id = 2200)
+(3 rows)
+
+-- When you have multiple secondary indexes, the default cost model chooses the index that first
+-- present in the list of qualifiers as a part of the query. This is because, both the indexes have
+-- selectivity values equal to HASH SCAN SELECTIVITY.  However, we should choose the index that is
+-- the best.
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE val3 = 20 AND val2 = 220;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_val3 on s_10000  (cost=0.00..16.75 rows=100 width=24) (actual rows=10 loops=1)
+   Index Cond: (val3 = 20)
+   Storage Filter: (val2 = 220)
+(3 rows)
+
+DROP INDEX s_10000_val1;
+DROP INDEX s_10000_val2;
+DROP INDEX s_10000_val3;
+-- We have to make sure that selectivity does not apply for non YB tables (eg. foreign tables)
+CREATE EXTENSION file_fdw;
+COPY (SELECT * FROM s_100) TO '/tmp/tmp.csv' DELIMITER ',';
+CREATE SERVER file_fdw_test_srv FOREIGN DATA WRAPPER file_fdw;
+CREATE FOREIGN TABLE temp_foreign (
+    id INT,
+    val INT
+) SERVER file_fdw_test_srv
+OPTIONS (format 'csv', filename '/tmp/tmp.csv', header 'TRUE');
+EXPLAIN SELECT * FROM temp_foreign;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Foreign Scan on temp_foreign  (cost=0.00..2.80 rows=18 width=8)
+   Foreign File: /tmp/tmp.csv
+   Foreign File Size: 584 b
+(3 rows)
+
+DROP FOREIGN TABLE temp_foreign;
+DROP SERVER file_fdw_test_srv CASCADE;
+DROP EXTENSION file_fdw;
+-- When we have table statistics enabled, we use Postgres's selectivity functions to estimate how
+-- many rows a relation will return, taking into account the supplied constraints.
+SET yb_enable_optimizer_statistics = TRUE;
+\i sql/yb_planner_size_estimates_cmds.sql
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000;
+                                        QUERY PLAN
+-------------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1004.00 rows=10000 width=24) (actual rows=10000 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_1000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=4.00..104.00 rows=1000 width=8) (actual rows=1000 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_100;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=4.00..14.00 rows=100 width=8) (actual rows=100 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 4000;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=4000 width=4) (actual rows=4000 loops=1)
+   Storage Filter: (val1 <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 4000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Storage Filter: (val <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 4000;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=4.00..14.25 rows=100 width=4) (actual rows=100 loops=1)
+   Storage Filter: (val <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=40 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val1 <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_1000  WHERE val <= 40;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=40 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val FROM s_100   WHERE val <= 40;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=4.00..14.25 rows=39 width=4) (actual rows=40 loops=1)
+   Storage Filter: (val <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1054.00 rows=20 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((val1 <= 40) AND (val1 > 20))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT val1 FROM s_10000 WHERE val1 <= 40 AND val1 > 20 AND val1 > 10;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1079.00 rows=20 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((val1 <= 40) AND (val1 > 20) AND (val1 > 10))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 4000;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=4000 width=4) (actual rows=4000 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 4000;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=1000 width=4) (actual rows=1000 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 4000;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=4.00..14.25 rows=100 width=4) (actual rows=100 loops=1)
+   Storage Filter: (id <= 4000)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=40 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_1000  WHERE id <= 40;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Seq Scan on s_1000  (cost=4.00..106.50 rows=40 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_100   WHERE id <= 40;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on s_100  (cost=4.00..14.25 rows=39 width=4) (actual rows=40 loops=1)
+   Storage Filter: (id <= 40)
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1054.00 rows=20 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((id <= 40) AND (id > 20))
+(2 rows)
+
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT id FROM s_10000 WHERE id <= 40 AND id > 20 AND id > 10;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1079.00 rows=20 width=4) (actual rows=20 loops=1)
+   Storage Filter: ((id <= 40) AND (id > 20) AND (id > 10))
+(2 rows)
+
+CREATE INDEX s_10000_val1 on s_10000(val1);
+CREATE INDEX s_10000_val2 on s_10000(val2);
+CREATE INDEX s_10000_val3 on s_10000(val3);
+-- PK index should prioritize primary key index in YB if selectivity is same for both indexes.
+-- This is because PK index in YB is always an IndexOnlyScan whereas secondary index could be an
+-- IndexScan and not an Index only scan if necessary columns are not included.
+-- a. SINGLE ROW SELECTIVITY
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND r = 2200 AND val2 = 200;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_pkey on s_10000  (cost=4.00..8.01 rows=1 width=24) (actual rows=1 loops=1)
+   Index Cond: ((id = 2200) AND (r = 2200))
+   Storage Filter: (val2 = 200)
+(3 rows)
+
+-- b. SINGLE KEY SELECTIVITY
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE id = 2200 AND val2 = 200;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_pkey on s_10000  (cost=4.00..8.12 rows=1 width=24) (actual rows=1 loops=1)
+   Index Cond: (id = 2200)
+   Storage Filter: (val2 = 200)
+(3 rows)
+
+-- When you have multiple secondary indexes, the default cost model chooses the index that first
+-- present in the list of qualifiers as a part of the query. This is because, both the indexes have
+-- selectivity values equal to HASH SCAN SELECTIVITY.  However, we should choose the index that is
+-- the best.
+EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000 WHERE val3 = 20 AND val2 = 220;
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
+ Index Scan using s_10000_val2 on s_10000  (cost=4.00..9.27 rows=10 width=24) (actual rows=10 loops=1)
+   Index Cond: (val2 = 220)
+   Storage Filter: (val3 = 20)
+(3 rows)
+
+DROP INDEX s_10000_val1;
+DROP INDEX s_10000_val2;
+DROP INDEX s_10000_val3;
+-- We have to make sure that selectivity does not apply for non YB tables (eg. foreign tables)
+CREATE EXTENSION file_fdw;
+COPY (SELECT * FROM s_100) TO '/tmp/tmp.csv' DELIMITER ',';
+CREATE SERVER file_fdw_test_srv FOREIGN DATA WRAPPER file_fdw;
+CREATE FOREIGN TABLE temp_foreign (
+    id INT,
+    val INT
+) SERVER file_fdw_test_srv
+OPTIONS (format 'csv', filename '/tmp/tmp.csv', header 'TRUE');
+EXPLAIN SELECT * FROM temp_foreign;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Foreign Scan on temp_foreign  (cost=0.00..2.80 rows=18 width=8)
+   Foreign File: /tmp/tmp.csv
+   Foreign File Size: 584 b
+(3 rows)
+
+DROP FOREIGN TABLE temp_foreign;
+DROP SERVER file_fdw_test_srv CASCADE;
+DROP EXTENSION file_fdw;
+EXPLAIN SELECT * FROM s_10000 WHERE val1 < -100000;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Storage Filter: (val1 < '-100000'::integer)
+(2 rows)
+
+EXPLAIN SELECT * FROM s_10000 WHERE id < -100000;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Storage Filter: (id < '-100000'::integer)
+(2 rows)
+
+SET enable_indexscan = FALSE;
+EXPLAIN SELECT * FROM s_10000 WHERE val1 < -100000;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Storage Filter: (val1 < '-100000'::integer)
+(2 rows)
+
+EXPLAIN SELECT * FROM s_10000 WHERE id < -100000;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on s_10000  (cost=4.00..1029.00 rows=1 width=24)
+   Storage Filter: (id < '-100000'::integer)
+(2 rows)

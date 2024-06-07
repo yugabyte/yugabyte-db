@@ -1,0 +1,2255 @@
+--
+-- Test foreign-data wrapper and server management.
+--
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION test_fdw_handler()
+    RETURNS fdw_handler
+    AS :'regresslib', 'test_fdw_handler'
+    LANGUAGE C;
+-- Clean up in case a prior regression run failed
+-- Suppress NOTICE messages when roles don't exist
+SET client_min_messages TO 'warning';
+DROP ROLE IF EXISTS regress_foreign_data_user, regress_test_role, regress_test_role2, regress_test_role_super, regress_test_indirect, regress_unprivileged_role;
+RESET client_min_messages;
+CREATE ROLE regress_foreign_data_user LOGIN SUPERUSER;
+SET SESSION AUTHORIZATION 'regress_foreign_data_user';
+CREATE ROLE regress_test_role;
+CREATE ROLE regress_test_role2;
+CREATE ROLE regress_test_role_super SUPERUSER;
+CREATE ROLE regress_test_indirect;
+CREATE ROLE regress_unprivileged_role;
+CREATE FOREIGN DATA WRAPPER dummy;
+COMMENT ON FOREIGN DATA WRAPPER dummy IS 'useless';
+CREATE FOREIGN DATA WRAPPER postgresql VALIDATOR postgresql_fdw_validator;
+-- At this point we should have 2 built-in wrappers and no servers.
+SELECT fdwname, fdwhandler::regproc, fdwvalidator::regproc, fdwoptions FROM pg_foreign_data_wrapper ORDER BY 1, 2, 3;
+  fdwname   | fdwhandler |       fdwvalidator       | fdwoptions
+------------+------------+--------------------------+------------
+ dummy      | -          | -                        |
+ postgresql | -          | postgresql_fdw_validator |
+(2 rows)
+
+SELECT srvname, srvoptions FROM pg_foreign_server;
+ srvname | srvoptions
+---------+------------
+(0 rows)
+
+SELECT * FROM pg_user_mapping;
+ umuser | umserver | umoptions
+--------+----------+-----------
+(0 rows)
+
+-- CREATE FOREIGN DATA WRAPPER
+CREATE FOREIGN DATA WRAPPER foo VALIDATOR bar;            -- ERROR
+ERROR:  function bar(text[], oid) does not exist
+CREATE FOREIGN DATA WRAPPER foo;
+\dew
+                        List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator
+------------+---------------------------+---------+--------------------------
+ dummy      | regress_foreign_data_user | -       | -
+ foo        | regress_foreign_data_user | -       | -
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator
+(3 rows)
+
+CREATE FOREIGN DATA WRAPPER foo; -- duplicate
+ERROR:  foreign-data wrapper "foo" already exists
+DROP FOREIGN DATA WRAPPER foo;
+CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1');
+\dew+
+                                                 List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options  | Description
+------------+---------------------------+---------+--------------------------+-------------------+---------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |               | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (testing '1') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |               |
+(3 rows)
+
+DROP FOREIGN DATA WRAPPER foo;
+CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1', testing '2');   -- ERROR
+ERROR:  option "testing" provided more than once
+CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1', another '2');
+\dew+
+                                                       List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |        FDW options         | Description
+------------+---------------------------+---------+--------------------------+-------------------+----------------------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                            | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (testing '1', another '2') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                            |
+(3 rows)
+
+DROP FOREIGN DATA WRAPPER foo;
+SET ROLE regress_test_role;
+CREATE FOREIGN DATA WRAPPER foo; -- ERROR
+ERROR:  permission denied to create foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
+RESET ROLE;
+CREATE FOREIGN DATA WRAPPER foo VALIDATOR postgresql_fdw_validator;
+\dew+
+                                                List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description
+------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
+ foo        | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+(3 rows)
+
+-- HANDLER related checks
+CREATE FUNCTION invalid_fdw_handler() RETURNS int LANGUAGE SQL AS 'SELECT 1;';
+CREATE FOREIGN DATA WRAPPER test_fdw HANDLER invalid_fdw_handler;  -- ERROR
+ERROR:  function invalid_fdw_handler must return type fdw_handler
+CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler HANDLER invalid_fdw_handler;  -- ERROR
+ERROR:  conflicting or redundant options
+CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler;
+DROP FOREIGN DATA WRAPPER test_fdw;
+-- ALTER FOREIGN DATA WRAPPER
+ALTER FOREIGN DATA WRAPPER foo;                             -- ERROR
+ERROR:  syntax error at or near ";"
+LINE 1: ALTER FOREIGN DATA WRAPPER foo;
+                                      ^
+ALTER FOREIGN DATA WRAPPER foo VALIDATOR bar;               -- ERROR
+ERROR:  function bar(text[], oid) does not exist
+ALTER FOREIGN DATA WRAPPER foo NO VALIDATOR;
+\dew+
+                                                List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description
+------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   |             |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (a '1', b '2');
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (SET c '4');         -- ERROR
+ERROR:  option "c" not found
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (DROP c);            -- ERROR
+ERROR:  option "c" not found
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD x '1', DROP x);
+\dew+
+                                                 List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options   | Description
+------------+---------------------------+---------+--------------------------+-------------------+----------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (a '1', b '2') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (DROP a, SET b '3', ADD c '4');
+\dew+
+                                                 List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options   | Description
+------------+---------------------------+---------+--------------------------+-------------------+----------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (a '2');
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (b '4');             -- ERROR
+ERROR:  option "b" provided more than once
+\dew+
+                                                     List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |      FDW options      | Description
+------------+---------------------------+---------+--------------------------+-------------------+-----------------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                       | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4', a '2') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                       |
+(3 rows)
+
+SET ROLE regress_test_role;
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');         -- ERROR
+ERROR:  permission denied to alter foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
+SET ROLE regress_test_role_super;
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');
+\dew+
+                                                        List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description
+------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4', a '2', d '5') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_test_role;  -- ERROR
+ERROR:  permission denied to change owner of foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to change owner of a foreign-data wrapper.
+ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_test_role_super;
+ALTER ROLE regress_test_role_super NOSUPERUSER;
+SET ROLE regress_test_role_super;
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD e '6');         -- ERROR
+ERROR:  permission denied to alter foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
+RESET ROLE;
+\dew+
+                                                        List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description
+------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
+ foo        | regress_test_role_super   | -       | -                        |                   | (b '3', c '4', a '2', d '5') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo RENAME TO foo1;
+\dew+
+                                                        List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description
+------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
+ foo1       | regress_test_role_super   | -       | -                        |                   | (b '3', c '4', a '2', d '5') |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              |
+(3 rows)
+
+ALTER FOREIGN DATA WRAPPER foo1 RENAME TO foo;
+-- HANDLER related checks
+ALTER FOREIGN DATA WRAPPER foo HANDLER invalid_fdw_handler;  -- ERROR
+ERROR:  function invalid_fdw_handler must return type fdw_handler
+ALTER FOREIGN DATA WRAPPER foo HANDLER test_fdw_handler HANDLER anything;  -- ERROR
+ERROR:  conflicting or redundant options
+ALTER FOREIGN DATA WRAPPER foo HANDLER test_fdw_handler;
+WARNING:  changing the foreign-data wrapper handler can change behavior of existing foreign tables
+DROP FUNCTION invalid_fdw_handler();
+-- DROP FOREIGN DATA WRAPPER
+DROP FOREIGN DATA WRAPPER nonexistent;                      -- ERROR
+ERROR:  foreign-data wrapper "nonexistent" does not exist
+DROP FOREIGN DATA WRAPPER IF EXISTS nonexistent;
+NOTICE:  foreign-data wrapper "nonexistent" does not exist, skipping
+\dew+
+                                                             List of foreign-data wrappers
+    Name    |           Owner           |     Handler      |        Validator         | Access privileges |         FDW options          | Description
+------------+---------------------------+------------------+--------------------------+-------------------+------------------------------+-------------
+ dummy      | regress_foreign_data_user | -                | -                        |                   |                              | useless
+ foo        | regress_test_role_super   | test_fdw_handler | -                        |                   | (b '3', c '4', a '2', d '5') |
+ postgresql | regress_foreign_data_user | -                | postgresql_fdw_validator |                   |                              |
+(3 rows)
+
+DROP ROLE regress_test_role_super;                          -- ERROR
+ERROR:  role "regress_test_role_super" cannot be dropped because some objects depend on it
+DETAIL:  owner of foreign-data wrapper foo
+SET ROLE regress_test_role_super;
+DROP FOREIGN DATA WRAPPER foo;
+RESET ROLE;
+DROP ROLE regress_test_role_super;
+\dew+
+                                                List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description
+------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+(2 rows)
+
+CREATE FOREIGN DATA WRAPPER foo;
+CREATE SERVER s1 FOREIGN DATA WRAPPER foo;
+COMMENT ON SERVER s1 IS 'foreign server';
+CREATE USER MAPPING FOR current_user SERVER s1;
+CREATE USER MAPPING FOR current_user SERVER s1;				-- ERROR
+ERROR:  user mapping for "regress_foreign_data_user" already exists for server s1
+CREATE USER MAPPING IF NOT EXISTS FOR current_user SERVER s1; -- NOTICE
+NOTICE:  user mapping for "regress_foreign_data_user" already exists for server s1, skipping
+\dew+
+                                                List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description
+------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
+ foo        | regress_foreign_data_user | -       | -                        |                   |             |
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+(3 rows)
+
+\des+
+                                                   List of foreign servers
+ Name |           Owner           | Foreign-data wrapper | Access privileges | Type | Version | FDW options |  Description
+------+---------------------------+----------------------+-------------------+------+---------+-------------+----------------
+ s1   | regress_foreign_data_user | foo                  |                   |      |         |             | foreign server
+(1 row)
+
+\deu+
+              List of user mappings
+ Server |         User name         | FDW options
+--------+---------------------------+-------------
+ s1     | regress_foreign_data_user |
+(1 row)
+
+DROP FOREIGN DATA WRAPPER foo;                              -- ERROR
+ERROR:  cannot drop foreign-data wrapper foo because other objects depend on it
+DETAIL:  server s1 depends on foreign-data wrapper foo
+user mapping for regress_foreign_data_user on server s1 depends on server s1
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+SET ROLE regress_test_role;
+DROP FOREIGN DATA WRAPPER foo CASCADE;                      -- ERROR
+ERROR:  must be owner of foreign-data wrapper foo
+RESET ROLE;
+DROP FOREIGN DATA WRAPPER foo CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to server s1
+drop cascades to user mapping for regress_foreign_data_user on server s1
+\dew+
+                                                List of foreign-data wrappers
+    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description
+------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
+ dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
+ postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             |
+(2 rows)
+
+\des+
+                                       List of foreign servers
+ Name | Owner | Foreign-data wrapper | Access privileges | Type | Version | FDW options | Description
+------+-------+----------------------+-------------------+------+---------+-------------+-------------
+(0 rows)
+
+\deu+
+      List of user mappings
+ Server | User name | FDW options
+--------+-----------+-------------
+(0 rows)
+
+-- exercise CREATE SERVER
+CREATE SERVER s1 FOREIGN DATA WRAPPER foo;                  -- ERROR
+ERROR:  foreign-data wrapper "foo" does not exist
+CREATE FOREIGN DATA WRAPPER foo OPTIONS ("test wrapper" 'true');
+CREATE SERVER s1 FOREIGN DATA WRAPPER foo;
+CREATE SERVER s1 FOREIGN DATA WRAPPER foo;                  -- ERROR
+ERROR:  server "s1" already exists
+CREATE SERVER IF NOT EXISTS s1 FOREIGN DATA WRAPPER foo;	-- No ERROR, just NOTICE
+NOTICE:  server "s1" already exists, skipping
+CREATE SERVER s2 FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbname 'b');
+CREATE SERVER s3 TYPE 'oracle' FOREIGN DATA WRAPPER foo;
+CREATE SERVER s4 TYPE 'oracle' FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbname 'b');
+CREATE SERVER s5 VERSION '15.0' FOREIGN DATA WRAPPER foo;
+CREATE SERVER s6 VERSION '16.0' FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbname 'b');
+CREATE SERVER s7 TYPE 'oracle' VERSION '17.0' FOREIGN DATA WRAPPER foo OPTIONS (host 'a', dbname 'b');
+CREATE SERVER s8 FOREIGN DATA WRAPPER postgresql OPTIONS (foo '1'); -- ERROR
+ERROR:  invalid option "foo"
+HINT:  Valid options in this context are: authtype, service, connect_timeout, dbname, host, hostaddr, port, tty, options, requiressl, sslmode, gsslib
+CREATE SERVER s8 FOREIGN DATA WRAPPER postgresql OPTIONS (host 'localhost', dbname 's8db');
+\des+
+                                                             List of foreign servers
+ Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description
+------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
+ s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   |
+ s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            |
+ s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   |
+ s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            |
+ s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   |
+ s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            |
+ s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            |
+ s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') |
+(8 rows)
+
+SET ROLE regress_test_role;
+CREATE SERVER t1 FOREIGN DATA WRAPPER foo;                 -- ERROR: no usage on FDW
+ERROR:  permission denied for foreign-data wrapper foo
+RESET ROLE;
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;
+SET ROLE regress_test_role;
+CREATE SERVER t1 FOREIGN DATA WRAPPER foo;
+RESET ROLE;
+\des+
+                                                             List of foreign servers
+ Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description
+------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
+ s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   |
+ s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            |
+ s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   |
+ s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            |
+ s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   |
+ s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            |
+ s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            |
+ s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') |
+ t1   | regress_test_role         | foo                  |                   |        |         |                                   |
+(9 rows)
+
+REVOKE USAGE ON FOREIGN DATA WRAPPER foo FROM regress_test_role;
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_indirect;
+SET ROLE regress_test_role;
+CREATE SERVER t2 FOREIGN DATA WRAPPER foo;                 -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+RESET ROLE;
+GRANT regress_test_indirect TO regress_test_role;
+SET ROLE regress_test_role;
+CREATE SERVER t2 FOREIGN DATA WRAPPER foo;
+\des+
+                                                             List of foreign servers
+ Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description
+------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
+ s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   |
+ s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            |
+ s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   |
+ s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            |
+ s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   |
+ s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            |
+ s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            |
+ s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') |
+ t1   | regress_test_role         | foo                  |                   |        |         |                                   |
+ t2   | regress_test_role         | foo                  |                   |        |         |                                   |
+(10 rows)
+
+RESET ROLE;
+REVOKE regress_test_indirect FROM regress_test_role;
+-- ALTER SERVER
+ALTER SERVER s0;                                            -- ERROR
+ERROR:  syntax error at or near ";"
+LINE 1: ALTER SERVER s0;
+                       ^
+ALTER SERVER s0 OPTIONS (a '1');                            -- ERROR
+ERROR:  server "s0" does not exist
+ALTER SERVER s1 VERSION '1.0' OPTIONS (servername 's1');
+ALTER SERVER s2 VERSION '1.1';
+ALTER SERVER s3 OPTIONS ("tns name" 'orcl', port '1521');
+GRANT USAGE ON FOREIGN SERVER s1 TO regress_test_role;
+GRANT USAGE ON FOREIGN SERVER s6 TO regress_test_role2 WITH GRANT OPTION;
+\des+
+                                                                               List of foreign servers
+ Name |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |            FDW options            | Description
+------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+-----------------------------------+-------------
+ s1   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 1.0     | (servername 's1')                 |
+      |                           |                      | regress_test_role=U/regress_foreign_data_user         |        |         |                                   |
+ s2   | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')            |
+ s3   | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')  |
+ s4   | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')            |
+ s5   | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                   |
+ s6   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')            |
+      |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                   |
+ s7   | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')            |
+ s8   | regress_foreign_data_user | postgresql           |                                                       |        |         | (host 'localhost', dbname 's8db') |
+ t1   | regress_test_role         | foo                  |                                                       |        |         |                                   |
+ t2   | regress_test_role         | foo                  |                                                       |        |         |                                   |
+(10 rows)
+
+SET ROLE regress_test_role;
+ALTER SERVER s1 VERSION '1.1';                              -- ERROR
+ERROR:  must be owner of foreign server s1
+ALTER SERVER s1 OWNER TO regress_test_role;                 -- ERROR
+ERROR:  must be owner of foreign server s1
+RESET ROLE;
+ALTER SERVER s1 OWNER TO regress_test_role;
+GRANT regress_test_role2 TO regress_test_role;
+SET ROLE regress_test_role;
+ALTER SERVER s1 VERSION '1.1';
+ALTER SERVER s1 OWNER TO regress_test_role2;                -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+RESET ROLE;
+ALTER SERVER s8 OPTIONS (foo '1');                          -- ERROR option validation
+ERROR:  invalid option "foo"
+HINT:  Valid options in this context are: authtype, service, connect_timeout, dbname, host, hostaddr, port, tty, options, requiressl, sslmode, gsslib
+ALTER SERVER s8 OPTIONS (connect_timeout '30', SET dbname 'db1', DROP host);
+SET ROLE regress_test_role;
+ALTER SERVER s1 OWNER TO regress_test_indirect;             -- ERROR
+ERROR:  must be member of role "regress_test_indirect"
+RESET ROLE;
+GRANT regress_test_indirect TO regress_test_role;
+SET ROLE regress_test_role;
+ALTER SERVER s1 OWNER TO regress_test_indirect;
+RESET ROLE;
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_indirect;
+SET ROLE regress_test_role;
+ALTER SERVER s1 OWNER TO regress_test_indirect;
+RESET ROLE;
+DROP ROLE regress_test_indirect;                            -- ERROR
+ERROR:  role "regress_test_indirect" cannot be dropped because some objects depend on it
+DETAIL:  owner of server s1
+privileges for foreign-data wrapper foo
+\des+
+                                                                                 List of foreign servers
+ Name |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description
+------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
+ s1   | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    |
+ s2   | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               |
+ s3   | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     |
+ s4   | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               |
+ s5   | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      |
+ s6   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               |
+      |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      |
+ s7   | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               |
+ s8   | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') |
+ t1   | regress_test_role         | foo                  |                                                       |        |         |                                      |
+ t2   | regress_test_role         | foo                  |                                                       |        |         |                                      |
+(10 rows)
+
+ALTER SERVER s8 RENAME to s8new;
+\des+
+                                                                                 List of foreign servers
+ Name  |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description
+-------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
+ s1    | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    |
+ s2    | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               |
+ s3    | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     |
+ s4    | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               |
+ s5    | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      |
+ s6    | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               |
+       |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      |
+ s7    | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               |
+ s8new | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') |
+ t1    | regress_test_role         | foo                  |                                                       |        |         |                                      |
+ t2    | regress_test_role         | foo                  |                                                       |        |         |                                      |
+(10 rows)
+
+ALTER SERVER s8new RENAME to s8;
+-- DROP SERVER
+DROP SERVER nonexistent;                                    -- ERROR
+ERROR:  server "nonexistent" does not exist
+DROP SERVER IF EXISTS nonexistent;
+NOTICE:  server "nonexistent" does not exist, skipping
+\des
+                 List of foreign servers
+ Name |           Owner           | Foreign-data wrapper
+------+---------------------------+----------------------
+ s1   | regress_test_indirect     | foo
+ s2   | regress_foreign_data_user | foo
+ s3   | regress_foreign_data_user | foo
+ s4   | regress_foreign_data_user | foo
+ s5   | regress_foreign_data_user | foo
+ s6   | regress_foreign_data_user | foo
+ s7   | regress_foreign_data_user | foo
+ s8   | regress_foreign_data_user | postgresql
+ t1   | regress_test_role         | foo
+ t2   | regress_test_role         | foo
+(10 rows)
+
+SET ROLE regress_test_role;
+DROP SERVER s2;                                             -- ERROR
+ERROR:  must be owner of foreign server s2
+DROP SERVER s1;
+RESET ROLE;
+\des
+                 List of foreign servers
+ Name |           Owner           | Foreign-data wrapper
+------+---------------------------+----------------------
+ s2   | regress_foreign_data_user | foo
+ s3   | regress_foreign_data_user | foo
+ s4   | regress_foreign_data_user | foo
+ s5   | regress_foreign_data_user | foo
+ s6   | regress_foreign_data_user | foo
+ s7   | regress_foreign_data_user | foo
+ s8   | regress_foreign_data_user | postgresql
+ t1   | regress_test_role         | foo
+ t2   | regress_test_role         | foo
+(9 rows)
+
+ALTER SERVER s2 OWNER TO regress_test_role;
+SET ROLE regress_test_role;
+DROP SERVER s2;
+RESET ROLE;
+\des
+                 List of foreign servers
+ Name |           Owner           | Foreign-data wrapper
+------+---------------------------+----------------------
+ s3   | regress_foreign_data_user | foo
+ s4   | regress_foreign_data_user | foo
+ s5   | regress_foreign_data_user | foo
+ s6   | regress_foreign_data_user | foo
+ s7   | regress_foreign_data_user | foo
+ s8   | regress_foreign_data_user | postgresql
+ t1   | regress_test_role         | foo
+ t2   | regress_test_role         | foo
+(8 rows)
+
+CREATE USER MAPPING FOR current_user SERVER s3;
+\deu
+       List of user mappings
+ Server |         User name
+--------+---------------------------
+ s3     | regress_foreign_data_user
+(1 row)
+
+DROP SERVER s3;                                             -- ERROR
+ERROR:  cannot drop server s3 because other objects depend on it
+DETAIL:  user mapping for regress_foreign_data_user on server s3 depends on server s3
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP SERVER s3 CASCADE;
+NOTICE:  drop cascades to user mapping for regress_foreign_data_user on server s3
+\des
+                 List of foreign servers
+ Name |           Owner           | Foreign-data wrapper
+------+---------------------------+----------------------
+ s4   | regress_foreign_data_user | foo
+ s5   | regress_foreign_data_user | foo
+ s6   | regress_foreign_data_user | foo
+ s7   | regress_foreign_data_user | foo
+ s8   | regress_foreign_data_user | postgresql
+ t1   | regress_test_role         | foo
+ t2   | regress_test_role         | foo
+(7 rows)
+
+\deu
+List of user mappings
+ Server | User name
+--------+-----------
+(0 rows)
+
+-- CREATE USER MAPPING
+CREATE USER MAPPING FOR regress_test_missing_role SERVER s1;  -- ERROR
+ERROR:  role "regress_test_missing_role" does not exist
+CREATE USER MAPPING FOR current_user SERVER s1;             -- ERROR
+ERROR:  server "s1" does not exist
+CREATE USER MAPPING FOR current_user SERVER s4;
+CREATE USER MAPPING FOR user SERVER s4;                     -- ERROR duplicate
+ERROR:  user mapping for "regress_foreign_data_user" already exists for server s4
+CREATE USER MAPPING FOR public SERVER s4 OPTIONS ("this mapping" 'is public');
+CREATE USER MAPPING FOR user SERVER s8 OPTIONS (username 'test', password 'secret');    -- ERROR
+ERROR:  invalid option "username"
+HINT:  Valid options in this context are: user, password
+CREATE USER MAPPING FOR user SERVER s8 OPTIONS (user 'test', password 'secret');
+ALTER SERVER s5 OWNER TO regress_test_role;
+ALTER SERVER s6 OWNER TO regress_test_indirect;
+SET ROLE regress_test_role;
+CREATE USER MAPPING FOR current_user SERVER s5;
+CREATE USER MAPPING FOR current_user SERVER s6 OPTIONS (username 'test');
+CREATE USER MAPPING FOR current_user SERVER s7;             -- ERROR
+ERROR:  permission denied for foreign server s7
+CREATE USER MAPPING FOR public SERVER s8;                   -- ERROR
+ERROR:  must be owner of foreign server s8
+RESET ROLE;
+ALTER SERVER t1 OWNER TO regress_test_indirect;
+SET ROLE regress_test_role;
+CREATE USER MAPPING FOR current_user SERVER t1 OPTIONS (username 'bob', password 'boo');
+CREATE USER MAPPING FOR public SERVER t1;
+RESET ROLE;
+\deu
+       List of user mappings
+ Server |         User name
+--------+---------------------------
+ s4     | public
+ s4     | regress_foreign_data_user
+ s5     | regress_test_role
+ s6     | regress_test_role
+ s8     | regress_foreign_data_user
+ t1     | public
+ t1     | regress_test_role
+(7 rows)
+
+-- ALTER USER MAPPING
+ALTER USER MAPPING FOR regress_test_missing_role SERVER s4 OPTIONS (gotcha 'true'); -- ERROR
+ERROR:  role "regress_test_missing_role" does not exist
+ALTER USER MAPPING FOR user SERVER ss4 OPTIONS (gotcha 'true'); -- ERROR
+ERROR:  server "ss4" does not exist
+ALTER USER MAPPING FOR public SERVER s5 OPTIONS (gotcha 'true');            -- ERROR
+ERROR:  user mapping for "public" does not exist for the server
+ALTER USER MAPPING FOR current_user SERVER s8 OPTIONS (username 'test');    -- ERROR
+ERROR:  invalid option "username"
+HINT:  Valid options in this context are: user, password
+ALTER USER MAPPING FOR current_user SERVER s8 OPTIONS (DROP user, SET password 'public');
+SET ROLE regress_test_role;
+ALTER USER MAPPING FOR current_user SERVER s5 OPTIONS (ADD modified '1');
+ALTER USER MAPPING FOR public SERVER s4 OPTIONS (ADD modified '1'); -- ERROR
+ERROR:  must be owner of foreign server s4
+ALTER USER MAPPING FOR public SERVER t1 OPTIONS (ADD modified '1');
+RESET ROLE;
+\deu+
+                         List of user mappings
+ Server |         User name         |           FDW options
+--------+---------------------------+----------------------------------
+ s4     | public                    | ("this mapping" 'is public')
+ s4     | regress_foreign_data_user |
+ s5     | regress_test_role         | (modified '1')
+ s6     | regress_test_role         | (username 'test')
+ s8     | regress_foreign_data_user | (password 'public')
+ t1     | public                    | (modified '1')
+ t1     | regress_test_role         | (username 'bob', password 'boo')
+(7 rows)
+
+-- DROP USER MAPPING
+DROP USER MAPPING FOR regress_test_missing_role SERVER s4;  -- ERROR
+ERROR:  role "regress_test_missing_role" does not exist
+DROP USER MAPPING FOR user SERVER ss4;
+ERROR:  server "ss4" does not exist
+DROP USER MAPPING FOR public SERVER s7;                     -- ERROR
+ERROR:  user mapping for "public" does not exist for the server
+DROP USER MAPPING IF EXISTS FOR regress_test_missing_role SERVER s4;
+NOTICE:  role "regress_test_missing_role" does not exist, skipping
+DROP USER MAPPING IF EXISTS FOR user SERVER ss4;
+NOTICE:  server does not exist, skipping
+DROP USER MAPPING IF EXISTS FOR public SERVER s7;
+NOTICE:  user mapping for "public" does not exist for the server, skipping
+CREATE USER MAPPING FOR public SERVER s8;
+SET ROLE regress_test_role;
+DROP USER MAPPING FOR public SERVER s8;                     -- ERROR
+ERROR:  must be owner of foreign server s8
+RESET ROLE;
+DROP SERVER s7;
+\deu
+       List of user mappings
+ Server |         User name
+--------+---------------------------
+ s4     | public
+ s4     | regress_foreign_data_user
+ s5     | regress_test_role
+ s6     | regress_test_role
+ s8     | public
+ s8     | regress_foreign_data_user
+ t1     | public
+ t1     | regress_test_role
+(8 rows)
+
+-- CREATE FOREIGN TABLE
+CREATE SCHEMA foreign_schema;
+CREATE SERVER s0 FOREIGN DATA WRAPPER dummy;
+CREATE FOREIGN TABLE ft1 ();                                    -- ERROR
+ERROR:  syntax error at or near ";"
+LINE 1: CREATE FOREIGN TABLE ft1 ();
+                                   ^
+CREATE FOREIGN TABLE ft1 () SERVER no_server;                   -- ERROR
+ERROR:  server "no_server" does not exist
+CREATE FOREIGN TABLE ft1 () SERVER s0 WITH OIDS;                -- ERROR
+ERROR:  syntax error at or near "WITH"
+LINE 1: CREATE FOREIGN TABLE ft1 () SERVER s0 WITH OIDS;
+                                              ^
+CREATE FOREIGN TABLE ft1 (
+	c1 integer OPTIONS ("param 1" 'val1') PRIMARY KEY,
+	c2 text OPTIONS (param2 'val2', param3 'val3'),
+	c3 date
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value'); -- ERROR
+ERROR:  primary key constraints are not supported on foreign tables
+LINE 2:  c1 integer OPTIONS ("param 1" 'val1') PRIMARY KEY,
+                                               ^
+CREATE TABLE ref_table (id integer PRIMARY KEY);
+CREATE FOREIGN TABLE ft1 (
+	c1 integer OPTIONS ("param 1" 'val1') REFERENCES ref_table (id),
+	c2 text OPTIONS (param2 'val2', param3 'val3'),
+	c3 date
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value'); -- ERROR
+ERROR:  foreign key constraints are not supported on foreign tables
+LINE 2:  c1 integer OPTIONS ("param 1" 'val1') REFERENCES ref_table ...
+                                               ^
+DROP TABLE ref_table;
+CREATE FOREIGN TABLE ft1 (
+	c1 integer OPTIONS ("param 1" 'val1') NOT NULL,
+	c2 text OPTIONS (param2 'val2', param3 'val3'),
+	c3 date,
+	UNIQUE (c3)
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value'); -- ERROR
+ERROR:  unique constraints are not supported on foreign tables
+LINE 5:  UNIQUE (c3)
+         ^
+CREATE FOREIGN TABLE ft1 (
+	c1 integer OPTIONS ("param 1" 'val1') NOT NULL,
+	c2 text OPTIONS (param2 'val2', param3 'val3') CHECK (c2 <> ''),
+	c3 date,
+	CHECK (c3 BETWEEN '1994-01-01'::date AND '1994-01-31'::date)
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+COMMENT ON FOREIGN TABLE ft1 IS 'ft1';
+COMMENT ON COLUMN ft1.c1 IS 'ft1.c1';
+\d+ ft1
+                                                 Foreign table "public.ft1"
+ Column |  Type   | Collation | Nullable | Default |          FDW options           | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+--------------------------------+----------+--------------+-------------
+ c1     | integer |           | not null |         | ("param 1" 'val1')             | plain    |              | ft1.c1
+ c2     | text    |           |          |         | (param2 'val2', param3 'val3') | extended |              |
+ c3     | date    |           |          |         |                                | plain    |              |
+Check constraints:
+    "ft1_c2_check" CHECK (c2 <> ''::text)
+    "ft1_c3_check" CHECK (c3 >= '01-01-1994'::date AND c3 <= '01-31-1994'::date)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+\det+
+                                 List of foreign tables
+ Schema | Table | Server |                   FDW options                   | Description
+--------+-------+--------+-------------------------------------------------+-------------
+ public | ft1   | s0     | (delimiter ',', quote '"', "be quoted" 'value') | ft1
+(1 row)
+
+CREATE INDEX id_ft1_c2 ON ft1 (c2);                             -- ERROR
+ERROR:  cannot create index on foreign table "ft1"
+SELECT * FROM ft1;                                              -- ERROR
+ERROR:  foreign-data wrapper "dummy" has no handler
+EXPLAIN SELECT * FROM ft1;                                      -- ERROR
+ERROR:  foreign-data wrapper "dummy" has no handler
+CREATE TABLE lt1 (a INT) PARTITION BY RANGE (a);
+CREATE FOREIGN TABLE ft_part1
+  PARTITION OF lt1 FOR VALUES FROM (0) TO (1000) SERVER s0;
+CREATE INDEX ON lt1 (a);                                        -- ERROR
+ERROR:  cannot create index on partitioned table "lt1"
+DETAIL:  Table "lt1" contains partitions that are foreign tables.
+DROP TABLE lt1;
+-- ALTER FOREIGN TABLE
+COMMENT ON FOREIGN TABLE ft1 IS 'foreign table';
+COMMENT ON FOREIGN TABLE ft1 IS NULL;
+COMMENT ON COLUMN ft1.c1 IS 'foreign column';
+COMMENT ON COLUMN ft1.c1 IS NULL;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c4 integer;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c5 integer DEFAULT 0;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c6 integer;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c7 integer NOT NULL;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c8 integer;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c9 integer;
+ALTER FOREIGN TABLE ft1 ADD COLUMN c10 integer OPTIONS (p1 'v1');
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c4 SET DEFAULT 0;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c5 DROP DEFAULT;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c6 SET NOT NULL;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c7 DROP NOT NULL;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE char(10) USING '0'; -- ERROR
+ERROR:  "ft1" is not a table
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE char(10);
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET DATA TYPE text;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN xmin OPTIONS (ADD p1 'v1'); -- ERROR
+ERROR:  cannot alter system column "xmin"
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c7 OPTIONS (ADD p1 'v1', ADD p2 'v2'),
+                        ALTER COLUMN c8 OPTIONS (ADD p1 'v1', ADD p2 'v2');
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 OPTIONS (SET p2 'V2', DROP p1);
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET STATISTICS 10000;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 100);
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 10...
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+\d+ ft1
+                                                 Foreign table "public.ft1"
+ Column |  Type   | Collation | Nullable | Default |          FDW options           | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+--------------------------------+----------+--------------+-------------
+ c1     | integer |           | not null |         | ("param 1" 'val1')             | plain    | 10000        |
+ c2     | text    |           |          |         | (param2 'val2', param3 'val3') | extended |              |
+ c3     | date    |           |          |         |                                | plain    |              |
+ c4     | integer |           |          | 0       |                                | plain    |              |
+ c5     | integer |           |          |         |                                | plain    |              |
+ c6     | integer |           | not null |         |                                | plain    |              |
+ c7     | integer |           |          |         | (p1 'v1', p2 'v2')             | plain    |              |
+ c8     | text    |           |          |         | (p2 'V2')                      | extended |              |
+ c9     | integer |           |          |         |                                | plain    |              |
+ c10    | integer |           |          |         | (p1 'v1')                      | plain    |              |
+Check constraints:
+    "ft1_c2_check" CHECK (c2 <> ''::text)
+    "ft1_c3_check" CHECK (c3 >= '01-01-1994'::date AND c3 <= '01-31-1994'::date)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- can't change the column type if it's used elsewhere
+CREATE TABLE use_ft1_column_type (x ft1);
+ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET DATA TYPE integer;	-- ERROR
+ERROR:  cannot alter foreign table "ft1" because column "use_ft1_column_type.x" uses its row type
+DROP TABLE use_ft1_column_type;
+ALTER FOREIGN TABLE ft1 ADD PRIMARY KEY (c7);                   -- ERROR
+ERROR:  primary key constraints are not supported on foreign tables
+LINE 1: ALTER FOREIGN TABLE ft1 ADD PRIMARY KEY (c7);
+                                    ^
+ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c9_check CHECK (c9 < 0) NOT VALID;
+ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERRABLE; -- ERROR, originally ERROR:  "ft1" is not a table
+ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+LINE 1: ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERR...
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c9_check;
+ALTER FOREIGN TABLE ft1 DROP CONSTRAINT no_const;               -- ERROR
+ERROR:  constraint "no_const" of relation "ft1" does not exist
+ALTER FOREIGN TABLE ft1 DROP CONSTRAINT IF EXISTS no_const;
+NOTICE:  constraint "no_const" of relation "ft1" does not exist, skipping
+ALTER FOREIGN TABLE ft1 SET WITH OIDS;
+ERROR:  ALTER TABLE SET WITH OIDS not supported yet
+LINE 1: ALTER FOREIGN TABLE ft1 SET WITH OIDS;
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER FOREIGN TABLE ft1 OWNER TO regress_test_role;
+ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
+ERROR:  ALTER TABLE not supported yet
+LINE 1: ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '...
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER FOREIGN TABLE ft1 DROP COLUMN no_column;                  -- ERROR
+ERROR:  column "no_column" of relation "ft1" does not exist
+ALTER FOREIGN TABLE ft1 DROP COLUMN IF EXISTS no_column;
+NOTICE:  column "no_column" of relation "ft1" does not exist, skipping
+ALTER FOREIGN TABLE ft1 DROP COLUMN c9;
+ALTER FOREIGN TABLE ft1 SET SCHEMA foreign_schema;
+ALTER FOREIGN TABLE ft1 SET TABLESPACE ts;                      -- ERROR
+ERROR:  relation "ft1" does not exist
+ALTER FOREIGN TABLE foreign_schema.ft1 RENAME c1 TO foreign_column_1;
+ALTER FOREIGN TABLE foreign_schema.ft1 RENAME TO foreign_table_1;
+\d foreign_schema.foreign_table_1
+                        Foreign table "foreign_schema.foreign_table_1"
+      Column      |  Type   | Collation | Nullable | Default |          FDW options
+------------------+---------+-----------+----------+---------+--------------------------------
+ foreign_column_1 | integer |           | not null |         | ("param 1" 'val1')
+ c2               | text    |           |          |         | (param2 'val2', param3 'val3')
+ c3               | date    |           |          |         |
+ c4               | integer |           |          | 0       |
+ c5               | integer |           |          |         |
+ c6               | integer |           | not null |         |
+ c7               | integer |           |          |         | (p1 'v1', p2 'v2')
+ c8               | text    |           |          |         | (p2 'V2')
+ c10              | integer |           |          |         | (p1 'v1')
+Check constraints:
+    "ft1_c2_check" CHECK (c2 <> ''::text)
+    "ft1_c3_check" CHECK (c3 >= '01-01-1994'::date AND c3 <= '01-31-1994'::date)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- alter noexisting table
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c4 integer;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c6 integer;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c7 integer NOT NULL;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c8 integer;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c9 integer;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c10 integer OPTIONS (p1 'v1');
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c6 SET NOT NULL;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c7 DROP NOT NULL;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c8 TYPE char(10);
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c8 SET DATA TYPE text;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c7 OPTIONS (ADD p1 'v1', ADD p2 'v2'),
+                        ALTER COLUMN c8 OPTIONS (ADD p1 'v1', ADD p2 'v2');
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c8 OPTIONS (SET p2 'V2', DROP p1);
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP CONSTRAINT IF EXISTS no_const;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP CONSTRAINT ft1_c1_check;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OWNER TO regress_test_role;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@'); -- originally: NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ERROR:  ALTER TABLE not supported yet
+LINE 1: ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP...
+                                                       ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN IF EXISTS no_column;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN c9;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 SET SCHEMA foreign_schema;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 RENAME c1 TO foreign_column_1;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 RENAME TO foreign_table_1;
+NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
+-- Information schema
+SELECT * FROM information_schema.foreign_data_wrappers ORDER BY 1, 2;
+ foreign_data_wrapper_catalog | foreign_data_wrapper_name | authorization_identifier  | library_name | foreign_data_wrapper_language
+------------------------------+---------------------------+---------------------------+--------------+-------------------------------
+ yugabyte                     | dummy                     | regress_foreign_data_user |              | c
+ yugabyte                     | foo                       | regress_foreign_data_user |              | c
+ yugabyte                     | postgresql                | regress_foreign_data_user |              | c
+(3 rows)
+
+SELECT * FROM information_schema.foreign_data_wrapper_options ORDER BY 1, 2, 3;
+ foreign_data_wrapper_catalog | foreign_data_wrapper_name | option_name  | option_value
+------------------------------+---------------------------+--------------+--------------
+ yugabyte                     | foo                       | test wrapper | true
+(1 row)
+
+SELECT * FROM information_schema.foreign_servers ORDER BY 1, 2;
+ foreign_server_catalog | foreign_server_name | foreign_data_wrapper_catalog | foreign_data_wrapper_name | foreign_server_type | foreign_server_version | authorization_identifier
+------------------------+---------------------+------------------------------+---------------------------+---------------------+------------------------+---------------------------
+ yugabyte               | s0                  | yugabyte                     | dummy                     |                     |                        | regress_foreign_data_user
+ yugabyte               | s4                  | yugabyte                     | foo                       | oracle              |                        | regress_foreign_data_user
+ yugabyte               | s5                  | yugabyte                     | foo                       |                     | 15.0                   | regress_test_role
+ yugabyte               | s6                  | yugabyte                     | foo                       |                     | 16.0                   | regress_test_indirect
+ yugabyte               | s8                  | yugabyte                     | postgresql                |                     |                        | regress_foreign_data_user
+ yugabyte               | t1                  | yugabyte                     | foo                       |                     |                        | regress_test_indirect
+ yugabyte               | t2                  | yugabyte                     | foo                       |                     |                        | regress_test_role
+(7 rows)
+
+SELECT * FROM information_schema.foreign_server_options ORDER BY 1, 2, 3;
+ foreign_server_catalog | foreign_server_name |   option_name   | option_value
+------------------------+---------------------+-----------------+--------------
+ yugabyte               | s4                  | dbname          | b
+ yugabyte               | s4                  | host            | a
+ yugabyte               | s6                  | dbname          | b
+ yugabyte               | s6                  | host            | a
+ yugabyte               | s8                  | connect_timeout | 30
+ yugabyte               | s8                  | dbname          | db1
+(6 rows)
+
+SELECT * FROM information_schema.user_mappings ORDER BY lower(authorization_identifier), 2, 3;
+ authorization_identifier  | foreign_server_catalog | foreign_server_name
+---------------------------+------------------------+---------------------
+ PUBLIC                    | yugabyte               | s4
+ PUBLIC                    | yugabyte               | s8
+ PUBLIC                    | yugabyte               | t1
+ regress_foreign_data_user | yugabyte               | s4
+ regress_foreign_data_user | yugabyte               | s8
+ regress_test_role         | yugabyte               | s5
+ regress_test_role         | yugabyte               | s6
+ regress_test_role         | yugabyte               | t1
+(8 rows)
+
+SELECT * FROM information_schema.user_mapping_options ORDER BY lower(authorization_identifier), 2, 3, 4;
+ authorization_identifier  | foreign_server_catalog | foreign_server_name | option_name  | option_value
+---------------------------+------------------------+---------------------+--------------+--------------
+ PUBLIC                    | yugabyte               | s4                  | this mapping | is public
+ PUBLIC                    | yugabyte               | t1                  | modified     | 1
+ regress_foreign_data_user | yugabyte               | s8                  | password     | public
+ regress_test_role         | yugabyte               | s5                  | modified     | 1
+ regress_test_role         | yugabyte               | s6                  | username     | test
+ regress_test_role         | yugabyte               | t1                  | password     | boo
+ regress_test_role         | yugabyte               | t1                  | username     | bob
+(7 rows)
+
+SELECT * FROM information_schema.usage_privileges WHERE object_type LIKE 'FOREIGN%' AND object_name IN ('s6', 'foo') ORDER BY 1, 2, 3, 4, 5;
+          grantor          |          grantee          | object_catalog | object_schema | object_name |     object_type      | privilege_type | is_grantable
+---------------------------+---------------------------+----------------+---------------+-------------+----------------------+----------------+--------------
+ regress_foreign_data_user | regress_foreign_data_user | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | YES
+ regress_foreign_data_user | regress_test_indirect     | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | NO
+ regress_test_indirect     | regress_test_indirect     | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+ regress_test_indirect     | regress_test_role2        | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+(4 rows)
+
+SELECT * FROM information_schema.role_usage_grants WHERE object_type LIKE 'FOREIGN%' AND object_name IN ('s6', 'foo') ORDER BY 1, 2, 3, 4, 5;
+          grantor          |          grantee          | object_catalog | object_schema | object_name |     object_type      | privilege_type | is_grantable
+---------------------------+---------------------------+----------------+---------------+-------------+----------------------+----------------+--------------
+ regress_foreign_data_user | regress_foreign_data_user | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | YES
+ regress_foreign_data_user | regress_test_indirect     | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | NO
+ regress_test_indirect     | regress_test_indirect     | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+ regress_test_indirect     | regress_test_role2        | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+(4 rows)
+
+SELECT * FROM information_schema.foreign_tables ORDER BY 1, 2, 3;
+ foreign_table_catalog | foreign_table_schema | foreign_table_name | foreign_server_catalog | foreign_server_name
+-----------------------+----------------------+--------------------+------------------------+---------------------
+ yugabyte              | foreign_schema       | foreign_table_1    | yugabyte               | s0
+(1 row)
+
+SELECT * FROM information_schema.foreign_table_options ORDER BY 1, 2, 3, 4;
+ foreign_table_catalog | foreign_table_schema | foreign_table_name | option_name | option_value
+-----------------------+----------------------+--------------------+-------------+--------------
+ yugabyte              | foreign_schema       | foreign_table_1    | be quoted   | value
+ yugabyte              | foreign_schema       | foreign_table_1    | delimiter   | ,
+ yugabyte              | foreign_schema       | foreign_table_1    | quote       | "
+(3 rows)
+
+SET ROLE regress_test_role;
+SELECT * FROM information_schema.user_mapping_options ORDER BY 1, 2, 3, 4;
+ authorization_identifier | foreign_server_catalog | foreign_server_name | option_name | option_value
+--------------------------+------------------------+---------------------+-------------+--------------
+ PUBLIC                   | yugabyte               | t1                  | modified    | 1
+ regress_test_role        | yugabyte               | s5                  | modified    | 1
+ regress_test_role        | yugabyte               | s6                  | username    | test
+ regress_test_role        | yugabyte               | t1                  | password    | boo
+ regress_test_role        | yugabyte               | t1                  | username    | bob
+(5 rows)
+
+SELECT * FROM information_schema.usage_privileges WHERE object_type LIKE 'FOREIGN%' AND object_name IN ('s6', 'foo') ORDER BY 1, 2, 3, 4, 5;
+          grantor          |        grantee        | object_catalog | object_schema | object_name |     object_type      | privilege_type | is_grantable
+---------------------------+-----------------------+----------------+---------------+-------------+----------------------+----------------+--------------
+ regress_foreign_data_user | regress_test_indirect | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | NO
+ regress_test_indirect     | regress_test_indirect | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+ regress_test_indirect     | regress_test_role2    | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+(3 rows)
+
+SELECT * FROM information_schema.role_usage_grants WHERE object_type LIKE 'FOREIGN%' AND object_name IN ('s6', 'foo') ORDER BY 1, 2, 3, 4, 5;
+          grantor          |        grantee        | object_catalog | object_schema | object_name |     object_type      | privilege_type | is_grantable
+---------------------------+-----------------------+----------------+---------------+-------------+----------------------+----------------+--------------
+ regress_foreign_data_user | regress_test_indirect | yugabyte       |               | foo         | FOREIGN DATA WRAPPER | USAGE          | NO
+ regress_test_indirect     | regress_test_indirect | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+ regress_test_indirect     | regress_test_role2    | yugabyte       |               | s6          | FOREIGN SERVER       | USAGE          | YES
+(3 rows)
+
+DROP USER MAPPING FOR current_user SERVER t1;
+SET ROLE regress_test_role2;
+SELECT * FROM information_schema.user_mapping_options ORDER BY 1, 2, 3, 4;
+ authorization_identifier | foreign_server_catalog | foreign_server_name | option_name | option_value
+--------------------------+------------------------+---------------------+-------------+--------------
+ regress_test_role        | yugabyte               | s6                  | username    |
+(1 row)
+
+RESET ROLE;
+-- has_foreign_data_wrapper_privilege
+SELECT has_foreign_data_wrapper_privilege('regress_test_role',
+    (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+SELECT has_foreign_data_wrapper_privilege('regress_test_role', 'foo', 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+SELECT has_foreign_data_wrapper_privilege(
+    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'),
+    (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+SELECT has_foreign_data_wrapper_privilege(
+    (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+SELECT has_foreign_data_wrapper_privilege(
+    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'), 'foo', 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+SELECT has_foreign_data_wrapper_privilege('foo', 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;
+SELECT has_foreign_data_wrapper_privilege('regress_test_role', 'foo', 'USAGE');
+ has_foreign_data_wrapper_privilege
+------------------------------------
+ t
+(1 row)
+
+-- has_server_privilege
+SELECT has_server_privilege('regress_test_role',
+    (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
+ has_server_privilege
+----------------------
+ f
+(1 row)
+
+SELECT has_server_privilege('regress_test_role', 's8', 'USAGE');
+ has_server_privilege
+----------------------
+ f
+(1 row)
+
+SELECT has_server_privilege(
+    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'),
+    (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
+ has_server_privilege
+----------------------
+ f
+(1 row)
+
+SELECT has_server_privilege(
+    (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
+ has_server_privilege
+----------------------
+ t
+(1 row)
+
+SELECT has_server_privilege(
+    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'), 's8', 'USAGE');
+ has_server_privilege
+----------------------
+ f
+(1 row)
+
+SELECT has_server_privilege('s8', 'USAGE');
+ has_server_privilege
+----------------------
+ t
+(1 row)
+
+GRANT USAGE ON FOREIGN SERVER s8 TO regress_test_role;
+SELECT has_server_privilege('regress_test_role', 's8', 'USAGE');
+ has_server_privilege
+----------------------
+ t
+(1 row)
+
+REVOKE USAGE ON FOREIGN SERVER s8 FROM regress_test_role;
+GRANT USAGE ON FOREIGN SERVER s4 TO regress_test_role;
+DROP USER MAPPING FOR public SERVER s4;
+ALTER SERVER s6 OPTIONS (DROP host, DROP dbname);
+ALTER USER MAPPING FOR regress_test_role SERVER s6 OPTIONS (DROP username);
+ALTER FOREIGN DATA WRAPPER foo VALIDATOR postgresql_fdw_validator;
+WARNING:  changing the foreign-data wrapper validator can cause the options for dependent objects to become invalid
+-- Privileges
+SET ROLE regress_unprivileged_role;
+CREATE FOREIGN DATA WRAPPER foobar;                             -- ERROR
+ERROR:  permission denied to create foreign-data wrapper "foobar"
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (gotcha 'true');         -- ERROR
+ERROR:  permission denied to alter foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
+ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_unprivileged_role; -- ERROR
+ERROR:  permission denied to change owner of foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to change owner of a foreign-data wrapper.
+DROP FOREIGN DATA WRAPPER foo;                                  -- ERROR
+ERROR:  must be owner of foreign-data wrapper foo
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;   -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+CREATE SERVER s9 FOREIGN DATA WRAPPER foo;                      -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+ALTER SERVER s4 VERSION '0.5';                                  -- ERROR
+ERROR:  must be owner of foreign server s4
+ALTER SERVER s4 OWNER TO regress_unprivileged_role;             -- ERROR
+ERROR:  must be owner of foreign server s4
+DROP SERVER s4;                                                 -- ERROR
+ERROR:  must be owner of foreign server s4
+GRANT USAGE ON FOREIGN SERVER s4 TO regress_test_role;          -- ERROR
+ERROR:  permission denied for foreign server s4
+CREATE USER MAPPING FOR public SERVER s4;                       -- ERROR
+ERROR:  must be owner of foreign server s4
+ALTER USER MAPPING FOR regress_test_role SERVER s6 OPTIONS (gotcha 'true'); -- ERROR
+ERROR:  must be owner of foreign server s6
+DROP USER MAPPING FOR regress_test_role SERVER s6;              -- ERROR
+ERROR:  must be owner of foreign server s6
+RESET ROLE;
+GRANT USAGE ON FOREIGN DATA WRAPPER postgresql TO regress_unprivileged_role;
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_unprivileged_role WITH GRANT OPTION;
+SET ROLE regress_unprivileged_role;
+CREATE FOREIGN DATA WRAPPER foobar;                             -- ERROR
+ERROR:  permission denied to create foreign-data wrapper "foobar"
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (gotcha 'true');         -- ERROR
+ERROR:  permission denied to alter foreign-data wrapper "foo"
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
+DROP FOREIGN DATA WRAPPER foo;                                  -- ERROR
+ERROR:  must be owner of foreign-data wrapper foo
+GRANT USAGE ON FOREIGN DATA WRAPPER postgresql TO regress_test_role; -- WARNING
+WARNING:  no privileges were granted for "postgresql"
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;
+CREATE SERVER s9 FOREIGN DATA WRAPPER postgresql;
+ALTER SERVER s6 VERSION '0.5';                                  -- ERROR
+ERROR:  must be owner of foreign server s6
+DROP SERVER s6;                                                 -- ERROR
+ERROR:  must be owner of foreign server s6
+GRANT USAGE ON FOREIGN SERVER s6 TO regress_test_role;          -- ERROR
+ERROR:  permission denied for foreign server s6
+GRANT USAGE ON FOREIGN SERVER s9 TO regress_test_role;
+CREATE USER MAPPING FOR public SERVER s6;                       -- ERROR
+ERROR:  must be owner of foreign server s6
+CREATE USER MAPPING FOR public SERVER s9;
+ALTER USER MAPPING FOR regress_test_role SERVER s6 OPTIONS (gotcha 'true'); -- ERROR
+ERROR:  must be owner of foreign server s6
+DROP USER MAPPING FOR regress_test_role SERVER s6;              -- ERROR
+ERROR:  must be owner of foreign server s6
+RESET ROLE;
+REVOKE USAGE ON FOREIGN DATA WRAPPER foo FROM regress_unprivileged_role; -- ERROR
+ERROR:  dependent privileges exist
+HINT:  Use CASCADE to revoke them too.
+REVOKE USAGE ON FOREIGN DATA WRAPPER foo FROM regress_unprivileged_role CASCADE;
+SET ROLE regress_unprivileged_role;
+GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;   -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+CREATE SERVER s10 FOREIGN DATA WRAPPER foo;                     -- ERROR
+ERROR:  permission denied for foreign-data wrapper foo
+ALTER SERVER s9 VERSION '1.1';
+GRANT USAGE ON FOREIGN SERVER s9 TO regress_test_role;
+CREATE USER MAPPING FOR current_user SERVER s9;
+-- We use terse mode to avoid ordering issues in cascade detail output.
+\set VERBOSITY terse
+DROP SERVER s9 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default
+RESET ROLE;
+CREATE SERVER s9 FOREIGN DATA WRAPPER foo;
+GRANT USAGE ON FOREIGN SERVER s9 TO regress_unprivileged_role;
+SET ROLE regress_unprivileged_role;
+ALTER SERVER s9 VERSION '1.2';                                  -- ERROR
+ERROR:  must be owner of foreign server s9
+GRANT USAGE ON FOREIGN SERVER s9 TO regress_test_role;          -- WARNING
+WARNING:  no privileges were granted for "s9"
+CREATE USER MAPPING FOR current_user SERVER s9;
+DROP SERVER s9 CASCADE;                                         -- ERROR
+ERROR:  must be owner of foreign server s9
+-- Check visibility of user mapping data
+SET ROLE regress_test_role;
+CREATE SERVER s10 FOREIGN DATA WRAPPER foo;
+CREATE USER MAPPING FOR public SERVER s10 OPTIONS (user 'secret');
+CREATE USER MAPPING FOR regress_unprivileged_role SERVER s10 OPTIONS (user 'secret');
+-- owner of server can see some option fields
+\deu+
+                 List of user mappings
+ Server |         User name         |    FDW options
+--------+---------------------------+-------------------
+ s10    | public                    | ("user" 'secret')
+ s10    | regress_unprivileged_role |
+ s4     | regress_foreign_data_user |
+ s5     | regress_test_role         | (modified '1')
+ s6     | regress_test_role         |
+ s8     | public                    |
+ s8     | regress_foreign_data_user |
+ s9     | regress_unprivileged_role |
+ t1     | public                    | (modified '1')
+(9 rows)
+
+RESET ROLE;
+-- superuser can see all option fields
+\deu+
+                  List of user mappings
+ Server |         User name         |     FDW options
+--------+---------------------------+---------------------
+ s10    | public                    | ("user" 'secret')
+ s10    | regress_unprivileged_role | ("user" 'secret')
+ s4     | regress_foreign_data_user |
+ s5     | regress_test_role         | (modified '1')
+ s6     | regress_test_role         |
+ s8     | public                    |
+ s8     | regress_foreign_data_user | (password 'public')
+ s9     | regress_unprivileged_role |
+ t1     | public                    | (modified '1')
+(9 rows)
+
+-- unprivileged user cannot see any option field
+SET ROLE regress_unprivileged_role;
+\deu+
+              List of user mappings
+ Server |         User name         | FDW options
+--------+---------------------------+-------------
+ s10    | public                    |
+ s10    | regress_unprivileged_role |
+ s4     | regress_foreign_data_user |
+ s5     | regress_test_role         |
+ s6     | regress_test_role         |
+ s8     | public                    |
+ s8     | regress_foreign_data_user |
+ s9     | regress_unprivileged_role |
+ t1     | public                    |
+(9 rows)
+
+RESET ROLE;
+\set VERBOSITY terse
+DROP SERVER s10 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default
+-- Triggers
+CREATE FUNCTION dummy_trigger() RETURNS TRIGGER AS $$
+  BEGIN
+    RETURN NULL;
+  END
+$$ language plpgsql;
+CREATE TRIGGER trigtest_before_stmt BEFORE INSERT OR UPDATE OR DELETE
+ON foreign_schema.foreign_table_1
+FOR EACH STATEMENT
+EXECUTE PROCEDURE dummy_trigger();
+CREATE TRIGGER trigtest_after_stmt AFTER INSERT OR UPDATE OR DELETE
+ON foreign_schema.foreign_table_1
+FOR EACH STATEMENT
+EXECUTE PROCEDURE dummy_trigger();
+CREATE TRIGGER trigtest_after_stmt_tt AFTER INSERT OR UPDATE OR DELETE -- ERROR
+ON foreign_schema.foreign_table_1
+REFERENCING NEW TABLE AS new_table
+FOR EACH STATEMENT
+EXECUTE PROCEDURE dummy_trigger();
+ERROR:  REFERENCING clause (transition tables) not supported yet
+LINE 3: REFERENCING NEW TABLE AS new_table
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
+-- ^^^ original:
+-- ERROR:  "foreign_table_1" is a foreign table
+-- DETAIL:  Triggers on foreign tables cannot have transition tables.
+CREATE TRIGGER trigtest_before_row BEFORE INSERT OR UPDATE OR DELETE
+ON foreign_schema.foreign_table_1
+FOR EACH ROW
+EXECUTE PROCEDURE dummy_trigger();
+CREATE TRIGGER trigtest_after_row AFTER INSERT OR UPDATE OR DELETE
+ON foreign_schema.foreign_table_1
+FOR EACH ROW
+EXECUTE PROCEDURE dummy_trigger();
+CREATE CONSTRAINT TRIGGER trigtest_constraint AFTER INSERT OR UPDATE OR DELETE
+ON foreign_schema.foreign_table_1
+FOR EACH ROW
+EXECUTE PROCEDURE dummy_trigger();
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER trigtest_constraint AFTER INSERT O...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+-- ^^^ original:
+-- ERROR:  "foreign_table_1" is a foreign table
+-- DETAIL:  Foreign tables cannot have constraint triggers.
+ALTER FOREIGN TABLE foreign_schema.foreign_table_1
+	DISABLE TRIGGER trigtest_before_stmt;
+ALTER FOREIGN TABLE foreign_schema.foreign_table_1
+	ENABLE TRIGGER trigtest_before_stmt;
+DROP TRIGGER trigtest_before_stmt ON foreign_schema.foreign_table_1;
+DROP TRIGGER trigtest_before_row ON foreign_schema.foreign_table_1;
+DROP TRIGGER trigtest_after_stmt ON foreign_schema.foreign_table_1;
+DROP TRIGGER trigtest_after_row ON foreign_schema.foreign_table_1;
+DROP FUNCTION dummy_trigger();
+-- Table inheritance
+CREATE TABLE fd_pt1 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+);
+CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
+  SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+ERROR:  INHERITS not supported yet
+LINE 1: CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
+                                    ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+
+-- ^^^ originally returns:
+-- Child tables: ft2
+--
+\d+ ft2
+-- ^^^ originally returns:
+--                                        Foreign table "public.ft2"
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+-- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
+-- Server: s0
+-- FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+-- Inherits: fd_pt1
+--
+DROP FOREIGN TABLE ft2;
+ERROR:  foreign table "ft2" does not exist
+-- ^^^ originally: should succeed:
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+
+CREATE FOREIGN TABLE ft2 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
+ERROR:  ALTER TABLE INHERIT not supported yet
+LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+
+-- ^^^ originally returns:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra:
+-- Inherits: fd_pt1
+--
+CREATE TABLE ct3() INHERITS(ft2);
+ERROR:  INHERITS not supported yet
+LINE 1: CREATE TABLE ct3() INHERITS(ft2);
+                           ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+CREATE FOREIGN TABLE ft3 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+) INHERITS(ft2)
+  SERVER s0;
+ERROR:  INHERITS not supported yet
+LINE 5: ) INHERITS(ft2)
+          ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+-- ^^^ originally:
+-- NOTICE:  merging column "c1" with inherited definition
+-- NOTICE:  merging column "c2" with inherited definition
+-- NOTICE:  merging column "c3" with inherited definition
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra:
+-- Inherits: fd_pt1
+-- Child tables: ct3,
+--               ft3
+--
+\d+ ct3
+-- ^^^ originally returns:
+--                                     Table "public.ct3"
+--  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+-- --------+---------+-----------+----------+---------+----------+--------------+-------------
+--  c1     | integer |           | not null |         | plain    |              |
+--  c2     | text    |           |          |         | extended |              |
+--  c3     | date    |           |          |         | plain    |              |
+-- Inherits: ft2
+--
+\d+ ft3
+-- ^^^ originally returns:
+--                                        Foreign table "public.ft3"
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+-- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
+-- Server: s0
+-- Inherits: ft2
+--
+-- add attributes recursively
+ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
+ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
+ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
+ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
+ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+ c4     | integer |           |          |         | plain    |              |
+ c5     | integer |           |          | 0       | plain    |              |
+ c6     | integer |           |          |         | plain    |              |
+ c7     | integer |           | not null |         | plain    |              |
+ c8     | integer |           |          |         | plain    |              |
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra columns:
+--  c4     | integer |           |          |         |             | plain    |              |
+--  c5     | integer |           |          | 0       |             | plain    |              |
+--  c6     | integer |           |          |         |             | plain    |              |
+--  c7     | integer |           | not null |         |             | plain    |              |
+--  c8     | integer |           |          |         |             | plain    |              |
+-- ^^^ and extra after FDW options:
+-- Inherits: fd_pt1
+-- Child tables: ct3,
+--               ft3
+--
+\d+ ct3
+--                                     Table "public.ct3"
+--  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+-- --------+---------+-----------+----------+---------+----------+--------------+-------------
+--  c1     | integer |           | not null |         | plain    |              |
+--  c2     | text    |           |          |         | extended |              |
+--  c3     | date    |           |          |         | plain    |              |
+--  c4     | integer |           |          |         | plain    |              |
+--  c5     | integer |           |          | 0       | plain    |              |
+--  c6     | integer |           |          |         | plain    |              |
+--  c7     | integer |           | not null |         | plain    |              |
+--  c8     | integer |           |          |         | plain    |              |
+-- Inherits: ft2
+--
+\d+ ft3
+--                                        Foreign table "public.ft3"
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+-- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
+--  c4     | integer |           |          |         |             | plain    |              |
+--  c5     | integer |           |          | 0       |             | plain    |              |
+--  c6     | integer |           |          |         |             | plain    |              |
+--  c7     | integer |           | not null |         |             | plain    |              |
+--  c8     | integer |           |          |         |             | plain    |              |
+-- Server: s0
+-- Inherits: ft2
+--
+-- alter attributes recursively
+ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
+ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
+ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
+ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
+-- YB Note: The below errors in PG but doesn't in YB because inheritance isn't supported.
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
+ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
+ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
+                           ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
+ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
+ERROR:  ALTER TABLE ALTER column not supported yet
+LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
+                           ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+ c4     | integer |           |          | 0       | plain    |              |
+ c5     | integer |           |          |         | plain    |              |
+ c6     | integer |           | not null |         | plain    |              |
+ c7     | integer |           |          |         | plain    |              |
+ c8     | text    |           |          |         | extended |              |
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra columns:
+--  c4     | integer |           |          | 0       |             | plain    |              |
+--  c5     | integer |           |          |         |             | plain    |              |
+--  c6     | integer |           | not null |         |             | plain    |              |
+--  c7     | integer |           |          |         |             | plain    |              |
+--  c8     | text    |           |          |         |             | external |              |
+-- ^^^ and extra after FDW options:
+-- Inherits: fd_pt1
+-- Child tables: ct3,
+--               ft3
+--
+-- drop attributes recursively
+ALTER TABLE fd_pt1 DROP COLUMN c4;
+ALTER TABLE fd_pt1 DROP COLUMN c5;
+ALTER TABLE fd_pt1 DROP COLUMN c6;
+ALTER TABLE fd_pt1 DROP COLUMN c7;
+ALTER TABLE fd_pt1 DROP COLUMN c8;
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra after FDW options:
+-- Inherits: fd_pt1
+-- Child tables: ct3,
+--               ft3
+--
+-- add constraints recursively
+ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk1 CHECK (c1 > 0) NO INHERIT;
+ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
+-- connoinherit should be true for NO INHERIT constraint
+SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
+  FROM pg_class AS pc JOIN pg_constraint AS pgc ON (conrelid = pc.oid)
+  WHERE pc.relname = 'fd_pt1'
+  ORDER BY 1,2;
+ relname |  conname   | contype | conislocal | coninhcount | connoinherit
+---------+------------+---------+------------+-------------+--------------
+ fd_pt1  | fd_pt1chk1 | c       | t          |           0 | t
+ fd_pt1  | fd_pt1chk2 | c       | t          |           0 | f
+(2 rows)
+
+-- child does not inherit NO INHERIT constraints
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra before Server:
+-- Check constraints:
+--    "fd_pt1chk2" CHECK (c2 <> ''::text)
+-- ^^^ and extra after FDW options:
+-- Inherits: fd_pt1
+-- Child tables: ct3,
+--               ft3
+--
+\set VERBOSITY terse
+DROP FOREIGN TABLE ft2; -- ERROR
+-- ^^^ originally: ERROR:  cannot drop foreign table ft2 because other objects depend on it
+DROP FOREIGN TABLE ft2 CASCADE;
+ERROR:  foreign table "ft2" does not exist
+-- ^^^ originally: NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default
+CREATE FOREIGN TABLE ft2 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+-- child must have parent's INHERIT constraints
+ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;                            -- ERROR
+ERROR:  ALTER TABLE INHERIT not supported yet
+LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+-- ^^^ originally:
+-- ERROR:  child table is missing constraint "fd_pt1chk2"
+ALTER FOREIGN TABLE ft2 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
+ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
+ERROR:  ALTER TABLE INHERIT not supported yet
+LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
+                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+-- child does not inherit NO INHERIT constraints
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk1" CHECK (c1 > 0) NO INHERIT
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra:
+-- Inherits: fd_pt1
+--
+-- drop constraints recursively
+ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
+ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk2 CASCADE;
+-- NOT VALID case
+INSERT INTO fd_pt1 VALUES (1, 'fd_pt1'::text, '1994-01-01'::date);
+ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originally extra check constraint:
+--    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+-- ^^^ and extra after FDW:
+-- Inherits: fd_pt1
+--
+-- VALIDATE CONSTRAINT need do nothing on foreign tables
+ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
+ERROR:  ALTER TABLE VALIDATE CONSTRAINT not supported yet
+LINE 1: ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
+                           ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- originally extra check contraint:
+--    "fd_pt1chk3" CHECK (c2 <> ''::text)
+-- ^^^ and extra after FDW:
+-- Inherits: fd_pt1
+--
+-- OID system column
+ALTER TABLE fd_pt1 SET WITH OIDS;
+ERROR:  ALTER TABLE SET WITH OIDS not supported yet
+LINE 1: ALTER TABLE fd_pt1 SET WITH OIDS;
+                           ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+-- Has OIDs: yes
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- ^^^ originall extra check constraint:
+--    "fd_pt1chk3" CHECK (c2 <> ''::text)
+-- ^^ and extra after FDW:
+-- Inherits: fd_pt1
+-- Has OIDs: yes
+--
+ALTER TABLE ft2 SET WITHOUT OIDS;  -- ERROR
+-- ^^^ originally: ERROR:  cannot drop inherited column "oid"
+ALTER TABLE fd_pt1 SET WITHOUT OIDS;
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    | 10000        |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- originally extra check contraint:
+--    "fd_pt1chk3" CHECK (c2 <> ''::text)
+-- ^^^ and extra after FDW:
+-- Inherits: fd_pt1
+--
+-- changes name of an attribute recursively
+ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
+ALTER TABLE fd_pt1 RENAME COLUMN c2 TO f2;
+ALTER TABLE fd_pt1 RENAME COLUMN c3 TO f3;
+-- changes name of a constraint recursively
+ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
+\d+ fd_pt1
+                                   Table "public.fd_pt1"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ f1     | integer |           | not null |         | plain    | 10000        |
+ f2     | text    |           |          |         | extended |              |
+ f3     | date    |           |          |         | plain    |              |
+Check constraints:
+    "f2_check" CHECK (f2 <> ''::text) NOT VALID
+
+-- ^^^ originally extra:
+-- Child tables: ft2
+--
+\d+ ft2
+                                       Foreign table "public.ft2"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Check constraints:
+    "fd_pt1chk2" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- originally extra check contraint:
+--    "fd_pt1chk2" CHECK (f2 <> ''::text)
+-- ^^^ and extra after FDW:
+-- Inherits: fd_pt1
+--
+-- TRUNCATE doesn't work on foreign tables, either directly or recursively
+TRUNCATE ft2;  -- ERROR
+ERROR:  "ft2" is not a table
+TRUNCATE fd_pt1;  -- ERROR
+-- ^^^ originally: ERROR:  "ft2" is not a table
+DROP TABLE fd_pt1 CASCADE;
+-- ^^^ originally: NOTICE:  drop cascades to foreign table ft2
+-- IMPORT FOREIGN SCHEMA
+IMPORT FOREIGN SCHEMA s1 FROM SERVER s9 INTO public; -- ERROR
+ERROR:  foreign-data wrapper "foo" has no handler
+IMPORT FOREIGN SCHEMA s1 LIMIT TO (t1) FROM SERVER s9 INTO public; --ERROR
+ERROR:  foreign-data wrapper "foo" has no handler
+IMPORT FOREIGN SCHEMA s1 EXCEPT (t1) FROM SERVER s9 INTO public; -- ERROR
+ERROR:  foreign-data wrapper "foo" has no handler
+IMPORT FOREIGN SCHEMA s1 EXCEPT (t1, t2) FROM SERVER s9 INTO public
+OPTIONS (option1 'value1', option2 'value2'); -- ERROR
+ERROR:  foreign-data wrapper "foo" has no handler
+-- DROP FOREIGN TABLE
+DROP FOREIGN TABLE no_table;                                    -- ERROR
+ERROR:  foreign table "no_table" does not exist
+DROP FOREIGN TABLE IF EXISTS no_table;
+NOTICE:  foreign table "no_table" does not exist, skipping
+DROP FOREIGN TABLE foreign_schema.foreign_table_1;
+-- REASSIGN OWNED/DROP OWNED of foreign objects
+REASSIGN OWNED BY regress_test_role TO regress_test_role2;
+DROP OWNED BY regress_test_role2;
+ERROR:  cannot drop desired object(s) because other objects depend on them
+DETAIL:  user mapping for regress_test_role on server s5 depends on server s5
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP OWNED BY regress_test_role2 CASCADE;
+NOTICE:  drop cascades to user mapping for regress_test_role on server s5
+-- Foreign partition DDL stuff
+CREATE TABLE fd_pt2 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+) PARTITION BY LIST (c1);
+CREATE FOREIGN TABLE fd_pt2_1 PARTITION OF fd_pt2 FOR VALUES IN (1)
+  SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Partitions: fd_pt2_1 FOR VALUES IN (1)
+
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Partition of: fd_pt2 FOR VALUES IN (1)
+Partition constraint: ((c1 IS NOT NULL) AND (c1 = 1))
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- partition cannot have additional columns
+DROP FOREIGN TABLE fd_pt2_1;
+CREATE FOREIGN TABLE fd_pt2_1 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date,
+	c4 char
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+\d+ fd_pt2_1
+                                       Foreign table "public.fd_pt2_1"
+ Column |     Type     | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+--------------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer      |           | not null |         |             | plain    |              |
+ c2     | text         |           |          |         |             | extended |              |
+ c3     | date         |           |          |         |             | plain    |              |
+ c4     | character(1) |           |          |         |             | extended |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);       -- ERROR
+ERROR:  table "fd_pt2_1" contains column "c4" not found in parent "fd_pt2"
+DETAIL:  The new partition may contain only the columns present in parent.
+DROP FOREIGN TABLE fd_pt2_1;
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Number of partitions: 0
+
+CREATE FOREIGN TABLE fd_pt2_1 (
+	c1 integer NOT NULL,
+	c2 text,
+	c3 date
+) SERVER s0 OPTIONS (delimiter ',', quote '"', "be quoted" 'value');
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- no attach partition validation occurs for foreign tables
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Partitions: fd_pt2_1 FOR VALUES IN (1)
+
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           |          |         |             | plain    |              |
+Partition of: fd_pt2 FOR VALUES IN (1)
+Partition constraint: ((c1 IS NOT NULL) AND (c1 = 1))
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- cannot add column to a partition
+ALTER TABLE fd_pt2_1 ADD c4 char;
+ERROR:  cannot add column to a partition
+-- ok to have a partition's own constraints though
+ALTER TABLE fd_pt2_1 ALTER c3 SET NOT NULL;
+ALTER TABLE fd_pt2_1 ADD CONSTRAINT p21chk CHECK (c2 <> '');
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           |          |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Partitions: fd_pt2_1 FOR VALUES IN (1)
+
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           | not null |         |             | plain    |              |
+Partition of: fd_pt2 FOR VALUES IN (1)
+Partition constraint: ((c1 IS NOT NULL) AND (c1 = 1))
+Check constraints:
+    "p21chk" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+-- cannot drop inherited NOT NULL constraint from a partition
+ALTER TABLE fd_pt2_1 ALTER c1 DROP NOT NULL;
+ERROR:  column "c1" is marked NOT NULL in parent table
+-- partition must have parent's constraints
+ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
+ALTER TABLE fd_pt2 ALTER c2 SET NOT NULL;
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           | not null |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Number of partitions: 0
+
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           |          |         |             | extended |              |
+ c3     | date    |           | not null |         |             | plain    |              |
+Check constraints:
+    "p21chk" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);       -- ERROR
+ERROR:  column "c2" in child table must be marked NOT NULL
+ALTER FOREIGN TABLE fd_pt2_1 ALTER c2 SET NOT NULL;
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
+ALTER TABLE fd_pt2 DETACH PARTITION fd_pt2_1;
+ALTER TABLE fd_pt2 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
+\d+ fd_pt2
+                                   Table "public.fd_pt2"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ c1     | integer |           | not null |         | plain    |              |
+ c2     | text    |           | not null |         | extended |              |
+ c3     | date    |           |          |         | plain    |              |
+Partition key: LIST (c1)
+Check constraints:
+    "fd_pt2chk1" CHECK (c1 > 0)
+Number of partitions: 0
+
+\d+ fd_pt2_1
+                                     Foreign table "public.fd_pt2_1"
+ Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
+--------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
+ c1     | integer |           | not null |         |             | plain    |              |
+ c2     | text    |           | not null |         |             | extended |              |
+ c3     | date    |           | not null |         |             | plain    |              |
+Check constraints:
+    "p21chk" CHECK (c2 <> ''::text)
+Server: s0
+FDW options: (delimiter ',', quote '"', "be quoted" 'value')
+
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);       -- ERROR
+ERROR:  child table is missing constraint "fd_pt2chk1"
+ALTER FOREIGN TABLE fd_pt2_1 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
+ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
+-- TRUNCATE doesn't work on foreign tables, either directly or recursively
+TRUNCATE fd_pt2_1;  -- ERROR
+ERROR:  "fd_pt2_1" is not a table
+TRUNCATE fd_pt2;  -- ERROR
+ERROR:  "fd_pt2_1" is not a table
+DROP FOREIGN TABLE fd_pt2_1;
+DROP TABLE fd_pt2;
+-- foreign table cannot be part of partition tree made of temporary
+-- relations.
+CREATE TEMP TABLE temp_parted (a int) PARTITION BY LIST (a);
+CREATE FOREIGN TABLE foreign_part PARTITION OF temp_parted DEFAULT
+  SERVER s0;  -- ERROR
+ERROR:  cannot create a permanent relation as partition of temporary relation "temp_parted"
+CREATE FOREIGN TABLE foreign_part (a int) SERVER s0;
+ALTER TABLE temp_parted ATTACH PARTITION foreign_part DEFAULT;  -- ERROR
+ERROR:  cannot attach a permanent relation as partition of temporary relation "temp_parted"
+DROP FOREIGN TABLE foreign_part;
+DROP TABLE temp_parted;
+-- Cleanup
+DROP SCHEMA foreign_schema CASCADE;
+DROP ROLE regress_test_role;                                -- ERROR
+ERROR:  role "regress_test_role" cannot be dropped because some objects depend on it
+DETAIL:  owner of user mapping for regress_test_role on server s6
+privileges for foreign-data wrapper foo
+privileges for server s4
+DROP SERVER t1 CASCADE;
+NOTICE:  drop cascades to user mapping for public on server t1
+DROP USER MAPPING FOR regress_test_role SERVER s6;
+\set VERBOSITY terse
+DROP FOREIGN DATA WRAPPER foo CASCADE;
+NOTICE:  drop cascades to 5 other objects
+DROP SERVER s8 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default
+DROP ROLE regress_test_indirect;
+DROP ROLE regress_test_role;
+DROP ROLE regress_unprivileged_role;                        -- ERROR
+ERROR:  role "regress_unprivileged_role" cannot be dropped because some objects depend on it
+DETAIL:  privileges for foreign-data wrapper postgresql
+REVOKE ALL ON FOREIGN DATA WRAPPER postgresql FROM regress_unprivileged_role;
+DROP ROLE regress_unprivileged_role;
+DROP ROLE regress_test_role2;
+DROP FOREIGN DATA WRAPPER postgresql CASCADE;
+DROP FOREIGN DATA WRAPPER dummy CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to foreign table ft2
+drop cascades to server s0
+-- ^^^ 2 lines added by YugabyteDB
+\c
+DROP ROLE regress_foreign_data_user;
+-- At this point we should have no wrappers, no servers, and no mappings.
+SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
+ fdwname | fdwhandler | fdwvalidator | fdwoptions
+---------+------------+--------------+------------
+(0 rows)
+
+SELECT srvname, srvoptions FROM pg_foreign_server;
+ srvname | srvoptions
+---------+------------
+(0 rows)
+
+SELECT * FROM pg_user_mapping;
+ umuser | umserver | umoptions
+--------+----------+-----------
+(0 rows)

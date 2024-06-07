@@ -1,0 +1,491 @@
+CREATE TABLE t_large(a int primary key, v varchar(1000));
+INSERT INTO t_large SELECT g, REPEAT('x', 1000) FROM generate_series(1, 5000) g;
+CREATE INDEX t_large_v_idx_asc ON t_large(v ASC);
+CREATE TABLE t_medium (a int primary key, v varchar(100));
+INSERT INTO t_medium SELECT g, REPEAT('x', 100) FROM generate_series(1, 5000) g;
+CREATE INDEX t_medium_v_idx_asc ON t_medium(v ASC);
+CREATE TABLE t_small (a int primary key, v varchar(25));
+INSERT INTO t_small SELECT g, REPEAT('x', 25) FROM generate_series(1, 5000) g;
+CREATE INDEX t_small_v_idx_asc ON t_small(v ASC);
+-- #### default limits just use the row limit ####
+-- seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_large (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+                   QUERY PLAN
+-------------------------------------------------
+ Seq Scan on t_medium (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_small (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- YB_TODO: the yb seq scan queries' explain output differ since, for some
+-- reason, yb seq scan is not being used by pg15.  Deal with this test failure
+-- later on in commits 2375a8e930e4a7047c78347371352947447302e1 and
+-- 465ee2c4252097b20613a60d8f1f7b59c7a29e12.
+-- yb seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_large AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_large t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_medium AS t;
+                    QUERY PLAN
+---------------------------------------------------
+ Seq Scan on t_medium t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_small AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_small t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- index scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 5
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 5
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 5
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+-- index only scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+-- #### bounded by size limit when row limit is higher ####
+SET yb_fetch_size_limit TO '1kB';
+-- seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_large (actual rows=5000 loops=1)
+   Storage Table Read Requests: 2500
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+                   QUERY PLAN
+-------------------------------------------------
+ Seq Scan on t_medium (actual rows=5000 loops=1)
+   Storage Table Read Requests: 557
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_small (actual rows=5000 loops=1)
+   Storage Table Read Requests: 194
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- yb seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_large AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_large t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 2500
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_medium AS t;
+                    QUERY PLAN
+---------------------------------------------------
+ Seq Scan on t_medium t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 557
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_small AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_small t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 194
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- index scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 2478
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 93
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 552
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 93
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 276
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 93
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+-- index only scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 2500
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 500
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 167
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+SET yb_fetch_row_limit = 10000;
+SET yb_fetch_size_limit = '1MB';
+-- seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_large (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+                   QUERY PLAN
+-------------------------------------------------
+ Seq Scan on t_medium (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_small (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- yb seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_large AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_large t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 6
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_medium AS t;
+                    QUERY PLAN
+---------------------------------------------------
+ Seq Scan on t_medium t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_small AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_small t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- index scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 2
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+-- index only scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 5
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+-- #### bounded by whatever is hit first: row or size limit ####
+SET yb_fetch_size_limit TO '500kB';
+-- seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_large (actual rows=5000 loops=1)
+   Storage Table Read Requests: 12
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+                   QUERY PLAN
+-------------------------------------------------
+ Seq Scan on t_medium (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+                   QUERY PLAN
+------------------------------------------------
+ Seq Scan on t_small (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- yb seq scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_large AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_large t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 12
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_medium AS t;
+                    QUERY PLAN
+---------------------------------------------------
+ Seq Scan on t_medium t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_small AS t;
+                    QUERY PLAN
+--------------------------------------------------
+ Seq Scan on t_small t (actual rows=5000 loops=1)
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 5000
+(3 rows)
+
+-- index scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 4
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: ((v)::text > ''::text)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 5000
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(6 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '' LIMIT 1;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Limit (actual rows=1 loops=1)
+   ->  Index Scan using t_small_v_idx_asc on t_small (actual rows=1 loops=1)
+         Index Cond: ((v)::text > ''::text)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Index Read Requests: 1
+         Storage Index Rows Scanned: 1
+(7 rows)
+
+-- index only scan
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 10
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Only Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 2
+   Storage Index Rows Scanned: 5000
+(5 rows)
+
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Index Only Scan using t_small_v_idx_asc on t_small (actual rows=5000 loops=1)
+   Index Cond: (v > ''::text)
+   Heap Fetches: 0
+   Storage Index Read Requests: 1
+   Storage Index Rows Scanned: 5000
+(5 rows)

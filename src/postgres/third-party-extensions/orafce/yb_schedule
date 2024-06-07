@@ -1,0 +1,20 @@
+# third-party-extensions/orafce/yb_schedule
+
+test: yb_pg_init
+test: yb_pg_dbms_pipe_session_A
+test: yb_pg_dbms_pipe_session_B
+test: yb_pg_dbms_alert_session_A
+test: yb_pg_dbms_alert_session_B
+test: yb_pg_dbms_alert_session_C
+test: yb_pg_orafce
+test: orafce2
+test: yb_pg_dbms_output
+test: yb_pg_dbms_utility
+test: files
+test: yb_pg_varchar2
+test: nvarchar2
+test: yb_pg_aggregates
+test: yb_pg_nlssort
+test: yb_pg_dbms_random
+test: regexp_func
+test: yb_pg_dbms_sql

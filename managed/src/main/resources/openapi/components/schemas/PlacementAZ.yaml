@@ -1,0 +1,30 @@
+title: YBA Placement Availability Zone within Placement Region
+type: object
+properties:
+  uuid:
+    description: The AZ id
+    type: string
+    format: uuid
+  name:
+    description: The AZ name
+    type: string
+  replication_factor:
+    description: The minimum number of copies of data we should place into this AZ.
+    type: integer
+    format: int32
+  subnet:
+    description: The subnet in the AZ.
+    type: string
+  secondary_subnet:
+    description: The secondary subnet in the AZ.
+    type: string
+  num_nodes_in_az:
+    description: Number of nodes in each AZ.
+    type: integer
+    format: int32
+  leader_affinity:
+    description: Affinitizes raft leaders to this AZ.
+    type: boolean
+  lb_name:
+    description: The Load Balancer id.
+    type: string

@@ -1,0 +1,265 @@
+/*
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+body {
+}
+
+.yb-navbar {
+  padding-bottom: 10px;
+}
+
+.yb-navbar-logo {
+  float:left;
+}
+
+.yb-navbar .navbar-brand {
+    padding: 0;
+}
+
+.navbar-brand {
+    float: left;
+    padding: 15px 15px;
+    font-size: 18px;
+    line-height: 20px;
+}
+
+.sidebar-nav ul {
+  float: none;
+  display: block;
+}
+.sidebar-nav>li {
+  text-align: center;
+  float: none !important;
+  display: block;
+  padding-bottom: 20px;
+}
+.sidebar-nav>li>a {
+  color: #DDD;
+}
+.sidebar-nav>li>a:hover, .sidebar-nav>li>a:focus {
+  color: #FFF;
+  background: none;
+}
+.sidebar-nav>li>a i {
+  font-size: 36px;
+}
+
+.nav-logo {
+    display: inline-block;
+    height: 42px;
+    width: auto;
+    margin: 10px auto;
+    padding-left: 5px;
+}
+
+.nav-bar.scrolled .navbar-text a {
+  color: #f75821;
+}
+
+.nav-bar .navbar-text a {
+  cursor: pointer;
+  color: #f75821;
+  display: inline-block;
+  padding: 6px 8px 8px;
+  margin-bottom: -4px;
+  font-family: "Open Sans", sans-serif;
+  font-weight: 400;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.navbar .nav {
+  padding-top:10px;
+}
+
+.sidebar-nav .navbar .nav>li>a {
+  float: none;
+  padding: 10px 15px 10px;
+  color: #DDD;
+  text-decoration: none;
+  text-shadow: none !important;
+}
+
+.nav>li>a hover, .nav>li>a hover focus {
+  padding: 10px 15px 10px;
+  color: #FFF;
+  background-color: #151838;
+}
+
+.yb-main {
+  margin-left: 170px;
+  margin-top:25px;
+}
+
+.footer {
+  width: 100%;
+  background-color: #f5f5f5;
+  bottom: 0;
+  margin-left: -35px;
+}
+.footer pre {
+  border: none;
+  /* To prevent horizontal scrolling */
+  white-space:pre-wrap;
+}
+.footer pre.message {
+  /* To prevent word break in the easter egg message */
+  word-break: inherit;
+}
+.yb-footer {
+  margin-left: 180px;
+}
+
+.yb-bottom-spacer {
+  height: 60px;
+}
+
+.sidebar-wrapper {
+  background: #151838;
+  height: 100%;
+  left: 220px;
+  margin-left: -220px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: all 0.5s ease;
+  width: 150px;
+  z-index: 1000;
+}
+
+.dashboard-content {
+  margin-top: 25px;
+  margin-bottom: 60px;
+}
+
+.table > tbody > tr:first-child > td {
+  border: none;
+}
+
+.table > tbody > tr > td {
+  padding: 26px;
+}
+
+.yb-dashboard-icon {
+  padding-right: 10px;
+  font-size: 16px;
+  color: #f75821;
+}
+
+.yb-overview {
+  color: #555;
+  font-size: 12px;
+}
+
+.debug-tiles {
+  padding: 20px 0;
+}
+
+.dbg-tile {
+  padding: 10px;
+  text-align: center;
+}
+
+.dbg-tile>a {
+  padding: 20px 0;
+}
+
+.dbg-tile>a:hover {
+  text-decoration: none;
+}
+
+.dbg-icon {
+  color: #f75821;
+  font-size: 48px;
+}
+
+.dbg-caption {
+  color: #777 !important;
+}
+
+.dbg-caption>h3 {
+  margin-top: 0px;
+}
+
+.level0 td:first-child {
+    padding-left: 15px;
+}
+.level1 td:first-child {
+    padding-left: 30px;
+}
+.level2 td:first-child {
+    padding-left: 45px;
+}
+.level3 td:first-child {
+    padding-left: 60px;
+}
+.level4 td:first-child {
+    padding-left: 75px;
+}
+.level5 td:first-child {
+    padding-left: 90px;
+}
+.level6 td:first-child {
+    padding-left: 105px;
+}
+
+.collapse .toggle {
+  background: url("images/collapse.png");
+}
+.expand .toggle {
+  background: url("images/expand.png");
+}
+.toggle {
+  height: 9px;
+  width: 9px;
+  display: inline-block;
+}
+
+/*
+Usage for collapsible style on base of checkbox:
+  <input type="checkbox" id="uinque-id" class="yb-collapsible-cb"/>
+  <label for="uinque-id">title</label>
+  <div>collapsible data</div>
+
+Note: <div> can be replaced with any element that supports 'display: block'
+*/
+.yb-collapsible-cb,
+.yb-collapsible-cb + label + * {
+  display: none;
+}
+.yb-collapsible-cb:checked + label + * {
+  display: block;
+}
+.yb-collapsible-cb + label {
+  cursor: pointer;
+  display: inline-block;
+  text-decoration: underline;
+  text-decoration-thickness: .1em;
+  text-underline-position: under;
+  text-decoration-style: dashed;
+  -ms-text-underline-position: under;
+  -moz-text-decoration-style: dashed;
+}
+.yb-collapsible-cb:hover + label {
+  opacity: .8;
+}

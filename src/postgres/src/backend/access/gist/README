@@ -1,0 +1,483 @@
+src/backend/access/gist/README
+
+GiST Indexing
+=============
+
+This directory contains an implementation of GiST indexing for Postgres.
+
+GiST stands for Generalized Search Tree. It was introduced in the seminal paper
+"Generalized Search Trees for Database Systems", 1995, Joseph M. Hellerstein,
+Jeffrey F. Naughton, Avi Pfeffer:
+
+    http://www.sai.msu.su/~megera/postgres/gist/papers/gist.ps
+    https://dsf.berkeley.edu/papers/sigmod97-gist.pdf
+
+and implemented by J. Hellerstein and P. Aoki in an early version of
+PostgreSQL (more details are available from The GiST Indexing Project
+at Berkeley at http://gist.cs.berkeley.edu/). As a "university"
+project it had a limited number of features and was in rare use.
+
+The current implementation of GiST supports:
+
+  * Variable length keys
+  * Composite keys (multi-key)
+  * Ordered search (nearest-neighbor search)
+  * provides NULL-safe interface to GiST core
+  * Concurrency
+  * Recovery support via WAL logging
+  * Buffering build algorithm
+  * Sorted build method
+
+The support for concurrency implemented in PostgreSQL was developed based on
+the paper "Access Methods for Next-Generation Database Systems" by
+Marcel Kornacker:
+
+    http://www.sai.msu.su/~megera/postgres/gist/papers/concurrency/access-methods-for-next-generation.pdf.gz
+
+Buffering build algorithm for GiST was developed based on the paper "Efficient
+Bulk Operations on Dynamic R-trees" by Lars Arge, Klaus Hinrichs, Jan Vahrenhold
+and Jeffrey Scott Vitter.
+
+    http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.135.9894&rep=rep1&type=pdf
+
+The original algorithms were modified in several ways:
+
+* They had to be adapted to PostgreSQL conventions. For example, the SEARCH
+  algorithm was considerably changed, because in PostgreSQL the search function
+  should return one tuple (next), not all tuples at once. Also, it should
+  release page locks between calls.
+* Since we added support for variable length keys, it's not possible to
+  guarantee enough free space for all keys on pages after splitting. User
+  defined function picksplit doesn't have information about size of tuples
+  (each tuple may contain several keys as in multicolumn index while picksplit
+  could work with only one key) and pages.
+* We modified original INSERT algorithm for performance reasons. In particular,
+  it is now a single-pass algorithm.
+* Since the papers were theoretical, some details were omitted and we
+  had to find out ourself how to solve some specific problems.
+
+Because of the above reasons, we have revised the interaction of GiST
+core and PostgreSQL WAL system. Moreover, we encountered (and solved)
+a problem of uncompleted insertions when recovering after crash, which
+was not touched in the paper.
+
+Search Algorithm
+----------------
+
+The search code maintains a queue of unvisited items, where an "item" is
+either a heap tuple known to satisfy the search conditions, or an index
+page that is consistent with the search conditions according to inspection
+of its parent page's downlink item.  Initially the root page is searched
+to find unvisited items in it.  Then we pull items from the queue.  A
+heap tuple pointer is just returned immediately; an index page entry
+causes that page to be searched, generating more queue entries.
+
+The queue is kept ordered with heap tuple items at the front, then
+index page entries, with any newly-added index page entry inserted
+before existing index page entries.  This ensures depth-first traversal
+of the index, and in particular causes the first few heap tuples to be
+returned as soon as possible.  That is helpful in case there is a LIMIT
+that requires only a few tuples to be produced.
+
+To implement nearest-neighbor search, the queue entries are augmented
+with distance data: heap tuple entries are labeled with exact distance
+from the search argument, while index-page entries must be labeled with
+the minimum distance that any of their children could have.  Then,
+queue entries are retrieved in smallest-distance-first order, with
+entries having identical distances managed as stated in the previous
+paragraph.
+
+The search algorithm keeps an index page locked only long enough to scan
+its entries and queue those that satisfy the search conditions.  Since
+insertions can occur concurrently with searches, it is possible for an
+index child page to be split between the time we make a queue entry for it
+(while visiting its parent page) and the time we actually reach and scan
+the child page.  To avoid missing the entries that were moved to the right
+sibling, we detect whether a split has occurred by comparing the child
+page's NSN (node sequence number, a special-purpose LSN) to the LSN that
+the parent had when visited.  If it did, the sibling page is immediately
+added to the front of the queue, ensuring that its items will be scanned
+in the same order as if they were still on the original child page.
+
+As is usual in Postgres, the search algorithm only guarantees to find index
+entries that existed before the scan started; index entries added during
+the scan might or might not be visited.  This is okay as long as all
+searches use MVCC snapshot rules to reject heap tuples newer than the time
+of scan start.  In particular, this means that we need not worry about
+cases where a parent page's downlink key is "enlarged" after we look at it.
+Any such enlargement would be to add child items that we aren't interested
+in returning anyway.
+
+
+Insert Algorithm
+----------------
+
+INSERT guarantees that the GiST tree remains balanced. User defined key method
+Penalty is used for choosing a subtree to insert; method PickSplit is used for
+the node splitting algorithm; method Union is used for propagating changes
+upward to maintain the tree properties.
+
+To insert a tuple, we first have to find a suitable leaf page to insert to.
+The algorithm walks down the tree, starting from the root, along the path
+of smallest Penalty. At each step:
+
+1. Has this page been split since we looked at the parent? If so, it's
+possible that we should be inserting to the other half instead, so retreat
+back to the parent.
+2. If this is a leaf node, we've found our target node.
+3. Otherwise use Penalty to pick a new target subtree.
+4. Check the key representing the target subtree. If it doesn't already cover
+the key we're inserting, replace it with the Union of the old downlink key
+and the key being inserted. (Actually, we always call Union, and just skip
+the replacement if the Unioned key is the same as the existing key)
+5. Replacing the key in step 4 might cause the page to be split. In that case,
+propagate the change upwards and restart the algorithm from the first parent
+that didn't need to be split.
+6. Walk down to the target subtree, and goto 1.
+
+This differs from the insertion algorithm in the original paper. In the
+original paper, you first walk down the tree until you reach a leaf page, and
+then you adjust the downlink in the parent, and propagate the adjustment up,
+all the way up to the root in the worst case. But we adjust the downlinks to
+cover the new key already when we walk down, so that when we reach the leaf
+page, we don't need to update the parents anymore, except to insert the
+downlinks if we have to split the page. This makes crash recovery simpler:
+after inserting a key to the page, the tree is immediately self-consistent
+without having to update the parents. Even if we split a page and crash before
+inserting the downlink to the parent, the tree is self-consistent because the
+right half of the split is accessible via the rightlink of the left page
+(which replaced the original page).
+
+Note that the algorithm can walk up and down the tree before reaching a leaf
+page, if internal pages need to split while adjusting the downlinks for the
+new key. Eventually, you should reach the bottom, and proceed with the
+insertion of the new tuple.
+
+Once we've found the target page to insert to, we check if there's room
+for the new tuple. If there is, the tuple is inserted, and we're done.
+If it doesn't fit, however, the page needs to be split. Note that it is
+possible that a page needs to be split into more than two pages, if keys have
+different lengths or more than one key is being inserted at a time (which can
+happen when inserting downlinks for a page split that resulted in more than
+two pages at the lower level). After splitting a page, the parent page needs
+to be updated. The downlink for the new page needs to be inserted, and the
+downlink for the old page, which became the left half of the split, needs to
+be updated to only cover those tuples that stayed on the left page. Inserting
+the downlink in the parent can again lead to a page split, recursing up to the
+root page in the worst case.
+
+gistplacetopage is the workhorse function that performs one step of the
+insertion. If the tuple fits, it inserts it to the given page, otherwise
+it splits the page, and constructs the new downlink tuples for the split
+pages. The caller must then call gistplacetopage() on the parent page to
+insert the downlink tuples. The parent page that holds the downlink to
+the child might have migrated as a result of concurrent splits of the
+parent, gistFindCorrectParent() is used to find the parent page.
+
+Splitting the root page works slightly differently. At root split,
+gistplacetopage() allocates the new child pages and replaces the old root
+page with the new root containing downlinks to the new children, all in one
+operation.
+
+
+findPath is a subroutine of findParent, used when the correct parent page
+can't be found by following the rightlinks at the parent level:
+
+findPath( stack item )
+	push stack, [root, 0, 0] // page, LSN, parent
+	while( stack )
+		ptr = top of stack
+		latch( ptr->page, S-mode )
+		if ( ptr->parent->page->lsn < ptr->page->nsn )
+			push stack, [ ptr->page->rightlink, 0, ptr->parent ]
+		end
+		for( each tuple on page )
+			if ( tuple->pagepointer == item->page )
+				return stack
+			else
+				add to stack at the end [tuple->pagepointer,0, ptr]
+			end
+		end
+		unlatch( ptr->page )
+		pop stack
+	end
+
+
+gistFindCorrectParent is used to re-find the parent of a page during
+insertion. It might have migrated to the right since we traversed down the
+tree because of page splits.
+
+findParent( stack item )
+	parent = item->parent
+	if ( parent->page->lsn != parent->lsn )
+		while(true)
+			search parent tuple on parent->page, if found the return
+			rightlink = parent->page->rightlink
+			unlatch( parent->page )
+			if ( rightlink is incorrect )
+				break loop
+			end
+			parent->page = rightlink
+			latch( parent->page, X-mode )
+		end
+		newstack = findPath( item->parent )
+		replace part of stack to new one
+		latch( parent->page, X-mode )
+		return findParent( item )
+	end
+
+pageSplit function decides how to distribute keys to the new pages after
+page split:
+
+pageSplit(page, allkeys)
+	(lkeys, rkeys) = pickSplit( allkeys )
+	if ( page is root )
+		lpage = new page
+	else
+		lpage = page
+	rpage = new page
+	if ( no space left on rpage )
+		newkeys = pageSplit( rpage, rkeys )
+	else
+		push newkeys, union(rkeys)
+	end
+	if ( no space left on lpage )
+		push newkeys, pageSplit( lpage, lkeys )
+	else
+		push newkeys, union(lkeys)
+	end
+	return newkeys
+
+
+
+Concurrency control
+-------------------
+As a rule of thumb, if you need to hold a lock on multiple pages at the
+same time, the locks should be acquired in the following order: child page
+before parent, and left-to-right at the same level. Always acquiring the
+locks in the same order avoids deadlocks.
+
+The search algorithm only looks at and locks one page at a time. Consequently
+there's a race condition between a search and a page split. A page split
+happens in two phases: 1. The page is split 2. The downlink is inserted to the
+parent. If a search looks at the parent page between those steps, before the
+downlink is inserted, it will still find the new right half by following the
+rightlink on the left half. But it must not follow the rightlink if it saw the
+downlink in the parent, or the page will be visited twice!
+
+A split initially marks the left page with the F_FOLLOW_RIGHT flag. If a scan
+sees that flag set, it knows that the right page is missing the downlink, and
+should be visited too. When split inserts the downlink to the parent, it
+clears the F_FOLLOW_RIGHT flag in the child, and sets the NSN field in the
+child page header to match the LSN of the insertion on the parent. If the
+F_FOLLOW_RIGHT flag is not set, a scan compares the NSN on the child and the
+LSN it saw in the parent. If NSN < LSN, the scan looked at the parent page
+before the downlink was inserted, so it should follow the rightlink. Otherwise
+the scan saw the downlink in the parent page, and will/did follow that as
+usual.
+
+A scan can't normally see a page with the F_FOLLOW_RIGHT flag set, because
+a page split keeps the child pages locked until the downlink has been inserted
+to the parent and the flag cleared again. But if a crash happens in the middle
+of a page split, before the downlinks are inserted into the parent, that will
+leave a page with F_FOLLOW_RIGHT in the tree. Scans handle that just fine,
+but we'll eventually want to fix that for performance reasons. And more
+importantly, dealing with pages with missing downlink pointers in the parent
+would complicate the insertion algorithm. So when an insertion sees a page
+with F_FOLLOW_RIGHT set, it immediately tries to bring the split that
+crashed in the middle to completion by adding the downlink in the parent.
+
+Buffering build algorithm
+-------------------------
+
+In the buffering index build algorithm, some or all internal nodes have a
+buffer attached to them. When a tuple is inserted at the top, the descend down
+the tree is stopped as soon as a buffer is reached, and the tuple is pushed to
+the buffer. When a buffer gets too full, all the tuples in it are flushed to
+the lower level, where they again hit lower level buffers or leaf pages. This
+makes the insertions happen in more of a breadth-first than depth-first order,
+which greatly reduces the amount of random I/O required.
+
+In the algorithm, levels are numbered so that leaf pages have level zero,
+and internal node levels count up from 1. This numbering ensures that a page's
+level number never changes, even when the root page is split.
+
+Level                    Tree
+
+3                         *
+                      /       \
+2                *                 *
+              /  |  \           /  |  \
+1          *     *     *     *     *     *
+          / \   / \   / \   / \   / \   / \
+0        o   o o   o o   o o   o o   o o   o
+
+* - internal page
+o - leaf page
+
+Internal pages that belong to certain levels have buffers associated with
+them. Leaf pages never have buffers. Which levels have buffers is controlled
+by "level step" parameter: level numbers that are multiples of level_step
+have buffers, while others do not. For example, if level_step = 2, then
+pages on levels 2, 4, 6, ... have buffers. If level_step = 1 then every
+internal page has a buffer.
+
+Level        Tree (level_step = 1)                Tree (level_step = 2)
+
+3                      *                                     *
+                   /       \                             /       \
+2             *(b)              *(b)                *(b)              *(b)
+           /  |  \           /  |  \             /  |  \           /  |  \
+1       *(b)  *(b)  *(b)  *(b)  *(b)  *(b)    *     *     *     *     *     *
+       / \   / \   / \   / \   / \   / \     / \   / \   / \   / \   / \   / \
+0     o   o o   o o   o o   o o   o o   o   o   o o   o o   o o   o o   o o   o
+
+(b) - buffer
+
+Logically, a buffer is just bunch of tuples. Physically, it is divided in
+pages, backed by a temporary file. Each buffer can be in one of two states:
+a) Last page of the buffer is kept in main memory. A node buffer is
+automatically switched to this state when a new index tuple is added to it,
+or a tuple is removed from it.
+b) All pages of the buffer are swapped out to disk. When a buffer becomes too
+full, and we start to flush it, all other buffers are switched to this state.
+
+When an index tuple is inserted, its initial processing can end in one of the
+following points:
+1) Leaf page, if the depth of the index <= level_step, meaning that
+   none of the internal pages have buffers associated with them.
+2) Buffer of topmost level page that has buffers.
+
+New index tuples are processed until one of the buffers in the topmost
+buffered level becomes half-full. When a buffer becomes half-full, it's added
+to the emptying queue, and will be emptied before a new tuple is processed.
+
+Buffer emptying process means that index tuples from the buffer are moved
+into buffers at a lower level, or leaf pages. First, all the other buffers are
+swapped to disk to free up the memory. Then tuples are popped from the buffer
+one by one, and cascaded down the tree to the next buffer or leaf page below
+the buffered node.
+
+Emptying a buffer has the interesting dynamic property that any intermediate
+pages between the buffer being emptied, and the next buffered or leaf level
+below it, become cached. If there are no more buffers below the node, the leaf
+pages where the tuples finally land on get cached too. If there are, the last
+buffer page of each buffer below is kept in memory. This is illustrated in
+the figures below:
+
+   Buffer being emptied to
+     lower-level buffers               Buffer being emptied to leaf pages
+
+               +(fb)                                 +(fb)
+            /     \                                /     \
+        +             +                        +             +
+      /   \         /   \                    /   \         /   \
+    *(ab)   *(ab) *(ab)   *(ab)            x       x     x       x
+
++    - cached internal page
+x    - cached leaf page
+*    - non-cached internal page
+(fb) - buffer being emptied
+(ab) - buffers being appended to, with last page in memory
+
+In the beginning of the index build, the level-step is chosen so that all those
+pages involved in emptying one buffer fit in cache, so after each of those
+pages have been accessed once and cached, emptying a buffer doesn't involve
+any more I/O. This locality is where the speedup of the buffering algorithm
+comes from.
+
+Emptying one buffer can fill up one or more of the lower-level buffers,
+triggering emptying of them as well. Whenever a buffer becomes too full, it's
+added to the emptying queue, and will be emptied after the current buffer has
+been processed.
+
+To keep the size of each buffer limited even in the worst case, buffer emptying
+is scheduled as soon as a buffer becomes half-full, and emptying it continues
+until 1/2 of the nominal buffer size worth of tuples has been emptied. This
+guarantees that when buffer emptying begins, all the lower-level buffers
+are at most half-full. In the worst case that all the tuples are cascaded down
+to the same lower-level buffer, that buffer therefore has enough space to
+accommodate all the tuples emptied from the upper-level buffer. There is no
+hard size limit in any of the data structures used, though, so this only needs
+to be approximate; small overfilling of some buffers doesn't matter.
+
+If an internal page that has a buffer associated with it is split, the buffer
+needs to be split too. All tuples in the buffer are scanned through and
+relocated to the correct sibling buffers, using the penalty function to decide
+which buffer each tuple should go to.
+
+After all tuples from the heap have been processed, there are still some index
+tuples in the buffers. At this point, final buffer emptying starts. All buffers
+are emptied in top-down order. This is slightly complicated by the fact that
+new buffers can be allocated during the emptying, due to page splits. However,
+the new buffers will always be siblings of buffers that haven't been fully
+emptied yet; tuples never move upwards in the tree. The final emptying loops
+through buffers at a given level until all buffers at that level have been
+emptied, and then moves down to the next level.
+
+Sorted build method
+-------------------
+
+Sort all input tuples, pack them into GiST leaf pages in the sorted order,
+and create downlinks and internal pages as we go. This method builds the index
+from the bottom up, similar to how the B-tree index is built.
+
+The sorted method is used if the operator classes for all columns have a
+"sortsupport" defined. Otherwise, we fall back on inserting tuples one by one
+with optional buffering.
+
+Sorting GiST build requires good linearization of the sort opclass. That is not
+always the case in multidimensional data. To tackle the anomalies, we buffer
+index tuples and apply a picksplit function that can be multidimensional-aware.
+
+Bulk delete algorithm (VACUUM)
+------------------------------
+
+VACUUM works in two stages:
+
+In the first stage, we scan the whole index in physical order. To make sure
+that we don't miss any dead tuples because a concurrent page split moved them,
+we check the F_FOLLOW_RIGHT flags and NSN on each page, to detect if the
+page has been concurrently split. If a concurrent page split is detected, and
+one half of the page was moved to a position that we already scanned, we
+"jump backwards" to scan the page again. This is the same mechanism that
+B-tree VACUUM uses, but because we already have NSNs on pages, to detect page
+splits during searches, we don't need a "vacuum cycle ID" concept for that
+like B-tree does.
+
+While we scan all the pages, we also make note of any completely empty leaf
+pages. We will try to unlink them from the tree after the scan. We also record
+the block numbers of all internal pages; they are needed to locate parents of
+the empty pages while unlinking them.
+
+We try to unlink any empty leaf pages from the tree, so that their space can
+be reused. In order to delete an empty page, its downlink must be removed from
+the parent. We scan all the internal pages, whose block numbers we memorized
+in the first stage, and look for downlinks to pages that we have memorized as
+being empty. Whenever we find one, we acquire a lock on the parent and child
+page, re-check that the child page is still empty. Then, we remove the
+downlink and mark the child as deleted, and release the locks.
+
+The insertion algorithm would get confused, if an internal page was completely
+empty. So we never delete the last child of an internal page, even if it's
+empty. Currently, we only support deleting leaf pages.
+
+This page deletion algorithm works on a best-effort basis. It might fail to
+find a downlink, if a concurrent page split moved it after the first stage.
+In that case, we won't be able to remove all empty pages. That's OK, it's
+not expected to happen very often, and hopefully the next VACUUM will clean
+it up.
+
+When we have deleted a page, it's possible that an in-progress search will
+still descend on the page, if it saw the downlink before we removed it. The
+search will see that it is deleted, and ignore it, but as long as that can
+happen, we cannot reuse the page. To "wait out" any in-progress searches, when
+a page is deleted, it's labeled with the current next-transaction counter
+value. The page is not recycled, until that XID is no longer visible to
+anyone. That's much more conservative than necessary, but let's keep it
+simple.
+
+
+Authors:
+	Teodor Sigaev	<teodor@sigaev.ru>
+	Oleg Bartunov	<oleg@sai.msu.su>

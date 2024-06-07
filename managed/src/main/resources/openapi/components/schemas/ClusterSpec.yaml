@@ -1,0 +1,62 @@
+title: Universe Cluster Spec
+type: object
+required:
+  - cluster_type
+  - num_nodes
+  - instance_type
+  - provider_spec
+properties:
+  uuid:
+    description: System generated cluster uuid used to lookup corresponding ClusterInfo. This is not a user input.
+    type: string
+    format: uuid
+    example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+    readOnly: true
+  cluster_type:
+    description: 'Cluster type can be one of PRIMARY, ASYNC (for ReadOnly), ADDON'
+    type: string
+    example: PRIMARY
+    enum:
+      - PRIMARY
+      - ASYNC
+      - ADDON
+  num_nodes:
+    description: The number of nodes (tservers) to provision in this cluster
+    type: integer
+    format: int32
+    example: 3
+    minimum: 1
+  replication_factor:
+    description: The number of copies of data to maintain in this cluster. Defaults to 3.
+    type: integer
+    format: int32
+    example: 3
+    default: 3
+    minimum: 1
+  instance_type:
+    description: Instance type for tserver nodes of cluster
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: ./ClusterStorageSpec.yaml
+  networking_spec:
+    $ref: ./ClusterNetworkingSpec.yaml
+  provider_spec:
+    $ref: ./ClusterProviderSpec.yaml
+  placement_spec:
+    $ref: ./ClusterPlacementSpec.yaml
+  use_spot_instance:
+    description: Whether to use spot instances for nodes in aws/gcp. Used in dev/test environments.
+    type: boolean
+    example: false
+    x-yba-api-visibility: internal
+  instance_tags:
+    description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
+    type: object
+    additionalProperties:
+      type: string
+  audit_log_config:
+    $ref: ./AuditLogConfig.yaml
+  gflags:
+    description: 'The set of user defined gflags for tserver and master processes running on nodes. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/gflags.'
+    $ref: ./ClusterGFlags.yaml

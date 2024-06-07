@@ -1,0 +1,27 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+
+.panel-legend {
+  color: colors.$YB_TEXT_COLOR;
+
+  .panel-legend-item {
+    display: inline;
+    margin-left: 12px;
+    font-family: 'Inter';
+    font-weight: 300;
+    position: relative;
+    top: -1px;
+    font-size: 13px;
+
+    span {
+      border-radius: 10px;
+      height: 14px;
+      width: 14px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-top: -1px;
+      margin-right: 4px;
+    }
+  }
+}

@@ -1,0 +1,1959 @@
+<!-- doc/src/sgml/perform.sgml -->
+
+ <chapter id="performance-tips">
+  <title>Performance Tips</title>
+
+  <indexterm zone="performance-tips">
+   <primary>performance</primary>
+  </indexterm>
+
+  <para>
+   Query performance can be affected by many things. Some of these can
+   be controlled by the user, while others are fundamental to the underlying
+   design of the system.  This chapter provides some hints about understanding
+   and tuning <productname>PostgreSQL</productname> performance.
+  </para>
+
+ <sect1 id="using-explain">
+  <title>Using <command>EXPLAIN</command></title>
+
+   <indexterm zone="using-explain">
+    <primary>EXPLAIN</primary>
+   </indexterm>
+
+   <indexterm zone="using-explain">
+    <primary>query plan</primary>
+   </indexterm>
+
+   <para>
+    <productname>PostgreSQL</productname> devises a <firstterm>query
+    plan</firstterm> for each query it receives.  Choosing the right
+    plan to match the query structure and the properties of the data
+    is absolutely critical for good performance, so the system includes
+    a complex <firstterm>planner</firstterm> that tries to choose good plans.
+    You can use the <link linkend="sql-explain"><command>EXPLAIN</command></link> command
+    to see what query plan the planner creates for any query.
+    Plan-reading is an art that requires some experience to master,
+    but this section attempts to cover the basics.
+   </para>
+
+   <para>
+    Examples in this section are drawn from the regression test database
+    after doing a <command>VACUUM ANALYZE</command>, using 9.3 development sources.
+    You should be able to get similar results if you try the examples
+    yourself, but your estimated costs and row counts might vary slightly
+    because <command>ANALYZE</command>'s statistics are random samples rather
+    than exact, and because costs are inherently somewhat platform-dependent.
+   </para>
+
+   <para>
+    The examples use <command>EXPLAIN</command>'s default <quote>text</quote> output
+    format, which is compact and convenient for humans to read.
+    If you want to feed <command>EXPLAIN</command>'s output to a program for further
+    analysis, you should use one of its machine-readable output formats
+    (XML, JSON, or YAML) instead.
+   </para>
+
+  <sect2 id="using-explain-basics">
+   <title><command>EXPLAIN</command> Basics</title>
+
+   <para>
+    The structure of a query plan is a tree of <firstterm>plan nodes</firstterm>.
+    Nodes at the bottom level of the tree are scan nodes: they return raw rows
+    from a table.  There are different types of scan nodes for different
+    table access methods: sequential scans, index scans, and bitmap index
+    scans.  There are also non-table row sources, such as <literal>VALUES</literal>
+    clauses and set-returning functions in <literal>FROM</literal>, which have their
+    own scan node types.
+    If the query requires joining, aggregation, sorting, or other
+    operations on the raw rows, then there will be additional nodes
+    above the scan nodes to perform these operations.  Again,
+    there is usually more than one possible way to do these operations,
+    so different node types can appear here too.  The output
+    of <command>EXPLAIN</command> has one line for each node in the plan
+    tree, showing the basic node type plus the cost estimates that the planner
+    made for the execution of that plan node.  Additional lines might appear,
+    indented from the node's summary line,
+    to show additional properties of the node.
+    The very first line (the summary line for the topmost
+    node) has the estimated total execution cost for the plan; it is this
+    number that the planner seeks to minimize.
+   </para>
+
+   <para>
+    Here is a trivial example, just to show what the output looks like:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1;
+
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on tenk1  (cost=0.00..458.00 rows=10000 width=244)
+</screen>
+   </para>
+
+   <para>
+    Since this query has no <literal>WHERE</literal> clause, it must scan all the
+    rows of the table, so the planner has chosen to use a simple sequential
+    scan plan.  The numbers that are quoted in parentheses are (left
+    to right):
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       Estimated start-up cost.  This is the time expended before the output
+       phase can begin, e.g., time to do the sorting in a sort node.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Estimated total cost.  This is stated on the assumption that the plan
+       node is run to completion, i.e., all available rows are retrieved.
+       In practice a node's parent node might stop short of reading all
+       available rows (see the <literal>LIMIT</literal> example below).
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Estimated number of rows output by this plan node.  Again, the node
+       is assumed to be run to completion.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Estimated average width of rows output by this plan node (in bytes).
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    The costs are measured in arbitrary units determined by the planner's
+    cost parameters (see <xref linkend="runtime-config-query-constants"/>).
+    Traditional practice is to measure the costs in units of disk page
+    fetches; that is, <xref linkend="guc-seq-page-cost"/> is conventionally
+    set to <literal>1.0</literal> and the other cost parameters are set relative
+    to that.  The examples in this section are run with the default cost
+    parameters.
+   </para>
+
+   <para>
+    It's important to understand that the cost of an upper-level node includes
+    the cost of all its child nodes.  It's also important to realize that
+    the cost only reflects things that the planner cares about.
+    In particular, the cost does not consider the time spent transmitting
+    result rows to the client, which could be an important
+    factor in the real elapsed time; but the planner ignores it because
+    it cannot change it by altering the plan.  (Every correct plan will
+    output the same row set, we trust.)
+   </para>
+
+   <para>
+    The <literal>rows</literal> value is a little tricky because it is
+    not the number of rows processed or scanned by the
+    plan node, but rather the number emitted by the node.  This is often
+    less than the number scanned, as a result of filtering by any
+    <literal>WHERE</literal>-clause conditions that are being applied at the node.
+    Ideally the top-level rows estimate will approximate the number of rows
+    actually returned, updated, or deleted by the query.
+   </para>
+
+   <para>
+    Returning to our example:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1;
+
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on tenk1  (cost=0.00..458.00 rows=10000 width=244)
+</screen>
+   </para>
+
+   <para>
+    These numbers are derived very straightforwardly.  If you do:
+
+<programlisting>
+SELECT relpages, reltuples FROM pg_class WHERE relname = 'tenk1';
+</programlisting>
+
+    you will find that <classname>tenk1</classname> has 358 disk
+    pages and 10000 rows.  The estimated cost is computed as (disk pages read *
+    <xref linkend="guc-seq-page-cost"/>) + (rows scanned *
+    <xref linkend="guc-cpu-tuple-cost"/>).  By default,
+    <varname>seq_page_cost</varname> is 1.0 and <varname>cpu_tuple_cost</varname> is 0.01,
+    so the estimated cost is (358 * 1.0) + (10000 * 0.01) = 458.
+   </para>
+
+   <para>
+    Now let's modify the query to add a <literal>WHERE</literal> condition:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 7000;
+
+                         QUERY PLAN
+------------------------------------------------------------
+ Seq Scan on tenk1  (cost=0.00..483.00 rows=7001 width=244)
+   Filter: (unique1 &lt; 7000)
+</screen>
+
+    Notice that the <command>EXPLAIN</command> output shows the <literal>WHERE</literal>
+    clause being applied as a <quote>filter</quote> condition attached to the Seq
+    Scan plan node.  This means that
+    the plan node checks the condition for each row it scans, and outputs
+    only the ones that pass the condition.
+    The estimate of output rows has been reduced because of the
+    <literal>WHERE</literal> clause.
+    However, the scan will still have to visit all 10000 rows, so the cost
+    hasn't decreased; in fact it has gone up a bit (by 10000 * <xref
+    linkend="guc-cpu-operator-cost"/>, to be exact) to reflect the extra CPU
+    time spent checking the <literal>WHERE</literal> condition.
+   </para>
+
+   <para>
+    The actual number of rows this query would select is 7000, but the <literal>rows</literal>
+    estimate is only approximate.  If you try to duplicate this experiment,
+    you will probably get a slightly different estimate; moreover, it can
+    change after each <command>ANALYZE</command> command, because the
+    statistics produced by <command>ANALYZE</command> are taken from a
+    randomized sample of the table.
+   </para>
+
+   <para>
+    Now, let's make the condition more restrictive:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100;
+
+                                  QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------
+ Bitmap Heap Scan on tenk1  (cost=5.07..229.20 rows=101 width=244)
+   Recheck Cond: (unique1 &lt; 100)
+   -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0)
+         Index Cond: (unique1 &lt; 100)
+</screen>
+
+    Here the planner has decided to use a two-step plan: the child plan
+    node visits an index to find the locations of rows matching the index
+    condition, and then the upper plan node actually fetches those rows
+    from the table itself.  Fetching rows separately is much more
+    expensive than reading them sequentially, but because not all the pages
+    of the table have to be visited, this is still cheaper than a sequential
+    scan.  (The reason for using two plan levels is that the upper plan
+    node sorts the row locations identified by the index into physical order
+    before reading them, to minimize the cost of separate fetches.
+    The <quote>bitmap</quote> mentioned in the node names is the mechanism that
+    does the sorting.)
+   </para>
+
+   <para>
+    Now let's add another condition to the <literal>WHERE</literal> clause:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND stringu1 = 'xxx';
+
+                                  QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------
+ Bitmap Heap Scan on tenk1  (cost=5.04..229.43 rows=1 width=244)
+   Recheck Cond: (unique1 &lt; 100)
+   Filter: (stringu1 = 'xxx'::name)
+   -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0)
+         Index Cond: (unique1 &lt; 100)
+</screen>
+
+    The added condition <literal>stringu1 = 'xxx'</literal> reduces the
+    output row count estimate, but not the cost because we still have to visit
+    the same set of rows.  Notice that the <literal>stringu1</literal> clause
+    cannot be applied as an index condition, since this index is only on
+    the <literal>unique1</literal> column.  Instead it is applied as a filter on
+    the rows retrieved by the index.  Thus the cost has actually gone up
+    slightly to reflect this extra checking.
+   </para>
+
+   <para>
+    In some cases the planner will prefer a <quote>simple</quote> index scan plan:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 = 42;
+
+                                 QUERY PLAN
+-------------------------------------------------------------------&zwsp;----------
+ Index Scan using tenk1_unique1 on tenk1  (cost=0.29..8.30 rows=1 width=244)
+   Index Cond: (unique1 = 42)
+</screen>
+
+    In this type of plan the table rows are fetched in index order, which
+    makes them even more expensive to read, but there are so few that the
+    extra cost of sorting the row locations is not worth it.  You'll most
+    often see this plan type for queries that fetch just a single row.  It's
+    also often used for queries that have an <literal>ORDER BY</literal> condition
+    that matches the index order, because then no extra sorting step is needed
+    to satisfy the <literal>ORDER BY</literal>.  In this example, adding
+    <literal>ORDER BY unique1</literal> would use the same plan because the
+    index already implicitly provides the requested ordering.
+   </para>
+
+   <para>
+     The planner may implement an <literal>ORDER BY</literal> clause in several
+     ways.  The above example shows that such an ordering clause may be
+     implemented implicitly.  The planner may also add an explicit
+     <literal>sort</literal> step:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 ORDER BY unique1;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Sort  (cost=1109.39..1134.39 rows=10000 width=244)
+   Sort Key: unique1
+   ->  Seq Scan on tenk1  (cost=0.00..445.00 rows=10000 width=244)
+</screen>
+
+    If a part of the plan guarantees an ordering on a prefix of the
+    required sort keys, then the planner may instead decide to use an
+    <literal>incremental sort</literal> step:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 ORDER BY four, ten LIMIT 100;
+                                              QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------
+ Limit  (cost=521.06..538.05 rows=100 width=244)
+   ->  Incremental Sort  (cost=521.06..2220.95 rows=10000 width=244)
+         Sort Key: four, ten
+         Presorted Key: four
+         ->  Index Scan using index_tenk1_on_four on tenk1  (cost=0.29..1510.08 rows=10000 width=244)
+</screen>
+
+    Compared to regular sorts, sorting incrementally allows returning tuples
+    before the entire result set has been sorted, which particularly enables
+    optimizations with <literal>LIMIT</literal> queries.  It may also reduce
+    memory usage and the likelihood of spilling sorts to disk, but it comes at
+    the cost of the increased overhead of splitting the result set into multiple
+    sorting batches.
+   </para>
+
+   <para>
+    If there are separate indexes on several of the columns referenced
+    in <literal>WHERE</literal>, the planner might choose to use an AND or OR
+    combination of the indexes:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000;
+
+                                     QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------------
+ Bitmap Heap Scan on tenk1  (cost=25.08..60.21 rows=10 width=244)
+   Recheck Cond: ((unique1 &lt; 100) AND (unique2 &gt; 9000))
+   -&gt;  BitmapAnd  (cost=25.08..25.08 rows=10 width=0)
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0)
+               Index Cond: (unique1 &lt; 100)
+         -&gt;  Bitmap Index Scan on tenk1_unique2  (cost=0.00..19.78 rows=999 width=0)
+               Index Cond: (unique2 &gt; 9000)
+</screen>
+
+    But this requires visiting both indexes, so it's not necessarily a win
+    compared to using just one index and treating the other condition as
+    a filter.  If you vary the ranges involved you'll see the plan change
+    accordingly.
+   </para>
+
+   <para>
+    Here is an example showing the effects of <literal>LIMIT</literal>:
+
+<screen>
+EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000 LIMIT 2;
+
+                                     QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------------
+ Limit  (cost=0.29..14.48 rows=2 width=244)
+   -&gt;  Index Scan using tenk1_unique2 on tenk1  (cost=0.29..71.27 rows=10 width=244)
+         Index Cond: (unique2 &gt; 9000)
+         Filter: (unique1 &lt; 100)
+</screen>
+   </para>
+
+   <para>
+    This is the same query as above, but we added a <literal>LIMIT</literal> so that
+    not all the rows need be retrieved, and the planner changed its mind about
+    what to do.  Notice that the total cost and row count of the Index Scan
+    node are shown as if it were run to completion.  However, the Limit node
+    is expected to stop after retrieving only a fifth of those rows, so its
+    total cost is only a fifth as much, and that's the actual estimated cost
+    of the query.  This plan is preferred over adding a Limit node to the
+    previous plan because the Limit could not avoid paying the startup cost
+    of the bitmap scan, so the total cost would be something over 25 units
+    with that approach.
+   </para>
+
+   <para>
+    Let's try joining two tables, using the columns we have been discussing:
+
+<screen>
+EXPLAIN SELECT *
+FROM tenk1 t1, tenk2 t2
+WHERE t1.unique1 &lt; 10 AND t1.unique2 = t2.unique2;
+
+                                      QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------
+ Nested Loop  (cost=4.65..118.62 rows=10 width=488)
+   -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244)
+         Recheck Cond: (unique1 &lt; 10)
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..4.36 rows=10 width=0)
+               Index Cond: (unique1 &lt; 10)
+   -&gt;  Index Scan using tenk2_unique2 on tenk2 t2  (cost=0.29..7.91 rows=1 width=244)
+         Index Cond: (unique2 = t1.unique2)
+</screen>
+   </para>
+
+   <para>
+    In this plan, we have a nested-loop join node with two table scans as
+    inputs, or children.  The indentation of the node summary lines reflects
+    the plan tree structure.  The join's first, or <quote>outer</quote>, child
+    is a bitmap scan similar to those we saw before.  Its cost and row count
+    are the same as we'd get from <literal>SELECT ... WHERE unique1 &lt; 10</literal>
+    because we are
+    applying the <literal>WHERE</literal> clause <literal>unique1 &lt; 10</literal>
+    at that node.
+    The <literal>t1.unique2 = t2.unique2</literal> clause is not relevant yet,
+    so it doesn't affect the row count of the outer scan.  The nested-loop
+    join node will run its second,
+    or <quote>inner</quote> child once for each row obtained from the outer child.
+    Column values from the current outer row can be plugged into the inner
+    scan; here, the <literal>t1.unique2</literal> value from the outer row is available,
+    so we get a plan and costs similar to what we saw above for a simple
+    <literal>SELECT ... WHERE t2.unique2 = <replaceable>constant</replaceable></literal> case.
+    (The estimated cost is actually a bit lower than what was seen above,
+    as a result of caching that's expected to occur during the repeated
+    index scans on <literal>t2</literal>.)  The
+    costs of the loop node are then set on the basis of the cost of the outer
+    scan, plus one repetition of the inner scan for each outer row (10 * 7.91,
+    here), plus a little CPU time for join processing.
+   </para>
+
+   <para>
+    In this example the join's output row count is the same as the product
+    of the two scans' row counts, but that's not true in all cases because
+    there can be additional <literal>WHERE</literal> clauses that mention both tables
+    and so can only be applied at the join point, not to either input scan.
+    Here's an example:
+
+<screen>
+EXPLAIN SELECT *
+FROM tenk1 t1, tenk2 t2
+WHERE t1.unique1 &lt; 10 AND t2.unique2 &lt; 10 AND t1.hundred &lt; t2.hundred;
+
+                                         QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------------------------
+ Nested Loop  (cost=4.65..49.46 rows=33 width=488)
+   Join Filter: (t1.hundred &lt; t2.hundred)
+   -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244)
+         Recheck Cond: (unique1 &lt; 10)
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..4.36 rows=10 width=0)
+               Index Cond: (unique1 &lt; 10)
+   -&gt;  Materialize  (cost=0.29..8.51 rows=10 width=244)
+         -&gt;  Index Scan using tenk2_unique2 on tenk2 t2  (cost=0.29..8.46 rows=10 width=244)
+               Index Cond: (unique2 &lt; 10)
+</screen>
+
+    The condition <literal>t1.hundred &lt; t2.hundred</literal> can't be
+    tested in the <literal>tenk2_unique2</literal> index, so it's applied at the
+    join node.  This reduces the estimated output row count of the join node,
+    but does not change either input scan.
+   </para>
+
+   <para>
+    Notice that here the planner has chosen to <quote>materialize</quote> the inner
+    relation of the join, by putting a Materialize plan node atop it.  This
+    means that the <literal>t2</literal> index scan will be done just once, even
+    though the nested-loop join node needs to read that data ten times, once
+    for each row from the outer relation.  The Materialize node saves the data
+    in memory as it's read, and then returns the data from memory on each
+    subsequent pass.
+   </para>
+
+   <para>
+    When dealing with outer joins, you might see join plan nodes with both
+    <quote>Join Filter</quote> and plain <quote>Filter</quote> conditions attached.
+    Join Filter conditions come from the outer join's <literal>ON</literal> clause,
+    so a row that fails the Join Filter condition could still get emitted as
+    a null-extended row.  But a plain Filter condition is applied after the
+    outer-join rules and so acts to remove rows unconditionally.  In an inner
+    join there is no semantic difference between these types of filters.
+   </para>
+
+   <para>
+    If we change the query's selectivity a bit, we might get a very different
+    join plan:
+
+<screen>
+EXPLAIN SELECT *
+FROM tenk1 t1, tenk2 t2
+WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
+
+                                        QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------
+ Hash Join  (cost=230.47..713.98 rows=101 width=488)
+   Hash Cond: (t2.unique2 = t1.unique2)
+   -&gt;  Seq Scan on tenk2 t2  (cost=0.00..445.00 rows=10000 width=244)
+   -&gt;  Hash  (cost=229.20..229.20 rows=101 width=244)
+         -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=5.07..229.20 rows=101 width=244)
+               Recheck Cond: (unique1 &lt; 100)
+               -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0)
+                     Index Cond: (unique1 &lt; 100)
+</screen>
+   </para>
+
+   <para>
+    Here, the planner has chosen to use a hash join, in which rows of one
+    table are entered into an in-memory hash table, after which the other
+    table is scanned and the hash table is probed for matches to each row.
+    Again note how the indentation reflects the plan structure: the bitmap
+    scan on <literal>tenk1</literal> is the input to the Hash node, which constructs
+    the hash table.  That's then returned to the Hash Join node, which reads
+    rows from its outer child plan and searches the hash table for each one.
+   </para>
+
+   <para>
+    Another possible type of join is a merge join, illustrated here:
+
+<screen>
+EXPLAIN SELECT *
+FROM tenk1 t1, onek t2
+WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
+
+                                        QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------
+ Merge Join  (cost=198.11..268.19 rows=10 width=488)
+   Merge Cond: (t1.unique2 = t2.unique2)
+   -&gt;  Index Scan using tenk1_unique2 on tenk1 t1  (cost=0.29..656.28 rows=101 width=244)
+         Filter: (unique1 &lt; 100)
+   -&gt;  Sort  (cost=197.83..200.33 rows=1000 width=244)
+         Sort Key: t2.unique2
+         -&gt;  Seq Scan on onek t2  (cost=0.00..148.00 rows=1000 width=244)
+</screen>
+   </para>
+
+   <para>
+    Merge join requires its input data to be sorted on the join keys.  In this
+    plan the <literal>tenk1</literal> data is sorted by using an index scan to visit
+    the rows in the correct order, but a sequential scan and sort is preferred
+    for <literal>onek</literal>, because there are many more rows to be visited in
+    that table.
+    (Sequential-scan-and-sort frequently beats an index scan for sorting many rows,
+    because of the nonsequential disk access required by the index scan.)
+   </para>
+
+   <para>
+    One way to look at variant plans is to force the planner to disregard
+    whatever strategy it thought was the cheapest, using the enable/disable
+    flags described in <xref linkend="runtime-config-query-enable"/>.
+    (This is a crude tool, but useful.  See
+    also <xref linkend="explicit-joins"/>.)
+    For example, if we're unconvinced that sequential-scan-and-sort is the best way to
+    deal with table <literal>onek</literal> in the previous example, we could try
+
+<screen>
+SET enable_sort = off;
+
+EXPLAIN SELECT *
+FROM tenk1 t1, onek t2
+WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
+
+                                        QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------
+ Merge Join  (cost=0.56..292.65 rows=10 width=488)
+   Merge Cond: (t1.unique2 = t2.unique2)
+   -&gt;  Index Scan using tenk1_unique2 on tenk1 t1  (cost=0.29..656.28 rows=101 width=244)
+         Filter: (unique1 &lt; 100)
+   -&gt;  Index Scan using onek_unique2 on onek t2  (cost=0.28..224.79 rows=1000 width=244)
+</screen>
+
+    which shows that the planner thinks that sorting <literal>onek</literal> by
+    index-scanning is about 12% more expensive than sequential-scan-and-sort.
+    Of course, the next question is whether it's right about that.
+    We can investigate that using <command>EXPLAIN ANALYZE</command>, as discussed
+    below.
+   </para>
+
+  </sect2>
+
+  <sect2 id="using-explain-analyze">
+   <title><command>EXPLAIN ANALYZE</command></title>
+
+   <para>
+    It is possible to check the accuracy of the planner's estimates
+    by using <command>EXPLAIN</command>'s <literal>ANALYZE</literal> option.  With this
+    option, <command>EXPLAIN</command> actually executes the query, and then displays
+    the true row counts and true run time accumulated within each plan node,
+    along with the same estimates that a plain <command>EXPLAIN</command>
+    shows.  For example, we might get a result like this:
+
+<screen>
+EXPLAIN ANALYZE SELECT *
+FROM tenk1 t1, tenk2 t2
+WHERE t1.unique1 &lt; 10 AND t1.unique2 = t2.unique2;
+
+                                                           QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------------------------------------------------------------
+ Nested Loop  (cost=4.65..118.62 rows=10 width=488) (actual time=0.128..0.377 rows=10 loops=1)
+   -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.36..39.47 rows=10 width=244) (actual time=0.057..0.121 rows=10 loops=1)
+         Recheck Cond: (unique1 &lt; 10)
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..4.36 rows=10 width=0) (actual time=0.024..0.024 rows=10 loops=1)
+               Index Cond: (unique1 &lt; 10)
+   -&gt;  Index Scan using tenk2_unique2 on tenk2 t2  (cost=0.29..7.91 rows=1 width=244) (actual time=0.021..0.022 rows=1 loops=10)
+         Index Cond: (unique2 = t1.unique2)
+ Planning time: 0.181 ms
+ Execution time: 0.501 ms
+</screen>
+
+    Note that the <quote>actual time</quote> values are in milliseconds of
+    real time, whereas the <literal>cost</literal> estimates are expressed in
+    arbitrary units; so they are unlikely to match up.
+    The thing that's usually most important to look for is whether the
+    estimated row counts are reasonably close to reality.  In this example
+    the estimates were all dead-on, but that's quite unusual in practice.
+   </para>
+
+   <para>
+    In some query plans, it is possible for a subplan node to be executed more
+    than once.  For example, the inner index scan will be executed once per
+    outer row in the above nested-loop plan.  In such cases, the
+    <literal>loops</literal> value reports the
+    total number of executions of the node, and the actual time and rows
+    values shown are averages per-execution.  This is done to make the numbers
+    comparable with the way that the cost estimates are shown.  Multiply by
+    the <literal>loops</literal> value to get the total time actually spent in
+    the node.  In the above example, we spent a total of 0.220 milliseconds
+    executing the index scans on <literal>tenk2</literal>.
+   </para>
+
+   <para>
+    In some cases <command>EXPLAIN ANALYZE</command> shows additional execution
+    statistics beyond the plan node execution times and row counts.
+    For example, Sort and Hash nodes provide extra information:
+
+<screen>
+EXPLAIN ANALYZE SELECT *
+FROM tenk1 t1, tenk2 t2
+WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2 ORDER BY t1.fivethous;
+
+                                                                 QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------------------&zwsp;------
+ Sort  (cost=717.34..717.59 rows=101 width=488) (actual time=7.761..7.774 rows=100 loops=1)
+   Sort Key: t1.fivethous
+   Sort Method: quicksort  Memory: 77kB
+   -&gt;  Hash Join  (cost=230.47..713.98 rows=101 width=488) (actual time=0.711..7.427 rows=100 loops=1)
+         Hash Cond: (t2.unique2 = t1.unique2)
+         -&gt;  Seq Scan on tenk2 t2  (cost=0.00..445.00 rows=10000 width=244) (actual time=0.007..2.583 rows=10000 loops=1)
+         -&gt;  Hash  (cost=229.20..229.20 rows=101 width=244) (actual time=0.659..0.659 rows=100 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 28kB
+               -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=5.07..229.20 rows=101 width=244) (actual time=0.080..0.526 rows=100 loops=1)
+                     Recheck Cond: (unique1 &lt; 100)
+                     -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0) (actual time=0.049..0.049 rows=100 loops=1)
+                           Index Cond: (unique1 &lt; 100)
+ Planning time: 0.194 ms
+ Execution time: 8.008 ms
+</screen>
+
+    The Sort node shows the sort method used (in particular, whether the sort
+    was in-memory or on-disk) and the amount of memory or disk space needed.
+    The Hash node shows the number of hash buckets and batches as well as the
+    peak amount of memory used for the hash table.  (If the number of batches
+    exceeds one, there will also be disk space usage involved, but that is not
+    shown.)
+   </para>
+
+   <para>
+    Another type of extra information is the number of rows removed by a
+    filter condition:
+
+<screen>
+EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE ten &lt; 7;
+
+                                               QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------------------------------------
+ Seq Scan on tenk1  (cost=0.00..483.00 rows=7000 width=244) (actual time=0.016..5.107 rows=7000 loops=1)
+   Filter: (ten &lt; 7)
+   Rows Removed by Filter: 3000
+ Planning time: 0.083 ms
+ Execution time: 5.905 ms
+</screen>
+
+    These counts can be particularly valuable for filter conditions applied at
+    join nodes.  The <quote>Rows Removed</quote> line only appears when at least
+    one scanned row, or potential join pair in the case of a join node,
+    is rejected by the filter condition.
+   </para>
+
+   <para>
+    A case similar to filter conditions occurs with <quote>lossy</quote>
+    index scans.  For example, consider this search for polygons containing a
+    specific point:
+
+<screen>
+EXPLAIN ANALYZE SELECT * FROM polygon_tbl WHERE f1 @&gt; polygon '(0.5,2.0)';
+
+                                              QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------
+ Seq Scan on polygon_tbl  (cost=0.00..1.05 rows=1 width=32) (actual time=0.044..0.044 rows=0 loops=1)
+   Filter: (f1 @&gt; '((0.5,2))'::polygon)
+   Rows Removed by Filter: 4
+ Planning time: 0.040 ms
+ Execution time: 0.083 ms
+</screen>
+
+    The planner thinks (quite correctly) that this sample table is too small
+    to bother with an index scan, so we have a plain sequential scan in which
+    all the rows got rejected by the filter condition.  But if we force an
+    index scan to be used, we see:
+
+<screen>
+SET enable_seqscan TO off;
+
+EXPLAIN ANALYZE SELECT * FROM polygon_tbl WHERE f1 @&gt; polygon '(0.5,2.0)';
+
+                                                        QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------
+ Index Scan using gpolygonind on polygon_tbl  (cost=0.13..8.15 rows=1 width=32) (actual time=0.062..0.062 rows=0 loops=1)
+   Index Cond: (f1 @&gt; '((0.5,2))'::polygon)
+   Rows Removed by Index Recheck: 1
+ Planning time: 0.034 ms
+ Execution time: 0.144 ms
+</screen>
+
+    Here we can see that the index returned one candidate row, which was
+    then rejected by a recheck of the index condition.  This happens because a
+    GiST index is <quote>lossy</quote> for polygon containment tests: it actually
+    returns the rows with polygons that overlap the target, and then we have
+    to do the exact containment test on those rows.
+   </para>
+
+   <para>
+    <command>EXPLAIN</command> has a <literal>BUFFERS</literal> option that can be used with
+    <literal>ANALYZE</literal> to get even more run time statistics:
+
+<screen>
+EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000;
+
+                                                           QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------------------------------------------------------------
+ Bitmap Heap Scan on tenk1  (cost=25.08..60.21 rows=10 width=244) (actual time=0.323..0.342 rows=10 loops=1)
+   Recheck Cond: ((unique1 &lt; 100) AND (unique2 &gt; 9000))
+   Buffers: shared hit=15
+   -&gt;  BitmapAnd  (cost=25.08..25.08 rows=10 width=0) (actual time=0.309..0.309 rows=0 loops=1)
+         Buffers: shared hit=7
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.04 rows=101 width=0) (actual time=0.043..0.043 rows=100 loops=1)
+               Index Cond: (unique1 &lt; 100)
+               Buffers: shared hit=2
+         -&gt;  Bitmap Index Scan on tenk1_unique2  (cost=0.00..19.78 rows=999 width=0) (actual time=0.227..0.227 rows=999 loops=1)
+               Index Cond: (unique2 &gt; 9000)
+               Buffers: shared hit=5
+ Planning time: 0.088 ms
+ Execution time: 0.423 ms
+</screen>
+
+    The numbers provided by <literal>BUFFERS</literal> help to identify which parts
+    of the query are the most I/O-intensive.
+   </para>
+
+   <para>
+    Keep in mind that because <command>EXPLAIN ANALYZE</command> actually
+    runs the query, any side-effects will happen as usual, even though
+    whatever results the query might output are discarded in favor of
+    printing the <command>EXPLAIN</command> data.  If you want to analyze a
+    data-modifying query without changing your tables, you can
+    roll the command back afterwards, for example:
+
+<screen>
+BEGIN;
+
+EXPLAIN ANALYZE UPDATE tenk1 SET hundred = hundred + 1 WHERE unique1 &lt; 100;
+
+                                                           QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------------------------------------------------
+ Update on tenk1  (cost=5.08..230.08 rows=0 width=0) (actual time=3.791..3.792 rows=0 loops=1)
+   -&gt;  Bitmap Heap Scan on tenk1  (cost=5.08..230.08 rows=102 width=10) (actual time=0.069..0.513 rows=100 loops=1)
+         Recheck Cond: (unique1 &lt; 100)
+         Heap Blocks: exact=90
+         -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..5.05 rows=102 width=0) (actual time=0.036..0.037 rows=300 loops=1)
+               Index Cond: (unique1 &lt; 100)
+ Planning Time: 0.113 ms
+ Execution Time: 3.850 ms
+
+ROLLBACK;
+</screen>
+   </para>
+
+   <para>
+    As seen in this example, when the query is an <command>INSERT</command>,
+    <command>UPDATE</command>, or <command>DELETE</command> command, the actual work of
+    applying the table changes is done by a top-level Insert, Update,
+    or Delete plan node.  The plan nodes underneath this node perform
+    the work of locating the old rows and/or computing the new data.
+    So above, we see the same sort of bitmap table scan we've seen already,
+    and its output is fed to an Update node that stores the updated rows.
+    It's worth noting that although the data-modifying node can take a
+    considerable amount of run time (here, it's consuming the lion's share
+    of the time), the planner does not currently add anything to the cost
+    estimates to account for that work.  That's because the work to be done is
+    the same for every correct query plan, so it doesn't affect planning
+    decisions.
+   </para>
+
+   <para>
+    When an <command>UPDATE</command> or <command>DELETE</command> command affects an
+    inheritance hierarchy, the output might look like this:
+
+<screen>
+EXPLAIN UPDATE parent SET f2 = f2 + 1 WHERE f1 = 101;
+                                              QUERY PLAN
+-------------------------------------------------------------------&zwsp;-----------------------------------
+ Update on parent  (cost=0.00..24.59 rows=0 width=0)
+   Update on parent parent_1
+   Update on child1 parent_2
+   Update on child2 parent_3
+   Update on child3 parent_4
+   -&gt;  Result  (cost=0.00..24.59 rows=4 width=14)
+         -&gt;  Append  (cost=0.00..24.54 rows=4 width=14)
+               -&gt;  Seq Scan on parent parent_1  (cost=0.00..0.00 rows=1 width=14)
+                     Filter: (f1 = 101)
+               -&gt;  Index Scan using child1_pkey on child1 parent_2  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
+               -&gt;  Index Scan using child2_pkey on child2 parent_3  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
+               -&gt;  Index Scan using child3_pkey on child3 parent_4  (cost=0.15..8.17 rows=1 width=14)
+                     Index Cond: (f1 = 101)
+</screen>
+
+    In this example the Update node needs to consider three child tables as
+    well as the originally-mentioned parent table.  So there are four input
+    scanning subplans, one per table.  For clarity, the Update node is
+    annotated to show the specific target tables that will be updated, in the
+    same order as the corresponding subplans.
+   </para>
+
+   <para>
+    The <literal>Planning time</literal> shown by <command>EXPLAIN
+    ANALYZE</command> is the time it took to generate the query plan from the
+    parsed query and optimize it. It does not include parsing or rewriting.
+   </para>
+
+   <para>
+    The <literal>Execution time</literal> shown by <command>EXPLAIN
+    ANALYZE</command> includes executor start-up and shut-down time, as well
+    as the time to run any triggers that are fired, but it does not include
+    parsing, rewriting, or planning time.
+    Time spent executing <literal>BEFORE</literal> triggers, if any, is included in
+    the time for the related Insert, Update, or Delete node; but time
+    spent executing <literal>AFTER</literal> triggers is not counted there because
+    <literal>AFTER</literal> triggers are fired after completion of the whole plan.
+    The total time spent in each trigger
+    (either <literal>BEFORE</literal> or <literal>AFTER</literal>) is also shown separately.
+    Note that deferred constraint triggers will not be executed
+    until end of transaction and are thus not considered at all by
+    <command>EXPLAIN ANALYZE</command>.
+   </para>
+
+  </sect2>
+
+  <sect2 id="using-explain-caveats">
+   <title>Caveats</title>
+
+   <para>
+    There are two significant ways in which run times measured by
+    <command>EXPLAIN ANALYZE</command> can deviate from normal execution of
+    the same query.  First, since no output rows are delivered to the client,
+    network transmission costs and I/O conversion costs are not included.
+    Second, the measurement overhead added by <command>EXPLAIN
+    ANALYZE</command> can be significant, especially on machines with slow
+    <function>gettimeofday()</function> operating-system calls. You can use the
+    <xref linkend="pgtesttiming"/> tool to measure the overhead of timing
+    on your system.
+   </para>
+
+   <para>
+    <command>EXPLAIN</command> results should not be extrapolated to situations
+    much different from the one you are actually testing; for example,
+    results on a toy-sized table cannot be assumed to apply to large tables.
+    The planner's cost estimates are not linear and so it might choose
+    a different plan for a larger or smaller table.  An extreme example
+    is that on a table that only occupies one disk page, you'll nearly
+    always get a sequential scan plan whether indexes are available or not.
+    The planner realizes that it's going to take one disk page read to
+    process the table in any case, so there's no value in expending additional
+    page reads to look at an index.  (We saw this happening in the
+    <literal>polygon_tbl</literal> example above.)
+   </para>
+
+   <para>
+    There are cases in which the actual and estimated values won't match up
+    well, but nothing is really wrong.  One such case occurs when
+    plan node execution is stopped short by a <literal>LIMIT</literal> or similar
+    effect.  For example, in the <literal>LIMIT</literal> query we used before,
+
+<screen>
+EXPLAIN ANALYZE SELECT * FROM tenk1 WHERE unique1 &lt; 100 AND unique2 &gt; 9000 LIMIT 2;
+
+                                                          QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------------------------------------------------------
+ Limit  (cost=0.29..14.71 rows=2 width=244) (actual time=0.177..0.249 rows=2 loops=1)
+   -&gt;  Index Scan using tenk1_unique2 on tenk1  (cost=0.29..72.42 rows=10 width=244) (actual time=0.174..0.244 rows=2 loops=1)
+         Index Cond: (unique2 &gt; 9000)
+         Filter: (unique1 &lt; 100)
+         Rows Removed by Filter: 287
+ Planning time: 0.096 ms
+ Execution time: 0.336 ms
+</screen>
+
+    the estimated cost and row count for the Index Scan node are shown as
+    though it were run to completion.  But in reality the Limit node stopped
+    requesting rows after it got two, so the actual row count is only 2 and
+    the run time is less than the cost estimate would suggest.  This is not
+    an estimation error, only a discrepancy in the way the estimates and true
+    values are displayed.
+   </para>
+
+   <para>
+    Merge joins also have measurement artifacts that can confuse the unwary.
+    A merge join will stop reading one input if it's exhausted the other input
+    and the next key value in the one input is greater than the last key value
+    of the other input; in such a case there can be no more matches and so no
+    need to scan the rest of the first input.  This results in not reading all
+    of one child, with results like those mentioned for <literal>LIMIT</literal>.
+    Also, if the outer (first) child contains rows with duplicate key values,
+    the inner (second) child is backed up and rescanned for the portion of its
+    rows matching that key value.  <command>EXPLAIN ANALYZE</command> counts these
+    repeated emissions of the same inner rows as if they were real additional
+    rows.  When there are many outer duplicates, the reported actual row count
+    for the inner child plan node can be significantly larger than the number
+    of rows that are actually in the inner relation.
+   </para>
+
+   <para>
+    BitmapAnd and BitmapOr nodes always report their actual row counts as zero,
+    due to implementation limitations.
+   </para>
+
+   <para>
+    Normally, <command>EXPLAIN</command> will display every plan node
+    created by the planner.  However, there are cases where the executor
+    can determine that certain nodes need not be executed because they
+    cannot produce any rows, based on parameter values that were not
+    available at planning time.  (Currently this can only happen for child
+    nodes of an Append or MergeAppend node that is scanning a partitioned
+    table.)  When this happens, those plan nodes are omitted from
+    the <command>EXPLAIN</command> output and a <literal>Subplans
+    Removed: <replaceable>N</replaceable></literal> annotation appears
+    instead.
+   </para>
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="planner-stats">
+  <title>Statistics Used by the Planner</title>
+
+  <indexterm zone="planner-stats">
+   <primary>statistics</primary>
+   <secondary>of the planner</secondary>
+  </indexterm>
+
+  <sect2>
+   <title>Single-Column Statistics</title>
+  <para>
+   As we saw in the previous section, the query planner needs to estimate
+   the number of rows retrieved by a query in order to make good choices
+   of query plans.  This section provides a quick look at the statistics
+   that the system uses for these estimates.
+  </para>
+
+  <para>
+   One component of the statistics is the total number of entries in
+   each table and index, as well as the number of disk blocks occupied
+   by each table and index.  This information is kept in the table
+   <link linkend="catalog-pg-class"><structname>pg_class</structname></link>,
+   in the columns <structfield>reltuples</structfield> and
+   <structfield>relpages</structfield>.  We can look at it with
+   queries similar to this one:
+
+<screen>
+SELECT relname, relkind, reltuples, relpages
+FROM pg_class
+WHERE relname LIKE 'tenk1%';
+
+       relname        | relkind | reltuples | relpages
+----------------------+---------+-----------+----------
+ tenk1                | r       |     10000 |      358
+ tenk1_hundred        | i       |     10000 |       30
+ tenk1_thous_tenthous | i       |     10000 |       30
+ tenk1_unique1        | i       |     10000 |       30
+ tenk1_unique2        | i       |     10000 |       30
+(5 rows)
+</screen>
+
+   Here we can see that <structname>tenk1</structname> contains 10000
+   rows, as do its indexes, but the indexes are (unsurprisingly) much
+   smaller than the table.
+  </para>
+
+  <para>
+   For efficiency reasons, <structfield>reltuples</structfield>
+   and <structfield>relpages</structfield> are not updated on-the-fly,
+   and so they usually contain somewhat out-of-date values.
+   They are updated by <command>VACUUM</command>, <command>ANALYZE</command>, and a
+   few DDL commands such as <command>CREATE INDEX</command>.  A <command>VACUUM</command>
+   or <command>ANALYZE</command> operation that does not scan the entire table
+   (which is commonly the case) will incrementally update the
+   <structfield>reltuples</structfield> count on the basis of the part
+   of the table it did scan, resulting in an approximate value.
+   In any case, the planner
+   will scale the values it finds in <structname>pg_class</structname>
+   to match the current physical table size, thus obtaining a closer
+   approximation.
+  </para>
+
+  <indexterm>
+   <primary>pg_statistic</primary>
+  </indexterm>
+
+  <para>
+   Most queries retrieve only a fraction of the rows in a table, due
+   to <literal>WHERE</literal> clauses that restrict the rows to be
+   examined.  The planner thus needs to make an estimate of the
+   <firstterm>selectivity</firstterm> of <literal>WHERE</literal> clauses, that is,
+   the fraction of rows that match each condition in the
+   <literal>WHERE</literal> clause.  The information used for this task is
+   stored in the
+   <link linkend="catalog-pg-statistic"><structname>pg_statistic</structname></link>
+   system catalog.  Entries in <structname>pg_statistic</structname>
+   are updated by the <command>ANALYZE</command> and <command>VACUUM
+   ANALYZE</command> commands, and are always approximate even when freshly
+   updated.
+  </para>
+
+  <indexterm>
+   <primary>pg_stats</primary>
+  </indexterm>
+
+  <para>
+   Rather than look at <structname>pg_statistic</structname> directly,
+   it's better to look at its view
+   <link linkend="view-pg-stats"><structname>pg_stats</structname></link>
+   when examining the statistics manually.  <structname>pg_stats</structname>
+   is designed to be more easily readable.  Furthermore,
+   <structname>pg_stats</structname> is readable by all, whereas
+   <structname>pg_statistic</structname> is only readable by a superuser.
+   (This prevents unprivileged users from learning something about
+   the contents of other people's tables from the statistics.  The
+   <structname>pg_stats</structname> view is restricted to show only
+   rows about tables that the current user can read.)
+   For example, we might do:
+
+<screen>
+SELECT attname, inherited, n_distinct,
+       array_to_string(most_common_vals, E'\n') as most_common_vals
+FROM pg_stats
+WHERE tablename = 'road';
+
+ attname | inherited | n_distinct |          most_common_vals
+---------+-----------+------------+------------------------------------
+ name    | f         |  -0.363388 | I- 580                        Ramp+
+         |           |            | I- 880                        Ramp+
+         |           |            | Sp Railroad                       +
+         |           |            | I- 580                            +
+         |           |            | I- 680                        Ramp
+ name    | t         |  -0.284859 | I- 880                        Ramp+
+         |           |            | I- 580                        Ramp+
+         |           |            | I- 680                        Ramp+
+         |           |            | I- 580                            +
+         |           |            | State Hwy 13                  Ramp
+(2 rows)
+</screen>
+
+   Note that two rows are displayed for the same column, one corresponding
+   to the complete inheritance hierarchy starting at the
+   <literal>road</literal> table (<literal>inherited</literal>=<literal>t</literal>),
+   and another one including only the <literal>road</literal> table itself
+   (<literal>inherited</literal>=<literal>f</literal>).
+  </para>
+
+  <para>
+   The amount of information stored in <structname>pg_statistic</structname>
+   by <command>ANALYZE</command>, in particular the maximum number of entries in the
+   <structfield>most_common_vals</structfield> and <structfield>histogram_bounds</structfield>
+   arrays for each column, can be set on a
+   column-by-column basis using the <command>ALTER TABLE SET STATISTICS</command>
+   command, or globally by setting the
+   <xref linkend="guc-default-statistics-target"/> configuration variable.
+   The default limit is presently 100 entries.  Raising the limit
+   might allow more accurate planner estimates to be made, particularly for
+   columns with irregular data distributions, at the price of consuming
+   more space in <structname>pg_statistic</structname> and slightly more
+   time to compute the estimates.  Conversely, a lower limit might be
+   sufficient for columns with simple data distributions.
+  </para>
+
+  <para>
+   Further details about the planner's use of statistics can be found in
+   <xref linkend="planner-stats-details"/>.
+  </para>
+  </sect2>
+
+  <sect2 id="planner-stats-extended">
+   <title>Extended Statistics</title>
+
+   <indexterm zone="planner-stats-extended">
+    <primary>statistics</primary>
+    <secondary>of the planner</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>correlation</primary>
+    <secondary>in the query planner</secondary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pg_statistic_ext</primary>
+   </indexterm>
+
+   <indexterm>
+    <primary>pg_statistic_ext_data</primary>
+   </indexterm>
+
+   <para>
+    It is common to see slow queries running bad execution plans because
+    multiple columns used in the query clauses are correlated.
+    The planner normally assumes that multiple conditions
+    are independent of each other,
+    an assumption that does not hold when column values are correlated.
+    Regular statistics, because of their per-individual-column nature,
+    cannot capture any knowledge about cross-column correlation.
+    However, <productname>PostgreSQL</productname> has the ability to compute
+    <firstterm>multivariate statistics</firstterm>, which can capture
+    such information.
+   </para>
+
+   <para>
+    Because the number of possible column combinations is very large,
+    it's impractical to compute multivariate statistics automatically.
+    Instead, <firstterm>extended statistics objects</firstterm>, more often
+    called just <firstterm>statistics objects</firstterm>, can be created to instruct
+    the server to obtain statistics across interesting sets of columns.
+   </para>
+
+   <para>
+    Statistics objects are created using the
+    <link linkend="sql-createstatistics"><command>CREATE STATISTICS</command></link> command.
+    Creation of such an object merely creates a catalog entry expressing
+    interest in the statistics.  Actual data collection is performed
+    by <command>ANALYZE</command> (either a manual command, or background
+    auto-analyze).  The collected values can be examined in the
+    <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
+    catalog.
+   </para>
+
+   <para>
+    <command>ANALYZE</command> computes extended statistics based on the same
+    sample of table rows that it takes for computing regular single-column
+    statistics.  Since the sample size is increased by increasing the
+    statistics target for the table or any of its columns (as described in
+    the previous section), a larger statistics target will normally result in
+    more accurate extended statistics, as well as more time spent calculating
+    them.
+   </para>
+
+   <para>
+    The following subsections describe the kinds of extended statistics
+    that are currently supported.
+   </para>
+
+   <sect3>
+    <title>Functional Dependencies</title>
+
+    <para>
+     The simplest kind of extended statistics tracks <firstterm>functional
+     dependencies</firstterm>, a concept used in definitions of database normal forms.
+     We say that column <structfield>b</structfield> is functionally dependent on
+     column <structfield>a</structfield> if knowledge of the value of
+     <structfield>a</structfield> is sufficient to determine the value
+     of <structfield>b</structfield>, that is there are no two rows having the same value
+     of <structfield>a</structfield> but different values of <structfield>b</structfield>.
+     In a fully normalized database, functional dependencies should exist
+     only on primary keys and superkeys. However, in practice many data sets
+     are not fully normalized for various reasons; intentional
+     denormalization for performance reasons is a common example.
+     Even in a fully normalized database, there may be partial correlation
+     between some columns, which can be expressed as partial functional
+     dependency.
+    </para>
+
+    <para>
+     The existence of functional dependencies directly affects the accuracy
+     of estimates in certain queries.  If a query contains conditions on
+     both the independent and the dependent column(s), the
+     conditions on the dependent columns do not further reduce the result
+     size; but without knowledge of the functional dependency, the query
+     planner will assume that the conditions are independent, resulting
+     in underestimating the result size.
+    </para>
+
+    <para>
+     To inform the planner about functional dependencies, <command>ANALYZE</command>
+     can collect measurements of cross-column dependency. Assessing the
+     degree of dependency between all sets of columns would be prohibitively
+     expensive, so data collection is limited to those groups of columns
+     appearing together in a statistics object defined with
+     the <literal>dependencies</literal> option.  It is advisable to create
+     <literal>dependencies</literal> statistics only for column groups that are
+     strongly correlated, to avoid unnecessary overhead in both
+     <command>ANALYZE</command> and later query planning.
+    </para>
+
+    <para>
+     Here is an example of collecting functional-dependency statistics:
+<programlisting>
+CREATE STATISTICS stts (dependencies) ON city, zip FROM zipcodes;
+
+ANALYZE zipcodes;
+
+SELECT stxname, stxkeys, stxddependencies
+  FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid)
+  WHERE stxname = 'stts';
+ stxname | stxkeys |             stxddependencies
+---------+---------+------------------------------------------
+ stts    | 1 5     | {"1 => 5": 1.000000, "5 => 1": 0.423130}
+(1 row)
+</programlisting>
+     Here it can be seen that column 1 (zip code) fully determines column
+     5 (city) so the coefficient is 1.0, while city only determines zip code
+     about 42% of the time, meaning that there are many cities (58%) that are
+     represented by more than a single ZIP code.
+    </para>
+
+    <para>
+     When computing the selectivity for a query involving functionally
+     dependent columns, the planner adjusts the per-condition selectivity
+     estimates using the dependency coefficients so as not to produce
+     an underestimate.
+    </para>
+
+    <sect4>
+     <title>Limitations of Functional Dependencies</title>
+
+     <para>
+      Functional dependencies are currently only applied when considering
+      simple equality conditions that compare columns to constant values,
+      and <literal>IN</literal> clauses with constant values.
+      They are not used to improve estimates for equality conditions
+      comparing two columns or comparing a column to an expression, nor for
+      range clauses, <literal>LIKE</literal> or any other type of condition.
+     </para>
+
+     <para>
+      When estimating with functional dependencies, the planner assumes that
+      conditions on the involved columns are compatible and hence redundant.
+      If they are incompatible, the correct estimate would be zero rows, but
+      that possibility is not considered.  For example, given a query like
+<programlisting>
+SELECT * FROM zipcodes WHERE city = 'San Francisco' AND zip = '94105';
+</programlisting>
+      the planner will disregard the <structfield>city</structfield> clause as not
+      changing the selectivity, which is correct.  However, it will make
+      the same assumption about
+<programlisting>
+SELECT * FROM zipcodes WHERE city = 'San Francisco' AND zip = '90210';
+</programlisting>
+      even though there will really be zero rows satisfying this query.
+      Functional dependency statistics do not provide enough information
+      to conclude that, however.
+     </para>
+
+     <para>
+      In many practical situations, this assumption is usually satisfied;
+      for example, there might be a GUI in the application that only allows
+      selecting compatible city and ZIP code values to use in a query.
+      But if that's not the case, functional dependencies may not be a viable
+      option.
+     </para>
+    </sect4>
+   </sect3>
+
+   <sect3>
+    <title>Multivariate N-Distinct Counts</title>
+
+    <para>
+     Single-column statistics store the number of distinct values in each
+     column.  Estimates of the number of distinct values when combining more
+     than one column (for example, for <literal>GROUP BY a, b</literal>) are
+     frequently wrong when the planner only has single-column statistical
+     data, causing it to select bad plans.
+    </para>
+
+    <para>
+     To improve such estimates, <command>ANALYZE</command> can collect n-distinct
+     statistics for groups of columns.  As before, it's impractical to do
+     this for every possible column grouping, so data is collected only for
+     those groups of columns appearing together in a statistics object
+     defined with the <literal>ndistinct</literal> option.  Data will be collected
+     for each possible combination of two or more columns from the set of
+     listed columns.
+    </para>
+
+    <para>
+     Continuing the previous example, the n-distinct counts in a
+     table of ZIP codes might look like the following:
+<programlisting>
+CREATE STATISTICS stts2 (ndistinct) ON city, state, zip FROM zipcodes;
+
+ANALYZE zipcodes;
+
+SELECT stxkeys AS k, stxdndistinct AS nd
+  FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid)
+  WHERE stxname = 'stts2';
+-[ RECORD 1 ]------------------------------------------------------&zwsp;--
+k  | 1 2 5
+nd | {"1, 2": 33178, "1, 5": 33178, "2, 5": 27435, "1, 2, 5": 33178}
+(1 row)
+</programlisting>
+     This indicates that there are three combinations of columns that
+     have 33178 distinct values: ZIP code and state; ZIP code and city;
+     and ZIP code, city and state (the fact that they are all equal is
+     expected given that ZIP code alone is unique in this table).  On the
+     other hand, the combination of city and state has only 27435 distinct
+     values.
+    </para>
+
+    <para>
+     It's advisable to create <literal>ndistinct</literal> statistics objects only
+     on combinations of columns that are actually used for grouping, and
+     for which misestimation of the number of groups is resulting in bad
+     plans.  Otherwise, the <command>ANALYZE</command> cycles are just wasted.
+    </para>
+   </sect3>
+
+   <sect3>
+    <title>Multivariate MCV Lists</title>
+
+    <para>
+     Another type of statistic stored for each column are most-common value
+     lists.  This allows very accurate estimates for individual columns, but
+     may result in significant misestimates for queries with conditions on
+     multiple columns.
+    </para>
+
+    <para>
+     To improve such estimates, <command>ANALYZE</command> can collect MCV
+     lists on combinations of columns.  Similarly to functional dependencies
+     and n-distinct coefficients, it's impractical to do this for every
+     possible column grouping.  Even more so in this case, as the MCV list
+     (unlike functional dependencies and n-distinct coefficients) does store
+     the common column values.  So data is collected only for those groups
+     of columns appearing together in a statistics object defined with the
+     <literal>mcv</literal> option.
+    </para>
+
+    <para>
+     Continuing the previous example, the MCV list for a table of ZIP codes
+     might look like the following (unlike for simpler types of statistics,
+     a function is required for inspection of MCV contents):
+
+<programlisting>
+CREATE STATISTICS stts3 (mcv) ON city, state FROM zipcodes;
+
+ANALYZE zipcodes;
+
+SELECT m.* FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid),
+                pg_mcv_list_items(stxdmcv) m WHERE stxname = 'stts3';
+
+ index |         values         | nulls | frequency | base_frequency
+-------+------------------------+-------+-----------+----------------
+     0 | {Washington, DC}       | {f,f} |  0.003467 |        2.7e-05
+     1 | {Apo, AE}              | {f,f} |  0.003067 |        1.9e-05
+     2 | {Houston, TX}          | {f,f} |  0.002167 |       0.000133
+     3 | {El Paso, TX}          | {f,f} |     0.002 |       0.000113
+     4 | {New York, NY}         | {f,f} |  0.001967 |       0.000114
+     5 | {Atlanta, GA}          | {f,f} |  0.001633 |        3.3e-05
+     6 | {Sacramento, CA}       | {f,f} |  0.001433 |        7.8e-05
+     7 | {Miami, FL}            | {f,f} |    0.0014 |          6e-05
+     8 | {Dallas, TX}           | {f,f} |  0.001367 |        8.8e-05
+     9 | {Chicago, IL}          | {f,f} |  0.001333 |        5.1e-05
+   ...
+(99 rows)
+</programlisting>
+     This indicates that the most common combination of city and state is
+     Washington in DC, with actual frequency (in the sample) about 0.35%.
+     The base frequency of the combination (as computed from the simple
+     per-column frequencies) is only 0.0027%, resulting in two orders of
+     magnitude under-estimates.
+    </para>
+
+    <para>
+     It's advisable to create <acronym>MCV</acronym> statistics objects only
+     on combinations of columns that are actually used in conditions together,
+     and for which misestimation of the number of groups is resulting in bad
+     plans.  Otherwise, the <command>ANALYZE</command> and planning cycles
+     are just wasted.
+    </para>
+   </sect3>
+
+  </sect2>
+ </sect1>
+
+ <sect1 id="explicit-joins">
+  <title>Controlling the Planner with Explicit <literal>JOIN</literal> Clauses</title>
+
+  <indexterm zone="explicit-joins">
+   <primary>join</primary>
+   <secondary>controlling the order</secondary>
+  </indexterm>
+
+  <para>
+   It is possible
+   to control the query planner to some extent by using the explicit <literal>JOIN</literal>
+   syntax.  To see why this matters, we first need some background.
+  </para>
+
+  <para>
+   In a simple join query, such as:
+<programlisting>
+SELECT * FROM a, b, c WHERE a.id = b.id AND b.ref = c.id;
+</programlisting>
+   the planner is free to join the given tables in any order.  For
+   example, it could generate a query plan that joins A to B, using
+   the <literal>WHERE</literal> condition <literal>a.id = b.id</literal>, and then
+   joins C to this joined table, using the other <literal>WHERE</literal>
+   condition.  Or it could join B to C and then join A to that result.
+   Or it could join A to C and then join them with B &mdash; but that
+   would be inefficient, since the full Cartesian product of A and C
+   would have to be formed, there being no applicable condition in the
+   <literal>WHERE</literal> clause to allow optimization of the join.  (All
+   joins in the <productname>PostgreSQL</productname> executor happen
+   between two input tables, so it's necessary to build up the result
+   in one or another of these fashions.)  The important point is that
+   these different join possibilities give semantically equivalent
+   results but might have hugely different execution costs.  Therefore,
+   the planner will explore all of them to try to find the most
+   efficient query plan.
+  </para>
+
+  <para>
+   When a query only involves two or three tables, there aren't many join
+   orders to worry about.  But the number of possible join orders grows
+   exponentially as the number of tables expands.  Beyond ten or so input
+   tables it's no longer practical to do an exhaustive search of all the
+   possibilities, and even for six or seven tables planning might take an
+   annoyingly long time.  When there are too many input tables, the
+   <productname>PostgreSQL</productname> planner will switch from exhaustive
+   search to a <firstterm>genetic</firstterm> probabilistic search
+   through a limited number of possibilities.  (The switch-over threshold is
+   set by the <xref linkend="guc-geqo-threshold"/> run-time
+   parameter.)
+   The genetic search takes less time, but it won't
+   necessarily find the best possible plan.
+  </para>
+
+  <para>
+   When the query involves outer joins, the planner has less freedom
+   than it does for plain (inner) joins. For example, consider:
+<programlisting>
+SELECT * FROM a LEFT JOIN (b JOIN c ON (b.ref = c.id)) ON (a.id = b.id);
+</programlisting>
+   Although this query's restrictions are superficially similar to the
+   previous example, the semantics are different because a row must be
+   emitted for each row of A that has no matching row in the join of B and C.
+   Therefore the planner has no choice of join order here: it must join
+   B to C and then join A to that result.  Accordingly, this query takes
+   less time to plan than the previous query.  In other cases, the planner
+   might be able to determine that more than one join order is safe.
+   For example, given:
+<programlisting>
+SELECT * FROM a LEFT JOIN b ON (a.bid = b.id) LEFT JOIN c ON (a.cid = c.id);
+</programlisting>
+   it is valid to join A to either B or C first.  Currently, only
+   <literal>FULL JOIN</literal> completely constrains the join order.  Most
+   practical cases involving <literal>LEFT JOIN</literal> or <literal>RIGHT JOIN</literal>
+   can be rearranged to some extent.
+  </para>
+
+  <para>
+   Explicit inner join syntax (<literal>INNER JOIN</literal>, <literal>CROSS
+   JOIN</literal>, or unadorned <literal>JOIN</literal>) is semantically the same as
+   listing the input relations in <literal>FROM</literal>, so it does not
+   constrain the join order.
+  </para>
+
+  <para>
+   Even though most kinds of <literal>JOIN</literal> don't completely constrain
+   the join order, it is possible to instruct the
+   <productname>PostgreSQL</productname> query planner to treat all
+   <literal>JOIN</literal> clauses as constraining the join order anyway.
+   For example, these three queries are logically equivalent:
+<programlisting>
+SELECT * FROM a, b, c WHERE a.id = b.id AND b.ref = c.id;
+SELECT * FROM a CROSS JOIN b CROSS JOIN c WHERE a.id = b.id AND b.ref = c.id;
+SELECT * FROM a JOIN (b JOIN c ON (b.ref = c.id)) ON (a.id = b.id);
+</programlisting>
+   But if we tell the planner to honor the <literal>JOIN</literal> order,
+   the second and third take less time to plan than the first.  This effect
+   is not worth worrying about for only three tables, but it can be a
+   lifesaver with many tables.
+  </para>
+
+  <para>
+   To force the planner to follow the join order laid out by explicit
+   <literal>JOIN</literal>s,
+   set the <xref linkend="guc-join-collapse-limit"/> run-time parameter to 1.
+   (Other possible values are discussed below.)
+  </para>
+
+  <para>
+   You do not need to constrain the join order completely in order to
+   cut search time, because it's OK to use <literal>JOIN</literal> operators
+   within items of a plain <literal>FROM</literal> list.  For example, consider:
+<programlisting>
+SELECT * FROM a CROSS JOIN b, c, d, e WHERE ...;
+</programlisting>
+   With <varname>join_collapse_limit</varname> = 1, this
+   forces the planner to join A to B before joining them to other tables,
+   but doesn't constrain its choices otherwise.  In this example, the
+   number of possible join orders is reduced by a factor of 5.
+  </para>
+
+  <para>
+   Constraining the planner's search in this way is a useful technique
+   both for reducing planning time and for directing the planner to a
+   good query plan.  If the planner chooses a bad join order by default,
+   you can force it to choose a better order via <literal>JOIN</literal> syntax
+   &mdash; assuming that you know of a better order, that is.  Experimentation
+   is recommended.
+  </para>
+
+  <para>
+   A closely related issue that affects planning time is collapsing of
+   subqueries into their parent query.  For example, consider:
+<programlisting>
+SELECT *
+FROM x, y,
+    (SELECT * FROM a, b, c WHERE something) AS ss
+WHERE somethingelse;
+</programlisting>
+   This situation might arise from use of a view that contains a join;
+   the view's <literal>SELECT</literal> rule will be inserted in place of the view
+   reference, yielding a query much like the above.  Normally, the planner
+   will try to collapse the subquery into the parent, yielding:
+<programlisting>
+SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
+</programlisting>
+   This usually results in a better plan than planning the subquery
+   separately.  (For example, the outer <literal>WHERE</literal> conditions might be such that
+   joining X to A first eliminates many rows of A, thus avoiding the need to
+   form the full logical output of the subquery.)  But at the same time,
+   we have increased the planning time; here, we have a five-way join
+   problem replacing two separate three-way join problems.  Because of the
+   exponential growth of the number of possibilities, this makes a big
+   difference.  The planner tries to avoid getting stuck in huge join search
+   problems by not collapsing a subquery if more than <varname>from_collapse_limit</varname>
+   <literal>FROM</literal> items would result in the parent
+   query.  You can trade off planning time against quality of plan by
+   adjusting this run-time parameter up or down.
+  </para>
+
+  <para>
+   <xref linkend="guc-from-collapse-limit"/> and <xref
+   linkend="guc-join-collapse-limit"/>
+   are similarly named because they do almost the same thing: one controls
+   when the planner will <quote>flatten out</quote> subqueries, and the
+   other controls when it will flatten out explicit joins.  Typically
+   you would either set <varname>join_collapse_limit</varname> equal to
+   <varname>from_collapse_limit</varname> (so that explicit joins and subqueries
+   act similarly) or set <varname>join_collapse_limit</varname> to 1 (if you want
+   to control join order with explicit joins).  But you might set them
+   differently if you are trying to fine-tune the trade-off between planning
+   time and run time.
+  </para>
+ </sect1>
+
+ <sect1 id="populate">
+  <title>Populating a Database</title>
+
+  <para>
+   One might need to insert a large amount of data when first populating
+   a database. This section contains some suggestions on how to make
+   this process as efficient as possible.
+  </para>
+
+  <sect2 id="disable-autocommit">
+   <title>Disable Autocommit</title>
+
+   <indexterm>
+    <primary>autocommit</primary>
+    <secondary>bulk-loading data</secondary>
+   </indexterm>
+
+   <para>
+    When using multiple <command>INSERT</command>s, turn off autocommit and just do
+    one commit at the end.  (In plain
+    SQL, this means issuing <command>BEGIN</command> at the start and
+    <command>COMMIT</command> at the end.  Some client libraries might
+    do this behind your back, in which case you need to make sure the
+    library does it when you want it done.)  If you allow each
+    insertion to be committed separately,
+    <productname>PostgreSQL</productname> is doing a lot of work for
+    each row that is added.  An additional benefit of doing all
+    insertions in one transaction is that if the insertion of one row
+    were to fail then the insertion of all rows inserted up to that
+    point would be rolled back, so you won't be stuck with partially
+    loaded data.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-copy-from">
+   <title>Use <command>COPY</command></title>
+
+   <para>
+    Use <link linkend="sql-copy"><command>COPY</command></link> to load
+    all the rows in one command, instead of using a series of
+    <command>INSERT</command> commands.  The <command>COPY</command>
+    command is optimized for loading large numbers of rows; it is less
+    flexible than <command>INSERT</command>, but incurs significantly
+    less overhead for large data loads. Since <command>COPY</command>
+    is a single command, there is no need to disable autocommit if you
+    use this method to populate a table.
+   </para>
+
+   <para>
+    If you cannot use <command>COPY</command>, it might help to use <link
+    linkend="sql-prepare"><command>PREPARE</command></link> to create a
+    prepared <command>INSERT</command> statement, and then use
+    <command>EXECUTE</command> as many times as required.  This avoids
+    some of the overhead of repeatedly parsing and planning
+    <command>INSERT</command>. Different interfaces provide this facility
+    in different ways; look for <quote>prepared statements</quote> in the interface
+    documentation.
+   </para>
+
+   <para>
+    Note that loading a large number of rows using
+    <command>COPY</command> is almost always faster than using
+    <command>INSERT</command>, even if <command>PREPARE</command> is used and
+    multiple insertions are batched into a single transaction.
+   </para>
+
+   <para>
+    <command>COPY</command> is fastest when used within the same
+    transaction as an earlier <command>CREATE TABLE</command> or
+    <command>TRUNCATE</command> command. In such cases no WAL
+    needs to be written, because in case of an error, the files
+    containing the newly loaded data will be removed anyway.
+    However, this consideration only applies when
+    <xref linkend="guc-wal-level"/> is <literal>minimal</literal>
+    as all commands must write WAL otherwise.
+   </para>
+
+  </sect2>
+
+  <sect2 id="populate-rm-indexes">
+   <title>Remove Indexes</title>
+
+   <para>
+    If you are loading a freshly created table, the fastest method is to
+    create the table, bulk load the table's data using
+    <command>COPY</command>, then create any indexes needed for the
+    table.  Creating an index on pre-existing data is quicker than
+    updating it incrementally as each row is loaded.
+   </para>
+
+   <para>
+    If you are adding large amounts of data to an existing table,
+    it might be a win to drop the indexes,
+    load the table, and then recreate the indexes.  Of course, the
+    database performance for other users might suffer
+    during the time the indexes are missing.  One should also think
+    twice before dropping a unique index, since the error checking
+    afforded by the unique constraint will be lost while the index is
+    missing.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-rm-fkeys">
+   <title>Remove Foreign Key Constraints</title>
+
+   <para>
+    Just as with indexes, a foreign key constraint can be checked
+    <quote>in bulk</quote> more efficiently than row-by-row.  So it might be
+    useful to drop foreign key constraints, load data, and re-create
+    the constraints.  Again, there is a trade-off between data load
+    speed and loss of error checking while the constraint is missing.
+   </para>
+
+   <para>
+    What's more, when you load data into a table with existing foreign key
+    constraints, each new row requires an entry in the server's list of
+    pending trigger events (since it is the firing of a trigger that checks
+    the row's foreign key constraint).  Loading many millions of rows can
+    cause the trigger event queue to overflow available memory, leading to
+    intolerable swapping or even outright failure of the command.  Therefore
+    it may be <emphasis>necessary</emphasis>, not just desirable, to drop and re-apply
+    foreign keys when loading large amounts of data.  If temporarily removing
+    the constraint isn't acceptable, the only other recourse may be to split
+    up the load operation into smaller transactions.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-work-mem">
+   <title>Increase <varname>maintenance_work_mem</varname></title>
+
+   <para>
+    Temporarily increasing the <xref linkend="guc-maintenance-work-mem"/>
+    configuration variable when loading large amounts of data can
+    lead to improved performance.  This will help to speed up <command>CREATE
+    INDEX</command> commands and <command>ALTER TABLE ADD FOREIGN KEY</command> commands.
+    It won't do much for <command>COPY</command> itself, so this advice is
+    only useful when you are using one or both of the above techniques.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-max-wal-size">
+   <title>Increase <varname>max_wal_size</varname></title>
+
+   <para>
+    Temporarily increasing the <xref linkend="guc-max-wal-size"/>
+    configuration variable can also
+    make large data loads faster.  This is because loading a large
+    amount of data into <productname>PostgreSQL</productname> will
+    cause checkpoints to occur more often than the normal checkpoint
+    frequency (specified by the <varname>checkpoint_timeout</varname>
+    configuration variable). Whenever a checkpoint occurs, all dirty
+    pages must be flushed to disk. By increasing
+    <varname>max_wal_size</varname> temporarily during bulk
+    data loads, the number of checkpoints that are required can be
+    reduced.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-pitr">
+   <title>Disable WAL Archival and Streaming Replication</title>
+
+   <para>
+    When loading large amounts of data into an installation that uses
+    WAL archiving or streaming replication, it might be faster to take a
+    new base backup after the load has completed than to process a large
+    amount of incremental WAL data.  To prevent incremental WAL logging
+    while loading, disable archiving and streaming replication, by setting
+    <xref linkend="guc-wal-level"/> to <literal>minimal</literal>,
+    <xref linkend="guc-archive-mode"/> to <literal>off</literal>, and
+    <xref linkend="guc-max-wal-senders"/> to zero.
+    But note that changing these settings requires a server restart,
+    and makes any base backups taken before unavailable for archive
+    recovery and standby server, which may lead to data loss.
+   </para>
+
+   <para>
+    Aside from avoiding the time for the archiver or WAL sender to process the
+    WAL data, doing this will actually make certain commands faster, because
+    they do not to write WAL at all if <varname>wal_level</varname>
+    is <literal>minimal</literal> and the current subtransaction (or top-level
+    transaction) created or truncated the table or index they change.  (They
+    can guarantee crash safety more cheaply by doing
+    an <function>fsync</function> at the end than by writing WAL.)
+   </para>
+  </sect2>
+
+  <sect2 id="populate-analyze">
+   <title>Run <command>ANALYZE</command> Afterwards</title>
+
+   <para>
+    Whenever you have significantly altered the distribution of data
+    within a table, running <link linkend="sql-analyze"><command>ANALYZE</command></link> is strongly recommended. This
+    includes bulk loading large amounts of data into the table.  Running
+    <command>ANALYZE</command> (or <command>VACUUM ANALYZE</command>)
+    ensures that the planner has up-to-date statistics about the
+    table.  With no statistics or obsolete statistics, the planner might
+    make poor decisions during query planning, leading to poor
+    performance on any tables with inaccurate or nonexistent
+    statistics.  Note that if the autovacuum daemon is enabled, it might
+    run <command>ANALYZE</command> automatically; see
+    <xref linkend="vacuum-for-statistics"/>
+    and <xref linkend="autovacuum"/> for more information.
+   </para>
+  </sect2>
+
+  <sect2 id="populate-pg-dump">
+   <title>Some Notes about <application>pg_dump</application></title>
+
+   <para>
+    Dump scripts generated by <application>pg_dump</application> automatically apply
+    several, but not all, of the above guidelines.  To restore a
+    <application>pg_dump</application> dump as quickly as possible, you need to
+    do a few extra things manually.  (Note that these points apply while
+    <emphasis>restoring</emphasis> a dump, not while <emphasis>creating</emphasis> it.
+    The same points apply whether loading a text dump with
+    <application>psql</application> or using <application>pg_restore</application> to load
+    from a <application>pg_dump</application> archive file.)
+   </para>
+
+   <para>
+    By default, <application>pg_dump</application> uses <command>COPY</command>, and when
+    it is generating a complete schema-and-data dump, it is careful to
+    load data before creating indexes and foreign keys.  So in this case
+    several guidelines are handled automatically.  What is left
+    for you to do is to:
+    <itemizedlist>
+     <listitem>
+      <para>
+       Set appropriate (i.e., larger than normal) values for
+       <varname>maintenance_work_mem</varname> and
+       <varname>max_wal_size</varname>.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       If using WAL archiving or streaming replication, consider disabling
+       them during the restore. To do that, set <varname>archive_mode</varname>
+       to <literal>off</literal>,
+       <varname>wal_level</varname> to <literal>minimal</literal>, and
+       <varname>max_wal_senders</varname> to zero before loading the dump.
+       Afterwards, set them back to the right values and take a fresh
+       base backup.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Experiment with the parallel dump and restore modes of both
+       <application>pg_dump</application> and <application>pg_restore</application> and find the
+       optimal number of concurrent jobs to use. Dumping and restoring in
+       parallel by means of the <option>-j</option> option should give you a
+       significantly higher performance over the serial mode.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Consider whether the whole dump should be restored as a single
+       transaction.  To do that, pass the <option>-1</option> or
+       <option>--single-transaction</option> command-line option to
+       <application>psql</application> or <application>pg_restore</application>. When using this
+       mode, even the smallest of errors will rollback the entire restore,
+       possibly discarding many hours of processing.  Depending on how
+       interrelated the data is, that might seem preferable to manual cleanup,
+       or not.  <command>COPY</command> commands will run fastest if you use a single
+       transaction and have WAL archiving turned off.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       If multiple CPUs are available in the database server, consider using
+       <application>pg_restore</application>'s <option>--jobs</option> option.  This
+       allows concurrent data loading and index creation.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Run <command>ANALYZE</command> afterwards.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    A data-only dump will still use <command>COPY</command>, but it does not
+    drop or recreate indexes, and it does not normally touch foreign
+    keys.
+
+     <footnote>
+      <para>
+       You can get the effect of disabling foreign keys by using
+       the <option>--disable-triggers</option> option &mdash; but realize that
+       that eliminates, rather than just postpones, foreign key
+       validation, and so it is possible to insert bad data if you use it.
+      </para>
+     </footnote>
+
+    So when loading a data-only dump, it is up to you to drop and recreate
+    indexes and foreign keys if you wish to use those techniques.
+    It's still useful to increase <varname>max_wal_size</varname>
+    while loading the data, but don't bother increasing
+    <varname>maintenance_work_mem</varname>; rather, you'd do that while
+    manually recreating indexes and foreign keys afterwards.
+    And don't forget to <command>ANALYZE</command> when you're done; see
+    <xref linkend="vacuum-for-statistics"/>
+    and <xref linkend="autovacuum"/> for more information.
+   </para>
+  </sect2>
+  </sect1>
+
+  <sect1 id="non-durability">
+   <title>Non-Durable Settings</title>
+
+   <indexterm zone="non-durability">
+    <primary>non-durable</primary>
+   </indexterm>
+
+   <para>
+    Durability is a database feature that guarantees the recording of
+    committed transactions even if the server crashes or loses
+    power.  However, durability adds significant database overhead,
+    so if your site does not require such a guarantee,
+    <productname>PostgreSQL</productname> can be configured to run
+    much faster.  The following are configuration changes you can make
+    to improve performance in such cases.  Except as noted below, durability
+    is still guaranteed in case of a crash of the database software;
+    only an abrupt operating system crash creates a risk of data loss
+    or corruption when these settings are used.
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       Place the database cluster's data directory in a memory-backed
+       file system (i.e., <acronym>RAM</acronym> disk).  This eliminates all
+       database disk I/O, but limits data storage to the amount of
+       available memory (and perhaps swap).
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Turn off <xref linkend="guc-fsync"/>;  there is no need to flush
+       data to disk.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Turn off <xref linkend="guc-synchronous-commit"/>;  there might be no
+       need to force <acronym>WAL</acronym> writes to disk on every
+       commit.  This setting does risk transaction loss (though not data
+       corruption) in case of a crash of the <emphasis>database</emphasis>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Turn off <xref linkend="guc-full-page-writes"/>;  there is no need
+       to guard against partial page writes.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Increase <xref linkend="guc-max-wal-size"/> and <xref
+       linkend="guc-checkpoint-timeout"/>; this reduces the frequency
+       of checkpoints, but increases the storage requirements of
+       <filename>/pg_wal</filename>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Create <link linkend="sql-createtable-unlogged">unlogged
+       tables</link> to avoid <acronym>WAL</acronym> writes, though it
+       makes the tables non-crash-safe.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+   </para>
+  </sect1>
+
+ </chapter>

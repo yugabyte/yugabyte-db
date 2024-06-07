@@ -1,0 +1,34 @@
+CREATE EXTENSION pg_stat_statements;
+--
+-- simple and compound statements
+--
+SET pg_stat_statements.track_utility = TRUE;
+SET pg_stat_statements.track_planning = TRUE;
+--
+-- create / alter user
+--
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+
+(1 row)
+
+CREATE USER foo PASSWORD 'fooooooo';
+ALTER USER foo PASSWORD 'foo2';
+CREATE ROLE fizzbuzz PASSWORD 'barrr';
+ALTER ROLE fizzbuzz PASSWORD 'barrr2';
+-- YB: TODO(devansh): change output when re-enabling password redaction (see DB-11332)
+SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+                                    query                                     | calls | rows
+------------------------------------------------------------------------------+-------+------
+ ALTER ROLE fizzbuzz PASSWORD 'barrr2'                                        |     1 |    0
+ ALTER USER foo PASSWORD 'foo2'                                               |     1 |    0
+ CREATE ROLE fizzbuzz PASSWORD 'barrr'                                        |     1 |    0
+ CREATE USER foo PASSWORD 'fooooooo'                                          |     1 |    0
+ SELECT pg_stat_statements_reset()                                            |     1 |    1
+ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C" |     0 |    0
+(6 rows)
+
+DROP USER foo;
+DROP ROLE fizzbuzz;
+DROP EXTENSION pg_stat_statements;

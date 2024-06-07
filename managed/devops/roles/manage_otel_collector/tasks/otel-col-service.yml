@@ -1,0 +1,55 @@
+- block:
+    - set_fact:
+        systemd_dir: "/etc/systemd/system"
+
+    - block:
+      - set_fact:
+          systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
+
+      - name: Add user systemd directory
+        file:
+          path: "{{ systemd_dir }}"
+          state: directory
+          owner: "{{ user_name }}"
+          group: "{{ user_name }}"
+          mode: 0744
+      when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
+
+    # Give yugabyte user sudo access to start/stop/restart otel-collector
+    - name: OpenTelemetry Collector Service | Add yugabyte sudo user permissions for otel service controls without password
+      lineinfile:
+        dest: /etc/sudoers.d/yugabyte-otel-col
+        line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start otel-collector,
+              /bin/systemctl stop otel-collector,
+              /bin/systemctl restart otel-collector,
+              /bin/systemctl enable otel-collector,
+              /bin/systemctl disable otel-collector,
+              /bin/systemctl start otel-collector'
+        create: yes
+        state: present
+        mode: 0440
+        validate: 'visudo -cf %s'
+      when: systemd_dir == "/etc/systemd/system"
+
+    # Adding systemd service file for otel-collector
+    - name: OpenTelemetry Collector Service | Add otel-collector.service
+      template:
+        src: otel-collector.service
+        dest: "{{ systemd_dir }}/otel-collector.service"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        mode: 0644
+
+    - name: OpenTelemetry Collector Service | System mode systemd | Perform daemon-reload for the new services
+      shell:
+        cmd: "sudo systemctl daemon-reload"
+      when: systemd_dir == "/etc/systemd/system"
+
+    - name: OpenTelemetry Collector Service | User mode systemd | Reload systemd user daemon
+      become: yes
+      become_method: sudo
+      become_user: "{{ user_name }}"
+      systemd:
+        daemon_reload: yes
+        scope: user
+      when: systemd_dir != "/etc/systemd/system"

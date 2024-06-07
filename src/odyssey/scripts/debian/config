@@ -1,0 +1,85 @@
+# @NAME@ configuration file.
+#
+
+# include "path"
+
+daemonize              yes
+#log_syslog            no
+#log_syslog_facility  "daemon"
+#log_syslog_ident     "@NAME@"
+log_to_stdout          no
+pid_file              "@DEST_PID_PATH@"
+log_file              "@DEST_LOG_PATH@"
+log_format            "%p %l %c %i %s  %m\n"
+log_debug              no
+log_config             yes
+log_session            yes
+log_query              no
+log_stats              yes
+stats_interval         3
+readahead              4096
+nodelay                yes
+keepalive              7200
+client_max             100
+cache                  100
+cache_chunk            16384
+resolvers              1
+workers                1
+
+listen {
+	host "*"
+	port 6432
+#	backlog 16
+	tls "disable"
+#	tls_cert_file ""
+#	tls_key_file ""
+#	tls_ca_file ""
+#	tls_protocols ""
+}
+
+storage "local" {
+	type "local"
+}
+
+storage "pg_server" {
+	type "remote"
+	host "127.0.0.1"
+	port 5432
+	tls "disable"
+#	tls_ca_file ""
+#	tls_key_file ""
+#	tls_cert_file ""
+#	tls_protocols ""
+}
+
+database "console" {
+	user default {
+		authentication "none"
+		pool "session"
+		storage "local"
+	}
+}
+
+database default
+{
+	user default {
+		# none, block, clear_text, md5, scram-sha-256
+		authentication "none"
+		#password "test"
+
+		storage "pg_server"
+		#storage_user "test"
+		#storage_password "test"
+		#storage_db "database"
+
+		pool "transaction"
+		pool_size 100
+		pool_timeout 4000
+		pool_ttl 60
+		pool_cancel yes
+		pool_rollback yes
+
+		#client_fwd_error no
+		#client_max 100
+	}
+}

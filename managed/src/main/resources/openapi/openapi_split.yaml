@@ -1,0 +1,36 @@
+openapi: 3.0.0
+info:
+  title: YugabyteDB Anywhere V2 APIs
+  description: An improved set of APIs for managing YugabyteDB Anywhere
+  contact:
+    name: YugabyteDB Anywhere Support
+    url: 'https://docs.yugabyte.com'
+    email: support@yugabyte.com
+  license:
+    name: Polyform Free Trial License 1.0.0
+    url: 'https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt'
+  version: v2
+servers:
+  - description: API endpoint of YBA server
+    url: '{protocol}://{host_port}'
+    variables:
+      protocol:
+        enum:
+          - http
+          - https
+        default: http
+      host_port:
+        default: 'localhost:9000'
+tags:
+  - name: Universe Management
+    description: CRUD operations for a Universe
+  - name: Universe Upgrades Management
+    description: APIs to upgrade various parts of a Universe
+paths:
+  $ref: paths/_index.yaml
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      name: X-AUTH-YW-API-TOKEN
+      in: header

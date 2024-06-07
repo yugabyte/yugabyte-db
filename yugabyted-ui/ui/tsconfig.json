@@ -1,0 +1,27 @@
+{
+    "include": ["src"],
+    "compilerOptions": {
+      "module": "esnext",
+      "target": "esnext",
+      "moduleResolution": "node",
+      "jsx": "preserve",
+      "baseUrl": "./",
+      "paths": {
+        "@app/*": ["./src/*"]
+      },
+      "noEmit": true,
+      "strict": true,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true,
+      "resolveJsonModule": true,
+      "allowSyntheticDefaultImports": true,
+      "importsNotUsedAsValues": "error",
+      "noImplicitAny": true,
+      "noUnusedLocals": true,
+      "noUnusedParameters": true,
+      "noFallthroughCasesInSwitch": true,
+      "noImplicitReturns": true,
+      "noImplicitThis": true
+    }
+  }
+  

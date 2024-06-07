@@ -1,0 +1,420 @@
+
+- name: Setup | Create bin directory for {{ user_name }}
+  file:
+    path: "{{ yb_bin_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+
+- set_fact:
+    _mount_points: "{{ mount_points.split(',') }}"
+  tags: always
+
+- set_fact:
+    mount_cores_dir: "{{ _mount_points[0] }}/cores"
+  tags: always
+
+- set_fact:
+    systemd_unit_dir: "/usr/lib/systemd/system"
+  when: ansible_os_family == "Suse"
+  tags: always
+
+- name: Configure | Add yb server ctl script
+  vars:
+    mount_paths: "{{ _mount_points | join(' ') }}"
+  template:
+    src: yb-server-ctl.sh.j2
+    dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
+- name: Configure | Add clock sync script
+  vars:
+    mount_paths: "{{ _mount_points | join(' ') }}"
+  template:
+    src: clock-sync.sh.j2
+    dest: "{{ yb_bin_dir }}/clock-sync.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
+- name: Setup | Create directory to land core dumps
+  file:
+    path: "{{ mount_cores_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+
+- name: Setup | Symlink cores directory to {{ user_name }} home directory
+  file:
+    src: "{{ mount_cores_dir }}"
+    dest: "{{ yb_cores_dir }}"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+    force: yes
+  when: mount_cores_dir != yb_cores_dir
+  tags: yb-prebuilt-ami
+
+- name: Configure | Add clean cores script
+  template:
+    src: clean_cores.sh.j2
+    dest: "{{ yb_bin_dir }}/clean_cores.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+  tags: yb-prebuilt-ami
+
+- name: Configure | Add purge logs script
+  template:
+    src: zip_purge_yb_logs.sh.j2
+    dest: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+  tags: yb-prebuilt-ami
+
+- name: Configure | Add collect metrics wrapper script
+  template:
+    src: collect_metrics_wrapper.sh.j2
+    dest: "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+  tags: yb-prebuilt-ami
+
+- set_fact:
+    cron_result: {}
+  tags: yb-prebuilt-ami
+
+- block:
+  # Cronjob approach for logs and cores
+  - name: Update mailto variable
+    cronvar:
+      name: MAILTO
+      value: "\"\""
+      user: "{{ user_name }}"
+
+  - name: Setup cron to cleanup core files.
+    cron:
+      name: "cleanup core files every 5 minutes"
+      minute: "*/5"
+      user: "{{ user_name }}"
+      job: "{{ yb_bin_dir }}/clean_cores.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+
+  - name: Setup cron to cleanup log files.
+    cron:
+      name: "cleanup yb log files every 5 minutes"
+      minute: "*/5"
+      user: "{{ user_name }}"
+      job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+
+  - name: Setup cron to collect metrics.
+    cron:
+      name: "metric collection every minute"
+      user: "{{ user_name }}"
+      job: "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+
+  when: not systemd_option
+  tags:
+    - yb-prebuilt-ami
+    - install-software
+
+- block:
+  # Configure the user level systemd for yb-services.
+  - name: Configure | Register yb user id
+    shell:
+      cmd: "id -u {{ user_name }}"
+    register: output
+
+  - name: Configure | Add yb user bash profile
+    lineinfile:
+      dest: "{{ yb_home_dir }}/.bash_profile"
+      line: ". {{ yb_home_dir }}/.bashrc"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      create: yes
+      state: present
+
+  - name: Configure | Export XDG_RUNTIME_DIR for yb user
+    lineinfile:
+      dest: "{{ yb_home_dir }}/.bashrc"
+      line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      create: yes
+      state: present
+
+  - name: Configure | Add user systemd directory
+    file:
+      path: "{{ yb_home_dir }}/.config/systemd/user/"
+      state: directory
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0744
+
+  - set_fact:
+      systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
+
+  - name: Configure | Enable linger for {{ user_name }} user
+    shell:
+        cmd: "loginctl enable-linger {{ user_name }}"
+
+  - name: Configure | setup-postgres-cgroups
+    include_role:
+      name: setup-cgroup
+
+  - name: Configure | Setup OpenTelemetry Collector
+    include_role:
+      name: manage_otel_collector
+    when: install_otel_collector is defined and install_otel_collector|bool
+
+  # Adding systemd service files for yb-master and yb-tserver
+  - name: Configure | Add yb-master.service
+    template:
+      src: yb-master.service
+      dest: "{{ systemd_dir }}/yb-master.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Configure | Add yb-tserver.service
+    template:
+      src: yb-tserver.service
+      dest: "{{ systemd_dir }}/yb-tserver.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service files for yb-controller
+  - name: Configure | Add yb-controller.service
+    template:
+      src: "yb-controller.service"
+      dest: "{{ systemd_dir }}/yb-controller.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding yb-bind_check service files for the availability of the port
+  - name: Configure | Add yb-bind_check.service
+    template:
+      src: "yb-bind_check.service"
+      dest: "{{ systemd_dir }}/yb-bind_check.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for zip_purge_yb_logs
+  - name: Configure | Add yb-zip_purge_yb_logs.service
+    template:
+      src: yb-zip_purge_yb_logs.service
+      dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Configure | Add yb-zip_purge_yb_logs.timer
+    template:
+      src: yb-zip_purge_yb_logs.timer
+      dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for clean_cores
+  - name: Configure | Add yb-clean_cores.service
+    template:
+      src: yb-clean_cores.service
+      dest: "{{ systemd_dir }}/yb-clean_cores.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Configure | Add yb-clean_cores.timer
+    template:
+      src: yb-clean_cores.timer
+      dest: "{{ systemd_dir }}/yb-clean_cores.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding systemd service and timer files for collect_metrics
+  - name: Configure | Add yb-collect_metrics.service
+    template:
+      src: yb-collect_metrics.service
+      dest: "{{ systemd_dir }}/yb-collect_metrics.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Configure | Add yb-collect_metrics.timer
+    template:
+      src: yb-collect_metrics.timer
+      dest: "{{ systemd_dir }}/yb-collect_metrics.timer"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  - name: Configure | Create or Update .bashrc file to display systemd mode upon ssh login
+    blockinfile:
+      dest: "{{ yb_home_dir }}/.bash_profile"
+      block: |
+        ORANGE='\033[0;33m'
+        NC='\033[0m' # No Color
+
+        if [[ $- == *i* ]]
+            then export PS1="[\u@\h ~]\$ "
+            echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
+        fi
+      create: yes
+      state: present
+      mode: 0644
+
+  tags: systemd_upgrade
+  when: (systemd_option and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')))
+
+- block:
+  # Remove old cron jobs that clean cores, purge logs and collect metrics
+  - name: Remove old cron job that cleans cores (for upgrades)
+    cron:
+      name: "cleanup core files every 5 minutes"
+      user: "{{ user_name }}"
+      state: absent
+
+  - name: Remove old cron job that purges logs (for upgrades)
+    cron:
+      name: "cleanup yb log files every 5 minutes"
+      user: "{{ user_name }}"
+      state: absent
+
+  - name: Remove old cron job that collects metrics (for upgrades)
+    cron:
+      name: "metric collection every minute"
+      user: "{{ user_name }}"
+      state: absent
+
+  - name: Determine system or user scope
+    stat:
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-zip_purge_yb_logs.service"
+    register: user_systemd
+
+  - name: Systemd user units
+    block:
+    # Enable service files
+    - name: Enable yb-zip_purge_yb_logs.service for purging logs
+      systemd:
+        name: yb-zip_purge_yb_logs
+        scope: user
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Enable yb-clean_cores.service for cleaning cores
+      systemd:
+        name: yb-clean_cores
+        scope: user
+        enabled: yes
+
+    - name: Enable yb-collect_metrics for collecting metrics
+      systemd:
+        name: yb-collect_metrics
+        scope: user
+        enabled: yes
+
+    # Enable/Start timers
+    - name: Enable yb-zip_purge_yb_logs.timer for purging logs
+      systemd:
+        name: yb-zip_purge_yb_logs.timer
+        scope: user
+        enabled: yes
+        state: started
+
+    - name: Enable yb-clean_cores.timer for cleaning cores
+      systemd:
+        name: yb-clean_cores.timer
+        scope: user
+        enabled: yes
+        state: started
+
+    - name: Enable yb-collect_metrics for collecting metrics
+      systemd:
+        name: yb-collect_metrics.timer
+        scope: user
+        enabled: yes
+        state: started
+
+    # Necessary for yb-master/tserver to be accessible. 'After' in service file.
+    - name: Link network-online.target
+      shell:
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
+
+    - name: Start network-online.target
+      systemd:
+        name: network-online.target
+        state: started
+        enabled: yes
+        scope: user
+        daemon_reload: yes
+    when: user_systemd.stat.exists
+
+  - name: Systemd system units
+    block:
+      # Daemon-reload for services
+    - name: Perform daemon-reload for the new services
+      shell:
+        cmd: "sudo systemctl daemon-reload"
+
+    # Enable service files
+    - name: Enable yb-zip_purge_yb_logs.service for purging logs
+      shell:
+        cmd: "sudo systemctl enable yb-zip_purge_yb_logs"
+
+    - name: Enable yb-clean_cores.service for cleaning cores
+      shell:
+        cmd: "sudo systemctl enable yb-clean_cores"
+
+    - name: Enable yb-collect_metrics.service for collecting metrics
+      shell:
+        cmd: "sudo systemctl enable yb-collect_metrics"
+
+    # Enable timers
+    - name: Enable yb-zip_purge_yb_logs.timer for purging logs
+      shell:
+        cmd: "sudo systemctl enable yb-zip_purge_yb_logs.timer"
+
+    - name: Enable yb-clean_cores.timer for cleaning cores
+      shell:
+        cmd: "sudo systemctl enable yb-clean_cores.timer"
+
+    - name: Enable yb-collect_metrics.timer for collecting metrics
+      shell:
+        cmd: "sudo systemctl enable yb-collect_metrics.timer"
+
+    # Starting timers
+    - name: Run yb-zip_purge_yb_logs.sh (using timer) for purging logs
+      shell:
+        cmd: "sudo systemctl start yb-zip_purge_yb_logs.timer"
+
+    - name: Run yb-clean_cores.sh (using timer) for cleaning cores
+      shell:
+        cmd: "sudo systemctl start yb-clean_cores.timer"
+
+    - name: Run collect_metrics_wrapper.sh (using timer) for collecting metrics
+      shell:
+        cmd: "sudo systemctl start yb-collect_metrics.timer"
+    when: not user_systemd.stat.exists
+
+  tags: systemd_upgrade
+  when: systemd_option

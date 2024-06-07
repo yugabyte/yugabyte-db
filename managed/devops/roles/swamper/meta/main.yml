@@ -1,0 +1,29 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+dependencies:
+  - role: get_prometheus_user_group
+    become: yes
+    become_method: sudo
+    tags: yb-prebuilt-ami
+
+  - role: ansible-prometheus
+    become: yes
+    become_method: sudo
+    prometheus_go_version: 1.7
+    prometheus_use_service: true
+    prometheus_node_exporter_version: 1.7.0
+    prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
+                                    --collector.textfile.directory={{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
+    prometheus_node_exporter_use_systemd: true
+    prometheus_platform_suffix: "{{ 'linux-arm64' if ansible_architecture == 'aarch64' \
+                                    else 'linux-amd64'}}"
+    prometheus_user: "{{ node_exporter_user }}"
+    prometheus_group: "{{ node_exporter_group }}"
+    when: install_node_exporter is not defined or install_node_exporter|bool
+    tags: yb-prebuilt-ami

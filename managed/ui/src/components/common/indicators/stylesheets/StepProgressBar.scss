@@ -1,0 +1,194 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+
+.progressbar {
+  display: flex;
+  position: relative;
+  flex-direction: row;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  counter-reset: step;
+  z-index: 300;
+  height: 120px;
+
+  &:before {
+    width: calc(100% - 30px);
+    content: '';
+    height: 8px;
+    position: absolute;
+    top: 21px;
+    right: 10px;
+    background-color: white;
+  }
+
+  .progressbar-bar {
+    position: absolute;
+    height: 8px;
+    top: 21px;
+    left: 0;
+
+    &.finished:after {
+      content: none;
+    }
+
+    &:after {
+      left: 100%;
+      top: 50%;
+      border: solid transparent;
+      content: ' ';
+      height: 0;
+      width: 0;
+      position: absolute;
+      pointer-events: none;
+      border-color: transparent;
+      border-left-color: transparent;
+      border-width: 4px;
+      margin-top: -4px;
+    }
+
+    &.running,
+    &.pending {
+      background-color: colors.$YB_ORANGE;
+      animation-duration: 3s;
+      animation-name: bouncing;
+      animation-iteration-count: infinite;
+      animation-direction: alternate;
+      animation-timing-function: ease-in-out;
+
+      &:after {
+        border-left-color: colors.$YB_ORANGE;
+      }
+    }
+    @keyframes bouncing {
+      from {
+        transform: translateX(0px);
+      }
+
+      to {
+        transform: translateX(20px);
+      }
+    }
+
+    &.finished {
+      background-color: colors.$YB_SUCCESS_COLOR;
+      &:after {
+        border-left-color: colors.$YB_SUCCESS_COLOR;
+      }
+    }
+
+    &.failed {
+      background-color: colors.$YB_FAIL_COLOR;
+      &:after {
+        border-left-color: colors.$YB_FAIL_COLOR;
+      }
+    }
+  }
+
+  li {
+    list-style-type: none;
+    font-size: 12px;
+    position: relative;
+    text-align: center;
+    text-transform: uppercase;
+    color: #7d7d7d;
+    flex-grow: 1;
+    max-width: 50px;
+
+    &:before {
+      width: 50px;
+      height: 50px;
+      content: counter(step);
+      counter-increment: step;
+      line-height: 48px;
+      border: none;
+      display: block;
+      text-align: center;
+      margin: 0;
+      margin-bottom: 10px;
+      border-radius: 50%;
+      background-color: white;
+      font-size: 20px;
+      font-weight: 300;
+      color: colors.$YB_TEXT_COLOR;
+    }
+
+    span {
+      width: 100px;
+      position: absolute;
+      left: -25px;
+    }
+
+    &:nth-child(2) {
+      color: #444;
+
+      span {
+        left: 0;
+        text-align: left;
+      }
+    }
+
+    &:last-child {
+      &:after {
+        content: none;
+      }
+
+      span {
+        right: 0;
+        left: auto;
+        text-align: right;
+        padding-right: 8px;
+      }
+    }
+  }
+}
+
+.progressbar li.running {
+  color: colors.$YB_ORANGE;
+}
+
+.progressbar li.running:before {
+  background-color: colors.$YB_ORANGE;
+  color: white;
+}
+
+.progressbar li.pending {
+  color: grey;
+}
+
+.progressbar li.pending:before {
+  border-color: grey;
+}
+
+.progressbar li.finished {
+  color: colors.$YB_SUCCESS_COLOR;
+
+  &:before {
+    background-color: colors.$YB_SUCCESS_COLOR;
+    color: white;
+    font-weight: 400;
+  }
+}
+
+.progressbar li.failed {
+  color: colors.$YB_FAIL_COLOR;
+
+  &:before {
+    font-weight: 400;
+  }
+}
+
+.progressbar li.to-be-failed {
+  &:before {
+    border: 6px solid colors.$YB_FAIL_COLOR;
+    line-height: 36px;
+  }
+}
+
+.progressbar li.to-be-succeed {
+  &:before {
+    border: 6px solid colors.$YB_ORANGE;
+    line-height: 36px;
+  }
+}

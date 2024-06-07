@@ -1,0 +1,103 @@
+src/tools/pginclude/README
+
+pginclude
+=========
+
+These utilities help clean up #include file usage.  They should be run
+in this order so that the include files have the proper includes before
+the C files are tested.
+
+pgfixinclude	change #include's to <> or ""
+
+pgcompinclude [-v]
+		report which #include files can not compile on their own
+
+pgrminclude [-v]
+		remove extra #include's
+
+pgcheckdefines
+		check for #ifdef tests on symbols defined in files that
+		weren't included --- this is a necessary sanity check on
+		pgrminclude
+
+pgdefine	create macro calls for all defines in the file (used by
+		the above routines)
+
+It is also a good idea to sort the pg-specific include files in
+alphabetic order.  This is best done with a text editor. Typical usage
+order would be:
+
+	pgfixinclude
+	sort include references
+	run multiple times:
+		pgcompinclude
+		pgrminclude /src/include
+	pgrminclude /
+	pgcheckdefines
+
+There is a complexity when modifying /src/include.  If include file 1
+includes file 2, and file 2 includes file 3, then when file 1 is
+processed, it needs only file 2, not file 3.  However, if later, include
+file 2 is processed, and file 3 is not needed by file 2 and is removed,
+file 1 might then need to include file 3.  For this reason, the
+pgcompinclude and pgrminclude /src/include steps must be run several
+times until all includes compile cleanly.
+
+Also, tests should be done with configure settings of --enable-cassert
+and EXEC_BACKEND on and off.  It is also wise to test a WIN32 compile.
+
+Another tools that does a similar task is at:
+
+	http://code.google.com/p/include-what-you-use/
+
+An include file visualizer script is available at:
+
+	http://archives.postgresql.org/pgsql-hackers/2011-09/msg00311.php
+
+
+headerscheck
+============
+
+This script can be run to verify that all Postgres include files meet
+the project convention that they will compile "standalone", that is
+with no prerequisite headers other than postgres.h (or postgres_fe.h
+or c.h, as appropriate).
+
+A small number of header files are exempted from this requirement,
+and are skipped by the headerscheck script.
+
+The easy way to run the script is to say "make -s headerscheck" in
+the top-level build directory after completing a build.  You should
+have included "--with-perl --with-python" in your configure options,
+else you're likely to get errors about related headers not being found.
+
+A limitation of the current script is that it doesn't know which headers
+are for frontend or backend, so it tests everything with postgres.h
+as prerequisite, even if postgres_fe.h would be more appropriate.  Also
+note that the contents of macros are not checked; this is intentional.
+
+
+cpluspluscheck
+==============
+
+This script can be run to verify that all Postgres include files meet
+the project convention that they will compile as C++ code.  Although
+the project's coding language is C, some people write extensions in C++,
+so it's helpful for include files to be C++-clean.
+
+A small number of header files are exempted from this requirement,
+and are skipped by the cpluspluscheck script.
+
+The easy way to run the script is to say "make -s cpluspluscheck" in
+the top-level build directory after completing a build.  You should
+have included "--with-perl --with-python" in your configure options,
+else you're likely to get errors about related headers not being found.
+
+If you are using a non-g++-compatible C++ compiler, you may need to
+override the script's CXXFLAGS setting by setting a suitable environment
+value.
+
+A limitation of the current script is that it doesn't know which headers
+are for frontend or backend, so it tests everything with postgres.h
+as prerequisite, even if postgres_fe.h would be more appropriate.  Also
+note that the contents of macros are not checked; this is intentional.

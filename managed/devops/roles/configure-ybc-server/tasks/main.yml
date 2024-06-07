@@ -1,0 +1,217 @@
+- assert:
+    that:
+      - user_name is defined
+      - systemd_option is defined
+      - _mount_points is defined
+
+- set_fact:
+    server_gflags: {}
+  tags: ybc-install
+
+- name: Download ybc package
+  include: download-ybc-package.yml
+  become: yes
+  become_method: sudo
+  become_user: "{{ user_name }}"
+  tags: ybc-install
+
+- name: Create ybc symlink folders
+  file:
+    path: "{{ ybc_symlink_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags:
+    - ybc-install
+
+- name: Install | Create symlink to ybc package folder
+  file:
+    src: "{{ software_ybc_package_folder }}/bin"
+    dest: "{{ ybc_symlink_dir }}/bin"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+  tags:
+    - ybc-install
+
+- block:
+  - set_fact:
+      _mount_logs_dir: "{{ _mount_points[0] }}/ybc-data/controller/logs"
+    tags: always
+
+  - name: Setup | Create controller logs directory
+    file:
+      path: "{{ _mount_logs_dir }}"
+      state: directory
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+    tags:
+      - ybc-install
+
+  - name: Setup | Symlink {{ yb_process_type }} logs directory
+    file:
+      src: "{{ _mount_logs_dir }}"
+      dest: "{{ ybc_logs_dir }}"
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      state: link
+      force: yes
+    tags:
+      - ybc-install
+
+  - name: Setup | Create ybc config directory
+    file:
+      path: "{{ ybc_conf_dir }}"
+      state: directory
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+    tags:
+      - ybc-install
+
+  - name: Configure | Create ybc gflags
+    set_fact:
+      server_gflags: "{{ server_gflags | combine (ybc_flags | default({})) }}"
+    tags:
+      - ybc-install
+      - override_ybc_gflags
+    when: ybc_flags is defined
+
+  # This overwrites the existing file at once.
+  - name: Configure | Copy ybc gflags conf file
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-gflags.conf.j2"
+      dest: "{{ ybc_conf_file }}"
+      force: yes
+      mode: 0644
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+    tags:
+      - ybc-install
+      - override_ybc_gflags
+    when: ybc_flags is defined
+
+- block:
+  - name: Configure | Add yb server ctl script
+    vars:
+      mount_paths: "{{ _mount_points | join(' ') }}"
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-ctl.sh.j2"
+      dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+      owner: "{{ user_name }}"
+      mode: 0755
+
+  # Cronjob approach for starting yb-controller
+  - name: Setup cron to check liveness of controller
+    cron:
+      name: "Check liveness of controller"
+      minute: "*/1"
+      user: "{{ user_name }}"
+      job: >
+        {{ yb_bin_dir }}/yb-server-ctl.sh controller cron-check ||
+        {{ yb_bin_dir }}/yb-server-ctl.sh controller start
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+  when: not systemd_option
+  tags:
+    - ybc-install
+
+- block:
+  # Remove old cron job and its tasks that start yb-controller
+  - name: Remove old cron job that starts controller (for upgrades)
+    cron:
+      name: "Check liveness of controller"
+      user: "yugabyte"
+      state: absent
+    tags:
+      - override_ybc_gflags
+      - systemd_upgrade
+      - ybc-install
+  when: systemd_option
+
+- block:
+  - set_fact:
+      systemd_unit_dir: "/usr/lib/systemd/system"
+    when:
+      ansible_os_family == "Suse"
+    tags: always
+
+  - name: Determine system or user scope
+    stat:
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-controller.service"
+    register: user_systemd
+
+  - name: User mode systemd
+    block:
+    - name: Stop existing running controller
+      systemd:
+        name: yb-controller
+        state: stopped
+        enabled: no
+        scope: user
+
+    - name: Reload systemd user daemon
+      systemd:
+        daemon_reload: yes
+        scope: user
+
+    # User units need to be linked if waiting on system units
+    - name: Link network-online.target
+      shell:
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
+
+    - name: Start network-online.target
+      systemd:
+        name: network-online.target
+        state: started
+        enabled: yes
+        scope: user
+
+    - name: Enable yb-bind check service
+      systemd:
+        name: yb-bind_check
+        enabled: yes
+        scope: user
+
+    - name: Enable and start controller
+      systemd:
+        name: yb-controller
+        state: started
+        enabled: yes
+        scope: user
+    when: user_systemd.stat.exists
+
+  - name: System systemd units
+    block:
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl stop yb-controller"
+
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl disable yb-controller"
+
+    # Systemd daemon-reload for yb-controller service files
+    - name: Perform daemon-reload for the new services
+      shell:
+        cmd: "sudo systemctl daemon-reload"
+
+    - name: Enable yb-controller service
+      shell:
+        cmd: "sudo systemctl enable yb-controller"
+
+    - name: Run yb-controller.service to start the yb-controller
+      shell:
+        cmd: "sudo systemctl start yb-controller"
+    when: not user_systemd.stat.exists
+
+  tags:
+    - systemd_upgrade
+    - ybc-install
+  when: systemd_option

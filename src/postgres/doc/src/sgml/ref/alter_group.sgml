@@ -1,0 +1,135 @@
+<!--
+doc/src/sgml/ref/alter_group.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altergroup">
+ <indexterm zone="sql-altergroup">
+  <primary>ALTER GROUP</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER GROUP</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER GROUP</refname>
+  <refpurpose>change role name or membership</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER GROUP <replaceable class="parameter">role_specification</replaceable> ADD USER <replaceable class="parameter">user_name</replaceable> [, ... ]
+ALTER GROUP <replaceable class="parameter">role_specification</replaceable> DROP USER <replaceable class="parameter">user_name</replaceable> [, ... ]
+
+<phrase>where <replaceable class="parameter">role_specification</replaceable> can be:</phrase>
+
+    <replaceable class="parameter">role_name</replaceable>
+  | CURRENT_ROLE
+  | CURRENT_USER
+  | SESSION_USER
+
+ALTER GROUP <replaceable class="parameter">group_name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER GROUP</command> changes the attributes of a user group.
+   This is an obsolete command, though still accepted for backwards
+   compatibility, because groups (and users too) have been superseded by the
+   more general concept of roles.
+  </para>
+
+  <para>
+   The first two variants add users to a group or remove them from a group.
+   (Any role can play the part of either a <quote>user</quote> or a
+   <quote>group</quote> for this purpose.)  These variants are effectively
+   equivalent to granting or revoking membership in the role named as the
+   <quote>group</quote>; so the preferred way to do this is to use
+   <link linkend="sql-grant"><command>GRANT</command></link> or
+   <link linkend="sql-revoke"><command>REVOKE</command></link>.
+  </para>
+
+  <para>
+   The third variant changes the name of the group.  This is exactly
+   equivalent to renaming the role with
+   <link linkend="sql-alterrole"><command>ALTER ROLE</command></link>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">group_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the group (role) to modify.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">user_name</replaceable></term>
+    <listitem>
+     <para>
+      Users (roles) that are to be added to or removed from the group.
+      The users must already exist; <command>ALTER GROUP</command> does not
+      create or drop users.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the group.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+  <para>
+   Add users to a group:
+
+<programlisting>
+ALTER GROUP staff ADD USER karl, john;
+</programlisting>
+
+   Remove a user from a group:
+
+<programlisting>
+ALTER GROUP workers DROP USER beth;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER GROUP</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-grant"/></member>
+   <member><xref linkend="sql-revoke"/></member>
+   <member><xref linkend="sql-alterrole"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

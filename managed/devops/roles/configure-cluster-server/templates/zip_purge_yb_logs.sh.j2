@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -euo pipefail
+
+print_help() {
+  cat <<EOT
+Usage: ${0##*/} [<options>]
+Options:
+  -p, --logs_disk_percent_max <logsdiskpercent>
+    max percentage of disk to use for logs (default=10).
+  -z, --gzip_only
+    only gzip files, don't purge.
+  -h, --help
+    Show usage.
+  -s, --postgres_max_log_size <size in mb>
+    max size of disk to use for postgres logs (default=100mb)
+  -t, --logs_purge_threshold <size in gb>
+    threshold of disk space to use for server logs (default=10gb)
+EOT
+}
+
+gzip_only=false
+YB_HOME_DIR=({{ yb_home_dir }})
+preserve_audit_logs=false
+ycql_audit_log_level=NONE
+
+logs_disk_percent_max=10
+postgres_max_log_size_kb=$((100 * 1000))
+logs_purge_threshold_kb=$((10 * 1000000))
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--logs_disk_percent_max)
+      logs_disk_percent_max=$2
+      shift
+    ;;
+    -s|--postgres_max_log_size)
+      postgres_max_log_size_kb=$(($2 * 1000))
+      shift
+    ;;
+    -t|--logs_purge_threshold)
+      logs_purge_threshold_kb=$(($2 * 1000000))
+      shift
+    ;;
+    -z|--gzip_only)
+      gzip_only=true
+    ;;
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    *)
+      echo "Invalid option: $1" >&2
+      print_help
+      exit 1
+  esac
+  shift
+done
+
+if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
+  echo "This script must be run as root or yugabyte" >&2
+  exit 1
+fi
+
+if [[ $logs_disk_percent_max -lt 1 || $logs_disk_percent_max -gt 100 ]]; then
+  echo "--logs_disk_percent_max needs to be [1, 100]" >&2
+  exit 1
+fi
+
+if [[ $logs_purge_threshold_kb -lt 1000000 ]]; then
+  echo "--logs_purge_threshold needs to be at least 1 GB"
+  exit 1
+fi
+
+# half for tserver and half for master.
+logs_disk_percent_max=$(($logs_disk_percent_max / 2))
+logs_purge_threshold_kb=$(($logs_purge_threshold_kb / 2))
+
+# Get total size of disk in kb and then compute permitted usage for the log files.
+# As we need to calculate size once we use cores dir -
+# as it's mounted from the same volume as master/tserver log dirs
+disk_size_kb=$(df -k $YB_HOME_DIR/cores | awk 'NR==2{print $2}')
+percent_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
+permitted_disk_usage_kb=$([ $percent_disk_usage_kb -le $logs_purge_threshold_kb ] && \
+   echo "$percent_disk_usage_kb" || echo "$logs_purge_threshold_kb")
+
+# half for plain text logs in case audit logs export is enabled -
+# to give some time for exporter to read logs
+permitted_disk_usage_plain_kb=$((permitted_disk_usage_kb / 2))
+postgres_max_plain_log_size_kb=$((postgres_max_log_size_kb / 2))
+
+# Read audit logs cleanup settings
+if [ -e "$YB_HOME_DIR/otel-collector/log_cleanup_env" ]
+then
+  source "$YB_HOME_DIR/otel-collector/log_cleanup_env"
+fi
+
+delete_or_gzip_files() {
+  set -f
+  local log_dir=$1
+  local usage_regex=$2
+  local files_regex=$3
+  local permitted_usage=$4
+  local operation=$5
+  local logs_disk_usage_bytes=$(find "$log_dir" -type f -name $usage_regex -print0 | \
+    xargs -0 -r stat -c '%s' | \
+    awk '{sum+=$1;}END{print sum;}')
+  if [ -z $logs_disk_usage_bytes ]; then
+    logs_disk_usage_bytes=0
+  fi
+  local logs_disk_usage_kb=$(($logs_disk_usage_bytes / 1000 ))
+  echo "Permitted disk usage for $usage_regex files in kb: $permitted_usage"
+  echo "Disk usage by $usage_regex files in kb: $logs_disk_usage_kb"
+  # get all the files to process.
+  local log_files=$(find "$log_dir" -type f -name $files_regex -print0 | \
+    xargs -0 -r stat -c '%Y %n' | \
+    sort | awk '{print $2}')
+  for file in $log_files; do
+    # If usage exceeds permitted, delete the old gz files.
+    if [ $logs_disk_usage_kb -gt $permitted_usage ]; then
+      local file_size=$(du -k $file | awk '{print $1}')
+      logs_disk_usage_kb=$(($logs_disk_usage_kb-$file_size))
+      if [ "$operation" == "delete" ]; then
+        echo "Delete file $file"
+        rm "$file"
+      else
+        echo "Compressing file $file"
+        gzip "$file"
+        local new_file_size=$(du -k $file.gz | awk '{print $1}')
+        logs_disk_usage_kb=$(($logs_disk_usage_kb+$new_file_size))
+      fi
+    else
+      break
+    fi
+  done
+}
+
+process_plain_files()
+{
+  set -f
+  local log_dir=$1
+  local log_regex=$2
+  local allowed_disk_usage_kb=$3
+  # Using print0 since printf is not supported on all UNIX systems.
+  # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
+  find_non_gz_files="find $log_dir -type f -name \
+  $log_regex -print0 | xargs -0 -r stat -c '%Y %n' | sort | awk '{print \$2}'"
+  non_gz_file_count=$(eval "$find_non_gz_files" | wc -l)
+
+  # gzip files if we have more than 1
+  if [ $non_gz_file_count -gt 1 ]; then
+    if [ $allowed_disk_usage_kb -gt 0 ]; then
+      delete_or_gzip_files $log_dir "$log_regex" "$log_regex" \
+        $permitted_disk_usage_plain_kb "gzip"
+    else
+      files_to_gzip=$(eval "$find_non_gz_files" | head -n$(($non_gz_file_count - 1)))
+      for file in $files_to_gzip; do
+        echo "Compressing file $file"
+        gzip "$file"
+      done
+    fi
+  fi
+}
+
+server_types="master tserver"
+daemon_types=""
+for server_type in $server_types; do
+  if [[ -d "$YB_HOME_DIR/$server_type/logs" ]]; then
+    daemon_types="${daemon_types} $server_type"
+  fi
+done
+log_levels="INFO ERROR WARNING FATAL"
+for daemon_type in $daemon_types; do
+  YB_LOG_DIR="$YB_HOME_DIR/$daemon_type/logs/"
+
+  for level in $log_levels; do
+    log_regex="yb-$daemon_type*log.$level* ! -name *.gz"
+
+    plain_logs_disk_usage_kb=0
+    if [ "$daemon_type" == "tserver" ] && [ $preserve_audit_logs == true ] \
+    && [ "$level" == "$ycql_audit_log_level" ]; then
+      plain_logs_disk_usage_kb=$permitted_disk_usage_plain_kb
+    fi
+
+    process_plain_files "$YB_LOG_DIR" "$log_regex" $plain_logs_disk_usage_kb
+  done
+
+  plain_postgres_log="postgres*log ! -name *.gz"
+  plain_pg_logs_disk_usage_kb=0
+  if [ $preserve_audit_logs == true ]; then
+    plain_pg_logs_disk_usage_kb=$postgres_max_plain_log_size_kb
+  fi
+  process_plain_files "$YB_LOG_DIR" "$plain_postgres_log" $plain_pg_logs_disk_usage_kb
+
+  if [ "$gzip_only" == false ]; then
+    server_log="yb-$daemon_type*log.*"
+    postgres_log="postgres*log*"
+    delete_or_gzip_files "$YB_LOG_DIR" "$server_log" "$server_log.gz" \
+      "$permitted_disk_usage_kb" "delete"
+    delete_or_gzip_files "$YB_LOG_DIR" "$postgres_log" "$postgres_log.gz" \
+      "$postgres_max_log_size_kb" "delete"
+  fi
+done

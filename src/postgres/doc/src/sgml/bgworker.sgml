@@ -1,0 +1,302 @@
+<!-- doc/src/sgml/bgworker.sgml -->
+
+<chapter id="bgworker">
+ <title>Background Worker Processes</title>
+
+ <indexterm zone="bgworker">
+  <primary>Background workers</primary>
+ </indexterm>
+
+ <para>
+  PostgreSQL can be extended to run user-supplied code in separate processes.
+  Such processes are started, stopped and monitored by <command>postgres</command>,
+  which permits them to have a lifetime closely linked to the server's status.
+  These processes are attached to <productname>PostgreSQL</productname>'s
+  shared memory area and have the option to connect to databases internally; they can also run
+  multiple transactions serially, just like a regular client-connected server
+  process.  Also, by linking to <application>libpq</application> they can connect to the
+  server and behave like a regular client application.
+ </para>
+
+ <warning>
+  <para>
+   There are considerable robustness and security risks in using background
+   worker processes because, being written in the <literal>C</literal> language,
+   they have unrestricted access to data.  Administrators wishing to enable
+   modules that include background worker processes should exercise extreme
+   caution.  Only carefully audited modules should be permitted to run
+   background worker processes.
+  </para>
+ </warning>
+
+ <para>
+  Background workers can be initialized at the time that
+  <productname>PostgreSQL</productname> is started by including the module name in
+  <varname>shared_preload_libraries</varname>.  A module wishing to run a background
+  worker can register it by calling
+  <function>RegisterBackgroundWorker(<type>BackgroundWorker</type>
+  *<parameter>worker</parameter>)</function>
+  from its <function>_PG_init()</function> function.
+  Background workers can also be started
+  after the system is up and running by calling
+  <function>RegisterDynamicBackgroundWorker(<type>BackgroundWorker</type>
+  *<parameter>worker</parameter>, <type>BackgroundWorkerHandle</type>
+  **<parameter>handle</parameter>)</function>.  Unlike
+  <function>RegisterBackgroundWorker</function>, which can only be called from
+  within the postmaster process,
+  <function>RegisterDynamicBackgroundWorker</function> must be called
+  from a regular backend or another background worker.
+ </para>
+
+ <para>
+  The structure <structname>BackgroundWorker</structname> is defined thus:
+<programlisting>
+typedef void (*bgworker_main_type)(Datum main_arg);
+typedef struct BackgroundWorker
+{
+    char        bgw_name[BGW_MAXLEN];
+    char        bgw_type[BGW_MAXLEN];
+    int         bgw_flags;
+    BgWorkerStartTime bgw_start_time;
+    int         bgw_restart_time;       /* in seconds, or BGW_NEVER_RESTART */
+    char        bgw_library_name[BGW_MAXLEN];
+    char        bgw_function_name[BGW_MAXLEN];
+    Datum       bgw_main_arg;
+    char        bgw_extra[BGW_EXTRALEN];
+    int         bgw_notify_pid;
+} BackgroundWorker;
+</programlisting>
+  </para>
+
+  <para>
+   <structfield>bgw_name</structfield> and <structfield>bgw_type</structfield> are
+   strings to be used in log messages, process listings and similar contexts.
+   <structfield>bgw_type</structfield> should be the same for all background
+   workers of the same type, so that it is possible to group such workers in a
+   process listing, for example.  <structfield>bgw_name</structfield> on the
+   other hand can contain additional information about the specific process.
+   (Typically, the string for <structfield>bgw_name</structfield> will contain
+   the type somehow, but that is not strictly required.)
+  </para>
+
+  <para>
+   <structfield>bgw_flags</structfield> is a bitwise-or'd bit mask indicating the
+   capabilities that the module wants.  Possible values are:
+   <variablelist>
+
+    <varlistentry>
+     <term><literal>BGWORKER_SHMEM_ACCESS</literal></term>
+     <listitem>
+      <para>
+       <indexterm><primary>BGWORKER_SHMEM_ACCESS</primary></indexterm>
+       Requests shared memory access.  This flag is required.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>BGWORKER_BACKEND_DATABASE_CONNECTION</literal></term>
+     <listitem>
+      <para>
+       <indexterm><primary>BGWORKER_BACKEND_&zwsp;DATABASE_CONNECTION</primary></indexterm>
+       Requests the ability to establish a database connection through which it
+       can later run transactions and queries.  A background worker using
+       <literal>BGWORKER_BACKEND_DATABASE_CONNECTION</literal> to connect to a
+       database must also attach shared memory using
+       <literal>BGWORKER_SHMEM_ACCESS</literal>, or worker start-up will fail.
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+
+  </para>
+
+  <para>
+   <structfield>bgw_start_time</structfield> is the server state during which
+   <command>postgres</command> should start the process; it can be one of
+   <literal>BgWorkerStart_PostmasterStart</literal> (start as soon as
+   <command>postgres</command> itself has finished its own initialization; processes
+   requesting this are not eligible for database connections),
+   <literal>BgWorkerStart_ConsistentState</literal> (start as soon as a consistent state
+   has been reached in a hot standby, allowing processes to connect to
+   databases and run read-only queries), and
+   <literal>BgWorkerStart_RecoveryFinished</literal> (start as soon as the system has
+   entered normal read-write state).  Note the last two values are equivalent
+   in a server that's not a hot standby.  Note that this setting only indicates
+   when the processes are to be started; they do not stop when a different state
+   is reached.
+  </para>
+
+  <para>
+   <structfield>bgw_restart_time</structfield> is the interval, in seconds, that
+   <command>postgres</command> should wait before restarting the process in
+   the event that it crashes.  It can be any positive value,
+   or <literal>BGW_NEVER_RESTART</literal>, indicating not to restart the
+   process in case of a crash.
+  </para>
+
+  <para>
+   <structfield>bgw_library_name</structfield> is the name of a library in
+   which the initial entry point for the background worker should be sought.
+   The named library will be dynamically loaded by the worker process and
+   <structfield>bgw_function_name</structfield> will be used to identify the
+   function to be called.  If loading a function from the core code, this must
+   be set to "postgres".
+  </para>
+
+  <para>
+   <structfield>bgw_function_name</structfield> is the name of a function in
+   a dynamically loaded library which should be used as the initial entry point
+   for a new background worker.
+  </para>
+
+  <para>
+   <structfield>bgw_main_arg</structfield> is the <type>Datum</type> argument
+   to the background worker main function.  This main function should take a
+   single argument of type <type>Datum</type> and return <type>void</type>.
+   <structfield>bgw_main_arg</structfield> will be passed as the argument.
+   In addition, the global variable <literal>MyBgworkerEntry</literal>
+   points to a copy of the <structname>BackgroundWorker</structname> structure
+   passed at registration time; the worker may find it helpful to examine
+   this structure.
+  </para>
+
+  <para>
+   On Windows (and anywhere else where <literal>EXEC_BACKEND</literal> is
+   defined) or in dynamic background workers it is not safe to pass a
+   <type>Datum</type> by reference, only by value. If an argument is required, it
+   is safest to pass an int32 or other small value and use that as an index
+   into an array allocated in shared memory. If a value like a <type>cstring</type>
+   or <type>text</type> is passed then the pointer won't be valid from the
+   new background worker process.
+  </para>
+
+  <para>
+   <structfield>bgw_extra</structfield> can contain extra data to be passed
+   to the background worker.  Unlike <structfield>bgw_main_arg</structfield>, this data
+   is not passed as an argument to the worker's main function, but it can be
+   accessed via <literal>MyBgworkerEntry</literal>, as discussed above.
+  </para>
+
+  <para>
+   <structfield>bgw_notify_pid</structfield> is the PID of a PostgreSQL
+   backend process to which the postmaster should send <literal>SIGUSR1</literal>
+   when the process is started or exits.  It should be 0 for workers registered
+   at postmaster startup time, or when the backend registering the worker does
+   not wish to wait for the worker to start up.  Otherwise, it should be
+   initialized to <literal>MyProcPid</literal>.
+  </para>
+
+  <para>Once running, the process can connect to a database by calling
+   <function>BackgroundWorkerInitializeConnection(<parameter>char *dbname</parameter>, <parameter>char *username</parameter>, <parameter>uint32 flags</parameter>)</function> or
+   <function>BackgroundWorkerInitializeConnectionByOid(<parameter>Oid dboid</parameter>, <parameter>Oid useroid</parameter>, <parameter>uint32 flags</parameter>)</function>.
+   This allows the process to run transactions and queries using the
+   <literal>SPI</literal> interface.  If <varname>dbname</varname> is NULL or
+   <varname>dboid</varname> is <literal>InvalidOid</literal>, the session is not connected
+   to any particular database, but shared catalogs can be accessed.
+   If <varname>username</varname> is NULL or <varname>useroid</varname> is
+   <literal>InvalidOid</literal>, the process will run as the superuser created
+   during <command>initdb</command>. If <literal>BGWORKER_BYPASS_ALLOWCONN</literal>
+   is specified as <varname>flags</varname> it is possible to bypass the restriction
+   to connect to databases not allowing user connections.
+   A background worker can only call one of these two functions, and only
+   once.  It is not possible to switch databases.
+  </para>
+
+  <para>
+   Signals are initially blocked when control reaches the
+   background worker's main function, and must be unblocked by it; this is to
+   allow the process to customize its signal handlers, if necessary.
+   Signals can be unblocked in the new process by calling
+   <function>BackgroundWorkerUnblockSignals</function> and blocked by calling
+   <function>BackgroundWorkerBlockSignals</function>.
+  </para>
+
+  <para>
+   If <structfield>bgw_restart_time</structfield> for a background worker is
+   configured as <literal>BGW_NEVER_RESTART</literal>, or if it exits with an exit
+   code of 0 or is terminated by <function>TerminateBackgroundWorker</function>,
+   it will be automatically unregistered by the postmaster on exit.
+   Otherwise, it will be restarted after the time period configured via
+   <structfield>bgw_restart_time</structfield>, or immediately if the postmaster
+   reinitializes the cluster due to a backend failure.  Backends which need
+   to suspend execution only temporarily should use an interruptible sleep
+   rather than exiting; this can be achieved by calling
+   <function>WaitLatch()</function>. Make sure the
+   <literal>WL_POSTMASTER_DEATH</literal> flag is set when calling that function, and
+   verify the return code for a prompt exit in the emergency case that
+   <command>postgres</command> itself has terminated.
+  </para>
+
+  <para>
+   When a background worker is registered using the
+   <function>RegisterDynamicBackgroundWorker</function> function, it is
+   possible for the backend performing the registration to obtain information
+   regarding the status of the worker.  Backends wishing to do this should
+   pass the address of a <type>BackgroundWorkerHandle *</type> as the second
+   argument to <function>RegisterDynamicBackgroundWorker</function>.  If the
+   worker is successfully registered, this pointer will be initialized with an
+   opaque handle that can subsequently be passed to
+   <function>GetBackgroundWorkerPid(<parameter>BackgroundWorkerHandle *</parameter>, <parameter>pid_t *</parameter>)</function> or
+   <function>TerminateBackgroundWorker(<parameter>BackgroundWorkerHandle *</parameter>)</function>.
+   <function>GetBackgroundWorkerPid</function> can be used to poll the status of the
+   worker: a return value of <literal>BGWH_NOT_YET_STARTED</literal> indicates that
+   the worker has not yet been started by the postmaster;
+   <literal>BGWH_STOPPED</literal> indicates that it has been started but is
+   no longer running; and <literal>BGWH_STARTED</literal> indicates that it is
+   currently running.  In this last case, the PID will also be returned via the
+   second argument.
+   <function>TerminateBackgroundWorker</function> causes the postmaster to send
+   <literal>SIGTERM</literal> to the worker if it is running, and to unregister it
+   as soon as it is not.
+  </para>
+
+  <para>
+   In some cases, a process which registers a background worker may wish to
+   wait for the worker to start up.  This can be accomplished by initializing
+   <structfield>bgw_notify_pid</structfield> to <literal>MyProcPid</literal> and
+   then passing the <type>BackgroundWorkerHandle *</type> obtained at
+   registration time to
+   <function>WaitForBackgroundWorkerStartup(<parameter>BackgroundWorkerHandle
+   *handle</parameter>, <parameter>pid_t *</parameter>)</function> function.
+   This function will block until the postmaster has attempted to start the
+   background worker, or until the postmaster dies.  If the background worker
+   is running, the return value will be <literal>BGWH_STARTED</literal>, and
+   the PID will be written to the provided address.  Otherwise, the return
+   value will be <literal>BGWH_STOPPED</literal> or
+   <literal>BGWH_POSTMASTER_DIED</literal>.
+  </para>
+
+  <para>
+   A process can also wait for a background worker to shut down, by using the
+   <function>WaitForBackgroundWorkerShutdown(<parameter>BackgroundWorkerHandle
+   *handle</parameter>)</function> function and passing the
+   <type>BackgroundWorkerHandle *</type> obtained at registration. This
+   function will block until the background worker exits, or postmaster dies.
+   When the background worker exits, the return value is
+   <literal>BGWH_STOPPED</literal>, if postmaster dies it will return
+   <literal>BGWH_POSTMASTER_DIED</literal>.
+  </para>
+
+  <para>
+   Background workers can send asynchronous notification messages, either by
+   using the <command>NOTIFY</command> command via <acronym>SPI</acronym>,
+   or directly via <function>Async_Notify()</function>.  Such notifications
+   will be sent at transaction commit.
+   Background workers should not register to receive asynchronous
+   notifications with the <command>LISTEN</command> command, as there is no
+   infrastructure for a worker to consume such notifications.
+  </para>
+
+  <para>
+   The <filename>src/test/modules/worker_spi</filename> module
+   contains a working example,
+   which demonstrates some useful techniques.
+  </para>
+
+  <para>
+   The maximum number of registered background workers is limited by
+   <xref linkend="guc-max-worker-processes"/>.
+  </para>
+</chapter>

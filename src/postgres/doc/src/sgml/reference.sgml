@@ -1,0 +1,296 @@
+<!-- doc/src/sgml/reference.sgml -->
+
+<part id="reference">
+ <title>Reference</title>
+
+ <partintro>
+  <para>
+   The entries in this Reference are meant to provide in reasonable
+   length an authoritative, complete, and formal summary about their
+   respective subjects.  More information about the use of
+   <productname>PostgreSQL</productname>, in narrative, tutorial, or
+   example form, can be found in other parts of this book.  See the
+   cross-references listed on each reference page.
+  </para>
+
+  <para>
+   The reference entries are also available as traditional
+   <quote>man</quote> pages.
+  </para>
+ </partintro>
+
+ <reference id="sql-commands">
+  <title>SQL Commands</title>
+
+  <partintro>
+   <para>
+    This part contains reference information for the
+    <acronym>SQL</acronym> commands supported by
+    <productname>PostgreSQL</productname>.  By <quote>SQL</quote> the
+    language in general is meant; information about the standards
+    conformance and compatibility of each command can be found on the
+    respective reference page.
+   </para>
+  </partintro>
+
+   &abort;
+   &alterAggregate;
+   &alterCollation;
+   &alterConversion;
+   &alterDatabase;
+   &alterDefaultPrivileges;
+   &alterDomain;
+   &alterEventTrigger;
+   &alterExtension;
+   &alterForeignDataWrapper;
+   &alterForeignTable;
+   &alterFunction;
+   &alterGroup;
+   &alterIndex;
+   &alterLanguage;
+   &alterLargeObject;
+   &alterMaterializedView;
+   &alterOperator;
+   &alterOperatorClass;
+   &alterOperatorFamily;
+   &alterPolicy;
+   &alterProcedure;
+   &alterPublication;
+   &alterRole;
+   &alterRoutine;
+   &alterRule;
+   &alterSchema;
+   &alterSequence;
+   &alterServer;
+   &alterStatistics;
+   &alterSubscription;
+   &alterSystem;
+   &alterTable;
+   &alterTableSpace;
+   &alterTSConfig;
+   &alterTSDictionary;
+   &alterTSParser;
+   &alterTSTemplate;
+   &alterTrigger;
+   &alterType;
+   &alterUser;
+   &alterUserMapping;
+   &alterView;
+   &analyze;
+   &begin;
+   &call;
+   &checkpoint;
+   &close;
+   &cluster;
+   &commentOn;
+   &commit;
+   &commitPrepared;
+   &copyTable;
+   &createAccessMethod;
+   &createAggregate;
+   &createCast;
+   &createCollation;
+   &createConversion;
+   &createDatabase;
+   &createDomain;
+   &createEventTrigger;
+   &createExtension;
+   &createForeignDataWrapper;
+   &createForeignTable;
+   &createFunction;
+   &createGroup;
+   &createIndex;
+   &createLanguage;
+   &createMaterializedView;
+   &createOperator;
+   &createOperatorClass;
+   &createOperatorFamily;
+   &createPolicy;
+   &createProcedure;
+   &createPublication;
+   &createRole;
+   &createRule;
+   &createSchema;
+   &createSequence;
+   &createServer;
+   &createStatistics;
+   &createSubscription;
+   &createTable;
+   &createTableAs;
+   &createTableSpace;
+   &createTSConfig;
+   &createTSDictionary;
+   &createTSParser;
+   &createTSTemplate;
+   &createTransform;
+   &createTrigger;
+   &createType;
+   &createUser;
+   &createUserMapping;
+   &createView;
+   &deallocate;
+   &declare;
+   &delete;
+   &discard;
+   &do;
+   &dropAccessMethod;
+   &dropAggregate;
+   &dropCast;
+   &dropCollation;
+   &dropConversion;
+   &dropDatabase;
+   &dropDomain;
+   &dropEventTrigger;
+   &dropExtension;
+   &dropForeignDataWrapper;
+   &dropForeignTable;
+   &dropFunction;
+   &dropGroup;
+   &dropIndex;
+   &dropLanguage;
+   &dropMaterializedView;
+   &dropOperator;
+   &dropOperatorClass;
+   &dropOperatorFamily;
+   &dropOwned;
+   &dropPolicy;
+   &dropProcedure;
+   &dropPublication;
+   &dropRole;
+   &dropRoutine;
+   &dropRule;
+   &dropSchema;
+   &dropSequence;
+   &dropServer;
+   &dropStatistics;
+   &dropSubscription;
+   &dropTable;
+   &dropTableSpace;
+   &dropTSConfig;
+   &dropTSDictionary;
+   &dropTSParser;
+   &dropTSTemplate;
+   &dropTransform;
+   &dropTrigger;
+   &dropType;
+   &dropUser;
+   &dropUserMapping;
+   &dropView;
+   &end;
+   &execute;
+   &explain;
+   &fetch;
+   &grant;
+   &importForeignSchema;
+   &insert;
+   &listen;
+   &load;
+   &lock;
+   &merge;
+   &move;
+   &notify;
+   &prepare;
+   &prepareTransaction;
+   &reassignOwned;
+   &refreshMaterializedView;
+   &reindex;
+   &releaseSavepoint;
+   &reset;
+   &revoke;
+   &rollback;
+   &rollbackPrepared;
+   &rollbackTo;
+   &savepoint;
+   &securityLabel;
+   &select;
+   &selectInto;
+   &set;
+   &setConstraints;
+   &setRole;
+   &setSessionAuth;
+   &setTransaction;
+   &show;
+   &startTransaction;
+   &truncate;
+   &unlisten;
+   &update;
+   &vacuum;
+   &values;
+
+ </reference>
+
+ <reference id="reference-client">
+  <title>PostgreSQL Client Applications</title>
+
+  <partintro>
+   <para>
+    This part contains reference information for
+    <productname>PostgreSQL</productname> client applications and
+    utilities.  Not all of these commands are of general utility; some
+    might require special privileges.  The common feature of these
+    applications is that they can be run on any host, independent of
+    where the database server resides.
+   </para>
+
+   <para>
+    When specified on the command line, user and database names have
+    their case preserved &mdash; the presence of spaces or special
+    characters might require quoting.  Table names and other identifiers
+    do not have their case preserved, except where documented, and
+    might require quoting.
+   </para>
+  </partintro>
+
+   &clusterdb;
+   &createdb;
+   &createuser;
+   &dropdb;
+   &dropuser;
+   &ecpgRef;
+   &pgamcheck;
+   &pgBasebackup;
+   &pgbench;
+   &pgConfig;
+   &pgDump;
+   &pgDumpall;
+   &pgIsready;
+   &pgReceivewal;
+   &pgRecvlogical;
+   &pgRestore;
+   &pgVerifyBackup;
+   &psqlRef;
+   &reindexdb;
+   &vacuumdb;
+
+ </reference>
+
+ <reference id="reference-server">
+  <title>PostgreSQL Server Applications</title>
+
+  <partintro>
+   <para>
+    This part contains reference information for
+    <productname>PostgreSQL</productname> server applications and
+    support utilities.  These commands can only be run usefully on the
+    host where the database server resides.  Other utility programs
+    are listed in <xref linkend="reference-client"/>.
+   </para>
+  </partintro>
+
+   &initdb;
+   &pgarchivecleanup;
+   &pgChecksums;
+   &pgControldata;
+   &pgCtl;
+   &pgResetwal;
+   &pgRewind;
+   &pgtestfsync;
+   &pgtesttiming;
+   &pgupgrade;
+   &pgwaldump;
+   &postgres;
+   &postmaster;
+
+ </reference>
+
+</part>

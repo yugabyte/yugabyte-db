@@ -1,0 +1,397 @@
+-- suppress CONTEXT so that function OIDs aren't in output
+\set VERBOSITY terse
+-- Test composite-type arguments
+select tcl_composite_arg_ref1(row('tkey', 42, 'ref2'));
+ tcl_composite_arg_ref1 
+------------------------
+                     42
+(1 row)
+
+select tcl_composite_arg_ref2(row('tkey', 42, 'ref2'));
+ tcl_composite_arg_ref2 
+------------------------
+ ref2                
+(1 row)
+
+-- More tests for composite argument/result types
+create domain d_comp1 as T_comp1 check ((value).ref1 > 0);
+create function tcl_record_arg(record, fldname text) returns int as '
+    return $1($2)
+' language pltcl;
+select tcl_record_arg(row('tkey', 42, 'ref2')::T_comp1, 'ref1');
+ tcl_record_arg 
+----------------
+             42
+(1 row)
+
+select tcl_record_arg(row('tkey', 42, 'ref2')::d_comp1, 'ref1');
+ tcl_record_arg 
+----------------
+             42
+(1 row)
+
+select tcl_record_arg(row(2,4), 'f2');
+ tcl_record_arg 
+----------------
+              4
+(1 row)
+
+create function tcl_cdomain_arg(d_comp1) returns int as '
+    return $1(ref1)
+' language pltcl;
+select tcl_cdomain_arg(row('tkey', 42, 'ref2'));
+ tcl_cdomain_arg 
+-----------------
+              42
+(1 row)
+
+select tcl_cdomain_arg(row('tkey', 42, 'ref2')::T_comp1);
+ tcl_cdomain_arg 
+-----------------
+              42
+(1 row)
+
+select tcl_cdomain_arg(row('tkey', -1, 'ref2'));  -- fail
+ERROR:  value for domain d_comp1 violates check constraint "d_comp1_check"
+-- Test argisnull primitive
+select tcl_argisnull('foo');
+ tcl_argisnull 
+---------------
+ f
+(1 row)
+
+select tcl_argisnull('');
+ tcl_argisnull 
+---------------
+ f
+(1 row)
+
+select tcl_argisnull(null);
+ tcl_argisnull 
+---------------
+ t
+(1 row)
+
+-- test some error cases
+create function tcl_error(out a int, out b int) as $$return {$$ language pltcl;
+select tcl_error();
+ERROR:  missing close-brace
+create function bad_record(out a text, out b text) as $$return [list a]$$ language pltcl;
+select bad_record();
+ERROR:  column name/value list must have even number of elements
+create function bad_field(out a text, out b text) as $$return [list a 1 b 2 cow 3]$$ language pltcl;
+select bad_field();
+ERROR:  column name/value list contains nonexistent column name "cow"
+-- test compound return
+select * from tcl_test_cube_squared(5);
+ squared | cubed 
+---------+-------
+      25 |   125
+(1 row)
+
+-- test SRF
+select * from tcl_test_squared_rows(0,5);
+ x | y  
+---+----
+ 0 |  0
+ 1 |  1
+ 2 |  4
+ 3 |  9
+ 4 | 16
+(5 rows)
+
+select * from tcl_test_sequence(0,5) as a;
+ a 
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+select 1, tcl_test_sequence(0,5);
+ ?column? | tcl_test_sequence 
+----------+-------------------
+        1 |                 0
+        1 |                 1
+        1 |                 2
+        1 |                 3
+        1 |                 4
+(5 rows)
+
+create function non_srf() returns int as $$return_next 1$$ language pltcl;
+select non_srf();
+ERROR:  return_next cannot be used in non-set-returning functions
+create function bad_record_srf(out a text, out b text) returns setof record as $$
+return_next [list a]
+$$ language pltcl;
+select bad_record_srf();
+ERROR:  column name/value list must have even number of elements
+create function bad_field_srf(out a text, out b text) returns setof record as $$
+return_next [list a 1 b 2 cow 3]
+$$ language pltcl;
+select bad_field_srf();
+ERROR:  column name/value list contains nonexistent column name "cow"
+-- test composite and domain-over-composite results
+create function tcl_composite_result(int) returns T_comp1 as $$
+return [list tkey tkey1 ref1 $1 ref2 ref22]
+$$ language pltcl;
+select tcl_composite_result(1001);
+            tcl_composite_result            
+--------------------------------------------
+ ("tkey1     ",1001,"ref22               ")
+(1 row)
+
+select * from tcl_composite_result(1002);
+    tkey    | ref1 |         ref2         
+------------+------+----------------------
+ tkey1      | 1002 | ref22               
+(1 row)
+
+create function tcl_dcomposite_result(int) returns d_comp1 as $$
+return [list tkey tkey2 ref1 $1 ref2 ref42]
+$$ language pltcl;
+select tcl_dcomposite_result(1001);
+           tcl_dcomposite_result            
+--------------------------------------------
+ ("tkey2     ",1001,"ref42               ")
+(1 row)
+
+select * from tcl_dcomposite_result(1002);
+    tkey    | ref1 |         ref2         
+------------+------+----------------------
+ tkey2      | 1002 | ref42               
+(1 row)
+
+select * from tcl_dcomposite_result(-1);  -- fail
+ERROR:  value for domain d_comp1 violates check constraint "d_comp1_check"
+create function tcl_record_result(int) returns record as $$
+return [list q1 sometext q2 $1 q3 moretext]
+$$ language pltcl;
+select tcl_record_result(42);  -- fail
+ERROR:  function returning record called in context that cannot accept type record
+select * from tcl_record_result(42);  -- fail
+ERROR:  a column definition list is required for functions returning "record" at character 15
+select * from tcl_record_result(42) as (q1 text, q2 int, q3 text);
+    q1    | q2 |    q3    
+----------+----+----------
+ sometext | 42 | moretext
+(1 row)
+
+select * from tcl_record_result(42) as (q1 text, q2 int, q3 text, q4 int);
+    q1    | q2 |    q3    | q4 
+----------+----+----------+----
+ sometext | 42 | moretext |   
+(1 row)
+
+select * from tcl_record_result(42) as (q1 text, q2 int, q4 int);  -- fail
+ERROR:  column name/value list contains nonexistent column name "q3"
+-- test quote
+select tcl_eval('quote foo bar');
+ERROR:  wrong # args: should be "quote string"
+select tcl_eval('quote [format %c 39]');
+ tcl_eval 
+----------
+ ''
+(1 row)
+
+select tcl_eval('quote [format %c 92]');
+ tcl_eval 
+----------
+ \\
+(1 row)
+
+-- Test argisnull
+select tcl_eval('argisnull');
+ERROR:  wrong # args: should be "argisnull argno"
+select tcl_eval('argisnull 14');
+ERROR:  argno out of range
+select tcl_eval('argisnull abc');
+ERROR:  expected integer but got "abc"
+-- Test return_null
+select tcl_eval('return_null 14');
+ERROR:  wrong # args: should be "return_null "
+-- Test spi_exec
+select tcl_eval('spi_exec');
+ERROR:  wrong # args: should be "spi_exec ?-count n? ?-array name? query ?loop body?"
+select tcl_eval('spi_exec -count');
+ERROR:  missing argument to -count or -array
+select tcl_eval('spi_exec -array');
+ERROR:  missing argument to -count or -array
+select tcl_eval('spi_exec -count abc');
+ERROR:  expected integer but got "abc"
+select tcl_eval('spi_exec query loop body toomuch');
+ERROR:  wrong # args: should be "query ?loop body?"
+select tcl_eval('spi_exec "begin; rollback;"');
+ERROR:  pltcl: SPI_execute failed: SPI_ERROR_TRANSACTION
+-- Test spi_execp
+select tcl_eval('spi_execp');
+ERROR:  missing argument to -count or -array
+select tcl_eval('spi_execp -count');
+ERROR:  missing argument to -array, -count or -nulls
+select tcl_eval('spi_execp -array');
+ERROR:  missing argument to -array, -count or -nulls
+select tcl_eval('spi_execp -count abc');
+ERROR:  expected integer but got "abc"
+select tcl_eval('spi_execp -nulls');
+ERROR:  missing argument to -array, -count or -nulls
+select tcl_eval('spi_execp ""');
+ERROR:  invalid queryid ''
+-- test spi_prepare
+select tcl_eval('spi_prepare');
+ERROR:  wrong # args: should be "spi_prepare query argtypes"
+select tcl_eval('spi_prepare a b');
+ERROR:  type "b" does not exist
+select tcl_eval('spi_prepare a "b {"');
+ERROR:  unmatched open brace in list
+select tcl_error_handling_test($tcl$spi_prepare "select moo" []$tcl$);
+       tcl_error_handling_test        
+--------------------------------------
+ SQLSTATE: 42703                     +
+ condition: undefined_column         +
+ cursor_position: 8                  +
+ message: column "moo" does not exist+
+ statement: select moo
+(1 row)
+
+-- test full error text
+select tcl_error_handling_test($tcl$
+spi_exec "DO $$
+BEGIN
+RAISE 'my message'
+	USING HINT = 'my hint'
+	, DETAIL = 'my detail'
+	, SCHEMA = 'my schema'
+	, TABLE = 'my table'
+	, COLUMN = 'my column'
+	, CONSTRAINT = 'my constraint'
+	, DATATYPE = 'my datatype'
+;
+END$$;"
+$tcl$);
+                   tcl_error_handling_test                    
+--------------------------------------------------------------
+ SQLSTATE: P0001                                             +
+ column: my column                                           +
+ condition: raise_exception                                  +
+ constraint: my constraint                                   +
+ context: PL/pgSQL function inline_code_block line 3 at RAISE+
+         SQL statement "DO $$                                +
+         BEGIN                                               +
+         RAISE 'my message'                                  +
+                 USING HINT = 'my hint'                      +
+                 , DETAIL = 'my detail'                      +
+                 , SCHEMA = 'my schema'                      +
+                 , TABLE = 'my table'                        +
+                 , COLUMN = 'my column'                      +
+                 , CONSTRAINT = 'my constraint'              +
+                 , DATATYPE = 'my datatype'                  +
+         ;                                                   +
+         END$$;"                                             +
+ datatype: my datatype                                       +
+ detail: my detail                                           +
+ hint: my hint                                               +
+ message: my message                                         +
+ schema: my schema                                           +
+ table: my table
+(1 row)
+
+-- verify tcl_error_handling_test() properly reports non-postgres errors
+select tcl_error_handling_test('moo');
+  tcl_error_handling_test   
+----------------------------
+ invalid command name "moo"
+(1 row)
+
+-- test elog
+select tcl_eval('elog');
+ERROR:  wrong # args: should be "elog level msg"
+select tcl_eval('elog foo bar');
+ERROR:  bad priority "foo": must be DEBUG, LOG, INFO, NOTICE, WARNING, ERROR, or FATAL
+-- test forced error
+select tcl_eval('error "forced error"');
+ERROR:  forced error
+-- test loop control in spi_exec[p]
+select tcl_spi_exec(true, 'break');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: break
+NOTICE:  end of function
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+select tcl_spi_exec(true, 'continue');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: continue
+NOTICE:  col1 3, col2 baz
+NOTICE:  end of function
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+select tcl_spi_exec(true, 'error');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: error
+ERROR:  error message
+select tcl_spi_exec(true, 'return');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: return
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+select tcl_spi_exec(false, 'break');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: break
+NOTICE:  end of function
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+select tcl_spi_exec(false, 'continue');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: continue
+NOTICE:  col1 3, col2 baz
+NOTICE:  end of function
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+select tcl_spi_exec(false, 'error');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: error
+ERROR:  error message
+select tcl_spi_exec(false, 'return');
+NOTICE:  col1 1, col2 foo
+NOTICE:  col1 2, col2 bar
+NOTICE:  action: return
+ tcl_spi_exec 
+--------------
+ 
+(1 row)
+
+-- forcibly run the Tcl event loop for awhile, to check that we have not
+-- messed things up too badly by disabling the Tcl notifier subsystem
+select tcl_eval($$
+  unset -nocomplain ::tcl_vwait
+  after 100 {set ::tcl_vwait 1}
+  vwait ::tcl_vwait
+  unset -nocomplain ::tcl_vwait$$);
+ tcl_eval 
+----------
+ 
+(1 row)
+

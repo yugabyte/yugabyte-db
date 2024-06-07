@@ -1,0 +1,98 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/mixins.scss';
+@use '../../../../_style/variables.scss';
+
+/* From gentelella.css need to cleanup */
+
+.yb-nav-bar {
+  .left_col {
+    min-height: 100%;
+    width: variables.$YB_SIDEBAR_WIDTH;
+    padding: 0;
+    z-index: 999;
+    left: 0;
+    position: absolute;
+    background: colors.$YB_VIOLET;
+    .logo {
+      margin: 22px auto;
+      pointer-events: none;
+      @include mixins.transition(0.3s);
+
+      @media screen and (max-height: 610px) {
+        transform: scale(0.88, 0.88);
+      }
+      @media screen and (max-height: 460px) {
+        transform: scale(0.75, 0.75);
+      }
+    }
+
+    &.menu_fixed {
+      position: fixed;
+      height: 100%;
+    }
+
+    .mCSB_container,
+    .mCustomScrollBox {
+      overflow: visible;
+    }
+  }
+
+  .right_col {
+    padding: 10px 20px;
+    margin-left: 70px;
+    z-index: 2;
+  }
+
+  .hidden-small {
+    visibility: hidden;
+  }
+
+  .navbar.nav_title {
+    width: 70px;
+
+    a span {
+      display: none;
+    }
+    a i {
+      font-size: 27px;
+      margin: 13px 0 0 3px;
+    }
+  }
+
+  .nav.child_menu li.active,
+  .nav.side-menu li.active-sm {
+    border-right: 5px solid #333;
+  }
+  ul.nav.child_menu ul,
+  .nav.side-menu li.active-sm ul ul {
+    position: static;
+    width: 200px;
+    background: none;
+  }
+  > .nav.side-menu > li.active-sm > a {
+    color: #333 !important;
+  }
+  ul.nav.child_menu {
+    left: 100%;
+    position: absolute;
+    top: 0;
+    width: 210px;
+    z-index: 4000;
+    background: #3e5367;
+    display: none;
+
+    li {
+      padding: 0 10px;
+
+      a {
+        text-align: left !important;
+      }
+    }
+  }
+
+  .profile {
+    display: none;
+  }
+}

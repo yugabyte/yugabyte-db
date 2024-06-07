@@ -1,0 +1,313 @@
+<!--
+doc/src/sgml/ref/alter_subscription.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altersubscription">
+ <indexterm zone="sql-altersubscription">
+  <primary>ALTER SUBSCRIPTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER SUBSCRIPTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER SUBSCRIPTION</refname>
+  <refpurpose>change the definition of a subscription</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> CONNECTION '<replaceable>conninfo</replaceable>'
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SET PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> ADD PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> DROP PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> REFRESH PUBLICATION [ WITH ( <replaceable class="parameter">refresh_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> ENABLE
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> DISABLE
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SKIP ( <replaceable class="parameter">skip_option</replaceable> = <replaceable class="parameter">value</replaceable> )
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER SUBSCRIPTION</command> can change most of the subscription
+   properties that can be specified
+   in <xref linkend="sql-createsubscription"/>.
+  </para>
+
+  <para>
+   You must own the subscription to use <command>ALTER SUBSCRIPTION</command>.
+   To alter the owner, you must also be a direct or indirect member of the
+   new owning role. The new owner has to be a superuser.
+   (Currently, all subscription owners must be superusers, so the owner checks
+   will be bypassed in practice.  But this might change in the future.)
+  </para>
+
+  <para>
+   When refreshing a publication we remove the relations that are no longer
+   part of the publication and we also remove the table synchronization slots
+   if there are any. It is necessary to remove these slots so that the resources
+   allocated for the subscription on the remote host are released. If due to
+   network breakdown or some other error, <productname>PostgreSQL</productname>
+   is unable to remove the slots, an error will be reported. To proceed in this
+   situation, the user either needs to retry the operation or disassociate the
+   slot from the subscription and drop the subscription as explained in
+   <xref linkend="sql-dropsubscription"/>.
+  </para>
+
+  <para>
+   Commands <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command> and
+   <command>ALTER SUBSCRIPTION ... {SET|ADD|DROP} PUBLICATION ...</command>
+   with <literal>refresh</literal> option as <literal>true</literal> cannot be
+   executed inside a transaction block.
+
+   These commands also cannot be executed when the subscription has
+   <literal>two_phase</literal> commit enabled,
+   unless <literal>copy_data</literal> is <literal>false</literal>.
+   See column <structfield>subtwophasestate</structfield> of
+   <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+   to know the actual two-phase state.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a subscription whose properties are to be altered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CONNECTION '<replaceable class="parameter">conninfo</replaceable>'</literal></term>
+    <listitem>
+     <para>
+      This clause replaces the connection string originally set by
+      <xref linkend="sql-createsubscription"/>.  See there for more
+      information.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <term><literal>ADD PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <term><literal>DROP PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      These forms change the list of subscribed publications.
+      <literal>SET</literal>
+      replaces the entire list of publications with a new list,
+      <literal>ADD</literal> adds additional publications to the list of
+      publications, and <literal>DROP</literal> removes the publications from
+      the list of publications.  We allow non-existent publications to be
+      specified in <literal>ADD</literal> and <literal>SET</literal> variants
+      so that users can add those later.  See <xref linkend="sql-createsubscription"/>
+      for more information.  By default, this command will also act like
+      <literal>REFRESH PUBLICATION</literal>.
+     </para>
+
+     <para>
+      <replaceable>publication_option</replaceable> specifies additional
+      options for this operation.  The supported options are:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>refresh</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          When false, the command will not try to refresh table information.
+          <literal>REFRESH PUBLICATION</literal> should then be executed separately.
+          The default is <literal>true</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+
+      Additionally, the options described under
+      <literal>REFRESH PUBLICATION</literal> may be specified, to control the
+      implicit refresh operation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>REFRESH PUBLICATION</literal></term>
+    <listitem>
+     <para>
+      Fetch missing table information from publisher.  This will start
+      replication of tables that were added to the subscribed-to publications
+      since <command>CREATE SUBSCRIPTION</command> or
+      the last invocation of <command>REFRESH PUBLICATION</command>.
+     </para>
+
+     <para>
+      <replaceable>refresh_option</replaceable> specifies additional options for the
+      refresh operation.  The supported options are:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>copy_data</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to copy pre-existing data in the publications
+          that are being subscribed to when the replication starts.
+          The default is <literal>true</literal>.
+         </para>
+         <para>
+          Previously subscribed tables are not copied, even if a table's row
+          filter <literal>WHERE</literal> clause has since been modified.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ENABLE</literal></term>
+    <listitem>
+     <para>
+      Enables a previously disabled subscription, starting the logical
+      replication worker at the end of the transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE</literal></term>
+    <listitem>
+     <para>
+      Disables a running subscription, stopping the logical replication
+      worker at the end of the transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause alters parameters originally set by
+      <xref linkend="sql-createsubscription"/>.  See there for more
+      information.  The parameters that can be altered
+      are <literal>slot_name</literal>,
+      <literal>synchronous_commit</literal>,
+      <literal>binary</literal>, <literal>streaming</literal>, and
+      <literal>disable_on_error</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SKIP ( <replaceable class="parameter">skip_option</replaceable> = <replaceable class="parameter">value</replaceable> )</literal></term>
+    <listitem>
+     <para>
+      Skips applying all changes of the remote transaction.  If incoming data
+      violates any constraints, logical replication will stop until it is
+      resolved.  By using the <command>ALTER SUBSCRIPTION ... SKIP</command> command,
+      the logical replication worker skips all data modification changes within
+      the transaction.  This option has no effect on the transactions that are
+      already prepared by enabling <literal>two_phase</literal> on
+      subscriber.
+      After the logical replication worker successfully skips the transaction or
+      finishes a transaction, the LSN (stored in
+      <structname>pg_subscription</structname>.<structfield>subskiplsn</structfield>)
+      is cleared.  See <xref linkend="logical-replication-conflicts"/> for
+      the details of logical replication conflicts.  Using this command requires
+      superuser privilege.
+     </para>
+
+     <para>
+      <replaceable>skip_option</replaceable> specifies options for this operation.
+      The supported option is:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>lsn</literal> (<type>pg_lsn</type>)</term>
+        <listitem>
+         <para>
+          Specifies the finish LSN of the remote transaction whose changes
+          are to be skipped by the logical replication worker.  The finish LSN
+          is the LSN at which the transaction is either committed or prepared.
+          Skipping individual subtransactions is not supported.  Setting
+          <literal>NONE</literal> resets the LSN.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the subscription.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the subscription.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the publication subscribed by a subscription to
+   <literal>insert_only</literal>:
+<programlisting>
+ALTER SUBSCRIPTION mysub SET PUBLICATION insert_only;
+</programlisting>
+  </para>
+
+  <para>
+   Disable (stop) the subscription:
+<programlisting>
+ALTER SUBSCRIPTION mysub DISABLE;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER SUBSCRIPTION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createsubscription"/></member>
+   <member><xref linkend="sql-dropsubscription"/></member>
+   <member><xref linkend="sql-createpublication"/></member>
+   <member><xref linkend="sql-alterpublication"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

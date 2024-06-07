@@ -1,0 +1,255 @@
+--
+-- test distinct bitmap scans (distinct pushdown is not supported by bitmap scans)
+--
+SET yb_explain_hide_non_deterministic_fields = true;
+SET yb_enable_bitmapscan = true;
+CREATE TABLE test_distinct (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC)) SPLIT AT VALUES ((1, 1, 500));
+INSERT INTO test_distinct (SELECT 1, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
+-- Add one more distinct value to catch bugs that arise only with more than one distinct value.
+INSERT INTO test_distinct (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
+SET yb_enable_distinct_pushdown = true;
+SET enable_bitmapscan = false;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Distinct Index Scan using test_distinct_pkey on test_distinct (actual rows=2 loops=1)
+         Index Cond: (r1 < 2)
+         Distinct Keys: r1
+         Storage Table Read Requests: 2
+         Storage Table Rows Scanned: 2
+(6 rows)
+
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+ r1
+----
+  1
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Distinct Index Scan using test_distinct_pkey on test_distinct (actual rows=7 loops=1)
+         Distinct Keys: r1, r2
+         Storage Filter: ((r1 < 2) OR (r2 < 3))
+(4 rows)
+
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: r1, r2
+   Sort Method: quicksort
+   ->  HashAggregate (actual rows=6 loops=1)
+         Group Key: r1, r2
+         ->  Seq Scan on test_distinct (actual rows=2000 loops=1)
+               Storage Filter: ((r1 < 2) OR (r2 < 3) OR (r3 < 2))
+(7 rows)
+
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+RESET enable_bitmapscan;
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Sort (actual rows=1000 loops=1)
+         Sort Key: r1
+         Sort Method: quicksort
+         ->  YB Bitmap Table Scan on test_distinct (actual rows=1000 loops=1)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1000
+               ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
+                     Index Cond: (r1 < 2)
+                     Storage Table Read Requests: 2
+                     Storage Table Rows Scanned: 1000
+(11 rows)
+
+/*+ BitmapScan(test_distinct) */
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+ r1
+----
+  1
+(1 row)
+
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+                                         QUERY PLAN
+--------------------------------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Sort (actual rows=2000 loops=1)
+         Sort Key: r1, r2
+         Sort Method: quicksort
+         ->  YB Bitmap Table Scan on test_distinct (actual rows=2000 loops=1)
+               ->  BitmapOr (actual rows=2000 loops=1)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
+                           Index Cond: (r1 < 2)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=2000 loops=1)
+                           Index Cond: (r2 < 3)
+(10 rows)
+
+/*+ BitmapScan(test_distinct) */
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+                                         QUERY PLAN
+--------------------------------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Sort (actual rows=2000 loops=1)
+         Sort Key: r1, r2
+         Sort Method: quicksort
+         ->  YB Bitmap Table Scan on test_distinct (actual rows=2000 loops=1)
+               ->  BitmapOr (actual rows=2000 loops=1)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
+                           Index Cond: (r1 < 2)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=2000 loops=1)
+                           Index Cond: (r2 < 3)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=2 loops=1)
+                           Index Cond: (r3 < 2)
+(12 rows)
+
+/*+ BitmapScan(test_distinct) */
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+SET yb_enable_distinct_pushdown TO false;
+SET enable_bitmapscan = false;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Index Scan using test_distinct_pkey on test_distinct (actual rows=1000 loops=1)
+         Index Cond: (r1 < 2)
+         Storage Table Read Requests: 2
+         Storage Table Rows Scanned: 1000
+(5 rows)
+
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+ r1
+----
+  1
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Sort (actual rows=6 loops=1)
+   Sort Key: r1, r2
+   Sort Method: quicksort
+   ->  HashAggregate (actual rows=6 loops=1)
+         Group Key: r1, r2
+         ->  Seq Scan on test_distinct (actual rows=2000 loops=1)
+               Storage Filter: ((r1 < 2) OR (r2 < 3))
+(7 rows)
+
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+RESET enable_bitmapscan;
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Sort (actual rows=1000 loops=1)
+         Sort Key: r1
+         Sort Method: quicksort
+         ->  YB Bitmap Table Scan on test_distinct (actual rows=1000 loops=1)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 1000
+               ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
+                     Index Cond: (r1 < 2)
+                     Storage Table Read Requests: 2
+                     Storage Table Rows Scanned: 1000
+(11 rows)
+
+/*+ BitmapScan(test_distinct) */
+SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+ r1
+----
+  1
+(1 row)
+
+/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+                                         QUERY PLAN
+--------------------------------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Sort (actual rows=2000 loops=1)
+         Sort Key: r1, r2
+         Sort Method: quicksort
+         ->  YB Bitmap Table Scan on test_distinct (actual rows=2000 loops=1)
+               ->  BitmapOr (actual rows=2000 loops=1)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=1000 loops=1)
+                           Index Cond: (r1 < 2)
+                     ->  Bitmap Index Scan on test_distinct_pkey (actual rows=2000 loops=1)
+                           Index Cond: (r2 < 3)
+(10 rows)
+
+/*+ BitmapScan(test_distinct) */
+SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+ r1 | r2
+----+----
+  1 |  0
+  1 |  1
+  1 |  2
+  2 |  0
+  2 |  1
+  2 |  2
+(6 rows)
+
+RESET yb_enable_distinct_pushdown;
+DROP TABLE test_distinct;

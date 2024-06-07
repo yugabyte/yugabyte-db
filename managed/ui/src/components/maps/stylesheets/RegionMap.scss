@@ -1,0 +1,35 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.yb-region-map {
+  width: 100%;
+  min-height: 30vw;
+  border-radius: 7px;
+  border: none;
+  overflow: hidden;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+}
+
+.yb-map-labels {
+  .region {
+    min-height: 100px;
+    padding-top: 12px;
+    line-height: 1.3;
+
+    .region-name {
+      font-size: 16px;
+      font-family: 'Rubik', 'sans-serif';
+      font-weight: 500;
+    }
+  }
+}
+
+.universe-detail .yb-region-map {
+  border-radius: 0 0 7px 7px;
+}
+
+.root-default-marker {
+  margin-left: 0px !important;
+  margin-top: 0px !important;
+}

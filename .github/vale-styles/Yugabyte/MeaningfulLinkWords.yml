@@ -1,0 +1,15 @@
+---
+# Warning: Yugabyte.MeaningfulLinkWords
+#
+# Checks for the presence of semantically unhelpful words in link text.
+#
+# For a list of all options, see https://errata-ai.gitbook.io/vale/getting-started/styles
+extends: existence
+message: 'Improve SEO and accessibility by rewriting "%s" in the link text.'
+level: warning
+scope: raw
+ignorecase: true
+#link: https://about.gitlab.com/handbook/communication/#writing-style-guidelines
+tokens:
+  - here
+  - this page

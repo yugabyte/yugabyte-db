@@ -1,0 +1,92 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/mixins.scss';
+@use '../../../_style/colors.scss';
+
+.btn-group-cnt {
+  margin-right: -5px;
+  margin-left: -5px;
+
+  [class^='flex'] {
+    padding: 0px 5px;
+  }
+}
+
+.endpoint-buttons {
+  justify-content: start;
+
+  a {
+    display: block;
+
+    button {
+      width: 100%;
+    }
+  }
+}
+
+.endpoints-heading {
+  margin-top: 30px;
+}
+
+.endpoint-buttons {
+  margin-left: -15px;
+  margin-right: -15px;
+  margin-top: -5px;
+  padding: 0 10px;
+  position: relative;
+  z-index: 2;
+  border-bottom: 1px solid colors.$YB_GRAY;
+
+  button {
+    &,
+    &:focus,
+    &:active,
+    &:hover {
+      position: relative;
+      border: none;
+      background-color: none;
+      top: 1px;
+      font-weight: 500;
+      font-size: 14px;
+      border-radius: 0;
+      padding: 16px 12px 20px !important;
+      background-color: transparent;
+      &.active {
+        border: none;
+        background-color: transparent;
+        margin: 0;
+        border-bottom: 5px solid colors.$YB_ORANGE !important;
+        height: 57px;
+      }
+    }
+  }
+}
+
+.endpoint-output {
+  button {
+    visibility: visible;
+    opacity: 1;
+    @include mixins.transition(0.5s);
+  }
+
+  &.empty {
+    button {
+      visibility: hidden;
+      opacity: 0;
+      @include mixins.transition(0.25s);
+    }
+    code:before {
+      content: 'Send a request to endpoint';
+      opacity: 0.3;
+    }
+  }
+}
+
+.yb-code-block {
+  td {
+    max-width: 400px;
+    vertical-align: top;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

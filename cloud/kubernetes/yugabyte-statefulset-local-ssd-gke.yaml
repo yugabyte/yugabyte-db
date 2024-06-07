@@ -1,0 +1,253 @@
+#
+# Overall Design:
+#   There are two Kubernetes StatefulSets in this yaml file - yb-master and yb-tserver. Each of
+#   these has the following:
+#    - a headless service to expose a DNS entry for discovery
+#    - a service to expose end-points to the outside world
+#    - the stateful set itself
+#    - a load-balancer service to view the universe dashboard UI
+#
+# Using YB with k8s
+#    - Create cluster    : kubectl apply -f yugabyte-statefulset-local-ssd-gke.yaml
+#    - List the pods     : kubectl get pods
+#    - Run ycqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh
+#    - Setup Redis      : kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 setup_redis_table
+#      replace 'yb-master-0' in master_addresses with the leader (yb-master-1 etc), you can check which master instance is the leader by viewing the UI.
+#      replace 'default' with your namespace if you're not using the default namespace for YB
+#    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
+#    - Connect to the ui : kubectl port-forward yb-master-0 7000
+#                          You can now view the UI at http://localhost:7000
+#    - Destroy cluster   : kubectl delete -f yugabyte-statefulset-local-ssd-gke.yaml
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-master which exists to allow discovery of the set of
+  # member pods (masters). The CNAME of this service points to SRV records - one for each Pod that
+  # is Running and Ready). Read more in the Kubernetes docs:
+  # https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/
+  name: yb-masters
+  labels:
+    app: yb-master
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 7000
+  - name: rpc-port
+    port: 7100
+  selector:
+    app: yb-master
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-master-ui
+  labels:
+    app: yb-master
+spec:
+  ports:
+  - name: ui
+    port: 7000
+  selector:
+    app: yb-master
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: yb-master
+  labels:
+    app: yb-master
+spec:
+  serviceName: yb-masters
+  podManagementPolicy: "Parallel"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: yb-master
+  template:
+    metadata:
+      labels:
+        app: yb-master
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB masters.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-master
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-master
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+                fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        command:
+          - "/home/yugabyte/bin/yb-master"
+          - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
+          - "--rpc_bind_addresses=$(POD_IP)"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--master_addresses=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          - "--replication_factor=3"
+        ports:
+        - containerPort: 7000
+          name: master-ui
+        - containerPort: 7100
+          name: master-rpc
+#        readinessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 5
+#          periodSeconds: 10
+#        livenessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 15
+#          periodSeconds: 10
+
+        volumeMounts:
+        - name: datadir0
+          mountPath: /mnt/disk0
+        - name: datadir1
+          mountPath: /mnt/disk1
+      volumes:
+      - name: datadir0
+        hostPath:
+          path: "/mnt/disks/ssd0"
+      - name: datadir1
+        hostPath:
+          path: "/mnt/disks/ssd1"
+      nodeSelector:
+        cloud.google.com/gke-local-ssd: "true"
+  updateStrategy:
+    type: RollingUpdate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-tserver which exists to allow discovery of the set of
+  # member pods (tservers).
+  name: yb-tservers
+  labels:
+    app: yb-tserver
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 9000
+  - name: rpc-port
+    port: 9100
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
+  selector:
+    app: yb-tserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-db-service
+  labels:
+    app: yb-tserver
+spec:
+  ports:
+  - name: ui
+    port: 9000
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
+  - name: postgres
+    port: 5433
+  selector:
+    app: yb-tserver
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: yb-tserver
+  labels:
+    app: yb-tserver
+spec:
+  serviceName: yb-tservers
+  podManagementPolicy: "Parallel"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: yb-tserver
+  template:
+    metadata:
+      labels:
+        app: yb-tserver
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB tservers here.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-tserver
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-tserver
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+                fieldPath: metadata.namespace
+        command:
+          - "/home/yugabyte/bin/yb-tserver"
+          - "--fs_data_dirs=/mnt/disk0,/mnt/disk1"
+          # FQDNs of each master. Update this in case your desired RF != 3.
+          - "--tserver_master_addrs=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+        ports:
+        - containerPort: 9000
+          name: tserver-ui
+        - containerPort: 9100
+          name: tserver-rpc
+        - containerPort: 9042
+          name: cassandra
+        - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: datadir0
+          mountPath: /mnt/disk0
+        - name: datadir1
+          mountPath: /mnt/disk1
+      volumes:
+      - name: datadir0
+        hostPath:
+          path: "/mnt/disks/ssd0"
+      - name: datadir1
+        hostPath:
+          path: "/mnt/disks/ssd1"
+      nodeSelector:
+        cloud.google.com/gke-local-ssd: "true"
+  updateStrategy:
+    type: RollingUpdate

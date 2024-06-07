@@ -1,0 +1,207 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
+
+.modal-content {
+  border-radius: 5px;
+  -webkit-box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3);
+  .modal-header {
+    text-align: left;
+    button.close {
+      font-size: 32px;
+      line-height: 26px;
+      color: colors.$YB_ORANGE;
+      opacity: 1;
+    }
+  }
+}
+
+.modal-body {
+  max-height: calc(100% - 120px);
+  overflow: auto;
+
+  .divider {
+    margin: 5px -15px 15px;
+    height: 1px;
+    width: auto;
+    background-color: colors.$YB_GRAY_HOVER;
+  }
+
+  .alert {
+    margin-top: 15px;
+    margin-bottom: 0;
+  }
+}
+
+.social-media-btn {
+  border: 1px solid #cbcdd0;
+  color: #202951;
+  text-decoration: none;
+  padding: 10px 15px;
+  height: 42px;
+  border-radius: 7px;
+  margin-right: 15px;
+  font-size: 14px;
+  background: #ffffff;
+  flex-basis: 40%;
+
+  img,
+  i {
+    margin: 0 6px 0 0;
+  }
+  i {
+    font-size: 16px;
+  }
+}
+
+.social-media-btn.icon-end img {
+  margin: 0 0 0 6px;
+}
+
+.social-media-btn:hover {
+  background-color: #e5e5e9;
+  color: #000;
+}
+
+.modal-footer {
+  background-color: #f5f4f0;
+  border-radius: 0 0 5px 5px;
+
+  .btn {
+    min-width: 100px;
+    margin-left: 10px !important;
+  }
+  .footer-accessory-wrapper {
+    margin-top: 4px;
+  }
+  .footer-accessory-wrapper > div {
+    display: inline-block;
+    margin-right: 10px;
+  }
+}
+
+.intro-message-container {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.modal-accessory {
+  position: relative;
+  float: left;
+  top: -2px;
+  line-height: 40px;
+
+  .force-delete {
+    display: flex;
+    column-gap: 8px;
+  }
+
+  label {
+    margin-bottom: 0;
+
+    input[type='checkbox'] {
+      vertical-align: text-bottom;
+      margin: 0 8px 0 0;
+      border-color: rgb(217, 217, 217);
+
+      &:hover {
+        border-color: colors.$YB_ORANGE;
+      }
+    }
+  }
+}
+
+.form-group {
+  label {
+    min-height: 14px;
+    font-weight: 500;
+  }
+}
+
+.modal-action-buttons {
+  position: absolute;
+  bottom: 14px;
+  right: 15px;
+  z-index: 100;
+  background-color: #f5f4f0;
+}
+
+.modal-map-overview {
+  .modal-dialog {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+
+    .modal-content {
+      border: none;
+      height: 100%;
+
+      form {
+        height: 100%;
+        width: 100%;
+
+        .modal-header {
+          display: none;
+        }
+
+        .modal-body {
+          height: 100%;
+          width: 100%;
+          max-height: 100%;
+          padding: 0;
+
+          .yb-region-map {
+            height: 100% !important;
+            min-height: 100% !important;
+            border: none;
+          }
+          .yb-map-legend {
+            margin: 20px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+          }
+          .button-close-map {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000 !important;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            text-align: center;
+            @include mixins.transition(0.125s);
+
+            i.fa {
+              margin-right: 0;
+              font-size: 22px;
+              line-height: 25px;
+              padding-right: 0;
+              color: colors.$YB_ORANGE;
+              @include mixins.transition(0.125s);
+            }
+
+            &:hover {
+              box-shadow: 0 2px 5px rgba(0, 0, 0, 0);
+              @include mixins.transition(0.35s);
+
+              i.fa {
+                @include mixins.transition(0.35s);
+                transform: rotate(90deg);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+.modal-back-btn {
+  padding: 0px !important;
+  border-radius: 100%;
+  margin-right: 16px;
+  border: none !important;
+}

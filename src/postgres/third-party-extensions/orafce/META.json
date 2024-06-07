@@ -1,0 +1,56 @@
+{
+   "name": "orafce",
+   "abstract": "Oracle's compatibility functions and packages",
+   "description": "This module allows use a well known Oracle's functions and packages inside PostgreSQL",
+   "version": "4.9.3",
+   "maintainer": [
+      "Pavel Stehule <pavel.stehule@gmail.com>",
+      "Takahiro Itagaki <itagaki.takahiro@gmail.com>"
+   ],
+   "license": {
+      "PostgreSQL": "http://www.postgresql.org/about/licence"
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "plpgsql": 0,
+            "PostgreSQL": "11.0.0"
+         },
+         "recommends": {
+            "PostgreSQL": "16.0.0"
+         }
+      }
+   },
+   "provides": {
+     "orafce": {
+       "file": "sql/orafce.sql",
+       "docfile": "README.orafce",
+       "version": "4.9.3",
+       "abstract": "Oracle's compatibility functions and packages"
+     }
+   },
+   "resources": {
+      "homepage": "http://www.pgsql.cz/index.php/Oracle_functionality_%28en%29",
+      "repository": {
+        "url": "https://github.com/orafce/orafce",
+        "web":  "https://github.com/orafce/orafce",
+        "type": "git"
+      }
+   },
+   "generated_by": "Pavel Stehule",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "release_status": "stable",
+   "tags": [
+      "oracle",
+      "compatibility",
+      "user function",
+      "custom function",
+      "intrerprocess communication",
+      "read from file",
+      "write to file",
+      "bussiness calendar"
+   ]
+}

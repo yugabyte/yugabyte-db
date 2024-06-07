@@ -1,0 +1,55 @@
+# Some commonly-used locks have predefined positions within MainLWLockArray;
+# these are defined here.  If you add a lock, add it to the end to avoid
+# renumbering the existing locks; if you remove a lock, consider leaving a gap
+# in the numbering sequence for the benefit of DTrace and other external
+# debugging scripts.  Also, do not forget to update the list of wait events
+# in the user documentation.
+
+# 0 is available; was formerly BufFreelistLock
+ShmemIndexLock						1
+OidGenLock							2
+XidGenLock							3
+ProcArrayLock						4
+SInvalReadLock						5
+SInvalWriteLock						6
+WALBufMappingLock					7
+WALWriteLock						8
+ControlFileLock						9
+# 10 was CheckpointLock
+XactSLRULock						11
+SubtransSLRULock					12
+MultiXactGenLock					13
+MultiXactOffsetSLRULock				14
+MultiXactMemberSLRULock				15
+RelCacheInitLock					16
+CheckpointerCommLock				17
+TwoPhaseStateLock					18
+TablespaceCreateLock				19
+BtreeVacuumLock						20
+AddinShmemInitLock					21
+AutovacuumLock						22
+AutovacuumScheduleLock				23
+SyncScanLock						24
+RelationMappingLock					25
+NotifySLRULock						26
+NotifyQueueLock						27
+SerializableXactHashLock			28
+SerializableFinishedListLock		29
+SerializablePredicateListLock		30
+SerialSLRULock						31
+SyncRepLock							32
+BackgroundWorkerLock				33
+DynamicSharedMemoryControlLock		34
+AutoFileLock						35
+ReplicationSlotAllocationLock		36
+ReplicationSlotControlLock			37
+CommitTsSLRULock					38
+CommitTsLock						39
+ReplicationOriginLock				40
+MultiXactTruncationLock				41
+OldSnapshotTimeMapLock				42
+LogicalRepWorkerLock				43
+XactTruncationLock					44
+# 45 was XactTruncationLock until removal of BackendRandomLock
+WrapLimitsVacuumLock				46
+NotifyQueueTailLock					47

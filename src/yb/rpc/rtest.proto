@@ -1,0 +1,314 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+// Test protocol for yb RPC.
+syntax = "proto2";
+
+package yb.rpc_test;
+
+import "google/protobuf/any.proto";
+import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/rpc_header.proto";
+import "yb/rpc/rtest_diff_package.proto";
+import "yb/rpc/service.proto";
+
+message AddRequestPB {
+  required uint32 x = 1;
+  required uint32 y = 2;
+}
+
+// Used by tests to simulate an old client which is missing
+// a newly added required field.
+message AddRequestPartialPB {
+  required uint32 x = 1;
+}
+
+message AddResponsePB {
+  required uint32 result = 1;
+}
+
+message SleepRequestPB {
+  required uint32 sleep_micros = 1;
+
+  // Used in rpc_stub-test: if this is true, it will respond from a different
+  // thread than the one that receives the request.
+  optional bool deferred = 2 [ default = false ];
+
+  // If set, returns a CalculatorError response.
+  optional bool return_app_error = 3 [ default = false ];
+
+  // Used in rpc-test: if this is set to true and no client timeout is set,
+  // the service will respond to the client with an error.
+  optional bool client_timeout_defined = 4 [ default = false ];
+}
+
+message SleepResponsePB {
+}
+
+message SendStringsRequestPB {
+  optional uint32 random_seed = 1;
+  repeated uint64 sizes = 2;
+}
+
+message SendStringsResponsePB {
+  repeated uint32 sidecars = 1;
+}
+
+message EchoRequestPB {
+  required string data = 1;
+}
+
+message EchoResponsePB {
+  required string data = 1;
+}
+
+message WhoAmIRequestPB {
+}
+
+message WhoAmIResponsePB {
+  required string address = 2;
+}
+
+message CalculatorError {
+  extend yb.rpc.ErrorStatusPB {
+    optional CalculatorError app_error_ext = 101;
+  }
+
+  required string extra_error_data = 1;
+}
+
+message PanicRequestPB {}
+
+message PanicResponsePB {}
+
+message PingRequestPB {
+  required uint64 id = 1;
+}
+
+message PingResponsePB {
+  required uint64 time = 1; // Time when this call was received by server.
+                            // Used with MonoTime::FromUint64/ToUint64.
+}
+
+message DisconnectRequestPB {}
+
+message DisconnectResponsePB {}
+
+// Used to test connectivity between servers. Client asks one server to forward request to another.
+message ForwardRequestPB {
+  optional string host = 1;
+  optional uint32 port = 2;
+}
+
+message ForwardResponsePB {
+  optional string name = 1; // Name of server that handled this request.
+}
+
+service CalculatorService {
+  rpc Add(AddRequestPB) returns(AddResponsePB);
+  rpc Sleep(SleepRequestPB) returns(SleepResponsePB);
+  rpc Echo(EchoRequestPB) returns(EchoResponsePB);
+  rpc WhoAmI(WhoAmIRequestPB) returns (WhoAmIResponsePB);
+  rpc TestArgumentsInDiffPackage(yb.rpc_test_diff_package.ReqDiffPackagePB)
+    returns(yb.rpc_test_diff_package.RespDiffPackagePB);
+  rpc Panic(PanicRequestPB) returns (PanicResponsePB);
+  rpc Ping(PingRequestPB) returns (PingResponsePB);
+  rpc Disconnect(DisconnectRequestPB) returns (DisconnectResponsePB);
+  rpc Forward(ForwardRequestPB) returns (ForwardResponsePB);
+
+  rpc Lightweight(LightweightRequestPB) returns (LightweightResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  };
+
+  rpc Trivial(TrivialRequestPB) returns (TrivialResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
+
+  rpc Sidecar(SidecarRequestPB) returns (SidecarResponsePB);
+}
+
+message ConcatRequestPB {
+  optional string lhs = 1;
+  optional string rhs = 2;
+}
+
+message ConcatResponsePB {
+  optional string result = 1;
+}
+
+service AbacusService {
+  option (yb.rpc.custom_service_name) = "yb.rpc_test.CalculatorService";
+
+  rpc Concat(ConcatRequestPB) returns (ConcatResponsePB);
+}
+
+enum LightweightEnum {
+  ZERO = 0;
+  ONE = 1;
+  TWO = 2;
+  THREE = 3;
+  FOUR = 4;
+}
+
+message LightweightSubMessagePB {
+  optional sfixed32 sf32 = 1;
+  repeated sint32 rsi32 = 2;
+  optional string str = 3;
+  repeated bytes rbytes = 4;
+
+  optional LightweightSubMessagePB cycle = 5;
+
+  oneof variant {
+    int32 v_i32 = 6;
+    string v_str = 7;
+    LightweightSubMessagePB v_message = 8;
+  }
+}
+
+message LightweightPairPB {
+  optional string s1 = 1;
+  optional string s2 = 2;
+}
+
+message LightweightRequestPB {
+  optional int32 i32 = 1;
+  optional int64 i64 = 2;
+  optional fixed32 f32 = 3;
+  optional fixed64 f64 = 4;
+  optional uint32 u32 = 5;
+  optional uint64 u64 = 6;
+  optional float r32 = 7;
+  optional double r64 = 8;
+  optional string str = 9;
+  optional bytes bytes = 10;
+  optional LightweightEnum en = 11;
+  optional sfixed32 sf32 = 12;
+  optional sfixed64 sf64 = 13;
+  optional sint32 si32 = 14;
+  optional sint64 si64 = 15;
+
+  repeated uint32 ru32 = 16;
+  repeated fixed32 rf32 = 17;
+  repeated string rstr = 18;
+
+  optional LightweightSubMessagePB message = 19;
+  repeated LightweightSubMessagePB repeated_messages = 20;
+
+  repeated uint64 packed_u64 = 21 [packed = true];
+  repeated fixed32 packed_f32 = 22 [packed = true];
+
+  repeated LightweightPairPB pairs = 23;
+  optional LightweightSubMessagePB ptr_message = 24 [(yb.rpc.lightweight_field).pointer = true];
+
+  map<string, int64> map = 25;
+
+
+  optional google.protobuf.Any extra_data = 26;
+}
+
+message LightweightResponsePB {
+  optional int32 i32 = 1;
+  optional int64 i64 = 2;
+  optional fixed32 f32 = 3;
+  optional fixed64 f64 = 4;
+  optional uint32 u32 = 5;
+  optional uint64 u64 = 6;
+  optional float r32 = 7;
+  optional double r64 = 8;
+  optional string str = 9;
+  optional bytes bytes = 10;
+  optional LightweightEnum en = 11;
+  optional sfixed32 sf32 = 12;
+  optional sfixed64 sf64 = 13;
+  optional sint32 si32 = 14;
+  optional sint64 si64 = 15;
+
+  repeated uint32 ru32 = 16;
+  repeated fixed32 rf32 = 17;
+  repeated string rstr = 18;
+
+  optional LightweightSubMessagePB message = 19;
+  repeated LightweightSubMessagePB repeated_messages = 20;
+  repeated LightweightSubMessagePB repeated_messages_copy = 120;
+
+  repeated uint64 packed_u64 = 21 [packed = true];
+  repeated fixed32 packed_f32 = 22 [packed = true];
+
+  repeated LightweightPairPB pairs = 23;
+  optional LightweightSubMessagePB ptr_message = 24 [(yb.rpc.lightweight_field).pointer = true];
+
+  map<string, int64> map = 25;
+
+  optional string short_debug_string = 100;
+}
+
+message TrivialRequestPB {
+  optional int32 value = 1;
+}
+
+message TrivialErrorPB {
+  optional int32 code = 1;
+}
+
+message TrivialResponsePB {
+  optional TrivialErrorPB error = 1;
+  optional int32 value = 2;
+}
+
+message SidecarRequestPB {
+  optional uint64 num_sidecars = 1;
+}
+
+message SidecarResponsePB {
+  optional uint64 num_sidecars = 1;
+}
+
+message TestStringOptionalPB {
+  optional string text = 1;
+}
+
+message TestObjectPB {
+  optional string string1 = 1;
+  optional TestStringOptionalPB record = 2;
+  optional string string2 = 3;
+  optional int32 int32 = 4;
+  optional int32 int32_2 = 5;
+  optional int32 int32_3 = 6;
+  optional TestStringOptionalPB record2 = 7;
+}
+
+message TestObjectPBv2 {
+  // Removed fields 2, 3, 4.
+  optional string string1 = 1;
+  optional int32 int32_2 = 5;
+  optional int32 int32_3 = 6;
+  optional TestStringOptionalPB record2 = 7;
+}

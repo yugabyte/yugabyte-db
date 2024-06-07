@@ -1,0 +1,426 @@
+<!--
+doc/src/sgml/ref/createdb.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-createdb">
+ <indexterm zone="app-createdb">
+  <primary>createdb</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>createdb</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>createdb</refname>
+  <refpurpose>create a new <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>createdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="opt"><replaceable>dbname</replaceable>
+   <arg choice="opt"><replaceable>description</replaceable></arg></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+
+ <refsect1 id="r1-app-createdb-1">
+  <title>Description</title>
+  <para>
+   <application>createdb</application> creates a new <productname>PostgreSQL</productname>
+   database.
+  </para>
+
+  <para>
+   Normally, the database user who executes this command becomes the owner of
+   the new database.
+   However, a different owner can be specified via the <option>-O</option>
+   option, if the executing user has appropriate privileges.
+  </para>
+
+  <para>
+   <application>createdb</application> is a wrapper around the
+   <acronym>SQL</acronym> command <link linkend="sql-createdatabase"><command>CREATE DATABASE</command></link>.
+   There is no effective difference between creating databases via
+   this utility and via other methods for accessing the server.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>createdb</application> accepts the following command-line arguments:
+
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">dbname</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to be created.  The name must be
+        unique among all <productname>PostgreSQL</productname> databases in this cluster.
+        The default is to create a database with the same name as the
+        current system user.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">description</replaceable></term>
+      <listitem>
+       <para>
+        Specifies a comment to be associated with the newly created
+        database.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-D <replaceable class="parameter">tablespace</replaceable></option></term>
+      <term><option>--tablespace=<replaceable class="parameter">tablespace</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the default tablespace for the database. (This name
+        is processed as a double-quoted identifier.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</option></term>
+      <term><option>--echo</option></term>
+      <listitem>
+       <para>
+        Echo the commands that <application>createdb</application> generates
+        and sends to the server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-E <replaceable class="parameter">encoding</replaceable></option></term>
+      <term><option>--encoding=<replaceable class="parameter">encoding</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the character encoding scheme to be used in this
+        database. The character sets supported by the
+        <productname>PostgreSQL</productname> server are described in
+        <xref linkend="multibyte-charset-supported"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-l <replaceable class="parameter">locale</replaceable></option></term>
+      <term><option>--locale=<replaceable class="parameter">locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the locale to be used in this database.  This is equivalent
+        to specifying both <option>--lc-collate</option> and <option>--lc-ctype</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--lc-collate=<replaceable class="parameter">locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the LC_COLLATE setting to be used in this database.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--lc-ctype=<replaceable class="parameter">locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the LC_CTYPE setting to be used in this database.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--icu-locale=<replaceable class="parameter">locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the ICU locale ID to be used in this database, if the
+        ICU locale provider is selected.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--locale-provider={<literal>libc</literal>|<literal>icu</literal>}</option></term>
+      <listitem>
+       <para>
+        Specifies the locale provider for the database's default collation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-O <replaceable class="parameter">owner</replaceable></option></term>
+      <term><option>--owner=<replaceable class="parameter">owner</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the database user who will own the new database.
+        (This name is processed as a double-quoted identifier.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-S <replaceable class="parameter">template</replaceable></option></term>
+      <term><option>--strategy=<replaceable class="parameter">strategy</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the database creation strategy.  See
+        <xref linkend="create-database-strategy" /> for more details.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-T <replaceable class="parameter">template</replaceable></option></term>
+      <term><option>--template=<replaceable class="parameter">template</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the template database from which to build this
+        database.  (This name is processed as a double-quoted identifier.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+       Print the <application>createdb</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    <varlistentry>
+      <term><option>-?</option></term>
+      <term><option>--help</option></term>
+      <listitem>
+      <para>
+      Show help about <application>createdb</application> command line
+      arguments, and exit.
+      </para>
+      </listitem>
+    </varlistentry>
+
+    </variablelist>
+   </para>
+
+   <para>
+    The options <option>-D</option>, <option>-l</option>, <option>-E</option>,
+    <option>-O</option>, and
+    <option>-T</option> correspond to options of the underlying
+    SQL command <link linkend="sql-createdatabase"><command>CREATE DATABASE</command></link>; see there for more information
+    about them.
+   </para>
+
+   <para>
+    <application>createdb</application> also accepts the following
+    command-line arguments for connection parameters:
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">host</replaceable></option></term>
+      <term><option>--host=<replaceable class="parameter">host</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the
+        server is running.  If the value begins with a slash, it is used
+        as the directory for the Unix domain socket.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or the local Unix domain socket file
+        extension on which the server is listening for connections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        User name to connect as.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</option></term>
+      <term><option>--no-password</option></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option></term>
+      <term><option>--password</option></term>
+      <listitem>
+       <para>
+        Force <application>createdb</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>createdb</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>createdb</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</option> to avoid the extra
+        connection attempt.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--maintenance-db=<replaceable class="parameter">dbname</replaceable></option></term>
+      <listitem>
+       <para>
+         Specifies the name of the database to connect to when creating the
+         new database. If not specified, the <literal>postgres</literal>
+         database will be used; if that does not exist (or if it is the name
+         of the new database being created), <literal>template1</literal> will
+         be used.
+         This can be a <link linkend="libpq-connstring">connection
+         string</link>.  If so, connection string parameters will override any
+         conflicting command line options.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATABASE</envar></term>
+    <listitem>
+     <para>
+      If set, the name of the database to create, unless overridden on
+      the command line.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters.  <envar>PGUSER</envar> also
+      determines the name of the database to create, if it is not
+      specified on the command line or by <envar>PGDATABASE</envar>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   also uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Diagnostics</title>
+
+  <para>
+   In case of difficulty, see <xref linkend="sql-createdatabase"/>
+   and <xref linkend="app-psql"/> for
+   discussions of potential problems and error messages.
+   The database server must be running at the
+   targeted host.  Also, any default connection settings and environment
+   variables used by the <application>libpq</application> front-end
+   library will apply.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+   <para>
+    To create the database <literal>demo</literal> using the default
+    database server:
+<screen>
+<prompt>$ </prompt><userinput>createdb demo</userinput>
+</screen>
+   </para>
+
+   <para>
+    To create the database <literal>demo</literal> using the
+    server on host <literal>eden</literal>, port 5000, using the
+    <literal>template0</literal> template database,  here is the
+    command-line command and the underlying SQL command:
+<screen>
+<prompt>$ </prompt><userinput>createdb -p 5000 -h eden -T template0 -e demo</userinput>
+<computeroutput>CREATE DATABASE demo TEMPLATE template0;</computeroutput>
+</screen></para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-dropdb"/></member>
+   <member><xref linkend="sql-createdatabase"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

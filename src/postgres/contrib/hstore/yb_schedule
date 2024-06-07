@@ -1,0 +1,3 @@
+# contrib/hstore/yb_schedule
+
+test: yb_pg_hstore

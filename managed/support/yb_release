@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#
+# Copyright 2022 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This script generates the platform support packages tar.gz in the required destination.
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
+set -euo pipefail
+
+print_help() {
+  cat <<-EOT
+Generates platform-support-packages.tar.gz in destination.
+Config files and binaries necessary for yugabundle install.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the support packages should be copied.
+EOT
+}
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+
+readonly yb_support_home=$( cd "${BASH_SOURCE%/*}" && pwd )
+
+# verify packages directory exists
+if [[ ! -d $yb_support_home/packages ]]; then
+  fatal "No 'packages' subdirectory found inside yb_support_home ('$yb_support_home')"
+fi
+
+PACKAGES="packages"
+THIRDPARTY="thirdparty"
+THIRDPARTY_TARGZ="thirdparty-deps.tar.gz"
+PACKAGE_TARGZ="yugabundle_support.tar.gz"
+destination=""
+package_path=$yb_support_home/$PACKAGES
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+  esac
+  shift
+done
+
+# verify destination directory exists
+if [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+
+thirdparty_path="$package_path/$THIRDPARTY"
+
+# ensure thirdparty directory exists
+if [[ ! -d $thirdparty_path ]]; then
+  mkdir -p $thirdparty_path
+fi
+
+cd $thirdparty_path
+# This downloads all thirdparty dependencies into packages/thirdparty/
+wget -qi $yb_support_home/thirdparty-dependencies.txt
+
+# Recompress setuptools
+unzip -q setuptools-44.1.1.zip && rm setuptools-44.1.1.zip
+tar -czf setuptools-44.1.1.tar.gz setuptools-44.1.1
+rm -rf setuptools-44.1.1
+
+# Generate thirdparty tar.gz with downloaded dependencies
+cd $package_path
+tar -czvf $THIRDPARTY_TARGZ $THIRDPARTY
+# Remove thirdparty directory
+rm -rf $thirdparty_path
+# Generate platform-support-packages with packages/ conf files and thirdparty deps
+cd $yb_support_home
+tar -czvf $PACKAGE_TARGZ $PACKAGES
+# Remove generated thirdparty tar.gz
+rm "$package_path/$THIRDPARTY_TARGZ"
+
+activate_virtualenv
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py --package $PACKAGE_TARGZ --destination $destination

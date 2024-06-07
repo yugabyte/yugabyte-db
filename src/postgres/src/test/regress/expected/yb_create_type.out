@@ -1,0 +1,432 @@
+--
+-- Create composite type
+--
+CREATE TYPE composite_type AS (
+  i INT,
+  v VARCHAR
+);
+\dT+ composite_type;
+                                            List of data types
+ Schema |      Name      | Internal name  | Size  | Elements |  Owner   | Access privileges | Description
+--------+----------------+----------------+-------+----------+----------+-------------------+-------------
+ public | composite_type | composite_type | tuple |          | yugabyte |                   |
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname LIKE '%composite_type';
+     typname
+-----------------
+ _composite_type
+ composite_type
+(2 rows)
+
+SELECT (1, 'a')::composite_type;
+  row
+-------
+ (1,a)
+(1 row)
+
+-- Following should error
+CREATE TABLE composite_table_indexed (a composite_type PRIMARY KEY, b BOOLEAN);
+ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
+CREATE TABLE composite_table (a composite_type, b BOOLEAN);
+INSERT INTO composite_table (a, b) VALUES ((2, 'bb')::composite_type, TRUE);
+INSERT INTO composite_table (a) VALUES ((3, 'ccc')::composite_type);
+INSERT INTO composite_table (b) VALUES (FALSE);
+SELECT * FROM composite_table ORDER BY a;
+    a    | b
+---------+---
+ (2,bb)  | t
+ (3,ccc) |
+         | f
+(3 rows)
+
+--
+-- Create enum type
+--
+CREATE TYPE enum_type AS ENUM ('baa', 'caw', 'moo');
+\dT+ enum_type;
+                                        List of data types
+ Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+--------+-----------+---------------+------+----------+----------+-------------------+-------------
+ public | enum_type | enum_type     | 4    | baa     +| yugabyte |                   |
+        |           |               |      | caw     +|          |                   |
+        |           |               |      | moo      |          |                   |
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname LIKE '%enum_type';
+  typname
+------------
+ _enum_type
+ enum_type
+(2 rows)
+
+SELECT 'moo'::enum_type;
+ enum_type
+-----------
+ moo
+(1 row)
+
+CREATE TABLE enum_table (a enum_type, b BOOLEAN);
+INSERT INTO enum_table (a) VALUES ('baa');
+INSERT INTO enum_table (a, b) VALUES ('caw', FALSE);
+INSERT INTO enum_table (b) VALUES (TRUE);
+SELECT * FROM enum_table ORDER BY a;
+  a  | b
+-----+---
+ baa |
+ caw | f
+     | t
+(3 rows)
+
+--
+-- Create range type
+--
+CREATE TYPE range_type AS RANGE (
+    subtype = float
+);
+\dT+ range_type;
+                                         List of data types
+ Schema |    Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+--------+------------+---------------+------+----------+----------+-------------------+-------------
+ public | range_type | range_type    | var  |          | yugabyte |                   |
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname LIKE '%range_type';
+   typname
+-------------
+ range_type
+ _range_type
+(2 rows)
+
+SELECT '[1.111, 2.222]'::range_type;
+  range_type
+---------------
+ [1.111,2.222]
+(1 row)
+
+-- Following should error
+CREATE TABLE range_table_indexed (a range_type PRIMARY KEY, b BOOLEAN);
+ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
+CREATE TABLE range_table (a range_type, b BOOLEAN);
+INSERT INTO range_table (a) VALUES ('[3.0, 4.8]');
+-- Following should error
+INSERT INTO range_table (a) VALUES ('[6.0, 3.8]');
+ERROR:  range lower bound must be less than or equal to range upper bound
+LINE 1: INSERT INTO range_table (a) VALUES ('[6.0, 3.8]');
+                                            ^
+INSERT INTO range_table (b) VALUES (TRUE);
+INSERT INTO range_table (a, b) VALUES ('[1.4, 3.3]', FALSE);
+SELECT * FROM range_table ORDER BY a;
+     a     | b
+-----------+---
+ [1.4,3.3] | f
+ [3,4.8]   |
+           | t
+(3 rows)
+
+-- Borrowed from https://www.postgresql.org/docs/11/rangetypes.html#RANGETYPES-BUILTIN
+-- Containment
+SELECT int4range(10, 20) @> 3;
+ ?column?
+----------
+ f
+(1 row)
+
+-- Overlaps
+SELECT numrange(11.1, 22.2) && numrange(20.0, 30.0);
+ ?column?
+----------
+ t
+(1 row)
+
+-- Extract the upper bound
+SELECT upper(int8range(15, 25));
+ upper
+-------
+    25
+(1 row)
+
+-- Compute the intersection
+SELECT int4range(10, 20) * int4range(15, 25);
+ ?column?
+----------
+ [15,20)
+(1 row)
+
+-- Is the range empty?
+SELECT isempty(numrange(1, 5));
+ isempty
+---------
+ f
+(1 row)
+
+--
+-- Create base type
+--
+-- Taken from https://stackoverflow.com/questions/45188301/
+CREATE TYPE base_type;
+CREATE FUNCTION base_type_in(cstring) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2in';
+NOTICE:  return type base_type is only a shell
+CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
+NOTICE:  argument type base_type is only a shell
+CREATE FUNCTION base_type_recv(internal) RETURNS base_type
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
+NOTICE:  return type base_type is only a shell
+CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+   LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
+NOTICE:  argument type base_type is only a shell
+CREATE TYPE base_type (
+   INPUT = base_type_in,
+   OUTPUT = base_type_out,
+   RECEIVE = base_type_recv,
+   SEND = base_type_send,
+   LIKE = smallint,
+   CATEGORY = 'N',
+   PREFERRED = FALSE,
+   DELIMITER = ',',
+   COLLATABLE = FALSE
+);
+\dT+ base_type;
+                                        List of data types
+ Schema |   Name    | Internal name | Size | Elements |  Owner   | Access privileges | Description
+--------+-----------+---------------+------+----------+----------+-------------------+-------------
+ public | base_type | base_type     | 2    |          | yugabyte |                   |
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname LIKE '%base_type';
+  typname
+------------
+ base_type
+ _base_type
+(2 rows)
+
+SELECT '32767'::base_type;
+ base_type
+-----------
+ 32767
+(1 row)
+
+-- Following should error
+SELECT '32768'::base_type;
+ERROR:  value "32768" is out of range for type smallint
+LINE 1: SELECT '32768'::base_type;
+               ^
+-- Following should error
+CREATE TABLE ints_indexed (a base_type PRIMARY KEY, b BOOLEAN);
+ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
+CREATE TABLE base_table (a base_type, b BOOLEAN);
+INSERT INTO base_table (b) VALUES (FALSE);
+INSERT INTO base_table (a, b) VALUES ('1'::base_type, TRUE);
+INSERT INTO base_table (a) VALUES ('22'::base_type);
+SELECT * FROM base_table ORDER BY a;
+ERROR:  could not identify an ordering operator for type base_type
+LINE 1: SELECT * FROM base_table ORDER BY a;
+                                          ^
+HINT:  Use an explicit ordering operator or modify the query.
+SELECT * FROM base_table ORDER BY CAST(a AS text);
+ a  | b
+----+---
+ 1  | t
+ 22 |
+    | f
+(3 rows)
+
+--
+-- Summary
+--
+SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 16;
+     typname
+------------------
+ base_table
+ _base_table
+ _base_type
+ base_type
+ range_table
+ _range_table
+ _range_type
+ range_type
+ enum_table
+ _enum_table
+ enum_type
+ _enum_type
+ composite_table
+ _composite_table
+ composite_type
+ _composite_type
+(16 rows)
+
+--
+-- Drop composite type
+--
+-- Following should error
+DROP TYPE composite_type;
+ERROR:  cannot drop type composite_type because other objects depend on it
+DETAIL:  column a of table composite_table depends on type composite_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE composite_type CASCADE;
+NOTICE:  drop cascades to column a of table composite_table
+\dT+ composite_type;
+                                    List of data types
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+--------+------+---------------+------+----------+-------+-------------------+-------------
+(0 rows)
+
+SELECT oid, typname FROM pg_type WHERE typname LIKE '%composite_type';
+ oid | typname
+-----+---------
+(0 rows)
+
+-- Following should error
+SELECT (4, 'dddd')::composite_type;
+ERROR:  type "composite_type" does not exist
+LINE 1: SELECT (4, 'dddd')::composite_type;
+                            ^
+-- Following should error
+SELECT * FROM composite_table ORDER BY a;
+ERROR:  column "a" does not exist
+LINE 1: SELECT * FROM composite_table ORDER BY a;
+                                               ^
+SELECT * FROM composite_table ORDER BY b;
+ b
+---
+ f
+ t
+
+(3 rows)
+
+--
+-- Drop enum type
+--
+DROP TYPE enum_type;
+ERROR:  cannot drop type enum_type because other objects depend on it
+DETAIL:  column a of table enum_table depends on type enum_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE enum_type CASCADE;
+NOTICE:  drop cascades to column a of table enum_table
+\dT+ enum_type;
+                                    List of data types
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+--------+------+---------------+------+----------+-------+-------------------+-------------
+(0 rows)
+
+SELECT oid, typname FROM pg_type WHERE typname LIKE '%enum_type';
+ oid | typname
+-----+---------
+(0 rows)
+
+-- Following should error
+SELECT 'caw'::enum_type;
+ERROR:  type "enum_type" does not exist
+LINE 1: SELECT 'caw'::enum_type;
+                      ^
+-- Following should error
+SELECT * FROM enum_table ORDER BY a;
+ERROR:  column "a" does not exist
+LINE 1: SELECT * FROM enum_table ORDER BY a;
+                                          ^
+SELECT * FROM enum_table ORDER BY b;
+ b
+---
+ f
+ t
+
+(3 rows)
+
+--
+-- Drop range type
+--
+DROP TYPE range_type;
+ERROR:  cannot drop type range_type because other objects depend on it
+DETAIL:  column a of table range_table depends on type range_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE range_type CASCADE;
+NOTICE:  drop cascades to column a of table range_table
+\dT+ range_type;
+                                    List of data types
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+--------+------+---------------+------+----------+-------+-------------------+-------------
+(0 rows)
+
+SELECT oid, typname FROM pg_type WHERE typname LIKE '%range_type';
+ oid | typname
+-----+---------
+(0 rows)
+
+-- Following should error
+SELECT '[1.1, 2.2]'::range_type;
+ERROR:  type "range_type" does not exist
+LINE 1: SELECT '[1.1, 2.2]'::range_type;
+                             ^
+-- Following should error
+SELECT * FROM range_table ORDER BY a;
+ERROR:  column "a" does not exist
+LINE 1: SELECT * FROM range_table ORDER BY a;
+                                           ^
+SELECT * FROM range_table ORDER BY b;
+ b
+---
+ f
+ t
+
+(3 rows)
+
+--
+-- Drop base type
+--
+\set VERBOSITY terse
+DROP TYPE base_type;
+ERROR:  cannot drop type base_type because other objects depend on it
+DROP TYPE base_type CASCADE;
+NOTICE:  drop cascades to 5 other objects
+\set VERBOSITY default
+\dT+ base_type;
+                                    List of data types
+ Schema | Name | Internal name | Size | Elements | Owner | Access privileges | Description
+--------+------+---------------+------+----------+-------+-------------------+-------------
+(0 rows)
+
+SELECT oid, typname FROM pg_type WHERE typname LIKE '%base_type';
+ oid | typname
+-----+---------
+(0 rows)
+
+-- Following should error
+SELECT '333'::base_type;
+ERROR:  type "base_type" does not exist
+LINE 1: SELECT '333'::base_type;
+                      ^
+-- Following should error
+SELECT * FROM base_table ORDER BY CAST(a AS text);
+ERROR:  column "a" does not exist
+LINE 1: SELECT * FROM base_table ORDER BY CAST(a AS text);
+                                               ^
+SELECT * FROM base_table ORDER BY b;
+ b
+---
+ f
+ t
+
+(3 rows)
+
+--
+-- Summary
+--
+SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 8;
+     typname
+------------------
+ base_table
+ _base_table
+ range_table
+ _range_table
+ enum_table
+ _enum_table
+ composite_table
+ _composite_table
+(8 rows)
+
+--
+-- Cleanup
+--
+DROP TABLE composite_table, enum_table, range_table, base_table;

@@ -1,0 +1,119 @@
+CREATE TABLE oid_table(
+    id OID PRIMARY KEY,
+    value OID,
+    tag INT
+);
+INSERT INTO oid_table (id, value, tag) VALUES (0, 10, 0);
+INSERT INTO oid_table (id, value, tag) VALUES (1, 21, 1);
+INSERT INTO oid_table (id, value, tag) VALUES (1000, 1010, 2);
+INSERT INTO oid_table (id, value, tag) VALUES (1000000, 1000010, 3);
+INSERT INTO oid_table (id, value, tag) VALUES (1000000000, 1000000010, 4);
+INSERT INTO oid_table (id, value, tag) VALUES (2000000000, 2000000020, 5);
+INSERT INTO oid_table (id, value, tag) VALUES (2147483647, 2147483647, 6);
+INSERT INTO oid_table (id, value, tag) VALUES (2147483648, 2147483648, 7);
+INSERT INTO oid_table (id, value, tag) VALUES (2147483649, 2147483649, 8);
+INSERT INTO oid_table (id, value, tag) VALUES (4294967295, 4294967295, 9);
+INSERT INTO oid_table (id, value, tag) VALUES (4294967296, 4294967296, 10);
+ERROR:  OID out of range
+INSERT INTO oid_table (id, value, tag) VALUES (4294967297, 4294967297, 11);
+ERROR:  OID out of range
+INSERT INTO oid_table (id, value, tag) VALUES (-1, -10, 100);
+ERROR:  duplicate key value violates unique constraint "oid_table_pkey"
+INSERT INTO oid_table (id, value, tag) VALUES (-2, -21, 101);
+INSERT INTO oid_table (id, value, tag) VALUES (-1000, -1010, 102);
+INSERT INTO oid_table (id, value, tag) VALUES (-1000000, -1000010, 103);
+INSERT INTO oid_table (id, value, tag) VALUES (-1000000000, -1000000010, 104);
+INSERT INTO oid_table (id, value, tag) VALUES (-2000000000, -2000000020, 105);
+INSERT INTO oid_table (id, value, tag) VALUES (-2147483647, -2147483647, 106);
+ERROR:  duplicate key value violates unique constraint "oid_table_pkey"
+INSERT INTO oid_table (id, value, tag) VALUES (-2147483648, -2147483648, 107);
+ERROR:  duplicate key value violates unique constraint "oid_table_pkey"
+INSERT INTO oid_table (id, value, tag) VALUES (-2147483649, -2147483649, 108);
+ERROR:  OID out of range
+INSERT INTO oid_table (id, value, tag) VALUES (-4294967295, -4294967295, 109);
+ERROR:  OID out of range
+INSERT INTO oid_table (id, value, tag) VALUES (-4294967296, -4294967296, 110);
+ERROR:  OID out of range
+INSERT INTO oid_table (id, value, tag) VALUES (-4294967297, -4294967297, 111);
+ERROR:  OID out of range
+SELECT * FROM oid_table ORDER BY id;
+     id     |   value    | tag
+------------+------------+-----
+          0 |         10 |   0
+          1 |         21 |   1
+       1000 |       1010 |   2
+    1000000 |    1000010 |   3
+ 1000000000 | 1000000010 |   4
+ 2000000000 | 2000000020 |   5
+ 2147483647 | 2147483647 |   6
+ 2147483648 | 2147483648 |   7
+ 2147483649 | 2147483649 |   8
+ 2294967296 | 2294967276 | 105
+ 3294967296 | 3294967286 | 104
+ 4293967296 | 4293967286 | 103
+ 4294966296 | 4294966286 | 102
+ 4294967294 | 4294967275 | 101
+ 4294967295 | 4294967295 |   9
+(15 rows)
+
+SELECT * FROM oid_table ORDER BY id DESC;
+     id     |   value    | tag
+------------+------------+-----
+ 4294967295 | 4294967295 |   9
+ 4294967294 | 4294967275 | 101
+ 4294966296 | 4294966286 | 102
+ 4293967296 | 4293967286 | 103
+ 3294967296 | 3294967286 | 104
+ 2294967296 | 2294967276 | 105
+ 2147483649 | 2147483649 |   8
+ 2147483648 | 2147483648 |   7
+ 2147483647 | 2147483647 |   6
+ 2000000000 | 2000000020 |   5
+ 1000000000 | 1000000010 |   4
+    1000000 |    1000010 |   3
+       1000 |       1010 |   2
+          1 |         21 |   1
+          0 |         10 |   0
+(15 rows)
+
+SELECT * FROM oid_table ORDER BY value;
+     id     |   value    | tag
+------------+------------+-----
+          0 |         10 |   0
+          1 |         21 |   1
+       1000 |       1010 |   2
+    1000000 |    1000010 |   3
+ 1000000000 | 1000000010 |   4
+ 2000000000 | 2000000020 |   5
+ 2147483647 | 2147483647 |   6
+ 2147483648 | 2147483648 |   7
+ 2147483649 | 2147483649 |   8
+ 2294967296 | 2294967276 | 105
+ 3294967296 | 3294967286 | 104
+ 4293967296 | 4293967286 | 103
+ 4294966296 | 4294966286 | 102
+ 4294967294 | 4294967275 | 101
+ 4294967295 | 4294967295 |   9
+(15 rows)
+
+SELECT * FROM oid_table ORDER BY value DESC;
+     id     |   value    | tag
+------------+------------+-----
+ 4294967295 | 4294967295 |   9
+ 4294967294 | 4294967275 | 101
+ 4294966296 | 4294966286 | 102
+ 4293967296 | 4293967286 | 103
+ 3294967296 | 3294967286 | 104
+ 2294967296 | 2294967276 | 105
+ 2147483649 | 2147483649 |   8
+ 2147483648 | 2147483648 |   7
+ 2147483647 | 2147483647 |   6
+ 2000000000 | 2000000020 |   5
+ 1000000000 | 1000000010 |   4
+    1000000 |    1000010 |   3
+       1000 |       1010 |   2
+          1 |         21 |   1
+          0 |         10 |   0
+(15 rows)
+
+DROP TABLE oid_table;

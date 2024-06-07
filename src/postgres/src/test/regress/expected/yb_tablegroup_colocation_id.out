@@ -1,0 +1,297 @@
+CREATE DATABASE test_tablegroups_colocation_id;
+\c test_tablegroups_colocation_id
+CREATE VIEW table_props AS
+  SELECT c.relname, props.is_colocated, tg.grpname AS tablegroup, props.colocation_id
+  FROM pg_class c, yb_table_properties(c.oid) props
+  LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+  WHERE c.relname LIKE 'tg%'
+  ORDER BY c.relname;
+CREATE TABLEGROUP tg1;
+CREATE TABLEGROUP tg2;
+--
+-- There should be no collision between:
+-- (a) different colocation IDs within the same tablegroup,
+-- (b) same colocation IDs across different tablegroups.
+--
+CREATE TABLE tg1_table1(v1 int PRIMARY KEY)                  WITH (colocation_id=20001)  TABLEGROUP tg1;
+CREATE TABLE tg1_table2(v1 int PRIMARY KEY, v2 text)         WITH (colocation_id=20002)  TABLEGROUP tg1;
+CREATE TABLE tg1_table3(v1 int PRIMARY KEY, v2 int, v3 text) WITH (colocation_id=100500) TABLEGROUP tg1;
+CREATE TABLE tg2_table1(v1 text PRIMARY KEY)                 WITH (colocation_id=20001)  TABLEGROUP tg2;
+CREATE TABLE tg2_table2(v1 text PRIMARY KEY, v2 int)         WITH (colocation_id=20002)  TABLEGROUP tg2;
+INSERT INTO tg1_table1 VALUES (110),               (111),               (112);
+INSERT INTO tg1_table2 VALUES (120, '120t'),       (121, '121t'),       (122, '122t');
+INSERT INTO tg1_table3 VALUES (130, 1300, '130t'), (131, 1310, '131t'), (132, 1320, '132t');
+INSERT INTO tg2_table1 VALUES ('210t'),            ('211t'),            ('212t');
+INSERT INTO tg2_table2 VALUES ('220t', 120),       ('221t', 121),       ('222t', 122);
+\d tg1_table3
+             Table "public.tg1_table3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ v1     | integer |           | not null |
+ v2     | integer |           |          |
+ v3     | text    |           |          |
+Indexes:
+    "tg1_table3_pkey" PRIMARY KEY, lsm (v1 ASC)
+Tablegroup: "tg1"
+
+\d tg2_table1
+           Table "public.tg2_table1"
+ Column | Type | Collation | Nullable | Default
+--------+------+-----------+----------+---------
+ v1     | text |           | not null |
+Indexes:
+    "tg2_table1_pkey" PRIMARY KEY, lsm (v1 ASC)
+Tablegroup: "tg2"
+
+SELECT * FROM table_props;
+     relname     | is_colocated | tablegroup | colocation_id
+-----------------+--------------+------------+---------------
+ tg1_table1      | t            | tg1        |         20001
+ tg1_table1_pkey |              |            |
+ tg1_table2      | t            | tg1        |         20002
+ tg1_table2_pkey |              |            |
+ tg1_table3      | t            | tg1        |        100500
+ tg1_table3_pkey |              |            |
+ tg2_table1      | t            | tg2        |         20001
+ tg2_table1_pkey |              |            |
+ tg2_table2      | t            | tg2        |         20002
+ tg2_table2_pkey |              |            |
+(10 rows)
+
+SELECT * FROM tg1_table1;
+ v1
+-----
+ 110
+ 111
+ 112
+(3 rows)
+
+SELECT * FROM tg1_table2;
+ v1  |  v2
+-----+------
+ 120 | 120t
+ 121 | 121t
+ 122 | 122t
+(3 rows)
+
+SELECT * FROM tg1_table3;
+ v1  |  v2  |  v3
+-----+------+------
+ 130 | 1300 | 130t
+ 131 | 1310 | 131t
+ 132 | 1320 | 132t
+(3 rows)
+
+SELECT * FROM tg2_table1;
+  v1
+------
+ 210t
+ 211t
+ 212t
+(3 rows)
+
+SELECT * FROM tg2_table2;
+  v1  | v2
+------+-----
+ 220t | 120
+ 221t | 121
+ 222t | 122
+(3 rows)
+
+DROP TABLE tg1_table1, tg1_table2, tg1_table3, tg2_table1, tg2_table2;
+--
+-- Various invalid cases.
+--
+CREATE TABLE tg1_table_valid(v1 int PRIMARY KEY) WITH (colocation_id=20001) TABLEGROUP tg1; -- Success
+CREATE TABLE tg1_table_invalid(v1 int PRIMARY KEY) WITH (colocation_id=20001) TABLEGROUP tg1;
+ERROR:  Invalid table definition: Error creating table test_tablegroups_colocation_id.tg1_table_invalid on the master: Colocation group already contains a table with colocation ID 20001
+CREATE TABLE tg1_table_invalid(v1 int UNIQUE WITH (colocation_id=40002)) WITH (colocation_id=40002) TABLEGROUP tg1;
+ERROR:  Invalid table definition: Error creating index test_tablegroups_colocation_id.tg1_table_invalid_v1_key on the master: Colocation group already contains a table with colocation ID 40002
+SELECT * FROM table_props;
+       relname        | is_colocated | tablegroup | colocation_id
+----------------------+--------------+------------+---------------
+ tg1_table_valid      | t            | tg1        |         20001
+ tg1_table_valid_pkey |              |            |
+(2 rows)
+
+DROP TABLE IF EXISTS tg1_table_valid, tg1_table_invalid;
+NOTICE:  table "tg1_table_invalid" does not exist, skipping
+--
+-- Test colocated tables with indexes.
+--
+CREATE TABLE tg1_table1(
+  v1 int,
+  v2 int UNIQUE WITH (colocation_id=20002),
+  v3 text
+) WITH (colocation_id=20001) TABLEGROUP tg1;
+INSERT INTO tg1_table1 VALUES (1, 1, 'v1'),  (1, 1, 'v1'); -- Fail
+ERROR:  duplicate key value violates unique constraint "tg1_table1_v2_key"
+INSERT INTO tg1_table1 VALUES (1, 1, 'v2'),  (1, 2, 'v2'), (3, 3, 'v2'), (4, 4, 'v2');
+CREATE INDEX tg1_table1_v1_idx ON tg1_table1 (v1) WITH (colocation_id=20003);
+\d tg1_table1
+             Table "public.tg1_table1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+ v3     | text    |           |          |
+Indexes:
+    "tg1_table1_v2_key" UNIQUE CONSTRAINT, lsm (v2 ASC), tablegroup "tg1"
+    "tg1_table1_v1_idx" lsm (v1 ASC), tablegroup "tg1"
+Tablegroup: "tg1"
+
+SELECT * FROM table_props;
+      relname      | is_colocated | tablegroup | colocation_id
+-------------------+--------------+------------+---------------
+ tg1_table1        | t            | tg1        |         20001
+ tg1_table1_v1_idx | t            | tg1        |         20003
+ tg1_table1_v2_key | t            | tg1        |         20002
+(3 rows)
+
+-- Make sure we're using index only scans and index scans respectively.
+EXPLAIN (COSTS OFF) SELECT v1 FROM tg1_table1 WHERE v1 IN (1, 2, 4);
+                      QUERY PLAN
+-------------------------------------------------------
+ Index Only Scan using tg1_table1_v1_idx on tg1_table1
+   Index Cond: (v1 = ANY ('{1,2,4}'::integer[]))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
+                      QUERY PLAN
+-------------------------------------------------------
+ Index Only Scan using tg1_table1_v2_key on tg1_table1
+   Index Cond: (v2 = ANY ('{1,2,4}'::integer[]))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
+                       QUERY PLAN
+--------------------------------------------------------
+ Sort
+   Sort Key: v1, v2, v3
+   ->  Index Scan using tg1_table1_v1_idx on tg1_table1
+         Index Cond: (v1 = ANY ('{1,2,4}'::integer[]))
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
+                       QUERY PLAN
+--------------------------------------------------------
+ Sort
+   Sort Key: v1, v2, v3
+   ->  Index Scan using tg1_table1_v2_key on tg1_table1
+         Index Cond: (v2 = ANY ('{1,2,4}'::integer[]))
+(4 rows)
+
+SELECT v1 FROM tg1_table1 WHERE v1 IN (1, 2, 4);
+ v1
+----
+  1
+  1
+  4
+(3 rows)
+
+SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
+ v2
+----
+  1
+  2
+  4
+(3 rows)
+
+SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+  1 |  1 | v2
+  1 |  2 | v2
+  4 |  4 | v2
+(3 rows)
+
+SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+  1 |  1 | v2
+  1 |  2 | v2
+  4 |  4 | v2
+(3 rows)
+
+DELETE FROM tg1_table1 WHERE v1 = 1;
+DELETE FROM tg1_table1 WHERE v2 = 3;
+SELECT v1 FROM tg1_table1 WHERE v1 IN (1, 2, 4);
+ v1
+----
+  4
+(1 row)
+
+SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
+ v2
+----
+  4
+(1 row)
+
+SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+  4 |  4 | v2
+(1 row)
+
+SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+  4 |  4 | v2
+(1 row)
+
+TRUNCATE TABLE tg1_table1;
+SELECT v1 FROM tg1_table1 WHERE v1 IN (1, 2, 4);
+ v1
+----
+(0 rows)
+
+SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
+ v2
+----
+(0 rows)
+
+SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+(0 rows)
+
+SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+(0 rows)
+
+INSERT INTO tg1_table1 VALUES (1, 1, 'v3'),  (444, 4, 'v3');
+SELECT v1 FROM tg1_table1 WHERE v1 IN (1, 2, 4);
+ v1
+----
+  1
+(1 row)
+
+SELECT v2 FROM tg1_table1 WHERE v2 IN (1, 2, 4);
+ v2
+----
+  1
+  4
+(2 rows)
+
+SELECT *  FROM tg1_table1 WHERE v1 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1 | v2 | v3
+----+----+----
+  1 |  1 | v3
+(1 row)
+
+SELECT *  FROM tg1_table1 WHERE v2 IN (1, 2, 4) ORDER BY v1, v2, v3;
+ v1  | v2 | v3
+-----+----+----
+   1 |  1 | v3
+ 444 |  4 | v3
+(2 rows)
+
+DROP TABLE tg1_table1;
+--
+-- Cleanup
+--
+\c yugabyte
+DROP DATABASE test_tablegroups_colocation_id;
+\c test_tablegroups_colocation_id
+\connect: FATAL:  database "test_tablegroups_colocation_id" does not exist

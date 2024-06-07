@@ -1,0 +1,499 @@
+[
+  {
+    "affectedNodes": [
+      {
+        "name": "node2"
+      },
+      {
+        "name": "node1"
+      }
+    ],
+    "endTime": "2024-01-18T16:31:12Z",
+    "graphEndTime": "2024-01-18T17:46:48Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphStepSeconds": 144,
+    "category": "SQL",
+    "defaultSettings": {
+      "aggregatedValueFunction": "AVG",
+      "returnAggregatedValue": false,
+      "splitCount": 0,
+      "splitMode": "NONE",
+      "splitType": "NONE"
+    },
+    "mainGraphs": [
+      {
+        "filters": {
+          "queryId": [
+            "100"
+          ],
+          "dbId": [
+            "1234"
+          ],
+          "universeUuid": [
+            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+          ]
+        },
+        "name": "query_latency"
+      }
+    ],
+    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Load increase",
+        "possibleCauseDescription": "RPS for this query or overall RPS increased significantly and DB is not able to process increased load",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "dbId": [
+                    "1234"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "query_rps"
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "ysql_server_rpc_per_second"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Response size or queried tables sizes increased significantly",
+        "possibleCauseDescription": "DB have to process more data to process each request, hence latency grows",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Average Rows graph for the query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "dbId": [
+                    "1234"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "query_rows_avg"
+              }
+            ]
+          },
+          {
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Query execution plan changed",
+        "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal queues contention",
+        "possibleCauseDescription": "RPC queues are growing and DB is not able to process all the requests on time. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPC Queue Size graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "tserver_rpc_queue_size_tserver"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Resource contention",
+        "possibleCauseDescription": "DB nodes face CPU, Memory or Disk IOPS/throughput limits. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "cpu_usage"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "disk_iops"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "disk_bytes_per_second_per_node"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "lsm_rocksdb_memory_rejections"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Infra issues",
+        "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check network latency between the DB nodes"
+          },
+          {
+            "recommendation": "Check all DB nodes are up and running"
+          },
+          {
+            "recommendation": "Check Network graphs for anomaly"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Clock skew increased",
+        "possibleCauseDescription": "DB nodes clock became out of sync, which slows down queries processing",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Clock Skew graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "node_clock_skew"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_tserver"
+              },
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_ysql"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "title": "SQL query latency increase detected",
+    "type": "SQL_QUERY_LATENCY_INCREASE",
+    "startTime": "2024-01-18T15:40:48Z",
+    "summary": "Latencies increased for query 'select * from some_table' in database 'yugabyte'",
+    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+  },
+  {
+    "affectedNodes": [
+      {
+        "name": "node3"
+      }
+    ],
+    "endTime": "2024-01-18T17:21:36Z",
+    "graphEndTime": "2024-01-18T18:51:36Z",
+    "graphStartTime": "2024-01-18T15:00:00Z",
+    "graphStepSeconds": 144,
+    "category": "SQL",
+    "defaultSettings": {
+      "aggregatedValueFunction": "AVG",
+      "returnAggregatedValue": false,
+      "splitCount": 0,
+      "splitMode": "NONE",
+      "splitType": "NONE"
+    },
+    "mainGraphs": [
+      {
+        "filters": {
+          "queryId": [
+            "100"
+          ],
+          "dbId": [
+            "4321"
+          ],
+          "universeUuid": [
+            "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+          ]
+        },
+        "name": "query_latency"
+      }
+    ],
+    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Load increase",
+        "possibleCauseDescription": "RPS for this query or overall RPS increased significantly and DB is not able to process increased load",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "dbId": [
+                    "4321"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "query_rps"
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "ysql_server_rpc_per_second"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Response size or queried tables sizes increased significantly",
+        "possibleCauseDescription": "DB have to process more data to process each request, hence latency grows",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Average Rows graph for the query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "dbId": [
+                    "4321"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "query_rows_avg"
+              }
+            ]
+          },
+          {
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Query execution plan changed",
+        "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal queues contention",
+        "possibleCauseDescription": "RPC queues are growing and DB is not able to process all the requests on time. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPC Queue Size graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "tserver_rpc_queue_size_tserver"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Resource contention",
+        "possibleCauseDescription": "DB nodes face CPU, Memory or Disk IOPS/throughput limits. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "cpu_usage"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "disk_iops"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "disk_bytes_per_second_per_node"
+              },
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "lsm_rocksdb_memory_rejections"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Infra issues",
+        "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check network latency between the DB nodes"
+          },
+          {
+            "recommendation": "Check all DB nodes are up and running"
+          },
+          {
+            "recommendation": "Check Network graphs for anomaly"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Clock skew increased",
+        "possibleCauseDescription": "DB nodes clock became out of sync, which slows down queries processing",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Clock Skew graph",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "node_clock_skew"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_tserver"
+              },
+              {
+                "filters": {
+                  "queryId": [
+                    "100"
+                  ],
+                  "universeUuid": [
+                    "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+                  ]
+                },
+                "name": "active_session_history_ysql"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "title": "SQL query latency increase detected",
+    "type": "SQL_QUERY_LATENCY_INCREASE",
+    "startTime": "2024-01-18T16:21:36Z",
+    "summary": "Latencies increased for query 'select * from some_table' in database 'postgres'",
+    "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
+  }
+]

@@ -1,0 +1,18 @@
+#----------------------------------------------------------------------
+#
+# pg_yb_migration.dat
+#    Initial contents of the pg_yb_migration system catalog.
+#
+# Copyright (c) YugaByte, Inc.
+#
+# src/include/catalog/pg_yb_migration.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+# For better version control conflict detection, list latest migration filename
+# here: V50__22040__yb_restart_commit_ht_in_pg_replication_slots.sql
+{ major => '50', minor => '0', name => '<baseline>', time_applied => '_null_' }
+
+]

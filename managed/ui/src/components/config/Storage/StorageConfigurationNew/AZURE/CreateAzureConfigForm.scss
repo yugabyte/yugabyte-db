@@ -1,0 +1,56 @@
+.multi-region-disabled-fields {
+  display: flex;
+  grid-gap: 10px;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+
+  .field-container {
+    width: 540px;
+  }
+
+  .field-bucket {
+    width: 180px;
+  }
+
+  .form-item-label {
+    font-weight: 100 !important;
+  }
+}
+
+.multi-region-enabled {
+  &.with-border.az {
+    width: 1255px !important;
+  }
+}
+
+.multi-region-enabled-fields.az {
+  .field-container {
+    width: 350px !important;
+  }
+
+  .field-bucket {
+    width: 180px !important;
+  }
+}
+
+.az-bucket-label {
+  height: 90px;
+  display: flex;
+  align-items: center;
+}
+
+.multi-region-enabled,
+.multi-region-disabled-fields {
+  .divider {
+    color: #67666c;
+    width: 2px;
+    height: 22px;
+    top: 30px;
+    position: relative;
+
+    &.lean {
+      transform: rotate(15deg);
+    }
+  }
+}

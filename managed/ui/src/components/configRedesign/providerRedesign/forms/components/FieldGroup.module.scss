@@ -1,0 +1,25 @@
+@use '../../../../../_style/colors.scss';
+
+.groupContainer {
+  border: 1px solid colors.$YB_FORM_GROUP_BORDER;
+  border-radius: 8px;
+
+  .header {
+    display: flex;
+    align-items: center;
+
+    height: 52px;
+    padding: 0 20px;
+
+    background: colors.$YB_FORM_GROUP_HEADING_BACKGROUND;
+    border-bottom: 1px solid colors.$YB_FORM_GROUP_BORDER;
+    border-radius: 4px 4px 0px 0px;
+
+    .accessories {
+      margin-left: auto;
+    }
+  }
+  .childrenContainer {
+    padding: 34px;
+  }
+}

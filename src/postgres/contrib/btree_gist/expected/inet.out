@@ -1,0 +1,101 @@
+-- inet check
+CREATE TABLE inettmp (a inet);
+\copy inettmp from 'data/inet.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM inettmp WHERE a <  '89.225.196.191';
+ count 
+-------
+   213
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a <= '89.225.196.191';
+ count 
+-------
+   214
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a >= '89.225.196.191';
+ count 
+-------
+   387
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a >  '89.225.196.191';
+ count 
+-------
+   386
+(1 row)
+
+CREATE INDEX inetidx ON inettmp USING gist ( a );
+SET enable_seqscan=off;
+SELECT count(*) FROM inettmp WHERE a <  '89.225.196.191'::inet;
+ count 
+-------
+   213
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a <= '89.225.196.191'::inet;
+ count 
+-------
+   214
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191'::inet;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a >= '89.225.196.191'::inet;
+ count 
+-------
+   387
+(1 row)
+
+SELECT count(*) FROM inettmp WHERE a >  '89.225.196.191'::inet;
+ count 
+-------
+   386
+(1 row)
+
+VACUUM ANALYZE inettmp;
+-- gist_inet_ops lacks a fetch function, so this should not be index-only scan
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191'::inet;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Aggregate
+   ->  Index Scan using inetidx on inettmp
+         Index Cond: (a = '89.225.196.191'::inet)
+(3 rows)
+
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191'::inet;
+ count 
+-------
+     1
+(1 row)
+
+DROP INDEX inetidx;
+CREATE INDEX ON inettmp USING gist (a gist_inet_ops, a inet_ops);
+-- this can be an index-only scan, as long as the planner uses the right column
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191'::inet;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using inettmp_a_a1_idx on inettmp
+         Index Cond: (a = '89.225.196.191'::inet)
+(3 rows)
+
+SELECT count(*) FROM inettmp WHERE a  = '89.225.196.191'::inet;
+ count 
+-------
+     1
+(1 row)
+

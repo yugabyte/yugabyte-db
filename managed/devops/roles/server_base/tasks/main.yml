@@ -1,0 +1,22 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# Machine either needs internet access or needs packages to be passed in
+- assert:
+    that: not air_gap or local_package_path is defined
+
+# If we are provisioning a cluster-server, local_package_path must be defined
+- assert:
+    that: local_package_path is defined
+  when: server_type is defined and server_type == "cluster-server"
+
+- include: server_base_linux.yml
+  when: >
+    ansible_os_family == "Debian" or
+    ansible_os_family == "RedHat" or
+    ansible_os_family == "Suse"

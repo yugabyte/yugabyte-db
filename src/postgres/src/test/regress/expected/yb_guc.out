@@ -1,0 +1,356 @@
+-- Check transaction priority bounds.
+set log_error_verbosity = default;
+-- Values should be in interval [0,1] (inclusive).
+-- Invalid values.
+set yb_transaction_priority_upper_bound = 2;
+ERROR:  2 is outside the valid range for parameter "yb_transaction_priority_upper_bound" (0 .. 1)
+set yb_transaction_priority_lower_bound = -1;
+ERROR:  -1 is outside the valid range for parameter "yb_transaction_priority_lower_bound" (0 .. 1)
+-- Valid values.
+set yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_lower_bound = 0;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_lower_bound = 0.3;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_upper_bound = 0.7;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+-- Lower bound should be less or equal to upper bound.
+-- Invalid values.
+set yb_transaction_priority_upper_bound = 0.2;
+ERROR:  invalid value for parameter "yb_transaction_priority_upper_bound": 0.2
+DETAIL:  must be greater than or equal to yb_transaction_priority_lower_bound (0.300000).
+set yb_transaction_priority_lower_bound = 0.8;
+ERROR:  invalid value for parameter "yb_transaction_priority_lower_bound": 0.8
+DETAIL:  must be less than or equal to yb_transaction_priority_upper_bound (0.700000).
+-- Valid values.
+set yb_transaction_priority_upper_bound = 0.3;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_upper_bound = 0.6;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_lower_bound = 0.6;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+-- Test yb_fetch_row_limit
+set yb_fetch_row_limit = 100;
+show yb_fetch_row_limit;
+ yb_fetch_row_limit
+--------------------
+ 100
+(1 row)
+
+set yb_fetch_row_limit = -1;  -- ERROR since yb_fetch_row_limit must be non-negative.
+ERROR:  -1 is outside the valid range for parameter "yb_fetch_row_limit" (0 .. 2147483647)
+-- Test yb_fetch_size_limit
+set yb_fetch_size_limit = '2MB';
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 2MB
+(1 row)
+
+set yb_fetch_size_limit = 789;
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 789B
+(1 row)
+
+set yb_fetch_size_limit = 2048;
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 2kB
+(1 row)
+
+set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.
+ERROR:  -1 is outside the valid range for parameter "yb_fetch_size_limit" (0 .. 2147483647)
+-- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
+CREATE TABLE test_scan (i int, j int);
+CREATE INDEX NONCONCURRENTLY ON test_scan (j);
+-- Don't add (costs off) to EXPLAIN to be able to see when disable_cost=1.0e10
+-- is added.
+set yb_enable_bitmapscan = on;
+set enable_seqscan = on;
+set enable_indexscan = on;
+set enable_indexonlyscan = on;
+set enable_bitmapscan = on;
+EXPLAIN SELECT * FROM test_scan;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=8)
+(1 row)
+
+EXPLAIN SELECT * FROM test_scan WHERE j = 1;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Index Scan using test_scan_j_idx on test_scan  (cost=0.00..5.22 rows=10 width=8)
+   Index Cond: (j = 1)
+(2 rows)
+
+EXPLAIN SELECT j FROM test_scan;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=4)
+(1 row)
+
+set enable_seqscan = on;
+set enable_indexscan = off;
+set enable_bitmapscan = off;
+EXPLAIN SELECT * FROM test_scan;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=8)
+(1 row)
+
+EXPLAIN SELECT * FROM test_scan WHERE j = 1;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_scan  (cost=0.00..102.50 rows=1000 width=8)
+   Storage Filter: (j = 1)
+(2 rows)
+
+EXPLAIN SELECT j FROM test_scan;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=4)
+(1 row)
+
+set enable_seqscan = off;
+set enable_indexscan = off;
+set enable_bitmapscan = off;
+EXPLAIN SELECT * FROM test_scan;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=8)
+(1 row)
+
+EXPLAIN SELECT * FROM test_scan WHERE j = 1;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Index Scan using test_scan_j_idx on test_scan  (cost=10000000000.00..10000000005.23 rows=10 width=8)
+   Index Cond: (j = 1)
+(2 rows)
+
+EXPLAIN SELECT j FROM test_scan;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
+(1 row)
+
+set enable_seqscan = off;
+set enable_indexscan = on;
+set enable_bitmapscan = off;
+EXPLAIN SELECT * FROM test_scan;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=8)
+(1 row)
+
+EXPLAIN SELECT * FROM test_scan WHERE j = 1;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Index Scan using test_scan_j_idx on test_scan  (cost=0.00..5.22 rows=10 width=8)
+   Index Cond: (j = 1)
+(2 rows)
+
+EXPLAIN SELECT j FROM test_scan;
+                                        QUERY PLAN
+-------------------------------------------------------------------------------------------
+ Index Only Scan using test_scan_j_idx on test_scan  (cost=0.00..114.00 rows=1000 width=4)
+(1 row)
+
+set enable_seqscan = off;
+set enable_indexscan = off;
+set enable_bitmapscan = on;
+EXPLAIN SELECT * FROM test_scan;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=8)
+(1 row)
+
+EXPLAIN SELECT * FROM test_scan WHERE j = 1;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_scan  (cost=3.38..7.50 rows=10 width=8)
+   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..3.38 rows=10 width=0)
+         Index Cond: (j = 1)
+(3 rows)
+
+EXPLAIN SELECT j FROM test_scan;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_scan  (cost=300.25..314.25 rows=1000 width=4)
+   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..300.00 rows=1000 width=0)
+(2 rows)
+
+set enable_indexonlyscan = off;
+EXPLAIN SELECT j FROM test_scan;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
+(1 row)
+
+-- Show transaction priority. As it is not possible to have a deterministic
+-- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
+-- yb_transaction_priority_upper_bound to be the same, which forces
+-- yb_transaction_priority to be equal to those two.
+set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_upper_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
+show yb_transaction_priority;
+          yb_transaction_priority
+-------------------------------------------
+ 0.400000000 (Normal priority transaction)
+(1 row)
+
+COMMIT;
+-- Trying to set yb_transaction_priority will be an error
+set yb_transaction_priority = 0.3; -- ERROR
+ERROR:  parameter "yb_transaction_priority" cannot be changed
+-- High priority transaction
+set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_upper_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+ i | j
+---+---
+ 1 | 1
+(1 row)
+
+show yb_transaction_priority;
+         yb_transaction_priority
+-----------------------------------------
+ 0.400000000 (High priority transaction)
+(1 row)
+
+COMMIT;
+-- Highest priority transaction
+set yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+set yb_transaction_priority_lower_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+ i | j
+---+---
+ 1 | 1
+(1 row)
+
+show yb_transaction_priority;
+   yb_transaction_priority
+------------------------------
+ Highest priority transaction
+(1 row)
+
+COMMIT;
+-- Showing yb_transaction_priority outside a transaction block
+show yb_transaction_priority;
+          yb_transaction_priority
+-------------------------------------------
+ 0.000000000 (Normal priority transaction)
+(1 row)
+
+-- SET LOCAL is restricted by a function SET option
+create or replace function myfunc(int) returns text as $$
+begin
+  set local work_mem = '2MB';
+  return current_setting('work_mem');
+end $$
+language plpgsql
+set work_mem = '1MB';
+select myfunc(0), current_setting('work_mem');
+ myfunc | current_setting
+--------+-----------------
+ 2MB    | 4MB
+(1 row)
+
+-- test SET unrecognized parameter
+SET foo = false;  -- no such setting
+ERROR:  unrecognized configuration parameter "foo"
+-- test setting a parameter with a registered prefix (plpgsql)
+SET plpgsql.extra_foo_warnings = false;  -- no such setting
+WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
+DETAIL:  "plpgsql" is a reserved prefix.
+SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+ plpgsql.extra_foo_warnings
+----------------------------
+ false
+(1 row)
+
+-- test temp_file_limit default
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ 1GB
+(1 row)
+
+-- test temp_File_limit update
+SET temp_file_limit="100MB";
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ 100MB
+(1 row)
+
+SET temp_file_limit=-1;
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ -1
+(1 row)
+
+-- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
+SET SESSION AUTHORIZATION yb_db_admin;
+SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ origin
+(1 row)
+
+SET session_replication_role TO replica;
+SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ replica
+(1 row)
+
+RESET session_replication_role;
+SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ origin
+(1 row)
+
+-- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
+SET track_functions TO TRACK_FUNC_PL;
+ERROR:  permission denied to set parameter "track_functions"
+RESET track_functions;
+ERROR:  permission denied to set parameter "track_functions"
+-- cleanup
+RESET foo;
+ERROR:  unrecognized configuration parameter "foo"
+RESET plpgsql.extra_foo_warnings;
+WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
+DETAIL:  "plpgsql" is a reserved prefix.
+RESET yb_enable_bitmapscan;

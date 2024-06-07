@@ -1,0 +1,13 @@
+#----------------------------------------------------------------------
+#
+# pg_yb_tablegroup.dat
+#    Initial contents of the pg_tablegroup system catalog.
+#
+# Copyright (c) YugaByte, Inc.
+#
+# src/include/catalog/pg_yb_tablegroup.dat
+#
+#----------------------------------------------------------------------
+
+[
+]

@@ -1,0 +1,261 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/mixins.scss';
+@use '../../../../_style/variables.scss';
+
+.side-nav-container {
+  top: 60px;
+  bottom: 0;
+  z-index: 1040;
+  position: fixed;
+  width: variables.$YB_SIDEBAR_WIDTH;
+  min-height: 322px;
+  background: colors.$YB_VIOLET;
+}
+
+/* From gentelella.css need to cleanup */
+.site_title i {
+  border: 1px solid #eaeaea;
+  padding: 5px 6px;
+  border-radius: 50%;
+}
+
+.left_col .mCSB_scrollTools {
+  width: 6px;
+}
+.left_col .mCSB_dragger {
+  max-height: 400px !important;
+}
+
+.main-menu-side {
+  padding: 0;
+}
+
+.main-menu span.fa {
+  float: right;
+  text-align: center;
+  margin-top: 5px;
+  font-size: 10px;
+  min-width: inherit;
+  color: #c4cfda;
+}
+
+.main-menu .fa {
+  width: 26px;
+  opacity: 0.99;
+  display: inline-block;
+  font-family: FontAwesome;
+  font-style: normal;
+  font-weight: normal;
+  font-size: 18px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.nav.side-menu {
+  & > li {
+    position: relative;
+    display: block;
+
+    & > a,
+    & > div {
+      cursor: pointer;
+      text-align: center !important;
+      font-weight: 300;
+      font-size: 13px;
+      padding: 14px 5px;
+      letter-spacing: -0.025em;
+
+      i {
+        font-size: 25px;
+        text-align: center;
+        margin-bottom: 5px;
+        display: block;
+        margin: 0 auto 5px auto;
+
+        &.toggle-up {
+          display: none !important;
+        }
+      }
+
+      @media screen and (max-height: 610px) {
+        span {
+          display: none;
+        }
+      }
+
+      @media screen and (max-height: 460px) {
+        margin: 0 !important;
+
+        i {
+          font-size: 18px;
+          margin: 0 auto !important;
+        }
+      }
+
+      & {
+        color: #fff;
+        font-weight: 500 !important;
+
+        i {
+          color: colors.$YB_SIDEBAR_ICON;
+        }
+      }
+
+      &,
+      &:focus {
+        background: transparent;
+
+        i,
+        span {
+          transition: inherit;
+        }
+      }
+
+      &:hover {
+        transition: none;
+        background: colors.$YB_VIOLET_DARK;
+        text-decoration: none;
+        color: colors.$YB_SIDEBAR_TEXT_HOVER;
+
+        i,
+        span {
+          transition: inherit;
+        }
+
+        i {
+          color: colors.$YB_SIDEBAR_ICON_HOVER;
+        }
+      }
+    }
+
+    & > div {
+      cursor: no-drop;
+
+      &,
+      &:hover,
+      &:focus,
+      &:active {
+        color: colors.$YB_SIDEBAR_ICON;
+        background: transparent;
+        font-weight: 500 !important;
+        background: colors.$YB_VIOLET_DARK;
+
+        i {
+          color: colors.$YB_SIDEBAR_ICON;
+          opacity: 0.7;
+        }
+      }
+    }
+
+    &.active {
+      & > a {
+        &,
+        &:hover {
+          text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
+          color: #fff;
+          background: colors.$YB_SIDEBAR_ACTIVE;
+
+          i {
+            color: #fff;
+          }
+        }
+      }
+    }
+    & > a[aria-expanded='true'] {
+      background: colors.$YB_SIDEBAR_ACTIVE;
+    }
+  }
+}
+
+.nav > li > a:focus {
+  text-decoration: none;
+}
+
+.nav.child_menu > li > a {
+  color: #ddd;
+  font-weight: 500;
+
+  i {
+    color: colors.$YB_VIOLET_TEXT;
+  }
+}
+
+.menu_section {
+  margin-bottom: 35px;
+  h3 {
+    padding-left: 23px;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: bold;
+    font-size: 11px;
+    margin-bottom: 0;
+    margin-top: 0;
+    text-shadow: 1px 1px #000;
+  }
+  > ul {
+    margin-top: 10px;
+  }
+}
+
+.yb-nav-bar .menu_section {
+  margin: 0;
+}
+.yb-nav-bar span.fa,
+.yb-nav-bar .menu_section h3 {
+  display: none;
+}
+
+.position-bottom {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  .dropdown-menu {
+    left: 75px;
+    min-width: 250px;
+    bottom: calc(100% - 2px);
+    text-align: left;
+  }
+}
+.nav.side-menu.position-bottom > li > a {
+  padding-top: 20px;
+  i {
+    width: 24px;
+    height: 24px;
+    font-size: 22px !important;
+    line-height: 24px;
+    color: #fff;
+    display: block;
+    border-radius: 18px;
+    margin: 0 auto;
+    top: -5px;
+    position: relative;
+    background-color: colors.$YB_ORANGE;
+
+    @media screen and (max-height: 460px) {
+      width: 20px;
+      height: 20px;
+      font-size: 18px !important;
+      line-height: 22px;
+    }
+  }
+}
+
+#help-dropdown {
+  .caret {
+    display: none;
+  }
+  & + ul {
+    overflow: hidden;
+    h4 {
+      padding: 20px 22px 10px 22px;
+    }
+    object {
+      display: inline-block;
+      margin-right: 20px;
+      vertical-align: middle;
+    }
+  }
+}

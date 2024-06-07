@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -euo pipefail
+# Redirect stderr to syslog.
+exec 2> >(logger -t $(basename $0))
+
+readonly MOUNT_PATHS=({{ mount_paths }})
+readonly EXPECTED_USERNAME=({{ user_name }})
+readonly CORES_DIR=({{ yb_cores_dir }})
+{% raw %}
+readonly NUM_MOUNTS=${#MOUNT_PATHS[@]}
+{% endraw %}
+
+if ! [ -f /.dockerenv ] && [ "$(whoami)" != "$EXPECTED_USERNAME" ]; then
+  echo "Script must be run as user: $EXPECTED_USERNAME"
+  exit -1
+fi
+
+print_help() {
+  cat <<EOT
+Usage: ${0##*/} <daemon> <command> OR
+       ${0##*/} clean-instance
+Daemons:
+  master
+  tserver
+  controller
+Commands:
+  create        - Start the YB process on this node in cluster creation node (only applicable for
+                  master)
+  status        - Report the status of the YB process
+  start         - Start the YB daemon on this node
+  stop          - Stop the YB daemon on this node
+  clean         - Remove all daemon data from this node
+  clean-no-conf - Remove all daemon data from this node, except configurations
+  clean-logs    - Remove all daemon logs
+  -h, --help    - Show usage
+EOT
+}
+
+check_pid_file() {
+  if [[ ! -f ${daemon_pid_file} ]]; then
+    print_err_out "Error: PID file does not exist: ${daemon_pid_file}, process is "\
+      "probably not running"
+    exit 1
+  fi
+}
+
+exit_on_running() {
+  if [[ $(check_running) -eq 0 ]]; then
+    print_err_out "yb-$daemon already running"
+    exit 0
+  fi
+}
+
+NO_PID_FILE=200
+# arg1 [OPTIONAL]: proc_pid -- the PID of the process, else, defaults to contents of daemon_pid_file
+check_running() {
+  set +e
+  custom_proc_pid=${1:-}
+  proc_pid=$custom_proc_pid
+  if [[ -z $proc_pid ]]; then
+    proc_pid=$(cat ${daemon_pid_file} 2>/dev/null)
+    if [[ $? -ne 0 ]]; then
+      echo $NO_PID_FILE
+      return
+    fi
+  fi
+  set -e
+  kill -0 "$proc_pid" 2>/dev/null
+  kill_outcome=$?
+  # Workaround race condition between:
+  # 1) cron checking the file exists and succeeding
+  # 2) stop deleting the PID file and stopping the process
+  # 3) cron then trying to kill and cat the file, failing and then restarting the daemon
+  # If we searched for a PID file above and then we couldn't find a process to kill, then check if
+  # the PID file still exists:
+  # - No, then return 0 so we do not restart the process
+  # - Yes, then default to outcome of kill command.
+  if [[ $kill_outcome -ne 0 ]] && [[ -z $custom_proc_pid ]] && [[ ! -f ${daemon_pid_file} ]]; then
+    echo 0
+  else
+    echo $kill_outcome
+  fi
+}
+
+get_pid() {
+  cat ${daemon_pid_file}
+}
+
+print_err_out() {
+  echo $1 | tee /dev/stderr
+}
+
+# arg1: pid_to_wait_for -- the PID of the process to wait for
+wait_pid() {
+  pid_to_wait_for=$1
+  end_time=$(($SECONDS + 10))
+  while [[ $SECONDS -lt $end_time ]]; do
+    if [[ $(check_running "$pid_to_wait_for") -eq 1 ]]; then
+      break
+    fi
+    print_err_out "Waiting on PID: $pid_to_wait_for"
+    sleep 1
+  done
+}
+
+wait_for_dir_or_exit() {
+  local dir_to_check=$1
+  local end_time=$(($SECONDS + 10))
+  while [[ $SECONDS -lt $end_time ]]; do
+    if test -d $dir_to_check;
+    then
+      return
+    else
+      echo "Waiting for $dir_to_check dir..."
+      sleep 1
+    fi
+  done
+  # Exit if the directory never appeared.
+  exit 1
+}
+
+clean_data_paths() {
+  clean_conf_arg=${1:-true}
+
+  set -x
+  for (( i=0; i<NUM_MOUNTS; ++i ))
+  do
+    rm -rf "${MOUNT_PATHS[i]}"/yb-data/$daemon
+    # Only the tserver creates and accesses the pg_data directory, so it
+    # should be cleaned only when the tserver files are cleaned.
+    if [ "$daemon" == "tserver" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/pg_data
+    fi
+
+    if [ "$daemon" == "controller" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/ybc-data
+    fi
+  done
+
+  print_err_out "Cleaning core files on `hostname`"
+  # Need / at the end due to symlinks
+  rm -rf "${CORES_DIR}"/
+
+  if $clean_conf_arg;
+  then
+    print_err_out "Cleaning data for $daemon on `hostname`"
+    rm -rf "{{ yb_home_dir }}"/$daemon
+  else
+    print_err_out "Cleaning data for $daemon on `hostname`, excluding configuration"
+    # Also exclude the logs symlink as we need that to exist so we drop the PID file properly.
+    find "{{ yb_home_dir }}/$daemon" -type l ! -path "*logs" | xargs rm
+  fi
+}
+
+# Collect the postmaster pids from the postmaster.pid file under pg_data dir to
+# the global array postmaster_pids.
+collect_postmaster_pids() {
+  postmaster_pids=()
+  for mnt in "${MOUNT_PATHS[@]}";
+  do
+    local postmaster_pid_file="${mnt}/pg_data/postmaster.pid"
+    if [[ -f "$postmaster_pid_file" ]]; then
+      read -r line < "${postmaster_pid_file}"
+      postmaster_pids+=("$line")
+    fi
+  done
+}
+
+# Given the collected postmaster_pids, send SIGKILL to all of the postgres processed
+# including postmaster and all of its child processes.
+hard_kill_postgres() {
+{% raw %}
+  [[ ${#postmaster_pids[@]} -eq 0 ]] && return
+{% endraw %}
+  for postmaster_pid in "${postmaster_pids[@]}";
+  do
+    if [[ ${postmaster_pid} =~ ^[0-9]+$ ]]; then
+      local pg_pids=()
+      # In case of the ps command returning nothing, it returns as an error.
+      # The output of the ps command is required to have no padding for easy parsing.
+      # To ensure this, the pid column is explicitly width controlled via "pid:1".
+      set +e
+      mapfile -t pg_pids < <(ps --no-headers -p "${postmaster_pid}" --ppid "${postmaster_pid}" \
+        -o pid:1)
+      set -e
+
+      if [[ -n ${pg_pids:-} ]]; then
+        for pg_pid in "${pg_pids[@]}";
+        do
+          if [[ ${pg_pid} =~ ^[0-9]+$ ]]; then
+            print_err_out "Killing postgres PID: ${pg_pid}..."
+            # set +e in case of the pg_pid is not alive, the kill returns as an error.
+            set +e
+            kill -KILL "${pg_pid}"
+            set -e
+          else
+            print_err_out "Found invalid Postgres PID: ${pg_pid}. Skipped."
+          fi
+        done
+      fi
+    else
+      print_err_out "Found invalid Postmaster PID: ${postmaster_pid}. Skipped."
+    fi
+  done
+}
+
+command=""
+daemon=""
+case "$1" in
+  -h|--help)
+    print_help
+    exit 0
+  ;;
+  *)
+esac
+
+if [ "$1" == "clean-instance" ]; then
+  print_err_out "Cleaning instance `hostname`"
+  pushd "{{ yb_home_dir }}"
+  # Delete all except hidden files and folders, current directory, bin and node-agent.
+  find . -maxdepth 1 -not -path "*/\.*" -not -name "." -not -name "bin" -not -name "node-agent" -exec rm -rf {} +
+  popd
+  # Delete the bin folder last.
+  rm -rf "{{ yb_home_dir }}/.yugabytedb" "{{ yb_home_dir }}/bin"
+  exit 0
+fi
+
+daemon=${1:-}
+command=${2:-}
+
+# Check if we have a valid daemon and command.
+if [ -z "$command" ] || [ -z "$daemon" ] ; then
+  echo "No valid daemon/command specified."
+  print_help
+  exit 1
+fi
+
+case "$daemon" in
+  master)
+  ;;
+  tserver)
+    if [ "$command" == "create" ]; then
+      echo "create command is not valid for tserver"
+      exit 1
+    fi
+  ;;
+  controller)
+    if [ "$command" == "create" ]; then
+      echo "create command is not valid for controller"
+      exit 1
+    fi
+  ;;
+  *)
+    echo "Invalid Daemon: $daemon"
+    print_help
+    exit 1
+esac
+
+daemon_home="{{ yb_home_dir }}/$daemon"
+daemon_logs_dir="$daemon_home/logs"
+if [[ $daemon == controller ]]; then
+  daemon_binary="$daemon_home/bin/yb-$daemon-server"
+else
+  daemon_binary="$daemon_home/bin/yb-$daemon"
+fi
+daemon_conf="$daemon_home/conf/server.conf"
+daemon_pid_file="$daemon_logs_dir/yb-$daemon.pid"
+
+case "$command" in
+  create|start)
+    create_option=""
+    start_mode=""
+    if [[ "$command" == "create" ]]; then
+      create_option="--create_cluster"
+      start_mode="with create_cluster option"
+    fi
+    exit_on_running
+    print_err_out "Starting yb-$daemon on `hostname` $start_mode"
+
+    # Before starting the process, make sure clock is synchronized.
+    clock_sync_script="{{ yb_home_dir }}/bin/clock-sync.sh"
+    # Check if clock-sync.sh script exists and is executable before executing
+    if [[ -x "$clock_sync_script" ]]; then
+      "$clock_sync_script"
+    fi
+
+    # We need all three file descriptors closed so SSH connections running this do not hang!
+    nohup ${daemon_binary} $create_option --flagfile ${daemon_conf} \
+      >>"$daemon_home/${daemon}.out" 2>>"$daemon_home/${daemon}.err" </dev/null &
+    # Save pid to file after waiting for log dir to show up.
+    daemon_pid=$!
+    wait_for_dir_or_exit $daemon_logs_dir
+    echo $daemon_pid > $daemon_pid_file
+  ;;
+  status)
+    if [[ $(check_running) -ne 0 ]]; then
+      echo "yb-$daemon is not running"
+      exit 1
+    fi
+    echo "yb-$daemon running with pid $(get_pid)"
+  ;;
+  cron-check)
+  # Hidden option only used by crons to check status of the process. We want the following behavior
+  # from crons:
+  # 1. If the process was never started/created, don't try to start the process.
+  # 2. If the process was explicitly stopped, don't try to to start the process.
+  # As a result, this means that the cron should try to start the process only if the pid file
+  # exists and the process is down. Therefore, if this check sees that we don't have a pid file, it
+  # should just return 0 indicating to the cron that all is well.
+    yb_status=$(check_running)
+    if [[ $yb_status -eq $NO_PID_FILE ]]; then
+      exit 0
+    fi
+    exit $yb_status
+  ;;
+  stop)
+    print_err_out "Stopping yb-$daemon on `hostname`"
+    # Saving PID and deleting before KILL, to prevent race conditions with cron-check.
+    daemon_pid=$(cat ${daemon_pid_file} || true)
+    rm -f ${daemon_pid_file}
+
+    if [[ $(check_running "${daemon_pid}") -ne 0 ]]; then
+      print_err_out "Process isn't running! Nothing to do"
+      exit 0
+    fi
+
+    kill -TERM "$daemon_pid"
+    wait_pid "$daemon_pid"
+
+    if [[ $(check_running) -eq 0 ]]; then
+      print_err_out "yb-$daemon is still running, using SIGKILL"
+      kill -KILL "$daemon_pid"
+    fi
+
+    if [[ $daemon == "tserver" ]]; then
+      # Grace period for normal shutdown
+      sleep 1s
+
+      postmaster_pids=()
+      collect_postmaster_pids
+
+      # If PG exited normally, stop immediately.
+{% raw %}
+      if [[ ${#postmaster_pids[@]} -eq 0 ]]; then
+        echo "Postmaster exited. Stopped."
+        exit 0
+      fi
+{% endraw %}
+
+      print_err_out "Found postmaster PIDs: ${postmaster_pids[*]}"
+
+      # Grace period for a real hung PG process
+      wait_sec='30s'
+      echo "Wait for ${wait_sec}..."
+      sleep ${wait_sec}
+
+      collect_postmaster_pids
+      hard_kill_postgres
+    fi
+    echo "Stopped."
+  ;;
+  clean)
+    print_err_out "Cleaning all mount paths for $daemon on `hostname`"
+    clean_data_paths true
+  ;;
+  clean-no-conf)
+    print_err_out "Cleaning all mount paths for $daemon on `hostname`, except configuration data"
+    clean_data_paths false
+  ;;
+  clean-logs)
+    print_err_out "Cleaning $daemon logs data on `hostname`"
+    (
+      set -x
+      rm -rf "${daemon_logs_dir}"/*
+    )
+  ;;
+  *)
+    echo "Invalid command: $command"
+    print_help
+    exit 1
+esac

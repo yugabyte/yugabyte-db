@@ -1,0 +1,583 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+//
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.yb</groupId>
+  <artifactId>yb-parent</artifactId>
+  <version>0.8.84-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Yugabyte</name>
+
+  <description>
+    Yugabyte client, YBCli, CQL.
+  </description>
+
+  <!-- Properties Management -->
+  <properties>
+    <!-- Platform encoding override -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- Overriding this property allows us to put test results in a custom directory -->
+    <yb.surefire.reports.directory>${project.build.directory}/surefire-reports</yb.surefire.reports.directory>
+
+    <!-- Maven plugin versions -->
+    <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
+    <maven-assembly-plugin.version>3.3.0</maven-assembly-plugin.version>
+    <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
+    <maven-enforcer-plugin.version>3.0.0-M1</maven-enforcer-plugin.version>
+    <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+    <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
+    <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
+    <scala-maven-plugin.version>3.2.1</scala-maven-plugin.version>
+    <maven-javadoc-plugin.version>3.0.0</maven-javadoc-plugin.version>
+    <maven-dependency-plugin.version>3.0.2</maven-dependency-plugin.version>
+    <maven-clean-plugin.version>3.0.0</maven-clean-plugin.version>
+    <maven-s3-wagon.version>1.3.3</maven-s3-wagon.version>
+    <maven-source-plugin.version>3.0.1</maven-source-plugin.version>
+    <commons-codec.version>1.15</commons-codec.version>
+
+    <!-- Surefire / failsafe configuration -->
+    <testing.reuseForks>false</testing.reuseForks>
+    <testing.perCoreThreadCount>false</testing.perCoreThreadCount>
+    <testing.redirectTestOutputToFile>true</testing.redirectTestOutputToFile>
+
+    <!-- Phases for execution of certain plugins that we want to optionally disable -->
+    <assembly.execution.phase>install</assembly.execution.phase>
+    <maven-dependency-plugin.phase>prepare-package</maven-dependency-plugin.phase>
+
+    <!-- Library dependencies -->
+    <async.version>1.4.1</async.version>
+    <cassandra-driver-core.version>3.10.3-yb-2</cassandra-driver-core.version>
+    <spark-cassandra-connector.version>2.4-yb-4</spark-cassandra-connector.version>
+    <lz4.version>1.8.0</lz4.version>
+    <snappy.version>1.1.4</snappy.version>
+    <commons-cli.version>1.2</commons-cli.version>
+    <commons-io.version>2.15.1</commons-io.version>
+    <commons-lang3.version>3.6</commons-lang3.version>
+    <commons-math3.version>3.5</commons-math3.version>
+    <commons-text.version>1.3</commons-text.version>
+    <guava.version>30.1.1-jre</guava.version>
+    <hadoop.version>2.7.7</hadoop.version>
+    <jedis.version>2.9.0-yb-16</jedis.version>
+    <joda-time.version>2.9.3</joda-time.version>
+    <jsr305.version>3.0.1</jsr305.version>
+
+    <junit.groupId>junit</junit.groupId>
+    <junit.version>4.12</junit.version>
+
+    <mockito-inline.version>4.7.0</mockito-inline.version>
+    <murmur.version>1.0.0</murmur.version>
+    <netty-all.version>4.1.100.Final</netty-all.version>
+    <protobuf.version>3.21.7</protobuf.version>
+    <slf4j.version>1.7.32</slf4j.version>
+    <spark.version>2.4.8</spark.version>
+    <gson.version>2.8.9</gson.version>
+
+    <postgresql.jdbc.driver.version>42.5.1</postgresql.jdbc.driver.version>
+
+    <bouncycastle.version>1.69</bouncycastle.version>
+
+    <!-- Test configuration -->
+    <testdata.dir>target/testdata</testdata.dir>
+    <testArgLine>-enableassertions -Xmx3000m
+      -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
+      -Djava.awt.headless=true
+    </testArgLine>
+
+    <yb.collect.tests.only>false</yb.collect.tests.only>
+    <!-- By default we allow 32 minutes, slightly more than the 30 minutes inside JUnit. -->
+    <yb.forked.test.process.timeout.sec>1920</yb.forked.test.process.timeout.sec>
+  </properties>
+
+  <modules>
+    <module>interface-annotations</module>
+    <module>yb-client</module>
+    <module>yb-cli</module>
+    <module>yb-cql</module>
+    <module>yb-cql-4x</module>
+    <module>yb-pgsql</module>
+    <module>yb-loadtester</module>
+    <module>yb-jedis-tests</module>
+    <module>yb-cdc</module>
+    <module>yb-multiapi</module>
+    <module>yb-sample</module>
+    <module>yb-ysql-conn-mgr</module>
+  </modules>
+
+  <build>
+
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>${maven-enforcer-plugin.version}</version>
+          <configuration>
+            <rules>
+              <requireMavenVersion>
+                <version>[3.0.2,)</version>
+              </requireMavenVersion>
+              <requireJavaVersion>
+                <version>[1.8,)</version>
+              </requireJavaVersion>
+            </rules>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+          <configuration>
+            <failIfNoTests>false</failIfNoTests>
+            <reuseForks>${testing.reuseForks}</reuseForks>
+            <forkedProcessTimeoutInSeconds>${yb.forked.test.process.timeout.sec}</forkedProcessTimeoutInSeconds>
+            <argLine>${testArgLine}</argLine>
+            <reportsDirectory>${yb.surefire.reports.directory}</reportsDirectory>
+            <threadCount>1</threadCount>
+            <perCoreThreadCount>${testing.perCoreThreadCount}</perCoreThreadCount>
+            <redirectTestOutputToFile>${testing.redirectTestOutputToFile}</redirectTestOutputToFile>
+            <systemPropertyVariables>
+              <yb.collect.tests.only>${yb.collect.tests.only}</yb.collect.tests.only>
+              <yb.surefire.reports.directory>${yb.surefire.reports.directory}</yb.surefire.reports.directory>
+            </systemPropertyVariables>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-assembly-plugin</artifactId>
+          <version>${maven-assembly-plugin.version}</version>
+          <configuration>
+            <descriptorRefs>
+              <descriptorRef>jar-with-dependencies</descriptorRef>
+            </descriptorRefs>
+          </configuration>
+          <executions>
+            <execution>
+              <id>build-assembly</id>
+              <phase>${assembly.execution.phase}</phase>
+              <goals>
+                <goal>single</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>${maven-clean-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>${maven-source-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>${maven-javadoc-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${maven-dependency-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.xolstice.maven.plugins</groupId>
+          <artifactId>protobuf-maven-plugin</artifactId>
+          <version>${protobuf-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>${maven-antrun-plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>test-compile</phase>
+            <configuration>
+              <target>
+                <delete dir="${testdata.dir}"/>
+                <mkdir dir="${testdata.dir}"/>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <inherited>false</inherited>
+        <executions>
+          <execution>
+            <id>clean</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-clean</phase>
+          </execution>
+          <execution>
+            <id>default</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+          <execution>
+            <id>site</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-site</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.7.0</version>
+        <configuration>
+          <source>1.8</source>
+          <target>1.8</target>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven-jar-plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <maxmemory>2048m</maxmemory>
+          <notimestamp>true</notimestamp>
+          <name>User API</name>
+          <description>The YB Application Programmer's API</description>
+          <excludePackageNames>
+            com.google:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
+          </excludePackageNames>
+          <includeDependencySources>false</includeDependencySources>
+          <dependencySourceIncludes>
+            <dependencySourceInclude>
+              org.yb:interface-annotations
+            </dependencySourceInclude>
+          </dependencySourceIncludes>
+        </configuration>
+      </plugin>
+    </plugins>
+
+    <extensions>
+      <extension>
+        <groupId>com.github.seahen</groupId>
+        <artifactId>maven-s3-wagon</artifactId>
+        <version>${maven-s3-wagon.version}</version>
+     </extension>
+    </extensions>
+  </build>
+
+  <!--
+    The dependencyManagement section lists versions for dependencies so that we don't have to
+    include these versions in each of the child modules.
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-core_2.11</artifactId>
+        <version>${spark.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-sql_2.11</artifactId>
+        <version>${spark.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.code.gson</groupId>
+        <artifactId>gson</artifactId>
+        <version>${gson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-client</artifactId>
+        <version>0.8.84-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-cql</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-cql-4x</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-pgsql</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-cdc</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-sample</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+         <artifactId>logback-core</artifactId>
+        <version>1.2.10</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>1.2.10</version>
+      </dependency>
+      <dependency>
+        <groupId>${junit.groupId}</groupId>
+        <artifactId>junit</artifactId>
+        <version>${junit.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.shell</groupId>
+        <artifactId>spring-shell</artifactId>
+        <version>${spring.shell.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>${protobuf.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>${guava.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-all</artifactId>
+        <version>${netty-all.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-handler</artifactId>
+        <version>${netty-all.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.stumbleupon</groupId>
+        <artifactId>async</artifactId>
+        <version>${async.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sangupta</groupId>
+        <artifactId>murmur</artifactId>
+        <version>${murmur.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-io</groupId>
+        <artifactId>commons-io</artifactId>
+        <version>${commons-io.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.code.findbugs</groupId>
+        <artifactId>jsr305</artifactId>
+        <version>${jsr305.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.yugabyte</groupId>
+        <artifactId>cassandra-driver-core</artifactId>
+        <version>${cassandra-driver-core.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>${lz4.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xerial.snappy</groupId>
+        <artifactId>snappy-java</artifactId>
+        <version>${snappy.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-text</artifactId>
+        <version>${commons-text.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>${commons-lang3.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-math3</artifactId>
+        <version>${commons-math3.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-cli</groupId>
+        <artifactId>commons-cli</artifactId>
+        <version>${commons-cli.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-codec</groupId>
+        <artifactId>commons-codec</artifactId>
+        <version>${commons-codec.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.yugabyte.spark</groupId>
+        <artifactId>spark-cassandra-connector_2.11</artifactId>
+        <version>${spark-cassandra-connector.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.yugabyte</groupId>
+        <artifactId>jedis</artifactId>
+        <version>${jedis.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>joda-time</groupId>
+        <artifactId>joda-time</artifactId>
+        <version>${joda-time.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.bouncycastle</groupId>
+        <artifactId>bcpkix-jdk15on</artifactId>
+        <version>${bouncycastle.version}</version>
+      </dependency>
+
+      <!--
+        Dependencies typically used in tests.
+
+        Note that we don't include <scope>test</scope> here, as scope is not usually
+        included in dependencyManagement.
+
+        See also:
+        https://stackoverflow.com/questions/15221299/dependencymanagement-and-scope
+      -->
+      <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-inline</artifactId>
+        <version>${mockito-inline.version}</version>
+      </dependency>
+      <!-- Test jars of child modules -->
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-client</artifactId>
+        <version>0.8.84-SNAPSHOT</version>
+        <type>test-jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-cql</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.yb</groupId>
+        <artifactId>yb-pgsql</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
+      </dependency>
+
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>${postgresql.jdbc.driver.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <distributionManagement>
+    <repository>
+      <id>${yugabyte.releases.repository.id}</id>
+      <url>${yugabyte.releases.repository.url}</url>
+    </repository>
+    <snapshotRepository>
+      <id>${yugabyte.snapshots.repository.id}</id>
+      <url>${yugabyte.snapshots.repository.url}</url>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <profiles>
+    <profile>
+      <id>collectTests</id>
+      <activation>
+        <property>
+          <name>collectTests</name>
+        </property>
+      </activation>
+      <properties>
+        <!-- If we are simply collecting the list of tests, we can "run" them in parallel. -->
+        <!-- No tests are actually being run in this case. -->
+        <testing.reuseForks>true</testing.reuseForks>
+        <testing.perCoreThreadCount>true</testing.perCoreThreadCount>
+        <testing.redirectTestOutputToFile>false</testing.redirectTestOutputToFile>
+        <assembly.execution.phase>none</assembly.execution.phase>
+        <maven-dependency-plugin.phase>none</maven-dependency-plugin.phase>
+        <yb.collect.tests.only>true</yb.collect.tests.only>
+      </properties>
+    </profile>
+  </profiles>
+</project>

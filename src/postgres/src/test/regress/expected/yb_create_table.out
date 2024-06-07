@@ -1,0 +1,800 @@
+--
+-- YB_TABLE Testsuite: Testing DDL Statments for TABLE.
+--
+--
+-- CREATE TABLE AS SELECT
+--
+CREATE TABLE table_create_org(
+			 col_smallint			SMALLINT,
+			 col_integer			INTEGER,
+			 col_bigint				BIGINT,
+			 col_real					REAL,
+			 col_double				DOUBLE PRECISION,
+			 col_char					CHARACTER(7),
+			 col_varchar			VARCHAR(7),
+			 col_text					TEXT,
+			 col_bytea				BYTEA,
+			 col_timestamp		TIMESTAMP(2),
+			 col_timestamp_tz TIMESTAMP WITH TIME ZONE,
+			 col_bool					BOOLEAN,
+			 col_array_int		INTEGER[],
+			 col_array_text		TEXT[],
+			 PRIMARY KEY(col_smallint));
+--
+INSERT INTO table_create_org VALUES(
+			 1,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+INSERT INTO table_create_org VALUES(
+			 11,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+--
+INSERT INTO table_create_org VALUES(
+			 2,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+INSERT INTO table_create_org VALUES(
+			 12,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+--
+INSERT INTO table_create_org VALUES(
+			 3,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+INSERT INTO table_create_org VALUES(
+			 13,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+--
+INSERT INTO table_create_org VALUES(
+			 4,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+INSERT INTO table_create_org VALUES(
+			 14,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+--
+INSERT INTO table_create_org VALUES(
+			 5,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+INSERT INTO table_create_org VALUES(
+			 15,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+--
+INSERT INTO table_create_org VALUES(
+			 6,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+INSERT INTO table_create_org VALUES(
+			 16,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+--
+INSERT INTO table_create_org VALUES(
+			 7,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+INSERT INTO table_create_org VALUES(
+			 17,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+--
+INSERT INTO table_create_org VALUES(
+			 8,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+INSERT INTO table_create_org VALUES(
+			 18,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+--
+INSERT INTO table_create_org VALUES(
+			 9,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+INSERT INTO table_create_org VALUES(
+			 19,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+--
+CREATE TABLE table_create_ctas_nodata AS SELECT * FROM table_create_org WITH NO DATA;
+--
+SELECT * FROM table_create_ctas_nodata;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text | col_bytea | col_timestamp | col_timestamp_tz | col_bool | col_array_int | col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+-----------+---------------+------------------+----------+---------------+----------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas2_nodata
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WITH NO DATA;
+--
+SELECT * FROM table_create_ctas2_nodata;
+ id | name | private_data | information
+----+------+--------------+-------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas AS SELECT * FROM table_create_org;
+--
+SELECT * FROM table_create_ctas ORDER BY col_smallint;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
+            1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+            2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+            3 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+            4 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+            5 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+            6 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+            7 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+            8 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+            9 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+           11 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+           12 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+           13 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+           14 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+           15 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+           16 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+           17 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+           18 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+           19 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+(18 rows)
+
+--
+CREATE TABLE table_create_ctas2
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WHERE col_smallint < 11;
+--
+SELECT * FROM table_create_ctas2 ORDER BY id;
+ id | name  | private_data |     information
+----+-------+--------------+---------------------
+  1 | one   | {1,1,1}      | {one,one,one}
+  2 | two   | {2,2,2}      | {two,two,two}
+  3 | three | {3,3,3}      | {three,three,three}
+  4 | four  | {4,4,4}      | {four,four,four}
+  5 | five  | {5,5,5}      | {five,five,five}
+  6 | six   | {6,6,6}      | {six,six,six}
+  7 | seven | {7,7,7}      | {seven,seven,seven}
+  8 | eight | {8,8,8}      | {eight,eight,eight}
+  9 | nine  | {9,9,9}      | {nine,nine,nine}
+(9 rows)
+
+--
+-- CREATE TABLE WITH
+--
+CREATE TABLE patient (
+	name		text,
+	age			int4,
+	dob			date
+) WITH (fillfactor=40);
+WARNING:  storage parameter fillfactor is unsupported, ignoring
+CREATE TABLE planetrip (
+	origin		text,
+	dest		text,
+	day			date,
+	depart		time
+) WITH (user_catalog_table=true);
+ERROR:  users cannot create system catalog tables
+CREATE TABLE client (
+	name		text,
+	phonenum	int8,
+	deadline	date
+) WITH (oids=false);
+--
+-- CREATE TABLE SPLIT
+--
+CREATE TABLE tbl1 (
+	a			int4 primary key
+) SPLIT (INTO 20 TABLETS);
+CREATE TABLE tbl1_5 (
+	a       int4,
+ 	primary key(a asc)
+) SPLIT (INTO 20 TABLETS);
+ERROR:  HASH columns must be present to split by number of tablets
+CREATE TABLE tbl2 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((4), (25), (100));
+CREATE TABLE tbl3 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((25), (100), (4));
+ERROR:  Split rows ordering does not match column ordering
+CREATE TABLE tbl4 (
+	a			int4,
+	b			text,
+	primary key (a asc, b)
+) SPLIT AT VALUES ((1, 'c'), (1, 'cb'), (2, 'a'));
+CREATE TABLE tbl5 (
+	a			int4,
+	b			text,
+	primary key (b asc)
+) SPLIT AT VALUES (('a'), ('aba'), ('ac'));
+CREATE TABLE tbl6 (
+	a			int4,
+	b			text,
+	primary key (b asc)
+) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
+ERROR:  Number of SPLIT values cannot be greater than number of SPLIT columns
+CREATE TABLE tbl7 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES (('a'), ('b'), ('c'));
+ERROR:  invalid input syntax for type integer: "a"
+CREATE TABLE tbl8 (
+	a			text,
+	primary key (a asc)
+) SPLIT AT VALUES ((100), (1000), (10000));
+CREATE TABLE tbl9 (
+	a			int4,
+	primary key (a hash)
+) SPLIT AT VALUES ((100), (1000), (10000));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned tables
+CREATE TEMPORARY TABLE tbl10 (
+	a			int4 primary key
+) SPLIT INTO 20 TABLETS;
+WARNING:  split options on TEMP table will be ignored
+CREATE TABLE tbl11 (
+	a			int4,
+	b			int4,
+	c			int4,
+	primary key (a asc, b desc)
+) SPLIT AT VALUES ((-7, 1), (0, 0), (23, 4));
+CREATE TABLE tbl12 (
+	a			int4,
+	b			text,
+	primary key (b desc)
+) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
+ERROR:  Split rows ordering does not match column ordering
+CREATE TABLE tbl13 (
+	a			text,
+	b			date,
+	c			time
+) SPLIT INTO 9 TABLETS;
+CREATE TABLE tbl14 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
+CREATE TABLE tbl15 (
+	a			int4,
+	b			int4,
+	c			int4,
+	primary key (a asc, b desc)
+) SPLIT AT VALUES ((-10), (0, 0), (23, 4), (50));
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Split rows ordering does not match column ordering
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls first)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Split rows ordering does not match column ordering
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Split rows ordering does not match column ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b desc)
+) SPLIT AT VALUES((100), (200), (200, 5));
+CREATE TABLE tbl17(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls first)
+) SPLIT AT VALUES((100), (200), (200, 5));
+CREATE TABLE tbl18(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200), (200, 5));
+-- This is invalid because we cannot have duplicate split rows
+CREATE TABLE tbl19(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200, 5));
+ERROR:  Cannot have duplicate split rows
+CREATE TABLE tbl20 (
+	a			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind20 on tbl20(a) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
+CREATE TABLE tbl21 (
+	a			int4,
+	b			int4,
+	primary key (a hash)
+);
+CREATE INDEX ind21 on tbl21(b) SPLIT AT VALUES ((100));
+ERROR:  SPLIT AT option is not yet supported for hash partitioned indexes
+-- Test ordering on splitted tables
+CREATE TABLE ordered_asc(
+    k INT,
+    PRIMARY KEY(k ASC)
+) SPLIT AT VALUES((10), (20), (30));
+INSERT INTO ordered_asc VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30);
+EXPLAIN (COSTS OFF) SELECT * FROM ordered_asc ORDER BY k ASC;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using ordered_asc_pkey on ordered_asc
+(1 row)
+
+SELECT * FROM ordered_asc ORDER BY k ASC;
+ k
+----
+  5
+  6
+ 10
+ 15
+ 16
+ 20
+ 25
+ 26
+ 30
+ 35
+ 36
+ 46
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM ordered_asc ORDER BY k DESC;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan Backward using ordered_asc_pkey on ordered_asc
+(1 row)
+
+SELECT * FROM ordered_asc ORDER BY k DESC;
+ k
+----
+ 46
+ 36
+ 35
+ 30
+ 26
+ 25
+ 20
+ 16
+ 15
+ 10
+  6
+  5
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT k FROM ordered_asc WHERE k > 10 and k < 40 ORDER BY k DESC;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan Backward using ordered_asc_pkey on ordered_asc
+   Index Cond: ((k > 10) AND (k < 40))
+(2 rows)
+
+SELECT k FROM ordered_asc WHERE k > 10 and k < 40 ORDER BY k DESC;
+ k
+----
+ 36
+ 35
+ 30
+ 26
+ 25
+ 20
+ 16
+ 15
+(8 rows)
+
+CREATE TABLE ordered_desc(
+    k INT,
+    PRIMARY KEY(k DESC)
+) SPLIT AT VALUES((30), (20), (10));
+INSERT INTO ordered_desc VALUES
+    (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30);
+EXPLAIN (COSTS OFF) SELECT * FROM ordered_desc ORDER BY k ASC;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Scan Backward using ordered_desc_pkey on ordered_desc
+(1 row)
+
+SELECT * FROM ordered_desc ORDER BY k ASC;
+ k
+----
+  5
+  6
+ 10
+ 15
+ 16
+ 20
+ 25
+ 26
+ 30
+ 35
+ 36
+ 46
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM ordered_desc ORDER BY k DESC;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using ordered_desc_pkey on ordered_desc
+(1 row)
+
+SELECT * FROM ordered_desc ORDER BY k DESC;
+ k
+----
+ 46
+ 36
+ 35
+ 30
+ 26
+ 25
+ 20
+ 16
+ 15
+ 10
+  6
+  5
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT k FROM ordered_desc WHERE k > 10 and k < 40 ORDER BY k ASC;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Scan Backward using ordered_desc_pkey on ordered_desc
+   Index Cond: ((k > 10) AND (k < 40))
+(2 rows)
+
+SELECT k FROM ordered_desc WHERE k > 10 and k < 40 ORDER BY k ASC;
+ k
+----
+ 15
+ 16
+ 20
+ 25
+ 26
+ 30
+ 35
+ 36
+(8 rows)
+
+-- Test create ... with (table_oid = x)
+set yb_enable_create_with_table_oid=1;
+create table with_invalid_table_oid (a int) with (table_oid = 0);
+ERROR:  user tables must have an OID >= 16384
+create table with_invalid_table_oid (a int) with (table_oid = -1);
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value cannot be negative.
+create table with_invalid_table_oid (a int) with (table_oid = 123);
+ERROR:  user tables must have an OID >= 16384
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value exceeds Oid range.
+create table with_invalid_table_oid (a int) with (table_oid = 'test');
+ERROR:  invalid value for OID option "table_oid"
+create table with_table_oid (a int) with (table_oid = 4294967295);
+select relname, oid from pg_class where relname = 'with_table_oid';
+    relname     |    oid
+----------------+------------
+ with_table_oid | 4294967295
+(1 row)
+
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
+ERROR:  table OID 4294967295 is in use
+-- Test temp tables with (table_oid = x)
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
+begin;
+create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
+select relname, oid from pg_class where relname = 'with_table_oid_temp';
+       relname       |   oid
+---------------------+---------
+ with_table_oid_temp | 1234568
+(1 row)
+
+end;
+ERROR:  Transaction for catalog table write operation 'pg_type' not found
+-- Creating a new temp table with that oid will fail
+create temp table with_table_oid_temp_2 (a int) with (table_oid = 1234568);
+ERROR:  table OID 1234568 is in use
+-- But creating a regular table with that oid should succeed
+create table with_table_oid_2 (a int) with (table_oid = 1234568);
+ERROR:  table OID 1234568 is in use
+select relname, oid from pg_class where relname = 'with_table_oid_2';
+ relname | oid
+---------+-----
+(0 rows)
+
+-- Test with session variable off
+set yb_enable_create_with_table_oid=0;
+create table with_table_oid_variable_false (a int) with (table_oid = 55555);
+ERROR:  create table with table_oid is not allowed
+HINT:  Try enabling the session variable yb_enable_create_with_table_oid.
+RESET yb_enable_create_with_table_oid;
+-- CREATE TABLE with implicit UNIQUE INDEX shouldn't spout a notice about it
+-- being nonconcurrent.
+BEGIN;
+CREATE TABLE tab_with_unique (i int, UNIQUE (i));
+COMMIT;
+-- Test temp table/view are automatically dropped.
+-- TODO: Remove DISCARD TEMP after the fix of #14519
+DISCARD TEMP;
+\c yugabyte
+create temporary table temp_tab(a int);
+create temporary view temp_view as select * from temp_tab;
+select count(*) from pg_class where relname = 'temp_tab';
+ count
+-------
+     1
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_view';
+ count
+-------
+     1
+(1 row)
+
+\c yugabyte
+-- Wait some time for the last session to finish dropping temp table/view automatically.
+select pg_sleep(5);
+ pg_sleep
+----------
+
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_tab';
+ count
+-------
+     0
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_view';
+ count
+-------
+     0
+(1 row)
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+SELECT * FROM tbl_as_1;
+ ?column?
+----------
+        1
+(1 row)
+
+-- Test EXPLAIN ANALYZE on a table containing secondary index with a wide column.
+-- Use EXECUTE to hide the output since it won't be stable.
+CREATE TABLE wide_table (id INT, data TEXT);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;
+-- Apply the same check for varchar column
+CREATE TABLE wide_table (id INT, data VARCHAR);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;

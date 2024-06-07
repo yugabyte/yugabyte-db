@@ -1,0 +1,23 @@
+# src/test/regress/yb_table_serial_schedule
+#
+################################################################################
+# TABLE Testsuite: All DDL Statments on Tables
+# - CREATE and CREATE AS
+# - ALTER
+# - DROP
+################################################################################
+
+# Dependencies for yb_pg_alter_table
+test: yb_dep_onek
+test: yb_dep_part_test_int4_ops
+# TODO(jason): yb_pg_insert is no longer a dependency, so move it to
+# yb_pg_dml_serial_schedule.  (Note: yb_dep_part_test_int4_ops is a dependency
+# for yb_pg_insert.)
+test: yb_pg_insert
+
+test: yb_pg_create_table_like
+test: yb_pg_alter_table
+test: yb_alter_table
+test: yb_alter_table_rewrite
+test: yb_create_table
+test: yb_drop_table

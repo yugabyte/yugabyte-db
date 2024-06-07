@@ -1,0 +1,124 @@
+<!--
+doc/src/sgml/ref/drop_role.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droprole">
+ <indexterm zone="sql-droprole">
+  <primary>DROP ROLE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP ROLE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP ROLE</refname>
+  <refpurpose>remove a database role</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP ROLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP ROLE</command> removes the specified role(s).
+   To drop a superuser role, you must be a superuser yourself;
+   to drop non-superuser roles, you must have <literal>CREATEROLE</literal>
+   privilege.
+  </para>
+
+  <para>
+   A role cannot be removed if it is still referenced in any database
+   of the cluster; an error will be raised if so.  Before dropping the role,
+   you must drop all the objects it owns (or reassign their ownership)
+   and revoke any privileges the role has been granted on other objects.
+   The <link linkend="sql-reassign-owned"><command>REASSIGN
+   OWNED</command></link> and <link linkend="sql-drop-owned"><command>DROP
+   OWNED</command></link>
+   commands can be useful for this purpose; see <xref linkend="role-removal"/>
+   for more discussion.
+  </para>
+
+  <para>
+   However, it is not necessary to remove role memberships involving
+   the role; <command>DROP ROLE</command> automatically revokes any memberships
+   of the target role in other roles, and of other roles in the target role.
+   The other roles are not dropped nor otherwise affected.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the role does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the role to remove.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <productname>PostgreSQL</productname> includes a program <xref
+   linkend="app-dropuser"/> that has the
+   same functionality as this command (in fact, it calls this command)
+   but can be run from the command shell.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To drop a role:
+<programlisting>
+DROP ROLE jonathan;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL standard defines <command>DROP ROLE</command>, but it allows
+   only one role to be dropped at a time, and it specifies different
+   privilege requirements than <productname>PostgreSQL</productname> uses.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createrole"/></member>
+   <member><xref linkend="sql-alterrole"/></member>
+   <member><xref linkend="sql-set-role"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,48 @@
+<!-- doc/src/sgml/legal.sgml -->
+
+<date>2023</date>
+
+<copyright>
+ <year>1996&ndash;2023</year>
+ <holder>The PostgreSQL Global Development Group</holder>
+</copyright>
+
+<legalnotice id="legalnotice">
+ <title>Legal Notice</title>
+
+ <para>
+  <productname>PostgreSQL</productname> is Copyright &copy; 1996&ndash;2023
+  by the PostgreSQL Global Development Group.
+ </para>
+
+ <para>
+  <productname>Postgres95</productname> is Copyright &copy; 1994&ndash;5
+  by the Regents of the University of California.
+ </para>
+
+ <para>
+  Permission to use, copy, modify, and distribute this software and
+  its documentation for any purpose, without fee, and without a
+  written agreement is hereby granted, provided that the above
+  copyright notice and this paragraph and the following two paragraphs
+  appear in all copies.
+ </para>
+
+ <para>
+  IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY
+  PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
+  DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS
+  SOFTWARE AND ITS DOCUMENTATION, EVEN IF THE UNIVERSITY OF CALIFORNIA
+  HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ </para>
+
+ <para>
+  THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE
+  PROVIDED HEREUNDER IS ON AN <quote>AS-IS</quote> BASIS, AND THE UNIVERSITY OF
+  CALIFORNIA HAS NO OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT,
+  UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+ </para>
+
+</legalnotice>

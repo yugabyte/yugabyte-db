@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+#
+# Copyright 2022 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
+set -euo pipefail
+
+print_help() {
+  cat <<-EOT
+Generates the Yba-installer go binary executable (yba-installer) in destination.
+Binary necessary for a complete automated install.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the Yba-installer package should be copied.
+EOT
+}
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+destination=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+  esac
+  shift
+done
+
+
+echo Starting yb_release for yba-installer > /dev/stderr
+
+# verify that the destination directory exists
+if [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+VERSION_FULL=$(<version.txt)
+BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
+# IFS splits input according to delimiter.
+IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
+VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
+GOOS="linux"
+GOARCH="amd64"
+PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
+
+echo "Starting make"  > /dev/stderr
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+echo "Completed make"  > /dev/stderr
+
+activate_virtualenv
+echo "Invoking yb_release.py" > /dev/stderr
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py --package "${PACKAGE_NAME}" \
+                                                 --destination "${destination}"
+echo "Completed yb_release.py" > /dev/stderr
