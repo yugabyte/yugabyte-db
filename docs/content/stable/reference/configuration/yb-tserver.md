@@ -1160,7 +1160,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-maturity) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-maturity).
+The packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0, and for the YCQL API is {{<badge/tp>}}.
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1676,16 +1676,17 @@ Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this flag:
+{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
 
-- you should also enable [packed row](../../../architecture/docdb/packed-rows) for colocated tables by setting `ysql_enable_packed_row_for_colocated_table = true`.
-- it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
 Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<badge/ea>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE. When enabling this flag, you should also enable [packed row](../../../architecture/docdb/packed-rows) for colocated tables by setting `ysql_enable_packed_row_for_colocated_table = true`.
+{{<badge/ea>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
 Default: false
 
