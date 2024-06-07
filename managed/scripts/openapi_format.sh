@@ -22,7 +22,7 @@ do
     continue
   fi
 
-  $NPM_BIN/npx openapi-format \
+  $NPM_BIN/npx openapi-format@1.17.1 \
     --sortFile ../openapi_sort_format.json \
     --sortComponentsFile ../openapi_sort_components.json \
     --output ${tmp_yml} ${file} # > /dev/null 2>&1
