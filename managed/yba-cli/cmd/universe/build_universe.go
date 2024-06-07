@@ -6,6 +6,7 @@ package universe
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -18,54 +19,20 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-func buildCommunicationPorts(cmd *cobra.Command) (
-	*ybaclient.CommunicationPorts,
-	error,
-) {
-	masterHTTPPort, err := cmd.Flags().GetInt("master-http-port")
-	if err != nil {
-		return nil, err
-	}
-	masterRPCPort, err := cmd.Flags().GetInt("master-rpc-port")
-	if err != nil {
-		return nil, err
-	}
-	nodeExporterPort, err := cmd.Flags().GetInt("node-exporter-port")
-	if err != nil {
-		return nil, err
-	}
-	redisServerHTTPPort, err := cmd.Flags().GetInt("redis-server-http-port")
-	if err != nil {
-		return nil, err
-	}
-	redisServerRPCPort, err := cmd.Flags().GetInt("redis-server-rpc-port")
-	if err != nil {
-		return nil, err
-	}
-	tserverHTTPPort, err := cmd.Flags().GetInt("tserver-http-port")
-	if err != nil {
-		return nil, err
-	}
-	tserverRPCPort, err := cmd.Flags().GetInt("tserver-rpc-port")
-	if err != nil {
-		return nil, err
-	}
-	yqlServerHTTPPort, err := cmd.Flags().GetInt("yql-server-http-port")
-	if err != nil {
-		return nil, err
-	}
-	yqlServerRPCPort, err := cmd.Flags().GetInt("yql-server-rpc-port")
-	if err != nil {
-		return nil, err
-	}
-	ysqlServerHTTPPort, err := cmd.Flags().GetInt("ysql-server-http-port")
-	if err != nil {
-		return nil, err
-	}
-	ysqlServerRPCPort, err := cmd.Flags().GetInt("ysql-server-rpc-port")
-	if err != nil {
-		return nil, err
-	}
+var checkInterfaceType []interface{}
+
+func buildCommunicationPorts(cmd *cobra.Command) *ybaclient.CommunicationPorts {
+	masterHTTPPort := v1.GetInt("master-http-port")
+	masterRPCPort := v1.GetInt("master-rpc-port")
+	nodeExporterPort := v1.GetInt("node-exporter-port")
+	redisServerHTTPPort := v1.GetInt("redis-server-http-port")
+	redisServerRPCPort := v1.GetInt("redis-server-rpc-port")
+	tserverHTTPPort := v1.GetInt("tserver-http-port")
+	tserverRPCPort := v1.GetInt("tserver-rpc-port")
+	yqlServerHTTPPort := v1.GetInt("yql-server-http-port")
+	yqlServerRPCPort := v1.GetInt("yql-server-rpc-port")
+	ysqlServerHTTPPort := v1.GetInt("ysql-server-http-port")
+	ysqlServerRPCPort := v1.GetInt("ysql-server-rpc-port")
 
 	return &ybaclient.CommunicationPorts{
 		MasterHttpPort:      util.GetInt32Pointer(int32(masterHTTPPort)),
@@ -79,7 +46,7 @@ func buildCommunicationPorts(cmd *cobra.Command) (
 		YqlServerRpcPort:    util.GetInt32Pointer(int32(yqlServerRPCPort)),
 		YsqlServerHttpPort:  util.GetInt32Pointer(int32(ysqlServerHTTPPort)),
 		YsqlServerRpcPort:   util.GetInt32Pointer(int32(ysqlServerRPCPort)),
-	}, nil
+	}
 }
 
 func buildClusters(
@@ -93,16 +60,13 @@ func buildClusters(
 	var res []ybaclient.Cluster
 
 	providerListRequest := authAPI.GetListOfProviders()
-	providerType, err := cmd.Flags().GetString("provider-code")
-	if err != nil {
-		return nil, err
+	providerType := v1.GetString("provider-code")
+	if len(strings.TrimSpace(providerType)) == 0 {
+		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
 	providerListRequest = providerListRequest.ProviderCode(providerType)
-	providerName, err := cmd.Flags().GetString("provider-name")
-	if err != nil {
-		return nil, err
-	}
-	if providerName != "" {
+	providerName := v1.GetString("provider-name")
+	if strings.TrimSpace(providerName) != "" {
 		providerListRequest = providerListRequest.Name(providerName)
 	}
 	providerListResponse, response, err := providerListRequest.Execute()
@@ -119,10 +83,10 @@ func buildClusters(
 	if len(providerName) == 0 {
 		providerName = providerUsed.GetName()
 	}
-	logrus.Info("Using provider: ",
-		fmt.Sprintf("%s %s",
-			providerName,
-			formatter.Colorize(providerUUID, formatter.GreenColor)), "\n")
+	logrus.Info(fmt.Sprintf("Using %s provider: %s %s",
+		providerType,
+		providerName,
+		formatter.Colorize(providerUUID, formatter.GreenColor)), "\n")
 
 	var onpremInstanceTypeDefault ybaclient.InstanceTypeResp
 	if providerType == util.OnpremProviderType {
@@ -137,51 +101,52 @@ func buildClusters(
 		}
 	}
 
-	addReadReplica, err := cmd.Flags().GetBool("add-read-replica")
-	if err != nil {
-		return nil, err
-	}
+	addReadReplica := v1.GetBool("add-read-replica")
 	noOfClusters := 1
 	if addReadReplica {
 		noOfClusters = 2
 	}
 
-	dedicatedNodes, err := cmd.Flags().GetBool("dedicated-nodes")
-	if err != nil {
-		return nil, err
-	}
+	dedicatedNodes := v1.GetBool("dedicated-nodes")
 
 	var k8sTserverMemSize, k8sMasterMemSize, k8sTserverCPUCoreCount, k8sMasterCPUCoreCount []float64
 
 	if providerType == util.K8sProviderType {
 		dedicatedNodes = true
 
-		k8sTserverMemSize, err = cmd.Flags().GetFloat64Slice("k8s-tserver-mem-size")
-		if err != nil {
-			return nil, err
-		}
-		k8sTserverCPUCoreCount, err = cmd.Flags().GetFloat64Slice("k8s-tserver-cpu-core-count")
-		if err != nil {
-			return nil, err
+		k8sTserverMemSizeInterface := v1.Get("k8s-tserver-mem-size")
+		if reflect.TypeOf(k8sTserverMemSizeInterface) == reflect.TypeOf(checkInterfaceType) {
+			k8sTserverMemSize = *util.Float64Slice(k8sTserverMemSizeInterface.([]interface{}))
+		} else {
+			k8sTserverMemSize = k8sTserverMemSizeInterface.([]float64)
 		}
 
-		k8sMasterMemSize, err = cmd.Flags().GetFloat64Slice("k8s-master-mem-size")
-		if err != nil {
-			return nil, err
+		k8sTserverCPUCoreCountInterface := v1.Get("k8s-tserver-cpu-core-count")
+		if reflect.TypeOf(k8sTserverCPUCoreCountInterface) == reflect.TypeOf(checkInterfaceType) {
+			k8sTserverCPUCoreCount = *util.Float64Slice(k8sTserverCPUCoreCountInterface.([]interface{}))
+		} else {
+			k8sTserverCPUCoreCount = k8sTserverCPUCoreCountInterface.([]float64)
 		}
-		k8sMasterCPUCoreCount, err = cmd.Flags().GetFloat64Slice("k8s-master-cpu-core-count")
-		if err != nil {
-			return nil, err
+
+		k8sMasterMemSizeInterface := v1.Get("k8s-master-mem-size")
+		if reflect.TypeOf(k8sMasterMemSizeInterface) == reflect.TypeOf(checkInterfaceType) {
+			k8sMasterMemSize = *util.Float64Slice(k8sMasterMemSizeInterface.([]interface{}))
+		} else {
+			k8sMasterMemSize = k8sMasterMemSizeInterface.([]float64)
+		}
+
+		k8sMasterCPUCoreCountInterface := v1.Get("k8s-master-cpu-core-count")
+		if reflect.TypeOf(k8sMasterCPUCoreCountInterface) == reflect.TypeOf(checkInterfaceType) {
+			k8sMasterCPUCoreCount = *util.Float64Slice(k8sMasterCPUCoreCountInterface.([]interface{}))
+		} else {
+			k8sMasterCPUCoreCount = k8sMasterCPUCoreCountInterface.([]float64)
 		}
 	}
 
 	var masterInstanceType string
 	var masterDeviceInfo *ybaclient.DeviceInfo
 	if dedicatedNodes {
-		masterInstanceType, err = cmd.Flags().GetString("dedicated-master-instance-type")
-		if err != nil {
-			return nil, err
-		}
+		masterInstanceType = v1.GetString("dedicated-master-instance-type")
 		// Set default values here
 		masterInstanceTypeList, err := setDefaultInstanceTypes(
 			[]string{masterInstanceType}, providerType, 1, onpremInstanceTypeDefault)
@@ -197,10 +162,7 @@ func buildClusters(
 		}
 	}
 
-	rfs, err := cmd.Flags().GetIntSlice("replication-factor")
-	if err != nil {
-		return nil, err
-	}
+	rfs := v1.GetIntSlice("replication-factor")
 	rfsLength := len(rfs)
 
 	if rfsLength < noOfClusters {
@@ -209,10 +171,7 @@ func buildClusters(
 		}
 	}
 
-	nodes, err := cmd.Flags().GetIntSlice("num-nodes")
-	if err != nil {
-		return nil, err
-	}
+	nodes := v1.GetIntSlice("num-nodes")
 	nodesLength := len(nodes)
 
 	if nodesLength < noOfClusters {
@@ -221,10 +180,14 @@ func buildClusters(
 		}
 	}
 
-	instanceTypes, err := cmd.Flags().GetStringArray("instance-type")
-	if err != nil {
-		return nil, err
+	instanceTypesInterface := v1.Get("instance-type")
+	var instanceTypes []string
+	if reflect.TypeOf(instanceTypesInterface) == reflect.TypeOf(checkInterfaceType) {
+		instanceTypes = *util.StringSlice(instanceTypesInterface.([]interface{}))
+	} else {
+		instanceTypes = instanceTypesInterface.([]string)
 	}
+
 	// Set default values here
 	instanceTypes, err = setDefaultInstanceTypes(
 		instanceTypes, providerType, noOfClusters, onpremInstanceTypeDefault)
@@ -233,10 +196,15 @@ func buildClusters(
 	}
 
 	regions := make([][]string, 0)
-	regionsInput, err := cmd.Flags().GetStringArray("regions")
-	if err != nil {
-		return nil, err
+
+	regionsInputInterface := v1.Get("regions")
+	var regionsInput []string
+	if reflect.TypeOf(regionsInputInterface) == reflect.TypeOf(checkInterfaceType) {
+		regionsInput = *util.StringSlice(regionsInputInterface.([]interface{}))
+	} else {
+		regionsInput = regionsInputInterface.([]string)
 	}
+
 	regionsInProvider := providerUsed.GetRegions()
 	if len(regionsInProvider) == 0 {
 		return nil, fmt.Errorf("no regions found for provider %s", providerName)
@@ -274,10 +242,14 @@ func buildClusters(
 
 	logrus.Info("Using regions: ", regions, "\n")
 
-	preferredRegionsInput, err := cmd.Flags().GetStringArray("preferred-region")
-	if err != nil {
-		return nil, err
+	preferredRegionsInputInterface := v1.Get("preferred-region")
+	var preferredRegionsInput []string
+	if reflect.TypeOf(preferredRegionsInputInterface) == reflect.TypeOf(checkInterfaceType) {
+		preferredRegionsInput = *util.StringSlice(preferredRegionsInputInterface.([]interface{}))
+	} else {
+		preferredRegionsInput = preferredRegionsInputInterface.([]string)
 	}
+
 	preferredRegions := make([]string, 0)
 	for _, r := range preferredRegionsInput {
 		if len(regionsInProvider) > 0 {
@@ -300,57 +272,34 @@ func buildClusters(
 		return nil, err
 	}
 
-	assignPublicIP, err := cmd.Flags().GetBool("assign-public-ip")
-	if err != nil {
-		return nil, err
-	}
-	enableYSQL, err := cmd.Flags().GetBool("enable-ysql")
-	if err != nil {
-		return nil, err
-	}
+	assignPublicIP := v1.GetBool("assign-public-ip")
 
-	ysqlPassword, err := cmd.Flags().GetString("ysql-password")
-	if err != nil {
-		return nil, err
-	}
+	assignStaticPublicIP := v1.GetBool("assign-static-public-ip")
+
+	enableYSQL := v1.GetBool("enable-ysql")
+
+	ysqlPassword := v1.GetString("ysql-password")
 	enableYSQLAuth := false
 	if len(ysqlPassword) != 0 {
 		enableYSQLAuth = true
 	}
 
-	enableYCQL, err := cmd.Flags().GetBool("enable-ycql")
-	if err != nil {
-		return nil, err
-	}
+	enableYCQL := v1.GetBool("enable-ycql")
 
-	ycqlPassword, err := cmd.Flags().GetString("ycql-password")
-	if err != nil {
-		return nil, err
-	}
+	ycqlPassword := v1.GetString("ycql-password")
+
 	enableYCQLAuth := false
 	if len(ycqlPassword) != 0 {
 		enableYCQLAuth = true
 	}
 
-	enableYEDIS, err := cmd.Flags().GetBool("enable-yedis")
-	if err != nil {
-		return nil, err
-	}
+	enableYEDIS := v1.GetBool("enable-yedis")
 
-	enableCtoN, err := cmd.Flags().GetBool("enable-client-to-node-encrypt")
-	if err != nil {
-		return nil, err
-	}
+	enableCtoN := v1.GetBool("enable-client-to-node-encrypt")
 
-	enableNtoN, err := cmd.Flags().GetBool("enable-node-to-node-encrypt")
-	if err != nil {
-		return nil, err
-	}
+	enableNtoN := v1.GetBool("enable-node-to-node-encrypt")
 
-	ybSoftwareVersion, err := cmd.Flags().GetString("yb-db-version")
-	if err != nil {
-		return nil, err
-	}
+	ybSoftwareVersion := v1.GetString("yb-db-version")
 	if len(ybSoftwareVersion) == 0 {
 		// Fetch the latest release
 		releasesListRequest := authAPI.GetListOfReleases(true)
@@ -372,15 +321,10 @@ func buildClusters(
 	logrus.Info("Using YugabyteDB Version: ",
 		formatter.Colorize(ybSoftwareVersion, formatter.GreenColor), "\n")
 
-	useSystemD, err := cmd.Flags().GetBool("use-systemd")
-	if err != nil {
-		return nil, err
-	}
+	useSystemD := v1.GetBool("use-systemd")
 
-	accessKeyCode, err := cmd.Flags().GetString("access-key-code")
-	if err != nil {
-		return nil, err
-	}
+	accessKeyCode := v1.GetString("access-key-code")
+
 	if len(accessKeyCode) == 0 && providerType != util.K8sProviderType {
 		r, response, err := authAPI.List(providerUUID).Execute()
 		if err != nil {
@@ -400,29 +344,23 @@ func buildClusters(
 			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	}
 
-	awsARNString, err := cmd.Flags().GetString("aws-arn-string")
-	if err != nil {
-		return nil, err
-	}
+	awsARNString := v1.GetString("aws-arn-string")
+
 	if providerType != util.AWSProviderType && len(awsARNString) > 0 {
 		logrus.Debug("aws-arn-string can only be set for AWS universes, ignoring value\n")
 		awsARNString = ""
 	}
 
-	enableIPV6, err := cmd.Flags().GetBool("enable-ipv6")
-	if err != nil {
-		return nil, err
-	}
+	enableIPV6 := v1.GetBool("enable-ipv6")
+
 	if providerType != util.K8sProviderType && enableIPV6 {
 		logrus.Debug("enable-ipv6 can only be set for Kubernetes universes, ignoring value\n")
 		enableIPV6 = false
 	}
 
-	k8sUniverseOverridesFilePath, err := cmd.Flags().GetString(
+	k8sUniverseOverridesFilePath := v1.GetString(
 		"kubernetes-universe-overrides-file-path")
-	if err != nil {
-		return nil, err
-	}
+
 	if providerType != util.K8sProviderType && len(k8sUniverseOverridesFilePath) > 0 {
 		logrus.Debug(
 			"kubernetest-universe-overrides-file-path can only be set for" +
@@ -435,11 +373,14 @@ func buildClusters(
 		k8sUniverseOverrides = util.YAMLtoString(k8sUniverseOverridesFilePath)
 	}
 
-	k8sAZOverridesFilePaths, err := cmd.Flags().GetStringArray(
-		"kubernetes-az-overrides-file-path")
-	if err != nil {
-		return nil, err
+	k8sAZOverridesFilePathsInterface := v1.Get("kubernetes-az-overrides-file-path")
+	var k8sAZOverridesFilePaths []string
+	if reflect.TypeOf(k8sAZOverridesFilePathsInterface) == reflect.TypeOf(checkInterfaceType) {
+		k8sAZOverridesFilePaths = *util.StringSlice(k8sAZOverridesFilePathsInterface.([]interface{}))
+	} else {
+		k8sAZOverridesFilePaths = k8sAZOverridesFilePathsInterface.([]string)
 	}
+
 	if providerType != util.K8sProviderType && len(k8sAZOverridesFilePaths) > 0 {
 		logrus.Debug(
 			"kubernetest-az-overrides-file-path can only be set for" +
@@ -464,22 +405,53 @@ func buildClusters(
 		}
 	}
 
-	userTagsMap, err := cmd.Flags().GetStringToString("user-tags")
-	if err != nil {
-		return nil, err
+	userTagsMap := v1.GetStringMapString("user-tags")
+
+	masterGFlagsString := v1.GetString("master-gflags")
+	var masterGFlags map[string]string
+	if len(strings.TrimSpace(masterGFlagsString)) > 0 {
+		if strings.HasPrefix(strings.TrimSpace(masterGFlagsString), "{") {
+			masterGFlags = upgrade.ProcessMasterGflagsJSONString(masterGFlagsString)
+		} else {
+			// Assume YAML format
+			masterGFlags = upgrade.ProcessMasterGflagsYAMLString(masterGFlagsString)
+		}
+	} else {
+		masterGflagsMap := v1.GetStringMapString("master-gflags")
+		if len(masterGflagsMap) != 0 {
+			logrus.Debugf("Master GFlags from config file: %v", masterGflagsMap)
+			masterGFlags = masterGflagsMap
+		}
 	}
 
-	masterGFlagsString, err := cmd.Flags().GetString("master-gflags")
-	if err != nil {
-		return nil, err
+	var tserverGflagsMapOfMaps map[string]map[string]string
+	if strings.TrimSpace(tserverGflagsString) != "" {
+		if err := upgrade.ProcessTServerGFlagsFromString(tserverGflagsString, &tserverGflagsMapOfMaps); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+	} else {
+		tserverGflags := v1.GetStringMap("tserver-gflags")
+		if len(tserverGflags) != 0 {
+			tserverGflagsMapOfMaps = upgrade.ProcessTServerGFlagsFromConfig(tserverGflags)
+			logrus.Debugf("TServer GFlags from config file: %v", tserverGflagsMapOfMaps)
+		}
 	}
-	masterGFlags := upgrade.FetchMasterGFlags(masterGFlagsString)
 
-	tserverGFlagsStringList, err := cmd.Flags().GetStringArray("tserver-gflags")
-	if err != nil {
-		return nil, err
+	tserverGFlagsList := make([]map[string]string, 2)
+	for k, v := range tserverGflagsMapOfMaps {
+		if strings.Compare(strings.ToUpper(k), util.PrimaryClusterType) == 0 {
+			tserverGFlagsList[0] = v
+		} else if strings.Compare(
+			strings.ToUpper(k), util.ReadReplicaClusterType) == 0 {
+			if len(v) != 0 {
+				tserverGFlagsList[1] = v
+			} else {
+				tserverGFlagsList[1] = tserverGFlagsList[0]
+			}
+		} else {
+			logrus.Debug("Not a valid cluster type, ignoring value\n")
+		}
 	}
-	tserverGFlagsList := upgrade.FetchTServerGFlags(tserverGFlagsStringList, noOfClusters)
 
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
@@ -503,14 +475,15 @@ func buildClusters(
 				MasterInstanceType: util.GetStringPointer(masterInstanceType),
 				MasterDeviceInfo:   masterDeviceInfo,
 
-				AssignPublicIP: util.GetBoolPointer(assignPublicIP),
-				EnableYSQL:     util.GetBoolPointer(enableYSQL),
-				YsqlPassword:   util.GetStringPointer(ysqlPassword),
-				EnableYSQLAuth: util.GetBoolPointer(enableYSQLAuth),
-				EnableYCQL:     util.GetBoolPointer(enableYCQL),
-				YcqlPassword:   util.GetStringPointer(ycqlPassword),
-				EnableYCQLAuth: util.GetBoolPointer(enableYCQLAuth),
-				EnableYEDIS:    util.GetBoolPointer(enableYEDIS),
+				AssignPublicIP:       util.GetBoolPointer(assignPublicIP),
+				AssignStaticPublicIP: util.GetBoolPointer(assignStaticPublicIP),
+				EnableYSQL:           util.GetBoolPointer(enableYSQL),
+				YsqlPassword:         util.GetStringPointer(ysqlPassword),
+				EnableYSQLAuth:       util.GetBoolPointer(enableYSQLAuth),
+				EnableYCQL:           util.GetBoolPointer(enableYCQL),
+				YcqlPassword:         util.GetStringPointer(ycqlPassword),
+				EnableYCQLAuth:       util.GetBoolPointer(enableYCQLAuth),
+				EnableYEDIS:          util.GetBoolPointer(enableYEDIS),
 
 				EnableClientToNodeEncrypt: util.GetBoolPointer(enableCtoN),
 				EnableNodeToNodeEncrypt:   util.GetBoolPointer(enableNtoN),
@@ -587,45 +560,42 @@ func buildDeviceInfo(
 		onpremVolumeDefault = onpremVolumeDefaultList[0]
 	}
 
-	diskIops, err := cmd.Flags().GetIntSlice("disk-iops")
-	if err != nil {
-		return nil, err
-	}
+	diskIops := v1.GetIntSlice("disk-iops")
 	diskIopsLen := len(diskIops)
 
-	numVolumes, err := cmd.Flags().GetIntSlice("num-volumes")
-	if err != nil {
-		return nil, err
-	}
+	numVolumes := v1.GetIntSlice("num-volumes")
 	numVolumeLen := len(numVolumes)
 
-	volumeSize, err := cmd.Flags().GetIntSlice("volume-size")
-	if err != nil {
-		return nil, err
-	}
+	volumeSize := v1.GetIntSlice("volume-size")
 	volumeSizeLen := len(volumeSize)
 
-	storageType, err := cmd.Flags().GetStringArray("storage-type")
-	if err != nil {
-		return nil, err
+	storageTypeInterface := v1.Get("storage-type")
+	var storageType []string
+	if reflect.TypeOf(storageTypeInterface) == reflect.TypeOf(checkInterfaceType) {
+		storageType = *util.StringSlice(storageTypeInterface.([]interface{}))
+	} else {
+		storageType = storageTypeInterface.([]string)
 	}
 	storageTypeLen := len(storageType)
 
-	storageClass, err := cmd.Flags().GetStringArray("storage-class")
-	if err != nil {
-		return nil, err
+	storageClassInterface := v1.Get("storage-class")
+	var storageClass []string
+	if reflect.TypeOf(storageClassInterface) == reflect.TypeOf(checkInterfaceType) {
+		storageClass = *util.StringSlice(storageClassInterface.([]interface{}))
+	} else {
+		storageClass = storageClassInterface.([]string)
 	}
 	storageClassLen := len(storageClass)
 
-	throughput, err := cmd.Flags().GetIntSlice("throughput")
-	if err != nil {
-		return nil, err
-	}
+	throughput := v1.GetIntSlice("throughput")
 	throughputLen := len(throughput)
 
-	mountPoints, err := cmd.Flags().GetStringArray("mount-points")
-	if err != nil {
-		return nil, err
+	mountPointsInterface := v1.Get("mount-points")
+	var mountPoints []string
+	if reflect.TypeOf(mountPointsInterface) == reflect.TypeOf(checkInterfaceType) {
+		mountPoints = *util.StringSlice(mountPointsInterface.([]interface{}))
+	} else {
+		mountPoints = mountPointsInterface.([]string)
 	}
 	mountPointsLen := len(mountPoints)
 
@@ -728,40 +698,13 @@ func buildMasterDeviceInfo(
 		onpremVolumeDefault = onpremVolumeDefaultList[0]
 	}
 
-	diskIops, err := cmd.Flags().GetInt("dedicated-master-disk-iops")
-	if err != nil {
-		return nil, err
-	}
-
-	numVolumes, err := cmd.Flags().GetInt("dedicated-master-num-volumes")
-	if err != nil {
-		return nil, err
-	}
-
-	volumeSize, err := cmd.Flags().GetInt("dedicated-master-volume-size")
-	if err != nil {
-		return nil, err
-	}
-
-	storageType, err := cmd.Flags().GetString("dedicated-master-storage-type")
-	if err != nil {
-		return nil, err
-	}
-
-	storageClass, err := cmd.Flags().GetString("dedicated-master-storage-class")
-	if err != nil {
-		return nil, err
-	}
-
-	throughput, err := cmd.Flags().GetInt("dedicated-master-throughput")
-	if err != nil {
-		return nil, err
-	}
-
-	mountPoints, err := cmd.Flags().GetString("dedicated-master-mount-points")
-	if err != nil {
-		return nil, err
-	}
+	diskIops := v1.GetInt("dedicated-master-disk-iops")
+	numVolumes := v1.GetInt("dedicated-master-num-volumes")
+	volumeSize := v1.GetInt("dedicated-master-volume-size")
+	storageType := v1.GetString("dedicated-master-storage-type")
+	storageClass := v1.GetString("dedicated-master-storage-class")
+	throughput := v1.GetInt("dedicated-master-throughput")
+	mountPoints := v1.GetString("dedicated-master-mount-points")
 
 	if providerType != util.AWSProviderType {
 		diskIops = 0
@@ -773,7 +716,6 @@ func buildMasterDeviceInfo(
 		}
 	} else {
 		mountPoints = ""
-
 	}
 
 	if providerType == util.OnpremProviderType && volumeSize == 100 {

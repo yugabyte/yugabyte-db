@@ -2218,6 +2218,115 @@ DROP TABLE x1;
 DROP TABLE x2;
 DROP TABLE x3;
 SET yb_bnl_batch_size = 3;
+create table ss1(a varchar(1024), b char(10));
+create table ss2(a varchar(1024));
+create index on ss2 (a asc);
+explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2.a;
+                   QUERY PLAN
+-------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on ss1 t1
+   ->  Index Only Scan using ss2_a_idx on ss2 t2
+         Index Cond: (a = (t1.a)::text)
+         Filter: (t1.b = (a)::bpchar)
+(5 rows)
+
+drop table ss1;
+drop table ss2;
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int);
+CREATE TABLE ss3(a int, b int, c int, primary key(a asc, b asc));
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
+*/EXPLAIN (COSTS OFF) SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on ss2
+   ->  Nested Loop
+         ->  Seq Scan on ss1
+         ->  Index Scan using ss3_pkey on ss3
+               Index Cond: ((a = ss1.a) AND (b <= ss2.a))
+               Filter: (c <= (SubPlan 1))
+               SubPlan 1
+                 ->  Limit
+                       ->  Index Scan using ss3_pkey on ss3 ss3_1
+                             Index Cond: (a < (ss2.a + ss1.a))
+(11 rows)
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading(((ss1 ss2) ss3))
+*/SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+ a | a | a | b | c
+---+---+---+---+---
+(0 rows)
+
+DROP TABLE ss1;
+DROP TABLE ss2;
+DROP TABLE ss3;
+CREATE TABLE other(a int);
+CREATE INDEX ON other(a asc);
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int, b int);
+CREATE INDEX ON ss2(a asc, b asc);
+INSERT INTO ss1 VALUES (0), (0);
+INSERT INTO ss2 VALUES (0, 0), (0, 0);
+INSERT INTO other VALUES (1), (1);
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */EXPLAIN (COSTS OFF)
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (ss2.a = (SubPlan 1))
+         ->  Seq Scan on ss1
+         ->  Index Only Scan using ss2_a_b_idx on ss2
+               Index Cond: (a = ANY (ARRAY[(SubPlan 1), (SubPlan 1), (SubPlan 1)]))
+               SubPlan 1
+                 ->  Limit
+                       ->  YB Batched Nested Loop Join
+                             Join Filter: (other_1.a = (ss1_1.a + ss1.a))
+                             ->  Seq Scan on ss1 ss1_1
+                             ->  Index Only Scan using other_a_idx on other other_1
+                                   Index Cond: (a = ANY (ARRAY[(ss1_1.a + ss1.a), ($2 + ss1.a), ($3 + ss1.a)]))
+   ->  Index Only Scan using other_a_idx on other
+(14 rows)
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+ a | othera | a | b
+---+--------+---+---
+ 0 |      1 |   |
+ 0 |      1 |   |
+ 0 |      1 |   |
+ 0 |      1 |   |
+(4 rows)
+
+DROP TABLE other;
+DROP TABLE ss1;
+DROP TABLE ss2;
 --
 --
 -- Inner joins (equi-joins)

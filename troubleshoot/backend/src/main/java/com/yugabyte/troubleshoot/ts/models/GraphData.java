@@ -32,6 +32,7 @@ public class GraphData {
   private String type;
   private String waitEventComponent;
   private String waitEventClass;
+  private String waitEventType;
   private String waitEvent;
   private Map<String, String> labels;
   @JsonIgnore private List<GraphPoint> points = new ArrayList<>();

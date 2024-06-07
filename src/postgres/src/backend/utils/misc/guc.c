@@ -224,6 +224,7 @@ static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
 static const char *show_tcp_user_timeout(void);
+static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool check_maxconnections(int *newval, void **extra, GucSource source);
 static const char *yb_show_maxconnections(void);
 static bool check_max_worker_processes(int *newval, void **extra, GucSource source);
@@ -1093,7 +1094,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&enable_bitmapscan,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -1313,6 +1314,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_parallel_append,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_bitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of YB bitmap-scan plans."),
+			gettext_noop("To use YB Bitmap Scans, both yb_enable_bitmapscan "
+						 "and enable_bitmapscan must be true.")
+		},
+		&yb_enable_bitmapscan,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2808,7 +2819,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_rollback_enabled,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2938,7 +2949,17 @@ static struct config_int ConfigureNamesInt[] =
 		1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_explicit_row_locking_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Batch size of explicit row locking"),
+			gettext_noop("Set to 1 to conserve default behavior, "
+							"batching is disabled by default."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explicit_row_locking_batch_size,
+		1, 1, INT_MAX,
+		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
@@ -4658,6 +4679,17 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_toast_catcache_threshold,
 		-1, -1, INT_MAX,
 		yb_check_toast_catcache_threshold, NULL, NULL
+	},
+
+	{
+		{"yb_parallel_range_size", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Approximate size of parallel range for DocDB relation scans"),
+			NULL,
+			GUC_UNIT_BYTE
+		},
+		&yb_parallel_range_size,
+		1024 * 1024, 1, INT_MAX,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -8172,6 +8204,29 @@ ReportGUCOption(struct config_generic *record)
 		if (record->last_reported)
 			free(record->last_reported);
 		record->last_reported = strdup(val);
+
+		/* 
+		 * Send the equivalent of a ParameterStatus packet corresponding to role_oid
+		 * back to YSQL Connection Manager.
+		 */
+		if ((strcmp(record->name, "role") == 0) && YbIsClientYsqlConnMgr())
+		{
+			StringInfoData rolebuf;
+
+			pq_beginmessage(&rolebuf, 'r');
+			pq_sendstring(&rolebuf, "role_oid");
+			if (val != NULL && strcmp(val, "none") != 0)
+			{
+				char oid[16];
+				snprintf(oid, 16, "%u", get_role_oid(val, false));
+
+				pq_sendstring(&rolebuf, oid);
+
+			}
+			else
+				pq_sendstring(&rolebuf, "-1");
+			pq_endmessage(&rolebuf);
+		}
 	}
 
 	pfree(val);
@@ -8976,6 +9031,22 @@ set_config_option_ext(const char *name, const char *value,
 
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
+
+	/* 
+	 * role_oid is a provision made for YSQL Connection Manager to handle
+	 * scenarios around "ALTER ROLE RENAME" queries as it only caches the
+	 * previously used role by that client.
+	 */
+	if (strcmp(name, "role_oid") == 0)
+	{
+		Assert(YbIsClientYsqlConnMgr());
+		/* Handle RESET ROLE queries */
+		if (!value || strcmp(value, "0") == 0)
+			return set_config_option("role", NULL, context, source,
+								action, changeVal, elevel, is_reload);
+		return set_config_option("role", GetUserNameFromId(atoi(value), false), context, source,
+								action, changeVal, elevel, is_reload);
+	}
 
 	if (elevel == 0)
 	{
@@ -14175,6 +14246,12 @@ show_tcp_user_timeout(void)
 
 	snprintf(nbuf, sizeof(nbuf), "%d", pq_gettcpusertimeout(MyProcPort));
 	return nbuf;
+}
+
+static bool
+check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source)
+{
+	return *newval > 0;
 }
 
 static bool

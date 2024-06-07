@@ -172,6 +172,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
+  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+
   Status SetPgTxnStart(int64_t pg_txn_start_us);
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
@@ -195,7 +197,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 class YBSubTransaction {
  public:
   bool active() const {
-    return highest_subtransaction_id_ >= kMinSubTransactionId;
+    return !sub_txn_.IsDefaultState();
   }
 
   void SetActiveSubTransaction(SubTransactionId id);
@@ -215,7 +217,7 @@ class YBSubTransaction {
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id_ = 0;
+  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
 };
 
 } // namespace client

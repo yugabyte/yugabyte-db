@@ -21,7 +21,6 @@ import {
   PEER_CERT_SUFFIX
 } from '../modals/ManagePeerCertsModal';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
@@ -73,28 +72,6 @@ export const EMPTY_YB_HA_WEBSERVICE = {
 
 export const getPeerCerts = (ybHAWebService: YbHAWebService) => {
   return ybHAWebService?.ssl?.trustManager?.stores;
-};
-
-/**
- * Returns a non-unique string identifier for a given peer certificate.
- * The identifier is the first 48 characters of data in the cert.
- * Whitespace is ignored.
- */
-export const getPeerCertIdentifier = (peerCert: PeerCert) => {
-  // PEM encoded certificates use base64 encoding.
-  // We can ignore whitespace when selecting data to display as
-  // an identifier.
-  const compactCertData = peerCert.data.replace(/\s/g, '');
-  const compactCertPrefix = PEER_CERT_PREFIX.replace(/\s/g, '');
-  const compactCertSuffix = PEER_CERT_SUFFIX.replace(/\s/g, '');
-
-  const identifierStartIndex = compactCertPrefix.length;
-  const identifierEndIndex = Math.min(
-    identifierStartIndex + PEER_CERT_IDENTIFIER_LENGTH,
-    compactCertData.length - compactCertSuffix.length
-  );
-
-  return compactCertData.substring(identifierStartIndex, identifierEndIndex);
 };
 
 const TRANSLATION_KEY_PREFIX = 'ha.config';
@@ -164,7 +141,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
       )
     : EMPTY_YB_HA_WEBSERVICE;
 
-  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
   // sort by is_leader to show active instance on the very top, then sort other items by address
   const sortedInstances = _.sortBy(haConfig.instances, [(item) => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
@@ -221,20 +197,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
                       } Certficate Validation`}
                     />
                   </MenuItem>
-                  {isRuntimeConfigLoaded && !isCACertStoreEnabled && (
-                    <MenuItem
-                      onSelect={showAddPeerCertModal}
-                      name={`${
-                        getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                      } Peer Certificates`}
-                    >
-                      <YBMenuItemLabel
-                        label={`${
-                          getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                        } Peer Certificates`}
-                      />
-                    </MenuItem>
-                  )}
                   <MenuItem onSelect={showDeleteModal} name="Delete Configuration">
                     <YBMenuItemLabel label="Delete Configuration" />
                   </MenuItem>
@@ -340,38 +302,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             </Col>
             <Col xs={10} className="ha-replication-view__value">
               {haConfig.accept_any_certificate ? 'Disabled' : 'Enabled'}
-            </Col>
-          </Row>
-        )}
-        {isRuntimeConfigLoaded && !isCACertStoreEnabled && currentInstance.is_leader && (
-          <Row className="ha-replication-view__row">
-            <Col xs={2} className="ha-replication-view__label">
-              Peer Certificates
-            </Col>
-            <Col xs={10}>
-              {getPeerCerts(ybHAWebService).length === 0 ? (
-                <button
-                  className="ha-replication-view__no-cert--add-button"
-                  onClick={showAddPeerCertModal}
-                >
-                  Add a peer certificate
-                </button>
-              ) : (
-                getPeerCerts(ybHAWebService).map((peerCert) => {
-                  return (
-                    <>
-                      <div className="ha-replication-view__cert-container">
-                        <span className="ha-replication-view__cert-container--identifier">
-                          {getPeerCertIdentifier(peerCert)}
-                        </span>
-                        <span className="ha-replication-view__cert-container--ellipse">
-                          ( . . . )
-                        </span>
-                      </div>
-                    </>
-                  );
-                })
-              )}
             </Col>
           </Row>
         )}

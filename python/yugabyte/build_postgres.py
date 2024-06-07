@@ -782,7 +782,9 @@ class PostgresBuilder(YbBuildToolBase):
                                    # in ('third-party-extensions', 'yb-extensions')]
                                    in ('third-party-extensions/hypopg',
                                        'third-party-extensions/orafce',
+                                       'third-party-extensions/pg_cron',
                                        'third-party-extensions/pg_hint_plan',
+                                       'third-party-extensions/pgaudit',
                                        'third-party-extensions/pgvector',
                                        'third-party-extensions/postgresql-hll',
                                        'yb-extensions')]
@@ -810,6 +812,8 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/earthdistance'),
             os.path.join(self.pg_build_root, 'contrib/intarray'),
             os.path.join(self.pg_build_root, 'contrib/isn'),
+            os.path.join(self.pg_build_root, 'contrib/pg_stat_statements'),
+            os.path.join(self.pg_build_root, 'contrib/test_decoding'),
             # YB_TODO: end
         ] + external_extension_dirs
 

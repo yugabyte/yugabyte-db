@@ -116,7 +116,7 @@ func HasSudoAccess() bool {
 // individual elements in an array
 func SplitInput(input string) []string {
 	return strings.FieldsFunc(input, func(r rune) bool {
-			return r == ',' || r == ' '
+		return r == ',' || r == ' '
 	})
 }
 
@@ -199,6 +199,12 @@ func ResolveSymlink(source, target string) error {
 		log.Error(fmt.Sprintf("failed to rename %s -> %s", source, target))
 		return fmt.Errorf("resolve symlink failed to rename %s->%s: %w", source, target, err)
 	}
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
+	}
 	return nil
 }
 
@@ -243,6 +249,13 @@ func resolveSymlinkFallback(source, target string) error {
 		}
 	} else {
 		return fmt.Errorf("could not determine status of source directory %s: %w", source, sErr)
+	}
+
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
 	}
 
 	// Remove the temp dir if it exists. This is best effort, and can be cleaned up manually later
@@ -401,6 +414,10 @@ type YBVersion struct {
 
 	// ex: foo
 	Remainder string
+
+	// Is a stable (2024.1.0.0 format OR 2.18, 2.20, etc)
+	// 2.21, 2.23, etc are preview.
+	IsStable bool
 }
 
 func NewYBVersion(versionString string) (*YBVersion, error) {
@@ -452,6 +469,18 @@ func NewYBVersion(versionString string) (*YBVersion, error) {
 		version.Remainder = matches[6]
 	}
 
+	if version.PublicVersionDigits[0] > 2000 {
+		// First, check if its the 2024.x.y.z form or 2.x.y.z form - 2024 is always stable
+		// since its year based, easy to just check > 2000
+		version.IsStable = true
+	} else if version.PublicVersionDigits[1]%2 == 0 {
+		// if its the 2.x.y.z form, even numbers for 'x' are stable
+		version.IsStable = true
+	} else {
+		// everything else is preview (not stable)
+		version.IsStable = false
+	}
+
 	return version, nil
 
 }
@@ -476,6 +505,25 @@ func LessVersions(version1, version2 string) bool {
 	ybversion2, err := NewYBVersion(version2)
 	if err != nil {
 		panic(err)
+	}
+
+	// If we are upgrading between stable and preview, ask the customer to continue if yba_mode=dev,
+	// otherwise fail.
+	prompt := "Upgrades between stable/preview is not supported, continue anyways?"
+	if ybversion1.IsStable != ybversion2.IsStable &&
+		((os.Getenv("YBA_MODE") == "dev" && !UserConfirm(prompt, DefaultNo)) ||
+			os.Getenv("YBA_MODE") != "dev") {
+		v1Type := "preview"
+		if ybversion1.IsStable {
+			v1Type = "stable"
+		}
+		v2Type := "preview"
+		if ybversion2.IsStable {
+			v2Type = "stable"
+		}
+		panic(fmt.Errorf(
+			"cannot compare stable and preview versions %s(%s) - %s(%s)",
+			version1, v1Type, version2, v2Type))
 	}
 
 	for i := 0; i < 4; i++ {

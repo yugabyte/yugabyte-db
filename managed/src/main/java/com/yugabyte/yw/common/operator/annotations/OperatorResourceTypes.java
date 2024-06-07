@@ -3,7 +3,8 @@
 package com.yugabyte.yw.common.operator.annotations;
 
 public enum OperatorResourceTypes {
-  UNIVERSE("universe");
+  UNIVERSE("universe"),
+  PROVIDER("provider");
 
   private final String type;
 

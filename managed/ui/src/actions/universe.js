@@ -48,8 +48,8 @@ export const DELETE_READ_REPLICA = 'DELETE_READ_REPLICA';
 export const DELETE_READ_REPLICA_RESPONSE = 'DELETE_READ_REPLICA_RESPONSE';
 
 // Get the Master Leader for a Universe
-export const GET_MASTER_NODES_INFO = 'GET_MASTER_NODES_INFO';
-export const GET_MASTER_NODES_INFO_RESPONSE = 'GET_MASTER_NODES_INFO_RESPONSE';
+export const GET_MASTER_INFO = 'GET_MASTER_INFO';
+export const GET_MASTER_INFO_RESPONSE = 'GET_MASTER_INFO_RESPONSE';
 
 // Get the Master Nodes Info for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
@@ -567,17 +567,17 @@ export function getMasterLeaderResponse(response) {
   };
 }
 
-export function getMasterNodesInfo(universeUUID) {
-  const request = axios.get(`${getCustomerEndpoint()}/universes/${universeUUID}/masters/info`);
+export function getMasterInfos(universeUUID) {
+  const request = axios.get(`${getCustomerEndpoint()}/universes/${universeUUID}/master_infos`);
   return {
-    type: GET_MASTER_NODES_INFO,
+    type: GET_MASTER_INFO,
     payload: request
   };
 }
 
-export function getMasterNodesInfoResponse(response) {
+export function getMasterInfosResponse(response) {
   return {
-    type: GET_MASTER_NODES_INFO_RESPONSE,
+    type: GET_MASTER_INFO_RESPONSE,
     payload: response
   };
 }

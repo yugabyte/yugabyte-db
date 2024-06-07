@@ -78,6 +78,13 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			 "DETAIL: %s", error.detail);
 	}
 
+	/* catch and store error to be forwarded later if we are in deploy phase */
+	if (od_server_in_deploy(server)) {
+		od_client_t* client = (od_client_t*) (server->client);
+		client->deploy_err = (kiwi_fe_error_t *) malloc(sizeof(kiwi_fe_error_t));
+		kiwi_fe_read_error(data, size, client->deploy_err);
+	}
+
 	if (error.hint) {
 		od_error(&instance->logger, context, server->client, server,
 			 "HINT: %s", error.hint);
@@ -210,6 +217,8 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 			break;
+		/* fallthrough */
+		case YB_ROLE_OID_PARAMETER_STATUS:
 		case KIWI_BE_PARAMETER_STATUS: {
 			char *name;
 			uint32_t name_len;
@@ -689,6 +698,10 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
+	/* ignore caching of role, only store role_oid */
+	if (strcmp("role", name) == 0)
+		return 0;
+
 	/* update server only or client and server parameter */
 	od_debug(&instance->logger, context, client, server, "%.*s = %.*s",
 		 name_len, name, value_len, value);
@@ -700,9 +713,9 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
 
-		/* reset role whenever session_authorization is changed by the user */
+		/* reset role oid whenever session_authorization is changed by the user */
 		if (strcmp(name, "session_authorization") == 0)
-			kiwi_vars_update_both(&client->vars, &server->vars, "role", 5, "none", 5);
+			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
 	return 0;
@@ -729,7 +742,7 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 		od_debug(&instance->logger, context, server->client, server,
 			 "%s", kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_PARAMETER_STATUS) {
+		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_ROLE_OID_PARAMETER_STATUS) {
 			/* update server parameter */
 			int rc;
 			rc = od_backend_update_parameter(server, context,

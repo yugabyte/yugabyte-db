@@ -44,13 +44,6 @@ Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft [Azure K
 
 Conceptually, Azure Key Vault consists of a key vault containing one or more keys, with each key capable of having multiple versions.
 
-## Prerequisites
-
-Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
-
-- Set the vault permission model as Vault access policy.
-- Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key.
-
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
 - The primary key version should be in the Enabled state.
@@ -60,6 +53,13 @@ If you are planning to use an existing cryptographic key with the same name, it 
 - The key rotation policy should not be defined in order to avoid automatic rotation.
 
 Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure Key Vault.
+
+## Prerequisites
+
+Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
+
+- Set the vault permission model as Vault access policy.
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key.
 
 ## Create a KMS configuration
 

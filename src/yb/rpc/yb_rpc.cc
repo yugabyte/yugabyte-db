@@ -339,11 +339,10 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   }
   if (req.get_wait_state()) {
     if (const auto& wait_state = this->wait_state()) {
-      // TBD: Add WaitStateInfoPB to the response instead of the string.
-      wait_state->ToPB(resp->mutable_wait_state());
+      wait_state->ToPB(resp->mutable_wait_state(), req.export_wait_state_code_as_string());
       TRACE_TO(
           trace(), "Pulled $0",
-          yb::ToString(ash::WaitStateCode(resp->wait_state().wait_status_code())));
+          yb::ToString(ash::WaitStateCode(resp->wait_state().wait_state_code())));
     }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)

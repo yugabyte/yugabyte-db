@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
@@ -57,6 +59,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
@@ -71,18 +75,23 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.mapstruct.ap.internal.util.Strings;
+import play.libs.Json;
 
 /** This class contains all the methods required to communicate to a node agent server. */
 @Slf4j
 @Singleton
 public class NodeAgentClient {
+  public static final String NODE_AGENT_SERVICE_CONFIG_FILE = "node_agent/service_config.json";
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
   public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(5);
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
@@ -213,7 +222,34 @@ public class NodeAgentClient {
         channelBuilder.withOption(
             ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
+      Map<String, ?> serviceConfig = getServiceConfig();
+      if (MapUtils.isNotEmpty(serviceConfig)) {
+        channelBuilder.defaultServiceConfig(serviceConfig);
+      }
       return channelBuilder.build();
+    }
+
+    static Map<String, ?> getServiceConfig() {
+      try (InputStream inputStream =
+          ChannelFactory.class
+              .getClassLoader()
+              .getResourceAsStream(NODE_AGENT_SERVICE_CONFIG_FILE)) {
+        Map<String, ?> map =
+            Json.mapper()
+                .readValue(
+                    Objects.requireNonNull(
+                        inputStream, "Node agent service config file is not found"),
+                    new TypeReference<Map<String, ?>>() {});
+        return fixMap(map);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    // A hack to convert Number to Double because ManagedChannelImplBuilder allows only Double
+    // instance type for numbers.
+    static Map<String, ?> fixMap(Map<String, ?> map) {
+      return Util.transformMap(map, x -> (x instanceof Number) ? ((Number) x).doubleValue() : x);
     }
   }
 
@@ -290,7 +326,7 @@ public class NodeAgentClient {
     public void onError(Throwable throwable) {
       this.throwable = throwable;
       latch.countDown();
-      log.error("Error encountered for {}", getId(), throwable);
+      log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
     }
 
     @Override
@@ -308,12 +344,16 @@ public class NodeAgentClient {
     }
 
     public void waitFor() throws Throwable {
+      waitFor(true);
+    }
+
+    public void waitFor(boolean throwOnError) throws Throwable {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-      if (throwable != null) {
+      if (throwOnError && throwable != null) {
         throw throwable;
       }
     }
@@ -322,16 +362,19 @@ public class NodeAgentClient {
   static class ExecuteCommandResponseObserver extends BaseResponseObserver<ExecuteCommandResponse> {
     private final StringBuilder stdOut;
     private final StringBuilder stdErr;
+    private final AtomicInteger exitCode;
 
     ExecuteCommandResponseObserver(String id) {
       super(id);
       this.stdOut = new StringBuilder();
       this.stdErr = new StringBuilder();
+      this.exitCode = new AtomicInteger();
     }
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
       if (response.hasError()) {
+        exitCode.set(response.getError().getCode());
         stdErr.append(response.getError().getMessage());
         onError(
             new RuntimeException(
@@ -343,12 +386,20 @@ public class NodeAgentClient {
       }
     }
 
+    public ShellResponse getResponse() {
+      return ShellResponse.create(exitCode.get(), exitCode.get() == 0 ? getStdOut() : getStdErr());
+    }
+
     public String getStdOut() {
       return stdOut.toString();
     }
 
     public String getStdErr() {
       return stdErr.toString();
+    }
+
+    public int getExitCode() {
+      return exitCode.get();
     }
   }
 
@@ -481,7 +532,8 @@ public class NodeAgentClient {
         nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
         return response;
       } catch (StatusRuntimeException e) {
-        if (e.getStatus().getCode() != Code.UNAVAILABLE) {
+        if (e.getStatus().getCode() != Code.UNAVAILABLE
+            && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
           log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
           throw e;
         }
@@ -502,11 +554,12 @@ public class NodeAgentClient {
     }
   }
 
-  public String executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, null);
+  public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
+    return executeCommand(nodeAgent, command, null, null);
   }
 
-  public String executeCommand(NodeAgent nodeAgent, List<String> command, String user) {
+  public ShellResponse executeCommand(
+      NodeAgent nodeAgent, List<String> command, String user, Duration timeout) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
@@ -516,22 +569,51 @@ public class NodeAgentClient {
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
+    if (timeout != null && !timeout.isZero()) {
+      stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
     try {
       stub.executeCommand(builder.build(), responseObserver);
-      responseObserver.waitFor();
-      return responseObserver.getStdOut();
+      responseObserver.waitFor(false);
+      return responseObserver.getResponse();
     } catch (Throwable e) {
       log.error("Error in running command. Error: {}", responseObserver.stdErr);
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
 
+  public ShellResponse executeScript(
+      NodeAgent nodeAgent, Path scriptPath, List<String> params, String user, Duration timeout) {
+    try {
+      byte[] bytes = Files.readAllBytes(scriptPath);
+      ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
+      commandBuilder.add("/bin/bash").add("-c");
+      commandBuilder.add(
+          String.format(
+              "/bin/bash -s %s <<'EOF'\n%s\nEOF",
+              Strings.join(params, " "), new String(bytes, StandardCharsets.UTF_8)));
+      List<String> command = commandBuilder.build();
+      return executeCommand(nodeAgent, command, user, timeout);
+    } catch (Exception e) {
+      log.error("Error in running script {}", scriptPath, e);
+      if (e instanceof RuntimeException) {
+        throw (RuntimeException) e;
+      }
+      throw new RuntimeException(e);
+    }
+  }
+
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
-    uploadFile(nodeAgent, inputFile, outputFile, null, 0);
+    uploadFile(nodeAgent, inputFile, outputFile, null, 0, null);
   }
 
   public void uploadFile(
-      NodeAgent nodeAgent, String inputFile, String outputFile, String user, int chmod) {
+      NodeAgent nodeAgent,
+      String inputFile,
+      String outputFile,
+      String user,
+      int chmod,
+      Duration timeout) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (InputStream inputStream = new BufferedInputStream(new FileInputStream(inputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
@@ -545,6 +627,9 @@ public class NodeAgentClient {
       }
       if (chmod > 0) {
         builder.setChmod(chmod);
+      }
+      if (timeout != null && !timeout.isZero()) {
+        stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
       UploadFileRequest request = builder.build();
       // Send metadata first.
@@ -569,10 +654,11 @@ public class NodeAgentClient {
   }
 
   public void downloadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
-    downloadFile(nodeAgent, inputFile, outputFile, null);
+    downloadFile(nodeAgent, inputFile, outputFile, null, null);
   }
 
-  public void downloadFile(NodeAgent nodeAgent, String inputFile, String outputFile, String user) {
+  public void downloadFile(
+      NodeAgent nodeAgent, String inputFile, String outputFile, String user, Duration timeout) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
@@ -582,6 +668,9 @@ public class NodeAgentClient {
       DownloadFileRequest.Builder builder = DownloadFileRequest.newBuilder().setFilename(inputFile);
       if (StringUtils.isNotBlank(user)) {
         builder.setUser(user);
+      }
+      if (timeout != null && !timeout.isZero()) {
+        stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();

@@ -88,8 +88,8 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
 
   // Verify that the cluster uuid was set in the config.
   ASSERT_EQ(FLAGS_cluster_uuid, config.cluster_uuid());
@@ -106,7 +106,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  ASSERT_OK(master->catalog_manager()->GetClusterConfig(&config));
+  config = ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
 
   // Check that the cluster_uuid was set.
   ASSERT_FALSE(config.cluster_uuid().empty());
@@ -312,8 +312,8 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   // Get the config from the CatalogManager and test it is the default, as we didn't use the
   // CatalogManager to update it.
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
   ASSERT_EQ(config.version(), 0);
   ASSERT_EQ(config.replication_info().live_replicas().placement_blocks_size(), 0);
 
@@ -327,28 +327,29 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
     ChangeMasterClusterConfigRequestPB req;
     *req.mutable_cluster_config() = l.mutable_data()->pb;
-    ChangeMasterClusterConfigResponsePB resp;
 
     // Verify that we receive an error when trying to change the cluster uuid.
     req.mutable_cluster_config()->set_cluster_uuid("some-cluster-uuid");
-    auto status = master_->catalog_manager()->SetClusterConfig(&req, &resp);
-    ASSERT_TRUE(status.IsInvalidArgument());
+    auto resp_result = ChangeMasterClusterConfig(req);
+    ASSERT_FALSE(resp_result.ok());
+    ASSERT_TRUE(resp_result.status().IsInvalidArgument());
     req.mutable_cluster_config()->set_cluster_uuid(config.cluster_uuid());
 
     // Verify that we receive an error when trying to change the universe uuid.
     req.mutable_cluster_config()->set_universe_uuid("some-universe-uuid");
-    status = master_->catalog_manager()->SetClusterConfig(&req, &resp);
-    ASSERT_TRUE(status.IsInvalidArgument());
+    resp_result = ChangeMasterClusterConfig(req);
+    ASSERT_FALSE(resp_result.ok());
+    ASSERT_TRUE(resp_result.status().IsInvalidArgument());
     req.mutable_cluster_config()->set_universe_uuid(config.universe_uuid());
 
     // Setting the cluster and universe uuid correctly should make the request succeed.
-    ASSERT_OK(master_->catalog_manager()->SetClusterConfig(&req, &resp));
+    ASSERT_RESULT(ChangeMasterClusterConfig(req));
     l.Commit();
   }
 
   // Confirm the in memory state does not match the config we get from the CatalogManager API, due
   // to version mismatch.
-  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  config = ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
   {
     auto l = config_info->LockForRead();
     ASSERT_FALSE(PbEquals(l->pb, config));

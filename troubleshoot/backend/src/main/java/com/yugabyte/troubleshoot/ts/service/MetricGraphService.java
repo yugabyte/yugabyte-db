@@ -107,7 +107,7 @@ public class MetricGraphService implements GraphSourceIF {
       }
 
       Map<String, String> queries = getQueries(settings, context);
-      result.setLayout(config.getLayout());
+      result.setLayout(config.getLayout().toBuilder().build());
       result.setStepSeconds(query.getStepSeconds());
       List<GraphData> data = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {

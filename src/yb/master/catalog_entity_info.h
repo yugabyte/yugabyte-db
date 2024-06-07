@@ -243,6 +243,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
+  // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
+  // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
@@ -731,6 +733,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
   bool IsSequencesSystemTable() const;
+  bool IsXClusterDDLReplicationDDLQueueTable() const;
+  bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
+  bool IsXClusterDDLReplicationTable() const {
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
+  }
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
@@ -1178,6 +1185,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   bool IsXClusterStream() const;
   bool IsCDCSDKStream() const;
 
+  HybridTime GetConsistentSnapshotHybridTime() const;
+
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;
@@ -1223,6 +1232,8 @@ struct PersistentUniverseReplicationInfo
   bool is_active() const {
     return pb.state() == SysUniverseReplicationEntryPB::ACTIVE;
   }
+
+  bool IsDbScoped() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,

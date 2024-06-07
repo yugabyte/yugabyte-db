@@ -34,6 +34,7 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "commands/ybccmds.h"
 #include "utils/fmgroids.h"
@@ -546,6 +547,7 @@ YbGetMaxAllocatedSystemOid()
 	Oid				result = InvalidOid;
 
 	Relation		pg_class,
+					pg_attribute,
 					sys_rel;
 
 	ScanKeyData		key[2];
@@ -553,43 +555,87 @@ YbGetMaxAllocatedSystemOid()
 	HeapTuple		tuple;
 
 	List		   *sys_rel_oids = NIL;
-	ListCell	   *lc;
+	ListCell	   *lc,
+				   *lc2;
+	List		   *attrelids = NIL;
+	List		   *attnums = NIL;
+	ArrayType	   *oids_array_type;
+	SysScanDesc  	sys_scan;
+	bool 			is_null;
 
 	pg_class = table_open(RelationRelationId, AccessShareLock);
 
 	/*
 	 * SELECT * FROM pg_class
 	 * WHERE relnamespace = 'pg_catalog'::regnamespace
-	 * AND relhasoids = true
+	 * AND relkind = 'r';
 	 */
 	ScanKeyInit(&key[0],
 				Anum_pg_class_relnamespace,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
 	ScanKeyInit(&key[1],
-				YB_HACK_INVALID_FLAG, /* TODO(Alex): Anum_pg_class_relhasoids */
-				BTEqualStrategyNumber, F_BOOLEQ,
-				BoolGetDatum(true));
+				Anum_pg_class_relkind,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum(RELKIND_RELATION));
 
 	scan = table_beginscan_catalog(pg_class, 2, key);
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		sys_rel_oids = lappend_oid(sys_rel_oids, YbHeapTupleGetOid(tuple));
-	}
+		sys_rel_oids =
+			lappend_oid(sys_rel_oids, ((Form_pg_class) GETSTRUCT(tuple))->oid);
 
 	table_endscan(scan);
 	table_close(pg_class, AccessShareLock);
 
+	/*
+	 * SELECT attrelid, attnum FROM pg_attribute WHERE attrelid in
+	 * <sys_rel_oids> AND attname = 'oid';
+	 */
+	Datum oids_datum_array[list_length(sys_rel_oids)];
+	int num_oids = 0;
 	foreach(lc, sys_rel_oids)
+		oids_datum_array[num_oids++] = ObjectIdGetDatum(lfirst_oid(lc));
+
+	oids_array_type = construct_array(oids_datum_array, num_oids, OIDOID,
+									  sizeof(Oid), true, TYPALIGN_INT);
+
+	ScanKeyEntryInitialize(&key[0],
+						   SK_SEARCHARRAY,
+						   Anum_pg_attribute_attrelid,
+						   BTEqualStrategyNumber, OIDOID,
+						   C_COLLATION_OID, F_OIDEQ,
+						   PointerGetDatum(oids_array_type));
+	ScanKeyInit(&key[1],
+				Anum_pg_attribute_attname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum("oid"));
+
+	pg_attribute = table_open(AttributeRelationId, AccessShareLock);
+
+	sys_scan = systable_beginscan(pg_attribute, AttributeRelidNameIndexId,
+								  true, NULL, 2, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(sys_scan)))
 	{
-		/* SELECT * FROM x WHERE oid >= 10000 AND oid < 16384 */
+		Form_pg_attribute pg_att = (Form_pg_attribute) GETSTRUCT(tuple);
+		attrelids = lappend_oid(attrelids, pg_att->attrelid);
+		attnums = lappend_int(attnums, pg_att->attnum);
+	}
+	systable_endscan(sys_scan);
+	table_close(pg_attribute, AccessShareLock);
+	pfree(oids_array_type);
+
+	forboth(lc, attrelids, lc2, attnums)
+	{
+		int attnum = lfirst_int(lc2);
+		/* SELECT * FROM x WHERE oid >= 12000 AND oid < 16384 */
 		ScanKeyInit(&key[0],
-					ObjectIdAttributeNumber,
+					attnum,
 					BTGreaterEqualStrategyNumber, F_OIDGE,
-					ObjectIdGetDatum((Oid) YbFirstBootstrapObjectId));
+					ObjectIdGetDatum((Oid) FirstUnpinnedObjectId));
 		ScanKeyInit(&key[1],
-					ObjectIdAttributeNumber,
+					attnum,
 					BTLessStrategyNumber, F_OIDLT,
 					ObjectIdGetDatum((Oid) FirstNormalObjectId));
 
@@ -598,7 +644,10 @@ YbGetMaxAllocatedSystemOid()
 
 		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
-			Oid oid = YbHeapTupleGetOid(tuple);
+			Oid oid = DatumGetObjectId(heap_getattr(tuple, attnum,
+													RelationGetDescr(sys_rel),
+													&is_null));
+			Assert(!is_null);
 
 			if (result < oid)
 				result = oid;

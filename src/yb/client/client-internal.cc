@@ -119,7 +119,6 @@ DEFINE_RUNTIME_uint32(change_metadata_backoff_init_exponent, 1,
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 namespace yb {
 
@@ -256,6 +255,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsCloneDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
@@ -272,6 +272,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AreNodesSafeToTakeDown);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CloneNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CreateSnapshot);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, DeleteSnapshot);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, ListSnapshots);
@@ -322,6 +323,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateXClusterReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsCreateXClusterReplicationDone);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, AddNamespaceToXClusterReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsAlterXClusterReplicationDone);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteUniverseReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -1114,6 +1120,44 @@ Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
           client, namespace_name, database_type, namespace_id, _1, _2));
 }
 
+Status YBClient::Data::IsCloneNamespaceInProgress(
+    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    CoarseTimePoint deadline, bool* create_in_progress) {
+  DCHECK_ONLY_NOTNULL(create_in_progress);
+  IsCloneDoneRequestPB req;
+  IsCloneDoneResponsePB resp;
+
+  req.set_source_namespace_id(source_namespace_id);
+  req.set_seq_no(clone_seq_no);
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
+  const Status s = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsCloneDone", &master::MasterBackupProxy::IsCloneDoneAsync);
+
+  RETURN_NOT_OK(s);
+  // IsCloneDone could return a terminal/done state as FAILED. This would result in an error'd
+  // Status.
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *create_in_progress = !resp.is_done();
+
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForCloneNamespaceToFinish(
+    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline, "Waiting on Clone Namespace to be completed",
+      "Timed out waiting for Namespace Cloning",
+      std::bind(
+          &YBClient::Data::IsCloneNamespaceInProgress, this, client, source_namespace_id,
+          clone_seq_no, _1, _2));
+}
+
 Status YBClient::Data::AlterTable(YBClient* client,
                                   const AlterTableRequestPB& req,
                                   CoarseTimePoint deadline) {
@@ -1633,20 +1677,18 @@ void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(new_status);
 }
 
-class CreateCDCStreamRpc
+class CreateXClusterStreamRpc
     : public ClientMasterRpc<CreateCDCStreamRequestPB, CreateCDCStreamResponsePB> {
  public:
-  CreateCDCStreamRpc(
-      YBClient* client,
-      CreateCDCStreamCallback user_cb,
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
+  CreateXClusterStreamRpc(
+      YBClient* client, CreateCDCStreamCallback user_cb, const TableId& table_id,
+      const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
       CoarseTimePoint deadline);
 
   string ToString() const override;
 
-  virtual ~CreateCDCStreamRpc();
+  virtual ~CreateXClusterStreamRpc();
 
  private:
   void CallRemoteMethod() override;
@@ -1656,40 +1698,33 @@ class CreateCDCStreamRpc
   const std::string table_id_;
 };
 
-CreateCDCStreamRpc::CreateCDCStreamRpc(
-    YBClient* client,
-    CreateCDCStreamCallback user_cb,
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    cdc::StreamModeTransactional transactional,
+CreateXClusterStreamRpc::CreateXClusterStreamRpc(
+    YBClient* client, CreateCDCStreamCallback user_cb, const TableId& table_id,
+    const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+    master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
     CoarseTimePoint deadline)
-    : ClientMasterRpc(client, deadline),
-      user_cb_(std::move(user_cb)),
-      table_id_(table_id) {
+    : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)), table_id_(table_id) {
   req_.set_table_id(table_id_);
-  req_.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  // (DEPRECATE_EOL 2024.1) Master now sets the options explicitly, so they do not need to be sent.
+  *req_.mutable_options() = options;
   req_.set_transactional(transactional);
-  for (const auto& option : options) {
-    auto* op = req_.add_options();
-    op->set_key(option.first);
-    op->set_value(option.second);
-  }
+  req_.set_initial_state(state);
 }
 
-CreateCDCStreamRpc::~CreateCDCStreamRpc() {
-}
+CreateXClusterStreamRpc::~CreateXClusterStreamRpc() {}
 
-void CreateCDCStreamRpc::CallRemoteMethod() {
+void CreateXClusterStreamRpc::CallRemoteMethod() {
   master_replication_proxy()->CreateCDCStreamAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&CreateCDCStreamRpc::Finished, this, Status::OK()));
+      std::bind(&CreateXClusterStreamRpc::Finished, this, Status::OK()));
 }
 
-string CreateCDCStreamRpc::ToString() const {
-  return Substitute("CreateCDCStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
+string CreateXClusterStreamRpc::ToString() const {
+  return Substitute(
+      "CreateXClusterStream(table_id: $0, num_attempts: $1)", table_id_, num_attempts());
 }
 
-void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
+void CreateXClusterStreamRpc::ProcessResponse(const Status& status) {
   if (status.ok()) {
     user_cb_(xrepl::StreamId::FromString(resp_.stream_id()));
   } else {
@@ -2469,15 +2504,13 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
   return actual_index_permissions;
 }
 
-void YBClient::Data::CreateCDCStream(
-    YBClient* client,
-    const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options,
-    cdc::StreamModeTransactional transactional,
-    CoarseTimePoint deadline,
-    CreateCDCStreamCallback callback) {
-  auto rpc = StartRpc<internal::CreateCDCStreamRpc>(
-      client, callback, table_id, options, transactional, deadline);
+void YBClient::Data::CreateXClusterStream(
+    YBClient* client, const TableId& table_id,
+    const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+    master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+    CoarseTimePoint deadline, CreateCDCStreamCallback callback) {
+  auto rpc = StartRpc<internal::CreateXClusterStreamRpc>(
+      client, callback, table_id, options, state, transactional, deadline);
 }
 
 void YBClient::Data::DeleteCDCStream(

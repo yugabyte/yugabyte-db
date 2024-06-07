@@ -227,8 +227,11 @@ public class NodeManager extends DevopsBase {
       return false;
     }
     UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
-    ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
-    return imageBundle.getDetails().useIMDSv2;
+    if (imageBundleUUID != null) {
+      ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
+      return imageBundle.getDetails().useIMDSv2;
+    }
+    return false;
   }
 
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
@@ -328,6 +331,17 @@ public class NodeManager extends DevopsBase {
       if (useSudoUser(type) || type == NodeCommandType.Wait_For_Connection) {
         // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
+          sshUser = params.sshUserOverride;
+        }
+      }
+
+      if (type == NodeCommandType.Manage_Otel_Collector) {
+        boolean useSudo =
+            params instanceof ManageOtelCollector.Params
+                && ((ManageOtelCollector.Params) params).useSudo;
+        if (useSudo && StringUtils.isNotBlank(params.sshUserOverride)) {
+          // Use the sudo user for configuring the otel configs in case
+          // the node is running system level systemd.
           sshUser = params.sshUserOverride;
         }
       }
@@ -451,8 +465,18 @@ public class NodeManager extends DevopsBase {
           && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
-      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)
+          || StringUtils.isNotBlank(sshUser)) {
         subCommand.add("--ssh_user");
+        if (type == NodeCommandType.Manage_Otel_Collector) {
+          boolean useSudo =
+              params instanceof ManageOtelCollector.Params
+                  && ((ManageOtelCollector.Params) params).useSudo;
+          if (!useSudo) {
+            sshUser = "yugabyte";
+          }
+        }
+
         if (StringUtils.isNotBlank(sshUser)) {
           subCommand.add(sshUser);
         } else {
@@ -1778,8 +1802,10 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     ImageBundle.NodeProperties toOverwriteNodeProperties = null;
+    Config config = this.runtimeConfigFactory.forProvider(provider);
     UUID imageBundleUUID =
-        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
+        Util.retreiveImageBundleUUID(
+            arch, userIntent, nodeTaskParam.getProvider(), config.getBoolean("yb.cloud.enabled"));
     if (imageBundleUUID != null) {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
@@ -1843,7 +1869,6 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -1947,6 +1972,7 @@ public class NodeManager extends DevopsBase {
               // Backward compatiblity.
               imageBundleDefaultImage = taskParam.getRegion().getYbImage();
             }
+
             String ybImage =
                 Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
@@ -2013,35 +2039,11 @@ public class NodeManager extends DevopsBase {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
-          UniverseDefinitionTaskParams.Cluster cluster =
-              universe.getCluster(nodeTaskParam.placementUuid);
-          Map<String, String> gflags =
-              GFlagsUtil.getGFlagsForAZ(
-                  nodeTaskParam.azUuid,
-                  ServerType.TSERVER,
-                  cluster,
-                  universe.getUniverseDetails().clusters);
-
-          // Add audit log config
-          addOtelColArgs(
-              commandArgs,
-              taskParam,
-              taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-              provider,
-              userIntent);
-
           String imageBundleDefaultImage = "";
           if (toOverwriteNodeProperties != null && StringUtils.isBlank(taskParam.machineImage)) {
             imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
-          }
-          if (StringUtils.isNotBlank(taskParam.machineImage)) {
-            // YBM use case - in case machineImage is used for deploying the universe we should
-            // fallback to sshUser configured in the provider.
-            taskParam.sshUserOverride = provider.getDetails().getSshUser();
           }
           String ybImage =
               Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
@@ -2095,6 +2097,24 @@ public class NodeManager extends DevopsBase {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
+          // Add audit log config
+          addOtelColArgs(
+              commandArgs,
+              taskParam,
+              taskParam.otelCollectorEnabled,
+              taskParam.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              provider,
+              userIntent);
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
@@ -2143,6 +2163,23 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
+          // Add audit log config
+          addOtelColArgs(
+              commandArgs,
+              taskParam,
+              taskParam.otelCollectorEnabled,
+              taskParam.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              provider,
+              userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
@@ -2269,6 +2306,9 @@ public class NodeManager extends DevopsBase {
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
+          if ("stop".equalsIgnoreCase(taskParam.command) && taskParam.deconfigure) {
+            commandArgs.add("--deconfigure");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -2305,7 +2345,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-          if (toOverwriteNodeProperties != null) {
+          if (StringUtils.isNotEmpty(taskParam.machineImage)) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(taskParam.machineImage);
+          } else if (toOverwriteNodeProperties != null) {
             String ybImage = toOverwriteNodeProperties.getMachineImage();
             if (StringUtils.isNotBlank(ybImage)) {
               commandArgs.add("--machine_image");
@@ -2328,7 +2371,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
-          if (toOverwriteNodeProperties != null) {
+          if (StringUtils.isNotEmpty(taskParam.machineImage)) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(taskParam.machineImage);
+          } else if (toOverwriteNodeProperties != null) {
             String ybImage = toOverwriteNodeProperties.getMachineImage();
             if (StringUtils.isNotBlank(ybImage)) {
               commandArgs.add("--machine_image");
@@ -2417,7 +2463,7 @@ public class NodeManager extends DevopsBase {
             appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
           }
 
-          Config config = runtimeConfigFactory.forUniverse(universe);
+          config = runtimeConfigFactory.forUniverse(universe);
 
           SkipCertValidationType skipType =
               getSkipCertValidationType(
@@ -2563,6 +2609,9 @@ public class NodeManager extends DevopsBase {
               GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
+          if (params.useSudo) {
+            commandArgs.add("--use_sudo");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));

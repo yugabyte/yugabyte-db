@@ -17,6 +17,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/sidecars.h"
 
@@ -107,8 +108,12 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   ReadQuery(
       TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
       ReadResponsePB* resp, rpc::RpcContext context)
-      : server_(*server), read_tablet_provider_(*read_tablet_provider), req_(req), resp_(resp),
-        context_(std::move(context)) {}
+      : server_(*server),
+        read_tablet_provider_(*read_tablet_provider),
+        req_(req),
+        resp_(resp),
+        context_(std::move(context)),
+        tablet_consensus_info_(nullptr) {}
 
   void Perform() {
     RespondIfFailed(DoPerform());
@@ -186,6 +191,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
+  std::shared_ptr<yb::tserver::TabletConsensusInfoPB> tablet_consensus_info_;
 };
 
 bool ReadQuery::transactional() const {
@@ -233,14 +239,11 @@ Status ReadQuery::DoPerform() {
   ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
-  VLOG(2) << "Received Read RPC: " << req_->DebugString();
 
   TabletPeerTablet peer_tablet;
   const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
   if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
-      LOG(INFO) << "Delaying transactional read for "
-                << FLAGS_TEST_transactional_read_delay_ms << " ms.";
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
     }
 
@@ -280,7 +283,7 @@ Status ReadQuery::DoPerform() {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = VERIFY_RESULT(LookupLeaderTablet(
-        server_.tablet_peer_lookup(), req_->tablet_id(), std::move(peer_tablet)));
+        server_.tablet_peer_lookup(), req_->tablet_id(), resp_, std::move(peer_tablet)));
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
@@ -288,7 +291,7 @@ Status ReadQuery::DoPerform() {
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
-        req_->consistency_level(), AllowSplitTablet::kFalse));
+        req_->consistency_level(), AllowSplitTablet::kFalse, resp_));
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 
@@ -303,6 +306,24 @@ Status ReadQuery::DoPerform() {
   if (!tablet_peer) {
     tablet_peer = ResultToValue(
         server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});
+  }
+
+  if (tablet_peer) {
+    tablet_consensus_info_ = GetTabletConsensusInfoFromTabletPeer(tablet_peer);
+  } else {
+    if (abstract_tablet_ && abstract_tablet_->system()) {
+      // Get tablet consensus info from system catalog tablet if we found a system tablet,
+      // but no tablet_peer is found. Because the tablet_peer_lookup will return NOT_FOUND
+      // for a virtual system tablet that is not the SysCatalogTablet. However, since the
+      // virtual tablets have the same consensus state, we can get their tablet_consensus_info
+      // via the SysCatalogTablet.
+      auto sys_catalog_tablet_peer =
+          server_.tablet_peer_lookup()->GetServingTablet(Slice(master::kSysCatalogTabletId));
+      if (sys_catalog_tablet_peer) {
+        tablet_consensus_info_ =
+            GetTabletConsensusInfoFromTabletPeer(sys_catalog_tablet_peer.get());
+      }
+    }
   }
   reading_from_non_leader_ = tablet_peer && !CheckPeerIsLeader(*tablet_peer).ok();
   if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower)) {
@@ -555,9 +576,13 @@ Status ReadQuery::Complete() {
     LOG(INFO) << txn_id << " READ DONE: " << key << " = " << result;
   }
 #endif
+  if (tablet_consensus_info_ && req_->has_raft_config_opid_index() &&
+      req_->raft_config_opid_index() <
+          tablet_consensus_info_.get()->consensus_state().config().opid_index()) {
+    resp_->mutable_tablet_consensus_info()->CopyFrom(*tablet_consensus_info_.get());
+  }
 
-  MakeRpcOperationCompletionCallback<ReadResponsePB>(
-      std::move(context_), resp_, server_.Clock())(Status::OK());
+  MakeRpcOperationCompletionCallback(std::move(context_), resp_, server_.Clock())(Status::OK());
   TRACE("Done Read");
 
   return Status::OK();

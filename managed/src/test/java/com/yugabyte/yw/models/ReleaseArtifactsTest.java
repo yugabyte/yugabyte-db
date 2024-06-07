@@ -2,6 +2,7 @@ package com.yugabyte.yw.models;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -73,7 +74,7 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     ReleaseLocalFile.create(rlfUUID, "path", false);
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, rlfUUID);
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
     assertNotNull(foundArtifact);
     assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
@@ -85,7 +86,7 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     Release.create(releaseUUID, "version", "lts");
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url");
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact =
         ReleaseArtifact.getForReleaseArchitecture(releaseUUID, Architecture.x86_64);
     assertNotNull(foundArtifact);
@@ -98,9 +99,37 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
     Release.create(releaseUUID, "version", "lts");
     ReleaseArtifact artifact =
         ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, "url");
-    artifact.setReleaseUUID(releaseUUID);
+    artifact.saveReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseArchitecture(releaseUUID, null);
     assertNotNull(foundArtifact);
     assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
+  }
+
+  @Test
+  public void testSha1md5sum() {
+    ReleaseArtifact shaArtifact =
+        ReleaseArtifact.create(
+            "SHA1:a98a128bd452373c75e8922d7b6de9f43616a44c",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.x86_64,
+            "https://url1.com");
+    ReleaseArtifact md5Artifact =
+        ReleaseArtifact.create(
+            "md5:a9fa98a22ff0a63cbd32dbde8df3aee7",
+            ReleaseArtifact.Platform.LINUX,
+            Architecture.aarch64,
+            "https://url1.com");
+
+    assertNull(shaArtifact.getFormattedSha256());
+    assertEquals("SHA1:a98a128bd452373c75e8922d7b6de9f43616a44c", shaArtifact.getSha256());
+    assertNull(md5Artifact.getFormattedSha256());
+    assertEquals("md5:a9fa98a22ff0a63cbd32dbde8df3aee7", md5Artifact.getSha256());
+  }
+
+  @Test
+  public void testNullSha() {
+    ReleaseArtifact ra =
+        ReleaseArtifact.create(null, ReleaseArtifact.Platform.KUBERNETES, null, "https;//url.com");
+    assertNull(ra.getFormattedSha256());
   }
 }

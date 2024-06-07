@@ -74,6 +74,7 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -875,6 +876,7 @@ public class Util {
     } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
+      LOG.warn("Could not parse {} to x86_64 or aarch64", ybServerPackage);
       throw new RuntimeException(
           "Cannot install ybc on machines of arch types other than x86_64, aarch64");
     }
@@ -974,7 +976,7 @@ public class Util {
     try (FileInputStream fis = new FileInputStream(tarFile.toFile());
         GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
         TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
-      while ((currentEntry = tis.getNextTarEntry()) != null) {
+      while ((currentEntry = tis.getNextEntry()) != null) {
         File destPath = new File(folderPath, currentEntry.getName());
         if (currentEntry.isDirectory()) {
           destPath.mkdirs();
@@ -1194,10 +1196,17 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
+    return retreiveImageBundleUUID(arch, userIntent, provider, false);
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null) {
+    } else if (provider.getUuid() != null && !cloudEnabled) {
+      // Don't use defaultProvider bundle for YBM, as they will
+      // specify machineImage for provisioning the node.
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
@@ -1261,5 +1270,63 @@ public class Util {
       }
     }
     return node;
+  }
+
+  /**
+   * Transforms the values (non-map, non-collection) in a nested map of string to objects.
+   *
+   * @param map the given map.
+   * @param valueTransformer the transformer for a value.
+   * @return the transformed map.
+   */
+  @SuppressWarnings("unchecked")
+  public static Map<String, ?> transformMap(
+      Map<String, ?> map, Function<Object, Object> valueTransformer) {
+    Map<String, Object> clone = new HashMap<>();
+    for (Map.Entry<String, ?> entry : map.entrySet()) {
+      if (entry.getValue() instanceof Map) {
+        clone.put(
+            entry.getKey(), transformMap((Map<String, ?>) entry.getValue(), valueTransformer));
+      } else if (entry.getValue() instanceof Collection) {
+        clone.put(
+            entry.getKey(),
+            transformCollection((Collection<?>) entry.getValue(), valueTransformer));
+      } else {
+        Object out = valueTransformer.apply(entry.getValue());
+        if (out != null) {
+          clone.put(entry.getKey(), out);
+        }
+      }
+    }
+    return clone;
+  }
+
+  /**
+   * Transforms the values (non-map, non-collection) in a nested collection of objects.
+   *
+   * @param collection the given collection.
+   * @param valueTransformer the transformer for a value.
+   * @return the transformed collection.
+   */
+  @SuppressWarnings("unchecked")
+  public static Collection<?> transformCollection(
+      Collection<?> collection, Function<Object, Object> valueTransformer) {
+    Collection<Object> clone =
+        (collection instanceof Set)
+            ? new HashSet<>(collection.size())
+            : new ArrayList<>(collection.size());
+    for (Object elem : collection) {
+      if (elem instanceof Map) {
+        clone.add(transformMap((Map<String, ?>) elem, valueTransformer));
+      } else if (elem instanceof Collection) {
+        clone.add(transformCollection((List<?>) elem, valueTransformer));
+      } else {
+        Object out = valueTransformer.apply(elem);
+        if (out != null) {
+          clone.add(out);
+        }
+      }
+    }
+    return clone;
   }
 }

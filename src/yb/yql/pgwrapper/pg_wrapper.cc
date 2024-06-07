@@ -195,6 +195,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1,
+    "Batch size of explicit row locking.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
@@ -287,6 +290,8 @@ DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
+
+DEFINE_test_flag(bool, enable_pg_cron, false, "Enables the pg_cron extension");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -445,16 +450,16 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
-#ifdef YB_TODO
-  // Enabling this block throws FATAL:  could not access file "<extension name>": No such file or
-  // directory error.
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
-  metricsLibs.push_back("pgaudit");
-#endif
   metricsLibs.push_back("yb_pg_metrics");
+  metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+
+  if (FLAGS_TEST_enable_pg_cron) {
+    metricsLibs.push_back("pg_cron");
+  }
 
   vector<string> lines;
   string line;

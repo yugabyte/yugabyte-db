@@ -2,6 +2,7 @@
 -- ROWTYPES
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- Make both a standalone composite type and a table rowtype
 
 create type complex as (r float8, i float8);

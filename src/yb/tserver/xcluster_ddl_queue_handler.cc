@@ -71,7 +71,7 @@ const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
-const std::unordered_set<std::string> kSupportedCommandTags{"CREATE TABLE", "DROP TABLE"};
+const std::unordered_set<std::string> kSupportedCommandTags{"CREATE TABLE", "CREATE INDEX"};
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");

@@ -202,6 +202,27 @@ static volatile sig_atomic_t replication_active = false;
 
 static LogicalDecodingContext *logical_decoding_ctx = NULL;
 
+/*
+ * Total time spent in the yb_decode steps in a batch of changes. This includes
+ * the time spent in:
+ * 1. Creating heap tuples
+ * 2. Storing heap tuples in the reorder buffer
+ * 3. Processing time of the reorder buffer
+ * 4. Processing time of the output plugin
+ * 5. Sending the data to the client including the socket time
+ */
+uint64_t YbWalSndTotalTimeInYBDecodeMicros = 0;
+/*
+ * Total time spent in the reorderbuffer steps in a batch of changes. This
+ * includes the time spent in:
+ * 1. Storing heap tuples in the reorder buffer
+ * 2. Processing time of the reorder buffer
+ * 3. Processing time of the output plugin
+ * 4. Sending the data to the client including the socket time
+ *
+ * A subset of the yb_decode time.
+ */
+uint64_t YbWalSndTotalTimeInReorderBufferMicros = 0;
 /* Total time spent in the WalSndWriteData function in a batch of changes. */
 uint64_t YbWalSndTotalTimeInSendingMicros = 0;
 
@@ -267,8 +288,6 @@ static bool TransactionIdInRecentPast(TransactionId xid, uint32 epoch);
 
 static void WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 							  TimeLineID *tli_p);
-
-static void YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time);
 
 /* Initialize walsender process before entering the main command loop */
 void
@@ -1102,7 +1121,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
 							  false,
-							  snapshot_action, NULL);
+							  cmd->plugin, snapshot_action, NULL);
 	}
 	else
 	{
@@ -1125,7 +1144,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
 								  two_phase,
-								  snapshot_action, NULL);
+								  cmd->plugin, snapshot_action, NULL);
 		}
 	}
 
@@ -1189,17 +1208,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		if (IsYugaByteEnabled())
 		{
-			/*
-			 * TODO(#20756): Support other plugins such as test_decoding once we
-			 * store replication slot metadata in yb-master.
-			 */
-			if (cmd->plugin == NULL ||
-				strcmp(cmd->plugin, PG_OUTPUT_PLUGIN) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid output plugin"),
-						 errdetail("Only 'pgoutput' plugin is supported")));
-
 			if (cmd->temporary)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1210,18 +1218,33 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								 " its priority")));
 
 			/*
+			 * Validate output plugin requirement early so that we can avoid the
+			 * expensive call to yb-master.
+			 *
+			 * This is different from PG where the validation is done after
+			 * creating the replication slot on disk which is cleaned up in case
+			 * of errors.
+			 */
+			if (cmd->plugin == NULL)
+					elog(ERROR, "cannot initialize logical decoding without a specified plugin");
+
+			YBValidateOutputPlugin(cmd->plugin);
+
+			/*
 			 * 23 digits is an upper bound for the decimal representation of a uint64
 			 */
 			char consistent_snapshot_time_string[24];
 			uint64_t consistent_snapshot_time;
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
 								  two_phase,
-								  snapshot_action, &consistent_snapshot_time);
+								  cmd->plugin, snapshot_action,
+								  &consistent_snapshot_time);
 
 			if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
-				snprintf(consistent_snapshot_time_string, sizeof(consistent_snapshot_time_string),
-						 "%llu", (unsigned long long)consistent_snapshot_time);
+				snprintf(consistent_snapshot_time_string,
+						 sizeof(consistent_snapshot_time_string), "%llu",
+						 (unsigned long long) consistent_snapshot_time);
 				snapshot_name = pstrdup(consistent_snapshot_time_string);
 			}
 
@@ -1573,7 +1596,8 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 		!pq_is_send_pending())
 	{
 		if (IsYugaByteEnabled())
-			YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+			YbWalSndTotalTimeInSendingMicros +=
+				YbCalculateTimeDifferenceInMicros(yb_start_time);
 
 		return;
 	}
@@ -1630,21 +1654,11 @@ ProcessPendingWrites(TimestampTz yb_start_time)
 	}
 
 	if (IsYugaByteEnabled())
-		YbWalSndUpdateTotalTimeInSendingMicros(yb_start_time);
+		YbWalSndTotalTimeInSendingMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 
 	/* reactivate latch so WalSndLoop knows to continue */
 	SetLatch(MyLatch);
-}
-
-static void
-YbWalSndUpdateTotalTimeInSendingMicros(TimestampTz yb_start_time)
-{
-	long secs;
-	int microsecs;
-
-	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
-						&microsecs);
-	YbWalSndTotalTimeInSendingMicros += (secs * USECS_PER_SEC + microsecs);
 }
 
 /*

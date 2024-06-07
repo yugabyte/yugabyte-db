@@ -3852,37 +3852,6 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
-  master::CreateCDCStreamRequestPB req;
-  master::CreateCDCStreamResponsePB resp;
-  req.set_table_id(table_id);
-  req.mutable_options()->Reserve(3);
-
-  auto record_type_option = req.add_options();
-  record_type_option->set_key(cdc::kRecordType);
-  record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-
-  auto record_format_option = req.add_options();
-  record_format_option->set_key(cdc::kRecordFormat);
-  record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::JSON));
-
-  auto source_type_option = req.add_options();
-  source_type_option->set_key(cdc::kSourceType);
-  source_type_option->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->CreateCDCStream(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error creating stream: " << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  cout << "CDC Stream ID: " << resp.stream_id() << endl;
-  return Status::OK();
-}
-
 Status ClusterAdminClient::DeleteCDCSDKDBStream(const std::string& db_stream_id) {
   master::DeleteCDCStreamRequestPB req;
   master::DeleteCDCStreamResponsePB resp;
@@ -4219,7 +4188,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
     const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_replication_group_id, bool remove_table_ignore_errors) {
+    const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
+    bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_replication_group_id(replication_group_id);
@@ -4266,6 +4236,10 @@ Status ClusterAdminClient::AlterUniverseReplication(
 
   if (!new_replication_group_id.empty()) {
     req.set_new_replication_group_id(new_replication_group_id);
+  }
+
+  if (!source_namespace_to_remove.empty()) {
+    req.set_producer_namespace_id_to_remove(source_namespace_to_remove);
   }
 
   RpcController rpc;
@@ -4528,30 +4502,16 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include
   return document;
 }
 
-Result<std::vector<NamespaceId>> ClusterAdminClient::CheckpointXClusterReplication(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceName> databases) {
-  SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
-
-  return XClusterClient().XClusterCreateOutboundReplicationGroup(replication_group_id, databases);
-}
-
 Result<bool> ClusterAdminClient::IsXClusterBootstrapRequired(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
 
   auto deadline = CoarseMonoClock::now() + timeout_;
   auto promise = std::promise<Result<bool>>();
-  RETURN_NOT_OK(XClusterClient().IsXClusterBootstrapRequired(
+  RETURN_NOT_OK(XClusterClient().IsBootstrapRequired(
       deadline, replication_group_id, namespace_id,
       [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
   return promise.get_future().get();
-}
-
-Status ClusterAdminClient::CreateXClusterReplication(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::string& target_master_addresses) {
-  return XClusterClient().CreateXClusterReplication(replication_group_id, target_master_addresses);
 }
 
 Status ClusterAdminClient::WaitForCreateXClusterReplication(
@@ -4570,11 +4530,20 @@ Status ClusterAdminClient::WaitForCreateXClusterReplication(
   }
 }
 
-Status ClusterAdminClient::DeleteXClusterOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+Status ClusterAdminClient::WaitForAlterXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::string& target_master_addresses) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
 
-  return XClusterClient().XClusterDeleteOutboundReplicationGroup(replication_group_id);
+  for (;;) {
+    auto result = XClusterClient().IsAlterXClusterReplicationDone(
+        replication_group_id, target_master_addresses);
+    if (result && result->done()) {
+      return result->status();
+    }
+
+    std::this_thread::sleep_for(100ms);
+  }
 }
 
 client::XClusterClient ClusterAdminClient::XClusterClient() {

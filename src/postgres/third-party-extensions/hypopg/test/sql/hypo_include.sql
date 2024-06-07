@@ -21,7 +21,7 @@ SELECT hypopg_reset();
 
 -- Create INCLUDE index
 SELECT COUNT(*) AS NB
-FROM hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val)');
+FROM hypopg_create_index('CREATE INDEX ON hypo (id) INCLUDE (val, "Id2")');
 
 -- Should use hypothetical index using an Index Only Scan
 SELECT COUNT(*) FROM do_explain('SELECT val FROM hypo WHERE id = 1') e

@@ -134,8 +134,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           stopProcessesOnNode(
               currentNode,
               EnumSet.of(ServerType.TSERVER),
-              true,
-              false,
+              false /* remove master from quorum */,
+              true /* deconfigure */,
               SubTaskGroupType.StoppingNodeProcesses);
           // Remove leader blacklist.
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);

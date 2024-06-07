@@ -120,6 +120,11 @@ public class CdcStreamManagerTest {
     when(mockStream.getNamespaceId()).thenReturn(namespaceId);
     when(mockStream.getCdcsdkYsqlReplicationSlotName()).thenReturn("test_slot");
 
+    CDCStreamInfo mockStream2 = mock(CDCStreamInfo.class);
+    when(mockStream2.getStreamId()).thenReturn(streamId);
+    when(mockStream2.getOptions()).thenReturn(options);
+    when(mockStream2.getCdcsdkYsqlReplicationSlotName()).thenReturn("");
+
     ListNamespacesResponse namespacesResponse = mock(ListNamespacesResponse.class);
     NamespaceIdentifierPB mockNamespaceIdentifierPB = mock(NamespaceIdentifierPB.class);
     when(mockNamespaceIdentifierPB.getId()).thenReturn(ByteString.copyFrom(namespaceId.getBytes()));
@@ -136,6 +141,7 @@ public class CdcStreamManagerTest {
             new ArrayList<CDCStreamInfo>() {
               {
                 add(mockStream);
+                add(mockStream2);
               }
             });
     when(mockClient.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID))

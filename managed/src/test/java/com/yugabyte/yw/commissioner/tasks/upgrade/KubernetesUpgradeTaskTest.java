@@ -64,6 +64,7 @@ import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   protected Universe defaultUniverse;
+  protected YBClient mockClient;
   protected static final String NODE_PREFIX = "demo-universe";
   protected static final String YB_SOFTWARE_VERSION_OLD = "2.14.12.0-b1";
   protected static final String YB_SOFTWARE_VERSION_NEW = "2.18.2.0-b65";
@@ -72,6 +73,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    mockClient = mock(YBClient.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
@@ -117,7 +119,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
       } catch (Exception e) {
       }
-      YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
@@ -158,7 +159,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
-    setLeaderlessTabletsMock();
   }
 
   protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {

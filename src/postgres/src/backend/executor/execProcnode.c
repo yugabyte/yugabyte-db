@@ -874,6 +874,9 @@ ExecShutdownNode_walker(PlanState *node, void *context)
 		case T_HashJoinState:
 			ExecShutdownHashJoin((HashJoinState *) node);
 			break;
+		case T_LockRowsState:
+			ExecShutdownLockRows((LockRowsState *) node);
+			break;
 		default:
 			break;
 	}

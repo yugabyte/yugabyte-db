@@ -11,7 +11,8 @@ import {
   XClusterConfigStatus,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigType,
-  XClusterTableEligibility
+  XClusterTableEligibility,
+  XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -31,7 +32,8 @@ import {
   StandardMetricTimeRangeOption,
   XClusterTable,
   MainTableReplicationCandidate,
-  IndexTableReplicationCandidate
+  IndexTableReplicationCandidate,
+  XClusterTableType
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
@@ -498,16 +500,25 @@ export const tableSort = <RowType,>(
 };
 
 /**
- * Return the `tableType` of any table in an xCluster config.
+ * Return the table type (YSQL or YCQL) of an xCluster config.
  */
-export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
+export const getXClusterConfigTableType = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[] | undefined
+): XClusterTableType | null => {
+  // We allow undefined sourceUniverseTables because we are still able to return a value as long as
+  // the xCluster config has updated its internal table type field.
+
   switch (xClusterConfig.tableType) {
     case 'YSQL':
       return TableType.PGSQL_TABLE_TYPE;
     case 'YCQL':
       return TableType.YQL_TABLE_TYPE;
     case 'UNKNOWN':
-      return undefined;
+      return (
+        (sourceUniverseTables?.find((table) => xClusterConfig.tables.includes(getTableUuid(table)))
+          ?.tableType as XClusterTableType) ?? null
+      );
   }
 };
 

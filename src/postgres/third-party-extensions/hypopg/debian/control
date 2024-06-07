@@ -4,16 +4,16 @@ Priority: optional
 Maintainer: Julien Rouhaud <rjuju123@gmail.com>
 Uploaders:
  Christoph Berg <myon@debian.org>,
-Standards-Version: 4.6.0
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13), postgresql-all (>= 217~)
 Homepage: https://hypopg.readthedocs.io/
 Vcs-Browser: https://github.com/HypoPG/hypopg
 Vcs-Git: https://github.com/HypoPG/hypopg.git
 
-Package: postgresql-14-hypopg
+Package: postgresql-16-hypopg
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-14
+Depends: ${misc:Depends}, ${shlibs:Depends}, ${postgresql:Depends}
 Description: PostgreSQL extension adding support for hypothetical indexes.
  An hypothetical, or virtual, index is an index that doesn't really exists, and
  thus doesn't cost CPU, disk or any resource to create.  They're useful to know

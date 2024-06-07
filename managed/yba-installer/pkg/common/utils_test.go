@@ -1,6 +1,7 @@
 package common
 
 import (
+	"os"
 	"testing"
 )
 
@@ -40,5 +41,39 @@ func TestCompareVersion(t *testing.T) {
 	if !LessVersions(version1, version2) {
 		t.Fatalf("invalid compare result for %s %s", version1, version2)
 	}
+}
 
+func TestCompareVersionStablePreviewPanic(t *testing.T) {
+	version1 := "2024.1.0.0-b123"
+	version2 := "2.23.0.0-b321"
+	version3 := "2.18.5.7-b56"
+	version4 := "2.17.1.0-b65"
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("no panic when comparing stable and preview versions")
+		}
+	}()
+	LessVersions(version1, version2)
+	LessVersions(version2, version1)
+	LessVersions(version3, version4)
+	LessVersions(version4, version3)
+}
+
+func TestCompareVersionStablePreviewDevMode(t *testing.T) {
+	origMode := os.Getenv("YBA_MODE")
+	origConfirm := skipConfirmation
+	os.Setenv("YBA_MODE", "dev")
+	DisableUserConfirm()
+	defer func() {
+		os.Setenv("YBA_MODE", origMode)
+		skipConfirmation = origConfirm
+	}()
+	version1 := "2024.1.0.0-b123"
+	version2 := "2.23.0.0-b321"
+	version3 := "2.18.5.7-b56"
+	version4 := "2.17.1.0-b65"
+	LessVersions(version1, version2)
+	LessVersions(version2, version1)
+	LessVersions(version3, version4)
+	LessVersions(version4, version3)
 }

@@ -99,6 +99,7 @@ class GetAutoFlagsConfigResponsePB;
 
 namespace tserver {
 class LocalTabletServer;
+class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
 }
 
@@ -120,6 +121,7 @@ struct CDCSDKStreamInfo {
     std::string stream_id;
     uint32_t database_oid;
     ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::string cdcsdk_ysql_replication_slot_plugin_name;
     std::unordered_map<std::string, std::string> options;
 
     template <class PB>
@@ -128,6 +130,9 @@ struct CDCSDKStreamInfo {
       pb->set_database_oid(database_oid);
       if (!cdcsdk_ysql_replication_slot_name.empty()) {
         pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+      if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
+        pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
       }
     }
 
@@ -145,6 +150,7 @@ struct CDCSDKStreamInfo {
           .database_oid = database_oid,
           .cdcsdk_ysql_replication_slot_name =
               ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
           .options = std::move(options)};
 
       return stream_info;
@@ -449,20 +455,25 @@ class YBClient {
                          const boost::optional<uint32_t>& next_pg_oid = boost::none,
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
-                         CoarseTimePoint deadline = CoarseTimePoint());
+                         CoarseTimePoint deadline = CoarseTimePoint(),
+                         const std::optional<std::string> source_namespace_name = std::nullopt,
+                         std::optional<HybridTime> clone_time = std::nullopt);
+
+  Status CloneNamespace(const std::string& target_namespace_name,
+                        const std::string& source_namespace_name,
+                        const YQLDatabase& database_type,
+                        std::optional<HybridTime> clone_time);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   Status CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                    const boost::optional<YQLDatabase>& database_type =
-                                    boost::none,
+                                    const boost::optional<YQLDatabase>& database_type = boost::none,
                                     const std::string& creator_role_name = "",
                                     const std::string& namespace_id = "",
                                     const std::string& source_namespace_id = "",
-                                    const boost::optional<uint32_t>& next_pg_oid =
-                                    boost::none,
+                                    const boost::optional<uint32_t>& next_pg_oid = boost::none,
                                     const bool colocated = false);
 
   // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
@@ -586,23 +597,11 @@ class YBClient {
 
   // CDC Stream related methods.
 
-  // Create a new CDC stream.
-  Result<xrepl::StreamId> CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      bool active = true,
-      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
-
-  void CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
-      CreateCDCStreamCallback callback);
-
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
+      const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
       uint64_t *consistent_snapshot_time = nullptr);
@@ -679,12 +678,6 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
-  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceName& namespace_name);
-
-  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
@@ -1010,11 +1003,6 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
-  // null if none is found.
-  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
-      const std::string& permanent_uuid);
-
   void AddMetaCacheInfo(JsonWriter* writer);
 
   void RequestsFinished(const RetryableRequestIdRange& request_id_range);
@@ -1028,6 +1016,14 @@ class YBClient {
   const std::string& client_name() const;
 
   void ClearAllMetaCachesOnServer();
+
+  // Uses the TabletConsensusInfo piggybacked from a response to
+  // refresh a RemoteTablet in metacache. Returns true if the
+  // RemoteTablet was indeed refreshed, false otherwise.
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::TabletConsensusInfoPB& newly_received_info);
+
+  int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
  private:
   class Data;
@@ -1056,6 +1052,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);

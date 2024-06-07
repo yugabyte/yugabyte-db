@@ -234,7 +234,7 @@ UnsafeStatus DecodeBoolColumn(
     if (kMatchedId) {
       row->SetDatum(index, 0);
     }
-  } else if (entry_type == KeyEntryType::kNullLow) {
+  } else if (entry_type == KeyEntryType::kNullLow || entry_type == KeyEntryType::kNullHigh) {
     if (kMatchedId) {
       row->SetNull(index);
     }

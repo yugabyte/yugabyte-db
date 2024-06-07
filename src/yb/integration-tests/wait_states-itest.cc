@@ -31,6 +31,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -61,6 +62,8 @@ DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(transactions_poll_check_aborted);
 
+DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
+DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
@@ -103,6 +106,9 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_export_wait_state_names) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_raft_log) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction) =
+        true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_collect_end_to_end_traces) = true;
     pgwrapper::PgMiniTestBase::SetUp();
 
@@ -161,7 +167,7 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   void DoAshCalls(std::atomic<bool>& stop);
   void RunTestsAndFetchAshMethodCounts();
   virtual void PrintRowsFromASH();
-  virtual void VerifyRowsFromASH() {}
+  virtual void VerifyRowsFromASH();
   virtual bool IsDone() EXCLUDES(mutex_) = 0;
   virtual void VerifyCountsUnlocked() REQUIRES(mutex_);
   virtual void PrintCountsUnlocked() REQUIRES(mutex_);
@@ -189,6 +195,34 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   bool enable_sql_ = true;
   bool enable_cql_ = true;
 };
+
+void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
+  if (NumTabletServers() != 1) {
+    return;
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Verify that we get the correct uuid for top_level_node_id.
+  // Some rpc's like those received from the master may not have the ash_metadata set, thus
+  // resulting in a nil/zero uuid for top_level_node_id. Expect to see that all the received
+  // non-zero uuids correspond to the node we are connecting ysql/ycql queries to.
+  const std::string query = yb::Format(
+      "select distinct(top_level_node_id) from yb_active_session_history where top_level_node_id "
+      "!= '00000000-0000-0000-0000-000000000000';");
+  // Convert to Uuid and back to string to get the right formatting with dashes as expected.
+  auto n0_uuid_with_dashes =
+      Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid())
+          .ToString();
+  LOG(INFO) << "Running: " << query;
+  auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+  LOG(INFO) << " Got :\n" << rows;
+  // Some of the tests only check for the wait-state to have been reached.
+  // We may not have collected many samples in the circular buffer, so it is ok for the query to
+  // return nothing.
+  if (!rows.empty()) {
+    ASSERT_EQ(rows, n0_uuid_with_dashes);
+  }
+}
 
 void WaitStateTestCheckMethodCounts::CreateCqlTables() {
   std::atomic_bool is_done{false};
@@ -301,7 +335,7 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
       const auto& method =
           (entry.has_aux_info() && entry.aux_info().has_method() ? entry.aux_info().method() : "");
-      const auto& wait_state_code = entry.wait_status_code_as_string();
+      const auto& wait_state_code = entry.wait_state_code_as_string();
       ++method_counts_[method];
       ++wait_state_code_counts_[wait_state_code];
       ++wait_state_code_counts_by_method_[method][wait_state_code];
@@ -309,10 +343,10 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       if (method.empty()) {
         LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
         // If an RPC does not have the aux/method information, it shouldn't have progressed much.
-        if (entry.has_wait_status_code_as_string()) {
+        if (entry.has_wait_state_code_as_string()) {
           EXPECT_TRUE(
-              entry.wait_status_code_as_string() == "kOnCpu_Passive" ||
-              entry.wait_status_code_as_string() == "kOnCpu_Active");
+              entry.wait_state_code_as_string() == "kOnCpu_Passive" ||
+              entry.wait_state_code_as_string() == "kOnCpu_Active");
         }
       }
     }
@@ -368,10 +402,42 @@ void WaitStateTestCheckMethodCounts::RunTestsAndFetchAshMethodCounts() {
 
 void WaitStateTestCheckMethodCounts::PrintRowsFromASH() {
   auto conn = ASSERT_RESULT(Connect());
-  auto query = "SELECT count(*) FROM yb_active_session_history;";
-  LOG(INFO) << "Running: " << query;
-  auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
-  LOG(INFO) << " Got :\n" << rows;
+  std::vector<std::string> queries;
+  queries.push_back("SELECT count(*) FROM yb_active_session_history;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, "
+      "CASE WHEN wait_event_aux = '' THEN 'Null' ELSE 'NonNull' END as null_or_not, count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, null_or_not;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, "
+      "CASE WHEN rpc_request_id = 0 THEN 'Zero' ELSE 'NonZero' END as zero_or_not, count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, zero_or_not;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, top_level_node_id "
+      ", count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, top_level_node_id;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, wait_event_aux, "
+      "top_level_node_id , count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, wait_event_aux, "
+      "top_level_node_id;");
+  queries.push_back(
+      "select distinct(top_level_node_id), wait_event_component from yb_active_session_history;");
+  queries.push_back(
+      "select wait_event_component, client_node_ip, wait_event_aux, count(*) from "
+      "yb_active_session_history group by wait_event_component, wait_event_aux, client_node_ip;");
+  queries.push_back(
+      "select wait_event_component, client_node_ip, count(*) from yb_active_session_history group "
+      "by wait_event_component, client_node_ip;");
+  for (const auto& query : queries) {
+    LOG(INFO) << "\n\nRunning: " << query;
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+    LOG(INFO) << "Got :\n" << rows;
+  }
 }
 
 void WaitStateTestCheckMethodCounts::PrintCountsUnlocked() {
@@ -444,28 +510,6 @@ class AshTestCql : public WaitStateTestCheckMethodCounts {
   void VerifyCountsUnlocked() REQUIRES(mutex_) override {
     WaitStateTestCheckMethodCounts::VerifyCountsUnlocked();
     ASSERT_GE(method_counts_["CQLProcessCall"], 1);
-  }
-
-  void VerifyRowsFromASH() override {
-    std::vector<std::string> queries;
-    queries.push_back("SELECT count(*) FROM yb_active_session_history;");
-    queries.push_back(
-        "SELECT wait_event_component, wait_event_class, wait_event, "
-        "CASE WHEN wait_event_aux = '' THEN 'Null' ELSE 'NonNull' END as null_or_not, count(*) "
-        "FROM yb_active_session_history "
-        "GROUP BY wait_event_component, wait_event_class, wait_event, null_or_not;");
-    queries.push_back(
-        "SELECT wait_event_component, wait_event_class, wait_event, "
-        "CASE WHEN rpc_request_id = 0 THEN 'Zero' ELSE 'NonZero' END as zero_or_not, count(*) "
-        "FROM yb_active_session_history "
-        "GROUP BY wait_event_component, wait_event_class, wait_event, zero_or_not;");
-
-    auto conn = ASSERT_RESULT(Connect());
-    for (const auto& query : queries) {
-      LOG(INFO) << "Running: " << query;
-      auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
-      LOG(INFO) << " Got :\n" << rows;
-    }
   }
 
   void VerifyResponse(const tserver::PgActiveSessionHistoryResponsePB& resp) override {

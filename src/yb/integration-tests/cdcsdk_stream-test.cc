@@ -368,18 +368,8 @@ TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // Creating xCluster streams now.
   std::vector<xrepl::StreamId> created_xcluster_streams;
   for (uint32_t i = 0; i < num_of_streams; ++i) {
-    RpcController rpc;
-    CreateCDCStreamRequestPB create_req;
-    CreateCDCStreamResponsePB create_resp;
-
-    create_req.set_table_id(table.table_id());
-    ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-
-    // Assert that there is no DB stream ID in the response while creating xCluster stream.
-    ASSERT_FALSE(create_resp.has_db_stream_id());
-
     created_xcluster_streams.emplace_back(
-        ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id())));
+        ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table.table_id())));
   }
   std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
 

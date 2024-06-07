@@ -77,6 +77,7 @@ class TableInfo;
 class TabletInfo;
 
 YB_STRONGLY_TYPED_BOOL(AddPendingDelete);
+YB_STRONGLY_TYPED_BOOL(CDCSDKSetRetentionBarriers);
 
 // Interface used by RetryingTSRpcTask to pick the tablet server to
 // send the next RPC to.
@@ -416,7 +417,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
                      const std::string& permanent_uuid,
                      const scoped_refptr<TabletInfo>& tablet,
                      const std::vector<SnapshotScheduleId>& snapshot_schedules,
-                     LeaderEpoch epoch);
+                     LeaderEpoch epoch,
+                     CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kCreateReplica;
@@ -436,6 +438,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
   const TabletId tablet_id_;
   tserver::CreateTabletRequestPB req_;
   tserver::CreateTabletResponsePB resp_;
+  const CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers_ =
+      CDCSDKSetRetentionBarriers::kFalse;
 };
 
 class AsyncMasterTabletHealthTask : public RetryingMasterRpcTask {

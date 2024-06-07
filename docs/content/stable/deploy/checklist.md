@@ -2,7 +2,7 @@
 title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.  
+description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.
 menu:
   stable:
     identifier: checklist
@@ -95,8 +95,8 @@ cat /proc/cpuinfo | grep sse4.2
 
   - XFS is the recommended filesystem.
   - Use the `noatime` setting when mounting the data drives.
-  - ZFS is not currently supported. It is in the [roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
-  - NFS is not currently supported. It is in the [roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).
+  - ZFS is not currently supported.
+  - NFS is not currently supported.
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
 YugabyteDB can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.

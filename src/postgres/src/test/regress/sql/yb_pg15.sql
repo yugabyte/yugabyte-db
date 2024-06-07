@@ -573,10 +573,10 @@ $func$;
 CREATE TABLE test(a int, b int, count int, double_count int GENERATED ALWAYS AS (2 * count) STORED);
 CREATE TRIGGER update_count_test_trig BEFORE UPDATE OF a ON test FOR ROW EXECUTE PROCEDURE update_count();
 INSERT INTO test(a, b, count) values (1, 1, 1), (2, 2, 1);
-SELECT * FROM test;
+SELECT * FROM test ORDER BY a DESC;
 UPDATE test set a = a + 5;
-SELECT * FROM test;
+SELECT * FROM test ORDER BY a DESC;
 UPDATE test set b = b + 5;
-SELECT * FROM test;
+SELECT * FROM test ORDER BY a DESC;
 
 -- YB_TODO: end

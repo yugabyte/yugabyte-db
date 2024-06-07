@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.PlacementInfoUtil.isMultiAZ;
 
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -20,6 +22,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Quantity;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,9 +32,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public class KubernetesUtil {
 
   // ToDo: Old k8s provider needs to be fixed, so that we can get
@@ -503,7 +508,8 @@ public class KubernetesUtil {
     template = template.replace("{cluster_domain}", clusterDomain);
     if (!Util.isValidDNSAddress(template)) {
       throw new RuntimeException(
-          "Pod address template generated an invalid DNS, check if placeholders are correct.");
+          "Pod address template generated an invalid DNS, allowed placeholders are: {pod_name},"
+              + " {service_name}, {namespace}, and {cluster_domain}");
     }
     return template;
   }
@@ -585,5 +591,36 @@ public class KubernetesUtil {
       }
     }
     return false;
+  }
+
+  // topology/failure-domain labels from the Kubernetes nodes.
+  public static Multimap<String, String> computeKubernetesRegionToZoneInfo(
+      Map<String, String> config, KubernetesManagerFactory kubernetesManagerFactory) {
+    List<Node> nodes = kubernetesManagerFactory.getManager().getNodeInfos(config);
+    Multimap<String, String> regionToAZ = HashMultimap.create();
+    nodes.forEach(
+        node -> {
+          Map<String, String> labels = node.getMetadata().getLabels();
+          if (labels == null) {
+            return;
+          }
+          String region = labels.get("topology.kubernetes.io/region");
+          if (region == null) {
+            region = labels.get("failure-domain.beta.kubernetes.io/region");
+          }
+          String zone = labels.get("topology.kubernetes.io/zone");
+          if (zone == null) {
+            zone = labels.get("failure-domain.beta.kubernetes.io/zone");
+          }
+          if (region == null || zone == null) {
+            log.debug(
+                "Value of the zone or region label is empty for "
+                    + node.getMetadata().getName()
+                    + ", skipping.");
+            return;
+          }
+          regionToAZ.put(region, zone);
+        });
+    return regionToAZ;
   }
 }

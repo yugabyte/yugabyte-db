@@ -42,23 +42,26 @@ public class ActiveSessionHistory extends Model {
   private String waitEventClass;
 
   @CsvField(pos = 8)
+  private String waitEventType;
+
+  @CsvField(pos = 9)
   private String waitEvent;
 
-  @CsvField(pos = 9, converterType = UuidConverter.class)
+  @CsvField(pos = 10, converterType = UuidConverter.class)
   private UUID topLevelNodeId;
 
-  @CsvField(pos = 10)
+  @CsvField(pos = 11)
   private Long queryId;
 
-  @CsvField(pos = 11)
+  @CsvField(pos = 12)
   private Long ysqlSessionId;
 
-  @CsvField(pos = 12)
+  @CsvField(pos = 13)
   private String clientNodeIp;
 
-  @CsvField(pos = 13)
+  @CsvField(pos = 14)
   private String waitEventAux;
 
-  @CsvField(pos = 14)
+  @CsvField(pos = 15)
   private int sampleWeight;
 }

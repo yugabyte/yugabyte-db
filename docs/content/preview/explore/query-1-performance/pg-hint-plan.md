@@ -460,18 +460,12 @@ You can leverage the `work_mem` setting in PostgreSQL to improve the performance
 The following example shows how to enable `work_mem` as a part of a hint plan.
 
 ``` sql
-/*+Set(work_mem "1MB")*/
+set work_mem="1MB";
+
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
 ```output
-LOG:  pg_hint_plan:
-used hint:
-Set(work_mem 1MB)
-not used hint:
-duplication hint:
-error hint:
-
               QUERY PLAN
 --------------------------------------
  Nested Loop

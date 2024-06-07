@@ -125,11 +125,9 @@ Result<const PartitionKey&> FindPartitionKeyByUpperBound(
     return partitions.back();
   }
 
-  auto idx = FindPartitionStartIndex(
-      partitions, static_cast<std::string_view>(request.upper_bound().key()));
-  if (!request.upper_bound().is_inclusive()) {
-    RSTATUS_DCHECK_NE(idx, 0U, InvalidArgument,
-                      "Upper bound must not be exclusive when it points to the first partition.");
+  const auto& key = request.upper_bound().key();
+  auto idx = FindPartitionStartIndex(partitions, key);
+  if (!request.upper_bound().is_inclusive() && key == partitions[idx]) {
     --idx;
   }
   return partitions[idx];

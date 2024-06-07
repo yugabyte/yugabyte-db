@@ -157,9 +157,20 @@ class CDCSDKVirtualWAL {
 
   Status CreatePublicationRefreshTabletQueue();
 
-  Status PushRecordToPublicationRefreshTabletQueue();
+  Status UpdatePubRefreshTimesInCDCState();
+
+  Status PushPublicationRefreshRecord(uint64_t pub_refresh_time);
+
+  Status PushNextPublicationRefreshRecord();
+
+  std::set<uint64_t> ParsePubRefreshTimes(const std::string& pub_refresh_times_str);
+
+  std::string GetPubRefreshTimesString();
 
   std::vector<TabletId> GetTabletsForTable(const TableId& table_id);
+
+  Status ValidateTablesToBeAddedPresentInStream(
+      const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline);
 
   std::string LogPrefix() const;
 
@@ -209,11 +220,15 @@ class CDCSDKVirtualWAL {
   // Holds the 1st commit record of a pg_txn. Reset to false after shipping the held commit record.
   std::shared_ptr<TabletRecordInfoPair> curr_active_txn_commit_record = nullptr;
 
-  // This will hold the time at which the publication's table list was last refreshed.
+  // This will hold the latest publication refresh time that was acknowledged, i.e
+  // last_pub_refresh_time is the maximum value of pub refresh time that is less than restart commit
+  // time.
   uint64_t last_pub_refresh_time;
 
-  // This will hold the interval between two publication table list refresh operations.
-  uint64_t pub_refresh_interval;
+  // This will hold the list of publication refresh times that were popped from the priority queue
+  // but have not yet been acknowledged, i.e the list of pub refresh times with value greater than
+  // or equal to the restart commit time. It will also hold the value of next pub_refresh_time.
+  std::set<uint64_t> pub_refresh_times;
 
   // This map stores all information for the next GetChanges call on a per tablet basis except for
   // the explicit checkpoint. The key is the tablet id. The value is a struct used to populate the

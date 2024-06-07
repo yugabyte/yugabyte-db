@@ -444,7 +444,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     const keywordList = GFlagInput.match(searchTermRegex);
     const keywordIndex = GFlagInput.indexOf(keywordList?.[0]);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
-    const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"|""]*"|")+/g);
+    const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"""]*"|")+/g);
 
     for (let index = 0; index < attributes?.length; index++) {
       const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);

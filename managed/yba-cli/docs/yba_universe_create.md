@@ -10,20 +10,46 @@ Create an universe in YugabyteDB Anywhere
 yba universe create [flags]
 ```
 
+### Examples
+
+```
+yba universe create -n <universe-name> --provider-code <provider-code> \
+	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
+	--master-gflags \
+	"{\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\",\
+	\"<gflag-3>\": \"<value-3>\",\"<gflag-4>\": \"<value-4>\"}" \
+	--tserver-gflags \
+	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
+	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
+	--num-nodes 1 --replication-factor 1 \
+	--user-tags <tag1>=<value1>,<tag2>=<value2>
+```
+
 ### Options
 
 ```
+      --config-template string                           [Optional] Path to Universe configuration template file. Allowed file types are json and yaml. Refer to https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/templates for structure of config file.
   -n, --name string                                      [Required] The name of the universe to be created.
       --provider-code string                             [Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.
-      --provider-name string                             [Optional] Provider name to be used in universe. Run "yba provider list --code <provider-code>" to check the default provider for the given provider-code.
+      --provider-name string                             [Optional] Provider name to be used in universe. Run "yba provider list --code <provider-code>" to check the list of providers for the given provider-code. Fetches the first provider in the list by default.
       --dedicated-nodes                                  [Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem. Defaults to true for kubernetes.
       --add-read-replica                                 [Optional] Add a read replica cluster to the universe. (default false)
       --replication-factor ints                          [Optional] Replication factor of the cluster. Provide replication-factor for each cluster as a separate flag. "--replication-factor 3 --replication-factor 5" OR "--replication-factor 3,5" refers to RF of Primary cluster = 3 and RF of Read Replica = 5. First flag always corresponds to the primary cluster. (default [3,3])
       --num-nodes ints                                   [Optional] Number of nodes in the cluster. Provide no of nodes for each cluster as a separate flag. "--num-nodes 3 --num-nodes 5" OR "--num-nodes 3,5" refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster. First flag always corresponds to the primry cluster. (default [3,3])
       --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the region from the provider. Throws an error if multiple regions are present.
       --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. Defaults to null.
-      --master-gflags string                             [Optional] Master GFlags. Provide comma-separated key-value pairs for the primary cluster in the following format: "--master-gflags master-gflag-key-1=master-gflag-value-1,master-gflag-key-2=master-gflag-key2".
-      --tserver-gflags stringArray                       [Optional] TServer GFlags. Provide comma-separated key-value pairs for each cluster as a separate flag in the following format: "--tserver-gflags tserver-gflag-key-1-for-primary-cluster=tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-key2 --tserver-gflags tserver-gflag-key-1-for-read-replica=tserver-gflag-value-1,tserver-gflag-key-2-for-read-replica=tserver-gflag-key2". If no-of-clusters = 2 and no tserver gflags are provided for the read replica, the primary cluster gflags are by default applied to the read replica cluster.
+      --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags { \"master-gflag-key-1\":\"value-1\",\"master-gflag-key-2\":\"value-2\" }" or  "--master-gflags "master-gflag-key-1: value-1
+                                                         master-gflag-key-2: value-2
+                                                         master-gflag-key-3: value3".
+      --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags "{\"primary\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"},\"async\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"}}"" OR "--tserver-gflag "primary:
+                                                         	log_min_segments_to_retain: 1
+                                                         	log_cache_size_limit_mb: 0
+                                                         	global_log_cache_size_limit_mb: 0
+                                                         	log_stop_retaining_min_disk_mb: 9223372036854775807
+                                                         async:
+                                                         	log_min_segments_to_retain: 2
+                                                         	log_cache_size_limit_mb: 0
+                                                         	global_log_cache_size_limit_mb: 0"". If no-of-clusters = 2 and no tserver gflags are provided for the read replica, the primary cluster gflags are by default applied to the read replica cluster.
       --instance-type stringArray                        [Optional] Instance Type for the universe nodes. Provide the instance types for each cluster as a separate flag. Defaults to "c5.large" for aws, "Standard_DS2_v2" for azure and "n1-standard-1" for gcp. Fetches the first available instance type for onprem providers.
       --num-volumes ints                                 [Optional] Number of volumes to be mounted on this instance at the default path. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [1,1])
       --volume-size ints                                 [Optional] The size of each volume in each instance. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [100,100])
@@ -45,6 +71,7 @@ yba universe create [flags]
       --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
       --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
+      --assign-static-public-ip                          [Optional] Assign Static Public IPs to the DB servers for connections over the internet. (default true)
       --enable-ysql                                      [Optional] Enable YSQL endpoint. (default true)
       --ysql-password string                             [Optional] YSQL authentication password. Use single quotes ('') to provide values with special characters.
       --enable-ycql                                      [Optional] Enable YCQL endpoint. (default true)

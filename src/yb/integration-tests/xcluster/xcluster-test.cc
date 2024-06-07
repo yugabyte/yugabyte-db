@@ -143,6 +143,7 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
+DECLARE_bool(TEST_xcluster_simulate_get_changes_response_error);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
@@ -280,18 +281,36 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(&resp));
-    CHECK_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-    CHECK_EQ(resp.entry().tables_size(), producer_tables_.size());
+    SCHECK_EQ(
+        resp.entry().replication_group_id(), kReplicationGroupId, InternalError,
+        Format(
+            "Unexpected replication group id: actual $0, expected $1",
+            resp.entry().replication_group_id(), kReplicationGroupId));
+    SCHECK_EQ(
+        resp.entry().tables_size(), producer_tables_.size(), InternalError,
+        Format(
+            "Unexpected tables size: actual $0, expected $1", resp.entry().tables_size(),
+            producer_tables_.size()));
     for (uint32_t i = 0; i < producer_tables_.size(); i++) {
-      CHECK_EQ(resp.entry().tables(i), producer_tables_[i]->id());
+      SCHECK_EQ(
+          resp.entry().tables(i), producer_tables_[i]->id(), InternalError,
+          Format(
+              "Unexpected table entry: actual $0, expected $1", resp.entry().tables(i),
+              producer_tables_[i]->id()));
     }
 
     // Verify that CDC streams were created on producer for all tables.
     for (size_t i = 0; i < producer_tables_.size(); i++) {
       master::ListCDCStreamsResponsePB stream_resp;
       RETURN_NOT_OK(GetCDCStreamForTable(producer_tables_[i]->id(), &stream_resp));
-      CHECK_EQ(stream_resp.streams_size(), 1);
-      CHECK_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id());
+      SCHECK_EQ(
+          stream_resp.streams_size(), 1, InternalError,
+          Format("Unexpected streams size: actual $0, expected $1", stream_resp.streams_size(), 1));
+      SCHECK_EQ(
+          stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id(), InternalError,
+          Format(
+              "Unexpected table_id: actual $0, expected $1",
+              stream_resp.streams(0).table_id().Get(0), producer_tables_[i]->id()));
     }
 
     for (size_t i = 0; i < producer_tables_.size(); i++) {
@@ -687,9 +706,8 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    CHECK_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = ASSERT_RESULT(cm.GetClusterConfig());
     setup_universe_req.set_replication_group_id(cluster_info.cluster_uuid());
 
     string master_addr = producer_cluster()->GetMasterAddresses();
@@ -813,9 +831,8 @@ TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapRequestFailures) {
     master::SetupNamespaceReplicationWithBootstrapRequestPB req;
     master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
 
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    CHECK_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = ASSERT_RESULT(cm.GetClusterConfig());
     req.set_replication_id(cluster_info.cluster_uuid());
     req.mutable_producer_namespace()->CopyFrom(producer_namespace);
     string master_addr = producer_cluster()->GetMasterAddresses();
@@ -2187,6 +2204,11 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
   ASSERT_OK(InsertRowsAndVerify(0, 5));
 
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+
+  auto replication_error_count_before_alter =
+      xcluster_consumer->TEST_metric_replication_error_count()->value();
   // Alter the CQL Table on the Producer to Add a New Column.
   LOG(INFO) << "Alter the Producer.";
   {
@@ -2220,6 +2242,8 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
   // Verify that the replication status for the consumer table contains a schema mismatch error.
   ASSERT_OK(VerifyReplicationError(
       consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
+  ASSERT_GT(xcluster_consumer->TEST_metric_replication_error_count()->value(),
+      replication_error_count_before_alter);
 
   // Alter the CQL Table on the Consumer next to match.
   LOG(INFO) << "Alter the Consumer.";
@@ -3045,6 +3069,29 @@ TEST_P(XClusterTestWaitForReplicationDrain, TestBlockGetChanges) {
   ASSERT_OK(WaitForReplicationDrain());
 }
 
+TEST_P(XClusterTestWaitForReplicationDrain, TestConsumerPollFailureMetric) {
+  constexpr uint32_t kNumTables = 3;
+  constexpr uint32_t kNumTablets = 3;
+  constexpr int kRpcTimeoutShort = 30;
+
+  SetUpTablesAndReplication(kNumTables, kNumTablets);
+  ASSERT_OK(WaitForReplicationDrain());
+
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  ASSERT_EQ(xcluster_consumer->TEST_metric_apply_failure_count()->value(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_get_changes_response_error) = true;
+  for (uint32_t i = 0; i < producer_tables_.size(); i++) {
+    ASSERT_OK(InsertRowsInProducer(0, 50 * (i + 1), producer_tables_[i]));
+  }
+
+  ASSERT_OK(WaitForReplicationDrain(
+      /* expected_num_nondrained */ kNumTables * kNumTablets, kRpcTimeoutShort));
+
+  ASSERT_GE(xcluster_consumer->TEST_metric_poll_failure_count()->value(), kNumTables * kNumTablets);
+}
+
 TEST_P(XClusterTestWaitForReplicationDrain, TestWithTargetTime) {
   constexpr uint32_t kNumTables = 3;
   constexpr uint32_t kNumTablets = 3;
@@ -3669,6 +3716,10 @@ TEST_F_EX(XClusterTest, RandomFailuresAfterApply, XClusterTestTransactionalOnly)
   ASSERT_OK(txn->CommitFuture().get());
   ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
   ASSERT_OK(VerifyRowsMatch());
+
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  ASSERT_GT(xcluster_consumer->TEST_metric_apply_failure_count()->value(), 0);
 }
 
 TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
@@ -3846,6 +3897,8 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
 
   // Verify the error is cleared in the master.
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ASSERT_EQ(2, xcluster_consumer->TEST_metric_replication_error_count()->value());
 }
 
 // Test deleting inbound replication group without performing source stream cleanup.
@@ -3895,6 +3948,62 @@ TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   }
 
   ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 0));
+}
+
+TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
+
+  // Create 2 tables with 3 tablets each.
+  ASSERT_OK(SetUpWithParams({3, 3}, /*replication_factor=*/3));
+  ASSERT_OK(SetupReplication());
+
+  master::ListCDCStreamsRequestPB list_streams_req;
+  master::ListCDCStreamsResponsePB list_streams_resp;
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->ListCDCStreams(list_streams_req, &list_streams_resp, &rpc));
+  }
+  ASSERT_EQ(list_streams_resp.streams_size(), 2);
+
+  producer_cluster()->StopSync();
+
+  {
+    auto consumer_master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(2 * kRpcTimeout));
+    master::DeleteUniverseReplicationRequestPB delete_req;
+    master::DeleteUniverseReplicationResponsePB delete_resp;
+    delete_req.set_ignore_errors(true);
+    delete_req.set_replication_group_id(kReplicationGroupId.ToString());
+
+    ASSERT_OK(consumer_master_proxy->DeleteUniverseReplication(delete_req, &delete_resp, &rpc));
+    ASSERT_FALSE(delete_resp.has_error()) << delete_resp.DebugString();
+  }
+
+  ASSERT_OK(VerifyUniverseReplicationDeleted(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, kRpcTimeout));
+  ASSERT_OK(CorrectlyPollingAllTablets(0));
+
+  ASSERT_OK(producer_cluster()->StartSync());
+
+  master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
+  master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+  for (const auto& stream : list_streams_resp.streams()) {
+    delete_cdc_stream_req.add_stream_id(stream.stream_id());
+  }
+  delete_cdc_stream_req.set_force_delete(true);
+
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->DeleteCDCStream(delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
+  }
 }
 
 }  // namespace yb

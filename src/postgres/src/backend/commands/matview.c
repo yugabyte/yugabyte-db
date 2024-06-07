@@ -497,8 +497,8 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (IsYBRelation(myState->transientrel))
 	{
 		/* YB_TODO(later) Wait for slot API */
-		bool shouldFree = true;
-		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+		bool shouldFree;
+		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 
 		YBCExecuteInsert(myState->transientrel,
 						 RelationGetDescr(myState->transientrel),

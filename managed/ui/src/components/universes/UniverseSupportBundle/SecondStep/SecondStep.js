@@ -38,9 +38,11 @@ const coreFileOption = { label: 'Core Files', value: 'CoreFiles' };
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
 const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo' };
 
+const ONE_GB_IN_BYTES = 1_07_37_41_824;
+
 const CoreFilesProps = {
   maxNumRecentCores: 1,
-  maxCoreFileSize: 25000000000
+  maxCoreFileSize: 25 * ONE_GB_IN_BYTES
 };
 
 const getBackDateByDay = (day) => {
@@ -301,11 +303,12 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
             />
           </Box>
           <Box display="flex" mt={1} flexDirection={'row'} width="100%">
-            <YBLabel width="225px">Maximum core file size (in bytes)</YBLabel>
+            <YBLabel width="225px">Maximum core file size (in GB)</YBLabel>
             <YBInput
               onChange={(e) => {
                 const updatedObj = {
-                  maxCoreFileSize: e.target.value < 1 ? 1 : e.target.value,
+                  maxCoreFileSize:
+                    e.target.value < 1 ? 1 * ONE_GB_IN_BYTES : e.target.value * ONE_GB_IN_BYTES,
                   maxNumRecentCores: coreFileParams.maxNumRecentCores
                 };
                 setCoreFileParams({ ...updatedObj });
@@ -317,7 +320,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
                 );
                 onOptionsChange(changedOptions);
               }}
-              value={coreFileParams.maxCoreFileSize}
+              value={coreFileParams.maxCoreFileSize / ONE_GB_IN_BYTES}
               type="number"
               style={{ width: '250px' }}
             />

@@ -117,6 +117,13 @@ class YBClient::Data {
                                         const std::string& namespace_id,
                                         CoarseTimePoint deadline);
 
+  Status IsCloneNamespaceInProgress(
+      YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+      CoarseTimePoint deadline, bool* create_in_progress);
+  Status WaitForCloneNamespaceToFinish(
+      YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+      CoarseTimePoint deadline);
+
   Status CreateTable(YBClient* client,
                      const master::CreateTableRequestPB& req,
                      const YBSchema& schema,
@@ -302,12 +309,11 @@ class YBClient::Data {
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
 
-  void CreateCDCStream(YBClient* client,
-                       const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       cdc::StreamModeTransactional transactional,
-                       CoarseTimePoint deadline,
-                       CreateCDCStreamCallback callback);
+  void CreateXClusterStream(
+      YBClient* client, const TableId& table_id,
+      const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+      CoarseTimePoint deadline, CreateCDCStreamCallback callback);
 
   void DeleteCDCStream(
       YBClient* client,

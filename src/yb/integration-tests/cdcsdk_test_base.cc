@@ -55,7 +55,6 @@
 using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
-DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 
 namespace yb {
 using client::YBClient;
@@ -141,9 +140,6 @@ Status CDCSDKTestBase::SetUpWithParams(
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_ddl_rollback_enabled";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

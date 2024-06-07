@@ -58,11 +58,28 @@
 
 using std::string;
 
-DEFINE_NON_RUNTIME_int32(cdc_consumer_handler_thread_pool_size, 0,
+METRIC_DEFINE_counter(server, xcluster_consumer_replication_error_count,
+    "XCluster consumer replication error count", yb::MetricUnit::kUnits,
+    "Number of replication errors encountered by XClusterConsumer. Replication errors are "
+    "errors that require user intervention to fix, such as mismatched schemas or missing op ids.");
+
+METRIC_DEFINE_counter(server, xcluster_consumer_apply_failure_count,
+    "XCluster consumer apply failure count", yb::MetricUnit::kUnits,
+    "Number of apply failures encountered by XClusterConsumer. Apply failures are "
+    "errors with calling GetChanges on the source cluster.");
+
+METRIC_DEFINE_counter(server, xcluster_consumer_poll_failure_count,
+    "XCluster consumer poll failure count", yb::MetricUnit::kUnits,
+    "Number of poll failures encountered by XClusterConsumer. Poll failures are "
+    "errors applying changes to the target cluster.");
+
+DEPRECATE_FLAG(int32, cdc_consumer_handler_thread_pool_size, "05_2024");
+
+DEFINE_NON_RUNTIME_int32(xcluster_consumer_thread_pool_size, 0,
     "Override the max thread pool size for XClusterConsumerHandler, which is used by "
     "XClusterPoller. If set to 0, then the thread pool will use the default size (number of "
     "cpus on the system).");
-TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
+TAG_FLAG(xcluster_consumer_thread_pool_size, advanced);
 
 DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
@@ -151,7 +168,8 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto xcluster_consumer = std::make_unique<XClusterConsumer>(
       std::move(get_leader_term), proxy_cache, tserver->permanent_uuid(), std::move(local_client),
-      std::move(connect_to_pg), std::move(get_namespace_info), tserver->GetXClusterContext());
+      std::move(connect_to_pg), std::move(get_namespace_info), tserver->GetXClusterContext(),
+      tserver->metric_entity());
 
   RETURN_NOT_OK(xcluster_consumer->Init());
 
@@ -162,7 +180,8 @@ XClusterConsumer::XClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
     const string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
     ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func,
-    const TserverXClusterContextIf& xcluster_context)
+    const TserverXClusterContextIf& xcluster_context,
+    const scoped_refptr<MetricEntity>& server_metric_entity)
     : get_leader_term_func_(std::move(get_leader_term)),
       rpcs_(new rpc::Rpcs),
       log_prefix_(Format("[TS $0]: ", ts_uuid)),
@@ -181,6 +200,15 @@ XClusterConsumer::XClusterConsumer(
       std::bind(&XClusterConsumer::SetRateLimiterSpeed, this)));
 
   auto_flags_version_handler_ = std::make_unique<AutoFlagsVersionHandler>(local_client_->client);
+
+  metric_apply_failure_count_ =
+      METRIC_xcluster_consumer_apply_failure_count.Instantiate(server_metric_entity);
+
+  metric_poll_failure_count_ =
+      METRIC_xcluster_consumer_poll_failure_count.Instantiate(server_metric_entity);
+
+  metric_replication_error_count_ =
+      METRIC_xcluster_consumer_replication_error_count.Instantiate(server_metric_entity);
 }
 
 XClusterConsumer::~XClusterConsumer() {
@@ -194,8 +222,8 @@ Status XClusterConsumer::Init() {
   RETURN_NOT_OK(yb::Thread::Create(
       "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, this, &run_trigger_poll_thread_));
   ThreadPoolBuilder cdc_consumer_thread_pool_builder("XClusterConsumerHandler");
-  if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
-    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
+  if (FLAGS_xcluster_consumer_thread_pool_size > 0) {
+    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_xcluster_consumer_thread_pool_size);
   }
 
   return cdc_consumer_thread_pool_builder.Build(&thread_pool_);
@@ -841,6 +869,9 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
 void XClusterConsumer::StoreReplicationError(
     const XClusterPollerId& poller_id, ReplicationErrorPb error) {
   error_collector_.StoreError(poller_id, error);
+  if (error != ReplicationErrorPb::REPLICATION_OK) {
+    metric_replication_error_count_->Increment();
+  }
 }
 
 // This happens on TS.heartbeat request, so it needs to finish quickly.

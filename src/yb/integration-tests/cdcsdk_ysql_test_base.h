@@ -110,7 +110,10 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
-DECLARE_uint64(cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
+DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
+DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
+DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
 
 namespace yb {
 
@@ -165,6 +168,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     uint32_t xmin = 0;
     HybridTime record_id_commit_time = HybridTime::kInvalid;
     HybridTime last_pub_refresh_time = HybridTime::kInvalid;
+    std::string pub_refresh_times = "";
   };
 
   struct GetAllPendingChangesResponse {
@@ -648,7 +652,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
 
-  Result<CdcStateTableSlotRow> ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id);
+  Result<std::optional<CDCSDKYsqlTest::CdcStateTableSlotRow>> ReadSlotEntryFromStateTable(
+      const xrepl::StreamId& stream_id);
 
   void VerifyExplicitCheckpointingOnTablets(
       const xrepl::StreamId& stream_id,
@@ -765,6 +770,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void VerifyTableIdAndPkInCDCRecords(
       GetChangesResponsePB* resp, std::unordered_set<std::string>* record_primary_key,
       std::unordered_set<std::string>* record_table_id);
+
+  std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
 };
 
 }  // namespace cdc

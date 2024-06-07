@@ -46,6 +46,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -91,8 +92,6 @@ DEFINE_NON_RUNTIME_int64(
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 namespace yb {
 namespace cdc {
@@ -2423,6 +2422,9 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
     const CoarseTimePoint deadline) {
+  // Delete the memory context if it was created for decoding the QLValuePB.
+  auto scope_exit = ScopeExit([&] { docdb::DeleteMemoryContextForCDCWrapper(); });
+
   OpId op_id{from_op_id.term(), from_op_id.index()};
   VLOG(1) << "GetChanges request has from_op_id: " << from_op_id.DebugString()
           << ", safe_hybrid_time: " << safe_hybrid_time_req

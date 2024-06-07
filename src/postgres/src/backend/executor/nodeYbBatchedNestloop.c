@@ -453,7 +453,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 {
 	EState *estate = bnlstate->js.ps.state;
 	YbBatchedNestLoop *plan = (YbBatchedNestLoop*) bnlstate->js.ps.plan;
-	ExprContext *econtext = GetPerTupleExprContext(estate);
+	ExprContext *econtext = CreateExprContext(estate);
 	TupleDesc outer_tdesc = outerPlanState(bnlstate)->ps_ResultTupleDesc;
 
 	const TupleTableSlotOps * innerops = bnlstate->js.ps.innerops;

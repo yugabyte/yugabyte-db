@@ -49,9 +49,7 @@ Suppose one of your zones, us-east-1b, fails. In this case, the connections esta
 {{<collapse title="Simulate failure of a zone locally">}}
 To simulate the failure of the 2nd zone locally, you can just stop the second node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
+{{%cluster/cmd op="stop" nodes="2"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}

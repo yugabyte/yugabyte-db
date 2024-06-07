@@ -36,7 +36,7 @@ Using the **Edit Universe** page, you can modify the following:
 - Instance type and volume size - you can select instance types configured in the provider
 - [User tags](../instance-tags/)
 
-YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/concepts/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
+YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
 Note that you can't change the replication factor of a universe.
 

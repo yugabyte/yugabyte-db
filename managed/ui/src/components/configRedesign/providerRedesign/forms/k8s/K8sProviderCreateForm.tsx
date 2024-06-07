@@ -15,11 +15,17 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { KubernetesProvider, KubernetesProviderType, ProviderCode } from '../../constants';
+import {
+  KubernetesProvider,
+  KubernetesProviderType,
+  ProviderCode,
+  ProviderOperation
+} from '../../constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
 import { FieldLabel } from '../components/FieldLabel';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { K8sCertIssuerType, RegionOperation } from '../configureRegion/constants';
@@ -104,6 +110,7 @@ export const K8sProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<K8sRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
 
   const defaultValues = constructDefaultFormValues(kubernetesProviderType);
@@ -154,7 +161,11 @@ export const K8sProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
 
-  const onFormSubmit: SubmitHandler<K8sProviderCreateFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: K8sProviderCreateFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     let providerPayload: YBProviderMutation | null = null;
     try {
       const kubernetesPullSecretContent = formValues.kubernetesPullSecretContent
@@ -252,10 +263,11 @@ export const K8sProviderCreateForm = ({
       toast.error('An error occured while reading the form input files.');
     }
     if (providerPayload) {
+      setValidationErrorExist(false);
       try {
         await createInfraProvider(providerPayload, {
-          shouldValidate: isValidationEnabled,
-          ignoreValidationErrors: false,
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: {
             onError: (err) => {
               handleFormSubmitServerError(
@@ -263,6 +275,7 @@ export const K8sProviderCreateForm = ({
                 formMethods,
                 K8S_FORM_MAPPERS
               );
+              setValidationErrorExist(true);
             }
           }
         });
@@ -270,6 +283,16 @@ export const K8sProviderCreateForm = ({
         // Handled with `mutateOptions.onError`
       }
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<K8sProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<K8sProviderCreateFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const suggestedKubernetesConfig = suggestedKubernetesConfigQuery.data;
@@ -308,7 +331,10 @@ export const K8sProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="K8sProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="K8sProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Box display="flex">
             <Typography variant="h3">Create Kubernetes Provider Configuration</Typography>
             <Box marginLeft="auto">
@@ -406,12 +432,13 @@ export const K8sProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.KUBERNETES}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
                 errors={formMethods.formState.errors.regions as any}
               />
@@ -422,19 +449,30 @@ export const K8sProviderCreateForm = ({
               )}
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                isValidationEnabled
+                  ? 'Validate and Save Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled || formMethods.formState.isValidating}
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
+            {isValidationEnabled && isValidationErrorExist && (
+              <YBButton
+                btnText="Ignore and save provider configuration anyway"
+                btnClass="btn btn-default float-right mr-10"
+                onClick={skipValidationAndSubmit}
+                disabled={isFormDisabled || formMethods.formState.isValidating}
+                data-testid={`${FORM_NAME}-IgnoreAndSave`}
+              />
+            )}
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"

@@ -40,6 +40,8 @@ message CDCStreamInfoPB {
   // This map stores the replica identity for each table in the stream at the time of stream
   // creation. The key for this map is table_id and the value is replica identity for that table.
   map<string, PgReplicaIdentity> replica_identity_map = 10;
+
+  optional string cdcsdk_ysql_replication_slot_plugin_name = 11;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -63,6 +65,7 @@ message CreateCDCStreamRequestPB {
   optional string namespace_id = 7;
   optional string cdcsdk_ysql_replication_slot_name = 8;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
+  optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
 }
 
 message CreateCDCStreamResponsePB {
@@ -271,9 +274,9 @@ message SetupUniverseReplicationRequestPB {
   // Is the created replication group transactionally consistent.
   optional bool transactional = 5; // [default = false]
 
-  // Used for DB Scoped replication.
-  repeated string namespace_names = 6; // YSQL database names.
-  repeated string producer_namespace_ids = 7;
+  // Used for DB Scoped replication. transactional must be set.
+  // Both id and name must be set. Only YQL_DATABASE_PGSQL are allowed.
+  repeated NamespaceIdentifierPB producer_namespaces = 6;
 }
 
 message SetupUniverseReplicationResponsePB {
@@ -286,6 +289,8 @@ message DeleteUniverseReplicationRequestPB {
   optional string replication_group_id = 1;
   optional bool ignore_errors = 2 [default = false];
   optional bool skip_producer_stream_deletion = 3 [ default = false ];
+  // Used to validate that the request is sent to the correct universe.
+  optional string universe_uuid = 4;
 }
 
 message DeleteUniverseReplicationResponsePB {
@@ -306,6 +311,14 @@ message AlterUniverseReplicationRequestPB {
   repeated string producer_bootstrap_ids_to_add = 6;
 
   optional bool remove_table_ignore_errors = 8 [default = false];
+
+  // Used to validate the requests are sent to the correct universe.
+  optional string universe_uuid = 9;
+
+  // Used for DB Scoped replication.
+  // Both id and name must be set. Only YQL_DATABASE_PGSQL are allowed.
+  optional NamespaceIdentifierPB producer_namespace_to_add = 10;
+  optional string producer_namespace_id_to_remove = 11;
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -538,27 +551,28 @@ message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
 
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
-  repeated string namespace_names = 2;
+  repeated string namespace_ids = 2;
 }
 
 message XClusterCreateOutboundReplicationGroupResponsePB {
   optional MasterErrorPB error = 1;
-  repeated bytes namespace_ids = 2; // One per namespace.
 }
 
 message XClusterAddNamespaceToOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
-  optional string namespace_name = 2;
+  required string namespace_id = 2;
 }
 
 message XClusterAddNamespaceToOutboundReplicationGroupResponsePB {
   optional MasterErrorPB error = 1;
-  optional bytes namespace_id = 2;
 }
 
 message XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
-  optional bytes namespace_id = 2;
+  required string namespace_id = 2;
+
+  // Optional. When set target cluster is also cleaned up.
+  repeated HostPortPB target_master_addresses = 3;
 }
 
 message XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB {
@@ -567,6 +581,9 @@ message XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB {
 
 message XClusterDeleteOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
+
+  // Optional. When set target cluster is also cleaned up.
+  repeated HostPortPB target_master_addresses = 2;
 }
 
 message XClusterDeleteOutboundReplicationGroupResponsePB {
@@ -574,8 +591,8 @@ message XClusterDeleteOutboundReplicationGroupResponsePB {
 }
 
 message IsXClusterBootstrapRequiredRequestPB {
-  required bytes replication_group_id = 1;
-  optional bytes namespace_id = 2;
+  required string replication_group_id = 1;
+  required string namespace_id = 2;
 }
 
 message IsXClusterBootstrapRequiredResponsePB {
@@ -585,8 +602,8 @@ message IsXClusterBootstrapRequiredResponsePB {
 }
 
 message GetXClusterStreamsRequestPB {
-  required bytes replication_group_id = 1;
-  optional bytes namespace_id = 2;
+  required string replication_group_id = 1;
+  required string namespace_id = 2;
 
   message TableInfo {
     required string table_name = 1;
@@ -634,6 +651,50 @@ message IsCreateXClusterReplicationDoneResponsePB {
   // Only set when done is true. OK if the created succeeded or the error if it
   // failed.
   optional AppStatusPB replication_error = 3;
+}
+
+message AddNamespaceToXClusterReplicationRequestPB {
+  required string replication_group_id = 1;
+  repeated HostPortPB target_master_addresses = 2;
+  required string namespace_id = 3;
+}
+
+message AddNamespaceToXClusterReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsAlterXClusterReplicationDoneRequestPB {
+  required string replication_group_id = 1;
+  repeated HostPortPB target_master_addresses = 2;
+}
+
+message IsAlterXClusterReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2; // [default = false]
+
+  // Only set when done is true. OK if the created succeeded or the error if it
+  // failed.
+  optional AppStatusPB replication_error = 3;
+}
+
+message RepairOutboundXClusterReplicationGroupAddTableRequestPB {
+  required string replication_group_id = 1;
+  required bytes table_id = 2;
+  required bytes stream_id = 3;
+}
+
+message RepairOutboundXClusterReplicationGroupAddTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RepairOutboundXClusterReplicationGroupRemoveTableRequestPB {
+  required string replication_group_id = 1;
+  required bytes table_id = 2;
+}
+
+message RepairOutboundXClusterReplicationGroupRemoveTableResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 service MasterReplication {
@@ -726,10 +787,20 @@ service MasterReplication {
       returns (IsXClusterBootstrapRequiredResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
+  rpc RepairOutboundXClusterReplicationGroupAddTable(
+      RepairOutboundXClusterReplicationGroupAddTableRequestPB)
+      returns (RepairOutboundXClusterReplicationGroupAddTableResponsePB);
+  rpc RepairOutboundXClusterReplicationGroupRemoveTable(
+      RepairOutboundXClusterReplicationGroupRemoveTableRequestPB)
+      returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
 
   // xCluster APIsV2
   rpc CreateXClusterReplication(CreateXClusterReplicationRequestPB)
       returns (CreateXClusterReplicationResponsePB);
   rpc IsCreateXClusterReplicationDone(IsCreateXClusterReplicationDoneRequestPB)
       returns (IsCreateXClusterReplicationDoneResponsePB);
+  rpc AddNamespaceToXClusterReplication(AddNamespaceToXClusterReplicationRequestPB)
+      returns (AddNamespaceToXClusterReplicationResponsePB);
+  rpc IsAlterXClusterReplicationDone(IsAlterXClusterReplicationDoneRequestPB)
+      returns (IsAlterXClusterReplicationDoneResponsePB);
 }

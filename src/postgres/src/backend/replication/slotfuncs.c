@@ -48,7 +48,8 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
-						  CRS_NOEXPORT_SNAPSHOT, NULL);
+						  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
+						  NULL);
 
 	if (immediately_reserve)
 	{
@@ -150,7 +151,7 @@ create_logical_replication_slot(char *name, char *plugin,
 	 */
 	ReplicationSlotCreate(name, true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  CRS_NOEXPORT_SNAPSHOT, NULL);
+						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	if (!IsYugaByteEnabled())
 	{
@@ -225,15 +226,11 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		 *
 		 * This is different from PG where the validation is done after creating
 		 * the replication slot on disk which is cleaned up in case of errors.
-		 *
-		 * TODO(#20756): Support other plugins such as test_decoding once we
-		 * store replication slot metadata in yb-master.
 		 */
-		if (plugin == NULL || strcmp(NameStr(*plugin), PG_OUTPUT_PLUGIN) != 0)
-			ereport(ERROR, 
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid output plugin"),
-					 errdetail("Only 'pgoutput' plugin is supported")));
+		if (plugin == NULL)
+			elog(ERROR, "cannot initialize logical decoding without a specified plugin");
+
+		YBValidateOutputPlugin(NameStr(*plugin));
 	}
 
 	CheckSlotPermissions();
@@ -318,7 +315,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 14
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 1
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 2
 
 	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
 		ereport(ERROR,
@@ -372,6 +369,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 		const char	*yb_stream_id;
 		bool		yb_stream_active;
+		uint64      yb_restart_commit_ht;
 
 		if (IsYugaByteEnabled())
 		{
@@ -379,12 +377,13 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);
-			namestrcpy(&slot_contents.data.plugin, PG_OUTPUT_PLUGIN);
+			namestrcpy(&slot_contents.data.plugin, slot->output_plugin);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
 
 			slot_contents.data.restart_lsn = slot->restart_lsn;
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
+			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			slot_contents.data.xmin = slot->xmin;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
@@ -552,9 +551,15 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		Assert(i == PG_GET_REPLICATION_SLOTS_COLS);
 
 		if (IsYugaByteEnabled())
+		{
 			values[i++] = CStringGetTextDatum(yb_stream_id);
+			values[i++] = Int64GetDatum(yb_restart_commit_ht);
+		}
 		else
+		{
 			nulls[i++] = true;
+			nulls[i++] = true;
+		}
 
 		Assert(i == (PG_GET_REPLICATION_SLOTS_COLS +
 					 YB_PG_GET_REPLICATION_SLOTS_COLS));

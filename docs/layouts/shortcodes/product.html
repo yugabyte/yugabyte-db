@@ -22,8 +22,9 @@
     {{- $p = trim (lower $p) " " -}}
     {{- $count = add $count 1 -}}
     {{- $info := index $prodmap  $p -}}
+    {{- $anchor := replace (index $info 1) " " "&nbsp;" | htmlUnescape -}}
     {{- /* for a specific add the link from the map with right display name */ -}}
-    <a href="{{printf "/%s/%s" $version (index $info 0)}}">{{index $info 1}}</a>
+    <a href="{{printf "/%s/%s" $version (index $info 0)}}">{{$anchor}}</a>
     {{- /* don't add a comma to the last product */ -}}
     {{- if ne $numproducts $count -}}
         {{- print ", " }}

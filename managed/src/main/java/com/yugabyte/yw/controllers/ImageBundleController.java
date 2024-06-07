@@ -4,6 +4,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -61,6 +63,7 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -142,6 +145,7 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     ImageBundle bundle = parseJsonAndValidate(request, ImageBundle.class);
@@ -169,6 +173,7 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
     imageBundleHandler.delete(providerUUID, iBUUID);

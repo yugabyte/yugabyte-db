@@ -485,17 +485,16 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 		 *	YB_TODO(arpan): Is there a multi tuple equivalent of
 		 *	YBCExecuteInsertForDb?
 		 */
+		bool	  shouldFree;
+		HeapTuple tuple;
 		for (int i = 0; i < ntuples; i++)
 		{
-			bool	  should_free;
-			HeapTuple tuple;
-
-			tuple = ExecFetchSlotHeapTuple(slot[i], true, &should_free);
+			tuple = ExecFetchSlotHeapTuple(slot[i], false, &shouldFree);
 			tuple->t_tableOid = slot[i]->tts_tableOid;
 			CatalogTupleInsertWithInfo(heapRel, tuple, indstate,
 									   yb_shared_insert);
 
-			if (should_free)
+			if (shouldFree)
 				heap_freetuple(tuple);
 		}
 		return;

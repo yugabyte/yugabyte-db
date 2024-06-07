@@ -116,6 +116,12 @@ class StackTrace {
                  pointer_cast<const char*>(frames_ + num_frames_));
   }
 
+  std::string_view as_string_view() const {
+    return std::string_view(pointer_cast<const char*>(frames_), sizeof(void *) * num_frames_);
+  }
+
+  static Result<StackTrace> MakeStackTrace(std::string_view frames);
+
  private:
   enum {
     // The maximum number of stack frames to collect.

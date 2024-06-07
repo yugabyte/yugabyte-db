@@ -75,6 +75,7 @@ struct od_client {
 
 	uint64_t client_id;
 	int64_t yb_db_oid;
+	kiwi_fe_error_t *deploy_err;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -128,6 +129,7 @@ static inline void od_client_init(od_client_t *client)
 	client->prep_stmt_ids = NULL;
 	client->client_id = 0;
 	client->yb_db_oid = -1;
+	client->deploy_err = NULL;
 }
 
 static inline od_client_t *od_client_allocate(void)
@@ -153,6 +155,10 @@ static inline void od_client_free(od_client_t *client)
 	if (client->vars.vars) {
 		free(client->vars.vars);
 		client->vars.vars = NULL;
+	}
+	if (client->deploy_err) {
+		free(client->deploy_err);
+		client->deploy_err = NULL;
 	}
 	free(client);
 }

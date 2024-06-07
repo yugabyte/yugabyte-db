@@ -13,6 +13,8 @@
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/cdc/cdcsdk_virtual_wal.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
+#include "yb/util/backoff_waiter.h"
 
 DEFINE_RUNTIME_uint32(
     cdcsdk_max_consistent_records, 500,
@@ -20,8 +22,20 @@ DEFINE_RUNTIME_uint32(
     "response");
 
 DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
-    "Interval in micro seconds at which the table list in the publication will be refreshed");
+    cdcsdk_publication_list_refresh_interval_secs, 3600 /* 1 hour */,
+    "Interval in seconds at which the table list in the publication will be refreshed");
+
+DEFINE_test_flag(
+    bool, cdcsdk_use_microseconds_refresh_interval, false,
+    "Used in tests to simulate commit time ties of publication refresh record with transactions. "
+    "When this flag is set to true the value of FLAGS_cdcsdk_publication_list_refresh_interval_secs"
+    " will be ignored and publication refresh interval will be set to "
+    "cdcsdk_publication_list_refresh_interval_micros.");
+
+DEFINE_test_flag(
+    uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
+    "Interval in micro seconds at which the table list in the publication will be refreshed. This "
+    "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
 namespace yb {
 namespace cdc {
@@ -80,17 +94,9 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(s.CloneAndPrepend(Format("Init LSN & TxnID generators failed")));
   }
 
-  pub_refresh_interval = GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_micros);
-
   s = CreatePublicationRefreshTabletQueue();
   if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Could not create Publication Refresh Tablet Queue";
-    RETURN_NOT_OK(s);
-  }
-
-  s = PushRecordToPublicationRefreshTabletQueue();
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Could not push an entry to the Publication Refresh Tablet queue";
+    LOG_WITH_PREFIX(WARNING) << "Could not create and initialize Publication Refresh Tablet Queue";
     RETURN_NOT_OK(s);
   }
 
@@ -300,6 +306,8 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators() {
 
   last_pub_refresh_time = *entry_opt->last_pub_refresh_time;
 
+  pub_refresh_times = ParsePubRefreshTimes(*entry_opt->pub_refresh_times);
+
   auto commit_time = *entry_opt->record_id_commit_time;
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
@@ -334,7 +342,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 
     if (records_queue.empty()) {
       if (tablet_id == kPublicationRefreshTabletID) {
-        RETURN_NOT_OK(PushRecordToPublicationRefreshTabletQueue());
+        // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we need
+        // to persist the next pub_refresh_time.
+        RETURN_NOT_OK(PushNextPublicationRefreshRecord());
       } else {
         tablet_to_poll_list.insert(tablet_id);
       }
@@ -865,6 +875,11 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
     commit_meta_and_last_req_map_.erase(commit_meta_and_last_req_map_.begin(), pos);
   }
 
+  // Remove the entries from pub_refresh_times which are <= record_metadata.last_pub_refresh_time.
+  pub_refresh_times.erase(
+      pub_refresh_times.begin(),
+      pub_refresh_times.upper_bound(record_metadata.last_pub_refresh_time));
+
   auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
   auto lag_in_ms = (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(
                        record_metadata.commit_record_unique_id->GetCommitTime()))) /
@@ -919,14 +934,26 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   entry.record_id_commit_time = record_metadata.commit_record_unique_id->GetCommitTime();
   entry.cdc_sdk_safe_time = entry.record_id_commit_time;
   entry.last_pub_refresh_time = record_metadata.last_pub_refresh_time;
+  entry.pub_refresh_times = GetPubRefreshTimesString();
   // Doing an update instead of upsert since we expect an entry for the slot to already exist in
   // cdc_state.
   VLOG_WITH_PREFIX(2) << "Updating slot entry in cdc_state with confirmed_flush_lsn: "
                       << confirmed_flush_lsn << ", restart_lsn: " << record_metadata.commit_lsn
                       << ", xmin: " << record_metadata.commit_txn_id << ", commit_time: "
-                      << record_metadata.commit_record_unique_id->GetCommitTime();
+                      << record_metadata.commit_record_unique_id->GetCommitTime()
+                      << ", last_pub_refresh_time: " << record_metadata.last_pub_refresh_time
+                      << ", pub_refresh_times: " << GetPubRefreshTimesString();
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
 
+  return Status::OK();
+}
+
+Status CDCSDKVirtualWAL::UpdatePubRefreshTimesInCDCState() {
+  CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id_);
+  entry.pub_refresh_times = GetPubRefreshTimesString();
+  VLOG_WITH_PREFIX(2) << "Updating the slot entry for stream id: " << stream_id_
+          << " with pub_refresh_times: " << *entry.pub_refresh_times;
+  RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
   return Status::OK();
 }
 
@@ -950,21 +977,49 @@ Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
       "Publication Refresh Tablet Queue already exists");
   tablet_queues_[kPublicationRefreshTabletID] = std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>();
 
+  // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we need
+  // to persist the next pub_refresh_time.
+  if (pub_refresh_times.empty()) {
+    return PushNextPublicationRefreshRecord();
+  }
+
+  for (auto pub_refresh_time : pub_refresh_times) {
+    RETURN_NOT_OK(PushPublicationRefreshRecord(pub_refresh_time));
+  }
+
   return Status::OK();
 }
 
-Status CDCSDKVirtualWAL::PushRecordToPublicationRefreshTabletQueue() {
-  auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
-  auto row_message = publication_refresh_record->mutable_row_message();
+Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
   auto last_pub_refresh_time_hybrid = HybridTime(last_pub_refresh_time);
-  auto hybrid_sum = last_pub_refresh_time_hybrid.AddMicroseconds(pub_refresh_interval);
-  row_message->set_commit_time(hybrid_sum.ToUint64());
+  HybridTime hybrid_sum;
+  if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
+    hybrid_sum = last_pub_refresh_time_hybrid.AddMicroseconds(
+        GetAtomicFlag(&FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros));
+  } else {
+    hybrid_sum = last_pub_refresh_time_hybrid.AddSeconds(
+        GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_secs));
+  }
+
+  // Persist the updated pub_refresh_times in cdc_state table.
+  // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we need
+  // to persist the next pub_refresh_time.
+  pub_refresh_times.insert(hybrid_sum.ToUint64());
+  RETURN_NOT_OK(UpdatePubRefreshTimesInCDCState());
+
   RSTATUS_DCHECK(
       tablet_queues_[kPublicationRefreshTabletID].empty(), InternalError,
       Format("Expected the Publication Refresh Tablet queue to be empty before inserting a record "
              "to it, but it had $0 records"),
       tablet_queues_[kPublicationRefreshTabletID].size());
 
+  return PushPublicationRefreshRecord(hybrid_sum.ToUint64());
+}
+
+Status CDCSDKVirtualWAL::PushPublicationRefreshRecord(uint64_t pub_refresh_time) {
+  auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
+  auto row_message = publication_refresh_record->mutable_row_message();
+  row_message->set_commit_time(pub_refresh_time);
   std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>& tablet_queue =
       tablet_queues_[kPublicationRefreshTabletID];
   tablet_queue.push(publication_refresh_record);
@@ -990,18 +1045,23 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
   for (auto table_id : new_tables) {
     if (!publication_table_list_.contains(table_id)) {
       tables_to_be_added.insert(table_id);
-      VLOG_WITH_PREFIX(2) << "Table: " << table_id << "to be added to polling list";
+      VLOG_WITH_PREFIX(2) << "Table: " << table_id << " to be added to polling list";
     }
   }
 
   for (auto table_id : publication_table_list_) {
     if (!new_tables.contains(table_id)) {
       tables_to_be_removed.insert(table_id);
-      VLOG_WITH_PREFIX(2) << "Table: " << table_id << "to be removed from polling list";
+      VLOG_WITH_PREFIX(2) << "Table: " << table_id << " to be removed from polling list";
     }
   }
 
   if (!tables_to_be_added.empty()) {
+    // Wait and validate that all the tables to be added to the streaming list have been added to
+    // the stream. This is required for the dynamically created tables, as their addition to the
+    // stream is done by the master background thread. Calling GetTabletListAndCheckpoint on a table
+    // that is yet to be added to the stream will cause it to fail.
+    RETURN_NOT_OK(ValidateTablesToBeAddedPresentInStream(tables_to_be_added, deadline));
     for (auto table_id : tables_to_be_added) {
       // Initialize the tablet_queues_, tablet_id_to_table_id_map_, and tablet_next_req_map_
       auto s = GetTabletListAndCheckpoint(table_id, hostport, deadline);
@@ -1045,6 +1105,74 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
       VLOG_WITH_PREFIX(2) << "Table: " << table_id << " removed from the polling list";
     }
   }
+
+  return Status::OK();
+}
+
+std::set<uint64_t> CDCSDKVirtualWAL::ParsePubRefreshTimes(
+    const std::string& pub_refresh_times_str) {
+  std::set<uint64_t> pub_refresh_times_result;
+
+  if (pub_refresh_times_str.empty()) {
+    return pub_refresh_times_result;
+  }
+
+  std::istringstream iss(pub_refresh_times_str);
+  std::string token;
+  while (std::getline(iss, token, ',')) {
+    pub_refresh_times_result.insert(std::stoull(token));
+  }
+
+  return pub_refresh_times_result;
+}
+
+std::string CDCSDKVirtualWAL::GetPubRefreshTimesString() {
+  if (pub_refresh_times.empty()) {
+    return "";
+  }
+
+  std::ostringstream oss;
+  auto iter = pub_refresh_times.begin();
+  oss << *iter;
+  ++iter;
+  for (; iter != pub_refresh_times.end(); ++iter) {
+    oss << "," << *iter;
+  }
+  return oss.str();
+}
+
+Status CDCSDKVirtualWAL::ValidateTablesToBeAddedPresentInStream(
+    const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline) {
+  CoarseTimePoint now = CoarseMonoClock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      deadline - now - std::chrono::milliseconds(1));
+  MonoDelta timeout = MonoDelta::FromNanoseconds(duration.count());
+
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream_metadata_result =
+            cdc_service_->GetStream(stream_id_, RefreshStreamMapOption::kAlways);
+        if (!stream_metadata_result.ok()) {
+          LOG_WITH_PREFIX(WARNING) << "Unable to get stream metadata for stream id: " << stream_id_
+                                   << " " << ResultToStatus(stream_metadata_result);
+          return false;
+        }
+        const auto& stream_metadata = **stream_metadata_result;
+
+        std::unordered_set<TableId> tables_in_stream;
+        for (const auto& table_id : stream_metadata.GetTableIds()) {
+          tables_in_stream.insert(table_id);
+        }
+
+        bool all_tables_present_in_stream = true;
+
+        for (const auto& table_id : tables_to_be_added) {
+          all_tables_present_in_stream &= tables_in_stream.contains(table_id);
+        }
+
+        return all_tables_present_in_stream;
+      },
+      timeout, "Timed out waiting for table to get added to the stream"));
 
   return Status::OK();
 }

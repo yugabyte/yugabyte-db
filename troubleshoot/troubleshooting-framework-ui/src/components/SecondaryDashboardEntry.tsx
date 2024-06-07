@@ -56,6 +56,7 @@ export const SecondaryDashboardEntry = ({
   const [userSelectedAnomaly, setUserSelectedAnomaly] = useState<Anomaly | null>(null);
   const [graphRequestParams, setGraphRequestParams] = useState<GraphQuery[] | null>(null);
   const [recommendationMetrics, setRecommendationMetrics] = useState<any>(null);
+  const [universeQueryData, setUniverseQueryData] = useState<any>(null);
 
   const { isLoading, isError, isIdle } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
@@ -72,7 +73,21 @@ export const SecondaryDashboardEntry = ({
     }
   );
 
-  if (isLoading) {
+  const { isLoading: universeQueriesLoading, isError: universeQueriesError } = useQuery(
+    [QUERY_KEY.fetchQueries, universeUuid],
+    () => TroubleshootAPI.fetchQueries(universeUuid, hostUrl),
+    {
+      onSuccess: (data) => {
+        setUniverseQueryData(data);
+      },
+      onError: (error: any) => {
+        setUniverseQueryData([]);
+        console.error('Failed to fetch queries', error);
+      }
+    }
+  );
+
+  if (isLoading || universeQueriesLoading) {
     return (
       <Box className={classes.loadingBox}>
         <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />
@@ -80,7 +95,7 @@ export const SecondaryDashboardEntry = ({
     );
   }
 
-  if (isError || (isIdle && userSelectedAnomaly === undefined)) {
+  if (isError || universeQueriesError || (isIdle && userSelectedAnomaly === undefined)) {
     return <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list'} />;
   }
 
@@ -105,7 +120,7 @@ export const SecondaryDashboardEntry = ({
           )}
         </Typography>
       )}
-      {userSelectedAnomaly && (
+      {userSelectedAnomaly && universeQueryData && (
         <SecondaryDashboardData
           hostUrl={hostUrl}
           anomalyData={userSelectedAnomaly}
@@ -115,6 +130,7 @@ export const SecondaryDashboardEntry = ({
           timezone={timezone}
           graphParams={graphRequestParams}
           recommendationMetrics={recommendationMetrics}
+          universeQueryData={universeQueryData}
         />
       )}
     </Box>

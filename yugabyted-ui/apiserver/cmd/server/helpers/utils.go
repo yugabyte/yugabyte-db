@@ -5,11 +5,11 @@ import (
     "encoding/json"
     "errors"
     "fmt"
-    "os"
     "io/ioutil"
     "math/big"
     "net/http"
     "net/url"
+    "os"
     "os/exec"
     "path/filepath"
     "strconv"
@@ -32,6 +32,34 @@ func (h *HelperContainer) Random128BitString() (string, error) {
     nonce := n.Text(16)
 
     return nonce, nil
+}
+// Return the version of all nodes
+func (h *HelperContainer) GetAllNodeVersions() (map[string]string, error) {
+    tabletServersFuture := make(chan TabletServersFuture)
+    go h.GetTabletServersFuture(HOST, tabletServersFuture)
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+        h.logger.Errorf("Failed to fetch tablet servers: %s", tabletServersResponse.Error.Error())
+        return nil, tabletServersResponse.Error
+    }
+    nodeList := h.GetNodesList(tabletServersResponse)
+    nodeVersions := make(map[string]string)
+    versionInfoFutures := make(map[string]chan VersionInfoFuture)
+    for _, nodeHost := range nodeList {
+        future := make(chan VersionInfoFuture, 1)
+        versionInfoFutures[nodeHost] = future
+        go h.GetVersionFuture(nodeHost, false, future)
+    }
+    for nodeHost, future := range versionInfoFutures {
+        versionInfo := <-future
+        if versionInfo.Error != nil {
+            h.logger.Errorf("Failed to get version info for node %s: %s", nodeHost,
+                                                          versionInfo.Error.Error())
+            return nil, versionInfo.Error
+        }
+        nodeVersions[nodeHost] = versionInfo.VersionInfo.VersionNumber
+    }
+    return nodeVersions, nil
 }
 
 // Convert a version number string into a slice of integers. Will only get the major, minor, and
@@ -86,6 +114,24 @@ func (h *HelperContainer) GetSmallestVersion(
             }
     }
     return smallestVersion
+}
+
+func (h *HelperContainer) ValidateVersions(nodeVersions map[string]string) bool {
+    var baseVersion string
+    isFirst := true
+
+    for _, version := range nodeVersions {
+        if isFirst {
+            // Initialize with the first version in the map to set a base for comparison
+            baseVersion = version
+            isFirst = false
+        } else if h.CompareVersions(version, baseVersion) != 0 {
+            // If a mismatch is found compared to the base version, return true
+            return true
+        }
+    }
+    // If all versions are consistent with the base version, return false
+    return false
 }
 
 func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {

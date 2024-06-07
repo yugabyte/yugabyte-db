@@ -100,14 +100,7 @@ SYSTEM_NAMESPACES = [
     "system_platform", "template0", "template1"
 ]
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
-REQUIRED_LOOPBACK_ADDRESSES = [
-    '127\.0\.0\.2',
-    '127\.0\.0\.3',
-    '127\.0\.0\.4',
-    '127\.0\.0\.5',
-    '127\.0\.0\.6',
-    '127\.0\.0\.7'
-]
+
 MAX_PROC = {
     'Linux' : 12000,
     'Darwin' : 2500,
@@ -1059,18 +1052,14 @@ class ControlScript(object):
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
-        # Find current YBDB version
-        VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
-        with open(VERSION_METADATA_PATH) as metadata:
-            version_metadata = json.load(metadata)
-            executable_version = version_metadata.get("version_number")
-
         tserver_addresses = self.get_tserver_addresses()
 
         # Verify if all nodes were upgraded successfully
         Output.init_animation("Verifying version compatibility across all nodes...")
-        mismatched_nodes_version = self.verify_all_nodes_version(
-                                tserver_addresses, executable_version)
+        node_versions = self.get_all_nodes_version(tserver_addresses)
+        highest_version = self.get_highest_version(node_versions)
+        mismatched_nodes_version = self.verify_all_nodes_version(node_versions,
+                                                            highest_version)
 
         if len(mismatched_nodes_version) > 0:
             mismatched_nodes = ', '.join(mismatched_nodes_version)
@@ -1079,7 +1068,7 @@ class ControlScript(object):
             Output.log_error_and_exit(
             Output.make_red("Error") + ": Version mismatch detected in the " +
             "following nodes: {}. Please upgrade these".format(mismatched_nodes) +
-            " nodes to version {} and then rerun the".format(executable_version) +
+            " nodes to version {} and then rerun the".format(highest_version) +
             Output.make_yellow(" yugabyted finalize_upgrade") + " command."
         )
 
@@ -1112,7 +1101,7 @@ class ControlScript(object):
         status_details = [
                     (Output.make_yellow("Status"), final_status)]
         status_display_info[final_status] = Output.make_green
-        status_details.append((Output.make_yellow("Version"), executable_version))
+        status_details.append((Output.make_yellow("Version"), highest_version))
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
     # Starts an interactive YSQL shell.
@@ -1951,7 +1940,7 @@ class ControlScript(object):
     # Check that `openssl` binary is in our PATH
     # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        return find_executable('openssl') == None
+        return shutil.which('openssl') == None
 
     # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
     # /sys/kernel/mm/transparent_hugepage before checking enabled
@@ -1961,7 +1950,7 @@ class ControlScript(object):
         if os.path.exists(thp_dir):
             with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
                 thp_enabled = thp_enabled.read()
-                thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
+                thp_mode = re.search(r"\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
     def check_ports(self):
@@ -2843,52 +2832,29 @@ class ControlScript(object):
             # Update the master_flags in self.configs.saved_data with pg_parity flags
             self.configs.saved_data["master_flags"] = master_flags
 
+        if master_flags:
+            # This will split the simple and complex flags
+            # Now we can parse and append the master flags
+            master_flags_list = re.split(r',\s*(?![^{}]*\})',
+                                                master_flags)
+
+            for master_flag in master_flags_list:
+                # If it's just empty braces, skip appending to the command list
+                if re.search(r'=\{\}$', master_flag):
+                    continue
+                # Check for complex flags and remove curly brackets
+                elif re.search(r'={.*}$', master_flag):
+                    complex_flag = re.sub(r'({|})', '', master_flag)
+                    yb_master_cmd.append("--{}".format(complex_flag))
+                else:
+                    # Handle simple flags
+                    yb_master_cmd.append("--{}".format(master_flag))
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
             yb_master_cmd.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
-
-        # If allowed_preview_flags_csv is present
-        # Extract the value of allowed_preview_flags_csv
-        # Remove the flag present in the master_flags string
-        if master_flags.find("allowed_preview_flags_csv") != -1:
-            allowed_preview_flags_csv_start_index = master_flags.find('allowed_preview_flags_csv')
-            allowed_preview_flags_csv_end_index = master_flags.find('}',
-                                                    allowed_preview_flags_csv_start_index) + 1
-            allowed_preview_flags_csv_flag = master_flags[allowed_preview_flags_csv_start_index:\
-                        allowed_preview_flags_csv_end_index]
-            allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[
-                                                    allowed_preview_flags_csv_flag.find("{")+1:-1]
-
-            # Check and handle if the allowed_preview_flags_csv_flag is
-            # empty after removing the curly braces
-            if allowed_preview_flags_csv_flag:
-                # If the value was given through the config file
-                # remove the starting and ending quotes.
-                if allowed_preview_flags_csv_flag[0] == "'" and \
-                            allowed_preview_flags_csv_flag[-1] == "'":
-                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
-                elif allowed_preview_flags_csv_flag[0] == '"' and \
-                            allowed_preview_flags_csv_flag[-1] == '"':
-                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
-
-                yb_master_cmd.extend(["--allowed_preview_flags_csv={}".format(
-                                                            allowed_preview_flags_csv_flag)])
-            else:
-                # If the flag is empty, reset the configuration by not adding it
-                pass
-            # Remove the flag present in master_flags
-            if allowed_preview_flags_csv_start_index == 0:
-                master_flags = master_flags[allowed_preview_flags_csv_end_index+1:]
-            else:
-                master_flags = master_flags[:allowed_preview_flags_csv_start_index-1] + \
-                    master_flags[allowed_preview_flags_csv_end_index:]
-
-        if master_flags:
-            yb_master_cmd.extend(
-                ["--{}".format(flag) for flag in \
-                    master_flags.split(",")])
 
         return yb_master_cmd
 
@@ -3004,140 +2970,23 @@ class ControlScript(object):
             # Update the tserver_flags in self.configs.saved_data with pg_parity flags
             self.configs.saved_data["tserver_flags"] = tserver_flags
 
-        # If ysql_hba_conf_csv is present
-        # Extract the value of ysql_hba_conf_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_hba_conf_csv") != -1:
-            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
-            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
-            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
-                    ysql_hba_conf_csv_end_index]
-            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
-
-            # Check and handle if the ysql_hba_conf_csv_flag is
-            # empty after removing the curly braces
-            if ysql_hba_conf_csv_flag:
-                # If the value was given through the config file
-                # remove the starting and ending quotes.
-                if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
-                    ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-                elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
-                    ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-
-                yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
-            else:
-                # If the flag is empty, reset the configuration by not adding it
-                pass
-            # Remove the flag present in tserver_flags
-            if ysql_hba_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_hba_conf_csv_end_index:]
-
-        # If allowed_preview_flags_csv is present
-        # Extract the value of allowed_preview_flags_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("allowed_preview_flags_csv") != -1:
-            allowed_preview_flags_csv_start_index = tserver_flags.find('allowed_preview_flags_csv')
-            allowed_preview_flags_csv_end_index = tserver_flags.find('}',
-                                                    allowed_preview_flags_csv_start_index) + 1
-            allowed_preview_flags_csv_flag = tserver_flags[allowed_preview_flags_csv_start_index:\
-                        allowed_preview_flags_csv_end_index]
-            allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[
-                                                    allowed_preview_flags_csv_flag.find("{")+1:-1]
-
-            # Check and handle if the allowed_preview_flags_csv_flag is
-            # empty after removing the curly braces
-            if allowed_preview_flags_csv_flag:
-                # If the value was given through the config file
-                # remove the starting and ending quotes.
-                if allowed_preview_flags_csv_flag[0] == "'" and \
-                            allowed_preview_flags_csv_flag[-1] == "'":
-                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
-                elif allowed_preview_flags_csv_flag[0] == '"' and \
-                            allowed_preview_flags_csv_flag[-1] == '"':
-                    allowed_preview_flags_csv_flag = allowed_preview_flags_csv_flag[1:-1]
-
-                yb_tserver_cmd.extend(["--allowed_preview_flags_csv={}".format(
-                                                            allowed_preview_flags_csv_flag)])
-            else:
-                # If the flag is empty, reset the configuration by not adding it
-                pass
-            # Remove the flag present in tserver_flags
-            if allowed_preview_flags_csv_start_index == 0:
-                tserver_flags = tserver_flags[allowed_preview_flags_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:allowed_preview_flags_csv_start_index-1] + \
-                    tserver_flags[allowed_preview_flags_csv_end_index:]
-
-        # If ysql_ident_conf_csv is present
-        # Extract the value of ysql_ident_conf_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_ident_conf_csv") != -1:
-            ysql_ident_conf_csv_start_index = tserver_flags.find('ysql_ident_conf_csv')
-            ysql_ident_conf_csv_end_index = \
-                tserver_flags.find('}', ysql_ident_conf_csv_start_index) + 1
-            ysql_ident_conf_csv_flag = tserver_flags[ysql_ident_conf_csv_start_index:\
-                    ysql_ident_conf_csv_end_index]
-            ysql_ident_conf_csv_flag = \
-                ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
-
-            # Check and handle if the ysql_ident_conf_csv_flag is
-            # empty after removing the curly braces
-            if ysql_ident_conf_csv_flag:
-                # If the value was given through the config file
-                # remove the starting and ending quotes.
-                if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
-                    ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
-                elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
-                    ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
-
-                yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
-            else:
-                # If the flag is empty, reset the configuration by not adding it
-                pass
-            # Remove the flag present in tserver_flags
-            if ysql_ident_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_ident_conf_csv_end_index:]
-
-        # If ysql_pg_conf_csv is present
-        # Extract the value of ysql_pg_conf_csv given through CLI
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_pg_conf_csv") != -1:
-            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
-            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
-            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
-                    ysql_pg_conf_csv_end_index]
-            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
-
-            # Check and handle if the ysql_pg_conf_csv_flag is
-            # empty after removing the curly braces
-            if ysql_pg_conf_csv_flag:
-                # If the value was given through the config file
-                # remove the starting and ending quotes.
-                if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
-                    ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-                elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
-                    ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-
-                yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
-            else:
-                # If the flag is empty, reset the configuration by not adding it
-                pass
-            # Remove the flag present in tserver_flags
-            if ysql_pg_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_pg_conf_csv_end_index:]
-
         if tserver_flags:
-            yb_tserver_cmd.extend(
-                ["--{}".format(flag) for flag in tserver_flags.split(",")])
+            # This will split the simple and complex flags
+            # Now we can parse and append the tserver flags
+            tserver_flags_list = re.split(r',\s*(?![^{}]*\})',
+                                                tserver_flags)
+
+            for tserver_flag in tserver_flags_list:
+                # If it's just empty braces, skip appending to the command list
+                if re.search(r'=\{\}$', tserver_flag):
+                    continue
+                # Check for complex flags and remove curly brackets
+                elif re.search(r'={.*}$', tserver_flag):
+                    complex_flag = re.sub(r'({|})', '', tserver_flag)
+                    yb_tserver_cmd.append("--{}".format(complex_flag))
+                else:
+                    # Handle simple flags
+                    yb_tserver_cmd.append("--{}".format(tserver_flag))
 
         # Add authentication flags in tserver
         if self.configs.saved_data.get("secure"):
@@ -3378,7 +3227,7 @@ class ControlScript(object):
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
         Output.log("Checking play_evolutions table")
-        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
+        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", r"\d"]
         out, err, ret_code = run_process(list_tables_cmd)
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
@@ -3610,15 +3459,55 @@ class ControlScript(object):
             Output.log_error_and_exit("Other error occurred while fetching version from " +
                                     "tserver {}: {}".format(tserver_hostport, err))
 
-    # Verify nodes version
-    def verify_all_nodes_version(self, tserver_addresses, executable_version):
-        mismatched_nodes_version = []
+    # Get all nodes version
+    def get_all_nodes_version(self, tserver_addresses):
+        node_versions = {}
         for tserver_addr in tserver_addresses:
             version = self.get_node_version(tserver_addr)
-            if version != executable_version:
-                mismatched_nodes_version.append(tserver_addr.split(':')[0])
+            node_versions[tserver_addr] = version
 
-        return mismatched_nodes_version
+        return node_versions
+
+    # Get highest nodes version
+    def get_highest_version(self, node_versions):
+        highest_version = ""
+        for _, version in node_versions.items():
+            if highest_version == "" or self.compare_versions(
+                                    version, highest_version) == 1:
+                highest_version = version
+
+        return highest_version
+
+    # Compare Versions
+    def compare_versions(self, versionA, versionB):
+        int_version_a = self.get_int_version(versionA)
+        int_version_b = self.get_int_version(versionB)
+
+        for a, b in zip(int_version_a, int_version_b):
+            if a < b:
+                return -1
+            elif a > b:
+                return 1
+
+        return 0
+
+    # Convert Version to Integer for comparision
+    def get_int_version(self, version_number):
+        parts = version_number.split(".")[:3]
+        int_versions = []
+        for part in parts:
+            int_versions.append(int(part))
+
+        return int_versions
+
+    # Get mismatched nodes
+    def verify_all_nodes_version(self, node_versions, highest_version):
+        mismatched_nodes = []
+        for node, version in node_versions.items():
+            if self.compare_versions(version, highest_version) != 0:
+                mismatched_nodes.append(node.split(':')[0])
+
+        return mismatched_nodes
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
@@ -5116,14 +5005,14 @@ class ControlScript(object):
     # Check whether the hostnames or IP provided is in correct format.
     def validate_hostname_ip(self, ip):
         # Regex expression for validating IPv4
-        ipv4_regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
+        ipv4_regex = r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
             "[0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
 
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
         # Regex expression for validating DNS names
-        dns_regex = "^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
+        dns_regex = r"^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
 
         # Regex expression for validating hostname
         hostname_regex = "^[a-zA-Z0-9.-]+$"
@@ -6300,8 +6189,9 @@ class ControlScript(object):
             else:
                 args.backup_daemon = self.configs.saved_data.get("backup_daemon")
 
-            self.configs.temp_data["ui_port_available"] = self.is_port_available(
-                args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
+            if not has_errors:
+                self.configs.temp_data["ui_port_available"] = self.is_port_available(
+                    args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
 
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)

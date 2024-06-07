@@ -68,7 +68,7 @@ for rack in a b c ; do
         then
            JOIN="--join=127.0.0.1"
         fi
-        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=/tmp/ybd{server}
+        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=${HOME}/var/node{server}
     done
 done
 ```
@@ -97,7 +97,7 @@ SELECT host, cloud, region, zone FROM yb_servers() ORDER BY host;
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<note>}}
-To configure racks as zones in YB Anywhere, set the racks as zones in your [on-prem provider settings](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-provider/#provider-settings)
+To configure racks as zones in YB Anywhere, set the racks as zones in your [on-prem provider settings](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/#provider-settings)
 {{</note>}}
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}

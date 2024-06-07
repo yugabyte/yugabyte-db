@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
 ## Basics
 
@@ -95,21 +95,21 @@ cat /proc/cpuinfo | grep sse4.2
 
   - XFS is the recommended filesystem.
   - Use the `noatime` setting when mounting the data drives.
-  - ZFS is not currently supported. It is in the [roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
-  - NFS is not currently supported. It is in the [roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).
+  - ZFS is not currently supported.
+  - NFS is not currently supported.
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
 YugabyteDB can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 
-YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
+YugabyteDB uses per-tablet [size tiered compaction](../../architecture/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
 
 It is recommended to plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, and so on.
 
-### Network
+## Network
 
 The following is a list of default ports along with the network access required for using YugabyteDB:
 
@@ -129,7 +129,7 @@ The following is a list of default ports along with the network access required 
 
 This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 
-Note that for YugabyteDB Anywhere, the SSH port is changed for added security.
+YugabyteDB Anywhere has its own port requirements. Refer to [Networking](../../yugabyte-platform/prepare/networking/).
 
 ## Clock synchronization
 

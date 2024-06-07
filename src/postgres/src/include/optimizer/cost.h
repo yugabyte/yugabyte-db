@@ -113,6 +113,7 @@ extern PGDLLIMPORT bool enable_seqscan;
 extern PGDLLIMPORT bool enable_indexscan;
 extern PGDLLIMPORT bool enable_indexonlyscan;
 extern PGDLLIMPORT bool enable_bitmapscan;
+extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_incremental_sort;
@@ -154,12 +155,16 @@ extern void cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								  ParamPathInfo *param_info,
 								  Path *bitmapqual, double loop_count);
-extern void cost_yb_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+extern void yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  ParamPathInfo *param_info,
 					  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
+extern void yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
 extern void cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
+extern void yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec);
+extern void yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec,
+					  int *ybctid_width);
 extern void cost_tidscan(Path *path, PlannerInfo *root,
 						 RelOptInfo *baserel, List *tidquals, ParamPathInfo *param_info);
 extern void cost_tidrangescan(Path *path, PlannerInfo *root,

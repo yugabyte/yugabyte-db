@@ -20,7 +20,7 @@ Sometimes you may need to move a YugabyteDB universe deployed on a set of nodes 
 - updating the instance images on a regular basis (for example, AMI rehydration in AWS).
 - moving to a different set of zones, regions, or data centers.
 
-This page describes how to change a cluster's configuration, including setting up new servers, moving the data from the old servers, and shutting down the old servers. This tutorial assumes that you are familiar with the [YugabyteDB architecture](../../architecture/concepts/universe/).
+This page describes how to change a cluster's configuration, including setting up new servers, moving the data from the old servers, and shutting down the old servers. This tutorial assumes that you are familiar with the [YugabyteDB architecture](../../architecture/).
 
 ## Example scenario
 

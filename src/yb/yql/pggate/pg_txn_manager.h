@@ -61,8 +61,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
@@ -108,7 +108,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  Status FinishTransaction(Commit commit);
+  Status FinishPlainTransaction(Commit commit);
 
   void IncTxnSerialNo();
 
@@ -123,7 +123,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
   uint64_t read_time_serial_no_ = 0;
-  SubTransactionId active_sub_transaction_id_ = 0;
+  SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;

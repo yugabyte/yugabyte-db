@@ -1,6 +1,7 @@
 --
 -- SELECT
 --
+SET yb_enable_bitmapscan TO on;
 -- lsm index
 -- awk '{if($1<10){print;}else{next;}}' onek.data | sort +0n -1
 --
@@ -292,7 +293,7 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 (19 rows)
 
 RESET enable_seqscan;
-SET enable_bitmapscan = on;
+RESET enable_bitmapscan;
 RESET enable_sort;
 --
 -- Test ORDER BY options
@@ -691,4 +692,4 @@ LIMIT ALL) ybview ORDER BY unique2;
        0 |     998
 (2 rows)
 
-RESET enable_bitmapscan;
+RESET yb_enable_bitmapscan;

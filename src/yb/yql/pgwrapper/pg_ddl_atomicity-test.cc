@@ -57,9 +57,6 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_yb_ddl_rollback_enabled);
-DECLARE_bool(report_ysql_ddl_txn_status_to_master);
-DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 
 namespace yb {
@@ -156,6 +153,17 @@ TEST_F(PgDdlAtomicityTest, TestIndexTableGC) {
   ASSERT_OK(conn.Execute(CreateTableStmt(test_name)));
 
   // After successfully creating the first table, set flags to delay the background task.
+  // But do not let PG wait for the ddl verification to complete otherwise it will defeat the
+  // purpopse of the following 13000ms delay to start the ddl verification task: TestFailDdl
+  // does not finish until 13000ms have passed and the ddl verification has completed. On
+  // ddl verification completion master rolls back the index table and the next VerifyTableExists
+  // fails to see the table. Do not set report_ysql_ddl_txn_status_to_master for similar
+  // reason: on receiving PG reported status without polling master rolls back the index
+  // table.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
   ASSERT_OK(conn.TestFailDdl(CreateIndexStmt(test_name_idx, test_name, "key")));
 
@@ -268,11 +276,6 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
-    options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
-    options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
     options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=5,ysql_transaction_ddl=5");
@@ -1381,11 +1384,7 @@ TEST_F(PgDdlAtomicitySnapshotTest, DdlRollbackListSnapshotTest) {
 class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=3,ysql_transaction_ddl=3");
-    options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
   }
  protected:
   void MatviewTest();
@@ -1469,8 +1468,6 @@ class PgLibPqTableRewrite:
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
     options->extra_tserver_flags.push_back("--ysql_enable_reindex=true");
     if (!GetParam()) {
       options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=10000");
@@ -1606,10 +1603,6 @@ TEST_P(PgLibPqTableRewrite,
 class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_ddl_rollback_enabled";
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
     pgwrapper::PgMiniTestBase::SetUp();
   }

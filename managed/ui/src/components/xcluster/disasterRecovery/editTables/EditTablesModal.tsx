@@ -72,7 +72,8 @@ export type FormStep = typeof FormStep[keyof typeof FormStep];
 const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 const MODAL_NAME = 'EditTablesModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editTablesModal';
-const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
+const TRANSLATION_KEY_PREFIX_SELECT_TABLE = 'clusterDetail.xCluster.selectTable';
+const TRANSLATION_KEY_PREFIX_XCLUSTER = 'clusterDetail.xCluster';
 
 export const EditTablesModal = (props: EditTablesModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
@@ -205,7 +206,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     );
   }
 
-  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
+  const xClusterConfigTableType = getXClusterConfigTableType(
+    xClusterConfig,
+    sourceUniverseTablesQuery.data
+  );
   const sourceUniverseUuid = xClusterConfig.sourceUniverseUUID;
   const targetUniverseUuid = xClusterConfig.targetUniverseUUID;
   if (
@@ -221,7 +225,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       : !xClusterConfig.targetUniverseUUID
       ? t('error.undefinedTargetUniverseUuid')
       : !xClusterConfigTableType
-      ? t('error.undefinedXClusterTableType')
+      ? t('error.undefinedXClusterTableType', { keyPrefix: TRANSLATION_KEY_PREFIX_XCLUSTER })
       : t('error.fetchSourceUniverseDetailsFailure');
     return (
       <YBModal
@@ -258,7 +262,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           formMethods.setError('tableUuids', {
             type: 'min',
             message: t('error.validationMinimumNamespaceUuids.title', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             })
           });
           // The TableSelect component expects error objects with title and body fields.
@@ -266,10 +270,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           // Thus, we need an store these error objects separately.
           setSelectionError({
             title: t('error.validationMinimumNamespaceUuids.title', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             }),
             body: t('error.validationMinimumNamespaceUuids.body', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             })
           });
           return;
@@ -298,13 +302,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
                     <i className="fa fa-exclamation-circle" />
                     <Typography variant="body2" component="span">
                       {t('error.failedToFetchIsBootstrapRequired.title', {
-                        keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                        keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
                       })}
                     </Typography>
                   </div>
                   <Typography variant="body2" component="div">
                     {t('error.failedToFetchIsBootstrapRequired.body', {
-                      keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                      keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
                     })}
                   </Typography>
                   <Typography variant="body2" component="div">
@@ -314,10 +318,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
               );
               setSelectionWarning({
                 title: t('error.failedToFetchIsBootstrapRequired.title', {
-                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
                 }),
                 body: t('error.failedToFetchIsBootstrapRequired.body', {
-                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
                 })
               });
             }
@@ -340,10 +344,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
               setSelectionWarning({
                 title: t('warning.insufficientDiskSpace.title', {
-                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
                 }),
                 body: t('warning.insufficientDiskSpace.body', {
-                  keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX,
+                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE,
                   bootstrapMinFreeDiskSpaceGb: BOOTSTRAP_MIN_FREE_DISK_SPACE_GB
                 })
               });

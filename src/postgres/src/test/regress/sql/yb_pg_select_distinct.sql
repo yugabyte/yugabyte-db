@@ -2,6 +2,7 @@
 -- SELECT_DISTINCT
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 --
 -- awk '{print $3;}' onek.data | sort -n | uniq
 --

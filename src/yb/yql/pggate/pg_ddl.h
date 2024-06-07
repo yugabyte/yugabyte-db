@@ -40,7 +40,9 @@ class PgCreateDatabase : public PgDdl {
                    const char *database_name,
                    PgOid database_oid,
                    PgOid source_database_oid,
+                   const char* source_database_name,
                    PgOid next_oid,
+                   const int64_t clone_time,
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
@@ -326,6 +328,7 @@ class PgCreateReplicationSlot : public PgDdl {
  public:
   PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                           const char *slot_name,
+                          const char *plugin_name,
                           PgOid database_oid,
                           YBCPgReplicationSlotSnapshotAction snapshot_action);
 

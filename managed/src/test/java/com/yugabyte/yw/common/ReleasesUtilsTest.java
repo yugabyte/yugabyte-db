@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleasesUtils.ExtractedMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -26,6 +28,7 @@ public class ReleasesUtilsTest extends FakeDBApplication {
   @InjectMocks ReleasesUtils releasesUtils;
 
   @Mock ConfigHelper configHelper;
+  @Mock RuntimeConfGetter confGetter;
 
   @Test
   public void testVersionMetadataFromUrl() {
@@ -71,6 +74,31 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     assertEquals("STS", releasesUtils.releaseTypeFromVersion("2024.1.2.0-b3"));
     assertEquals("STS", releasesUtils.releaseTypeFromVersion("2024.1.2.3-b3"));
     assertEquals("LTS", releasesUtils.releaseTypeFromVersion("2024.2.0.0-b3"));
+  }
+
+  @Test
+  public void testValidateVersionAgainstCurrentYBA() {
+    when(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion))
+        .thenReturn(getVersionMap("2024.1.0.0-b23"));
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
+
+    // Should pass
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b23");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b22");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.0.0.0-b23");
+    releasesUtils.validateVersionAgainstCurrentYBA("2024.0.0.0-b24");
+    releasesUtils.validateVersionAgainstCurrentYBA("2.20.1.2-b99");
+
+    // Should fail
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2024.1.0.0-b100"));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2024.2.0.0-b1"));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> releasesUtils.validateVersionAgainstCurrentYBA("2025.1.0.0-b1"));
   }
 
   private URL getMockUrl(String filename) {

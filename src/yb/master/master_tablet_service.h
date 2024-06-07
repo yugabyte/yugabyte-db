@@ -53,7 +53,8 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
  private:
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
+    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
+    tserver::ReadResponsePB* resp) override;
 
   Master *const master_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);

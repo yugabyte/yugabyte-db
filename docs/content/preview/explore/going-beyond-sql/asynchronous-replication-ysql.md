@@ -7,6 +7,7 @@ headContent: xCluster unidirectional and bidirectional replication (2+ regions)
 aliases:
   - /preview/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/macos/
+  - /preview/explore/multi-region-deployments/asynchronous-replication-ysql/
 menu:
   preview:
     identifier: explore-multi-region-deployments-async-replication-1-ysql
@@ -31,30 +32,11 @@ For more information, see the following:
 Create the two data centers as follows:
 
 1. Create and start the local cluster that simulates "Data Center - East" by running the following command from your YugabyteDB home directory:
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address=127.0.0.1 \
-                    --base_dir=/tmp/ybd1
-    ```
-
-    This starts a single-node local cluster using the IP address of `127.0.0.1` and creates `/tmp/ybd1` as the base directory.
-
-1. If you are running on macOS and haven't created any loopback addresses, configure one as follows:
-
-    ```sh
-    sudo ifconfig lo0 alias 127.0.0.2
-    ```
-
-1. Create and start the second local cluster that simulates "Data Center - West" by running the following command:
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address=127.0.0.2 \
-                    --base_dir=/tmp/ybd2
-    ```
-
-    This starts a single-node cluster using IP address of `127.0.0.2` and creates `/tmp/ybd2` as the base directory.
+{{<setup/local numnodes="1" rf="1" ips="127.0.0.1" locations="aws.us-east.us-east-1a"
+               instructions="no" destroy="no" dataplacement="no" status="no" >}}
+1. Create and start the local cluster that simulates "Data Center - West" by running the following command from your YugabyteDB home directory:<br><br>
+{{<setup/local numnodes="1" rf="1" ips="127.0.0.2" locations="aws.us-west.us-west-1a" dirnum="2"
+               instructions="no" destroy="no" dataplacement="no" status="no" >}}
 
 ## Create tables
 

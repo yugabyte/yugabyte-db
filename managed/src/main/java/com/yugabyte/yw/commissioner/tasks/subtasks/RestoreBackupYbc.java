@@ -229,11 +229,14 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Completed);
       }
     } catch (CancellationException ce) {
-      if (!taskExecutor.isShutdown()) {
+      if (!taskExecutor.isShutdown()
+          || !getRunnableTask().getTaskInfo().getTaskType().equals(TaskType.RestoreBackup)) {
         // update aborted/failed - not showing aborted from here.
         if (restoreKeyspace != null) {
           restoreKeyspace.update(getTaskUUID(), RestoreKeyspace.State.Aborted);
         }
+        ybcManager.abortRestoreTask(
+            taskParams().customerUUID, taskParams().prefixUUID, taskId, ybcClient);
         ybcManager.deleteYbcBackupTask(taskId, ybcClient);
       }
       Throwables.propagate(ce);

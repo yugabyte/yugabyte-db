@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -114,6 +116,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -166,6 +169,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result edit(
       UUID customerUUID,
       UUID providerUUID,

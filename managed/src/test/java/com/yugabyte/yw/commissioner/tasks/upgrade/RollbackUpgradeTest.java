@@ -115,7 +115,6 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    setLeaderlessTabletsMock();
 
     updateDefaultUniverseTo5Nodes(true);
 

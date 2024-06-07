@@ -64,22 +64,22 @@ constexpr std::enable_if_t<!std::is_signed<T>::value && std::is_signed<U>::value
 
 template <class T, class U>
 constexpr bool cmp_not_equal(const T& t, const U& u) noexcept {
-  return !cmp_equal(t, u);
+  return !std_util::cmp_equal(t, u);
 }
 
 template <class T, class U>
 constexpr bool cmp_greater(const T& t, const U& u) noexcept {
-  return cmp_less(u, t);
+  return std_util::cmp_less(u, t);
 }
 
 template <class T, class U>
 constexpr bool cmp_less_equal(const T& t, const U& u) noexcept {
-  return !cmp_greater(t, u);
+  return !std_util::cmp_greater(t, u);
 }
 
 template <class T, class U>
 constexpr bool cmp_greater_equal(const T& t, const U& u) noexcept {
-  return !cmp_less(t, u);
+  return !std_util::cmp_less(t, u);
 }
 
 }  // namespace std_util

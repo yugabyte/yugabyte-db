@@ -28,7 +28,7 @@ When this happens, new Master leaders are elected for the underlying data shards
 - Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
 - Step 3: [Release node instance](#release-node-instance)
 - Step 4: [Delete node](#delete-node)
-- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+- Step 5: For on-premises deployments only, if you want to reuse the node, you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 {{< note title="Note" >}}
 
@@ -126,7 +126,7 @@ Taking this action completely eliminates the node, as follows:
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.
 
-Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../install-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
+Note that, for on-premises deployments only, if you want to reuse the node, after deleting it you must manually remove YugabyteDB components from the server node. Refer to [Delete on-premises database server nodes](../../administer-yugabyte-platform/uninstall-software/#delete-on-premises-database-server-nodes).
 
 ## Recover a node
 

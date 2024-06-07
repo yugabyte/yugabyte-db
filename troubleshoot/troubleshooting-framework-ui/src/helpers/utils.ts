@@ -245,8 +245,11 @@ export const getGraphRequestParams = (anomalyData: Anomaly, startDate=null, endD
       request.start = anomalyData.graphStartTime;
       request.end = anomalyData.graphEndTime;
       request.settings = anomalyData.defaultSettings;
-      if (graph.name === "active_session_history") {
-        request.groupBy = GraphLabel.WAIT_EVENT_COMPONENT;
+       // if (graph.name === "active_session_history") {
+      //   request.groupBy = [];
+      // }
+      if (graph.name.startsWith('active_session_history')) {
+        request.groupBy = [];
       }
       return request;
   });
@@ -260,8 +263,11 @@ export const getGraphRequestParams = (anomalyData: Anomaly, startDate=null, endD
       request.start = anomalyData.graphStartTime;
       request.end = anomalyData.graphEndTime;
       request.settings = anomalyData.defaultSettings;
-      if (graph.name === "active_session_history") {
-        request.groupBy = GraphLabel.WAIT_EVENT_COMPONENT;
+      // if (graph.name === "active_session_history") {
+      //   request.groupBy = [];
+      // }
+      if (graph.name.startsWith('active_session_history')) {
+        request.groupBy = [];
       }
       return request;
       })

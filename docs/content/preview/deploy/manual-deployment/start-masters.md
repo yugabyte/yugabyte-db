@@ -16,7 +16,7 @@ type: docs
 - The number of nodes in a cluster running YB-Masters **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
 - For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC deployments](../../../deploy/multi-dc/) section.
-- Read more about the [yb-master service architecture](../../../architecture/concepts/yb-master/).
+- Read more about the [yb-master service architecture](../../../architecture/yb-master/).
 
 {{< /note >}}
 

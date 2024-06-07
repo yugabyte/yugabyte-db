@@ -1,0 +1,4 @@
+content:
+  application/json:
+    schema:
+      $ref: ../schemas/UniverseEditSpec.yaml

@@ -31,6 +31,7 @@ YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
 class IsOperationDoneResult;
 
 namespace master {
+class CDCStreamOptionsPB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
 }  // namespace master
@@ -49,14 +50,33 @@ using GetXClusterStreamsCallback =
 using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 // A wrapper over YBClient to handle xCluster related RPCs.
-// This class performs serialization of C++ objects to PBs and vice versa. Which enables us to limit
-// the scope of xCluster specific types.
+// This class performs serialization of C++ objects to PBs and vice versa.
 class XClusterClient {
  public:
   explicit XClusterClient(client::YBClient& yb_client);
   virtual ~XClusterClient() = default;
 
-  virtual Status CreateXClusterReplication(
+  // Starts the creation of the outbound replication group on the source. IsBootstrapRequired or
+  // GetXClusterStreams must be called on each namespace in order to wait for the operation to
+  // complete.
+  Status CreateOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids);
+
+  Status IsBootstrapRequired(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
+
+  // Count of table_names and pg_schema_names must match. If no table_names are provided then all
+  // tables of the namespace are returned.
+  Status GetXClusterStreams(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+
+  // Starts the creation of Db scoped inbound replication group from a outbound replication group.
+  // IsCreateXClusterReplicationDone must be called in order to wait for the operation to complete.
+  virtual Status CreateXClusterReplicationFromCheckpoint(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::string& target_master_addresses);
 
@@ -64,23 +84,60 @@ class XClusterClient {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::string& target_master_addresses);
 
-  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
+  // target_master_addresses is optional. If set the Inbound replication group on the target will be
+  // deleted. If not set the target has to be separately deled with DeleteUniverseReplication.
+  Status DeleteOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceName>& namespace_names);
+      const std::string& target_master_addresses);
 
-  Status IsXClusterBootstrapRequired(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
+  Status DeleteUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
+      const UniverseUuid& target_universe_uuid);
 
-  Status XClusterDeleteOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id);
+  // Starts the checkpointing of the given namespace. IsBootstrapRequired or
+  // GetXClusterStreams must be called on each namespace in order to wait for the operation to
+  // complete.
+  Status AddNamespaceToOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
-  Status GetXClusterStreams(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
-      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+  // Starts the addition of namespace to inbound replication group.
+  // IsAlterXClusterReplicationDone must be called in order to wait for the operation to complete.
+  Status AddNamespaceToXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses, const NamespaceId& source_namespace_id);
+
+  Result<IsOperationDoneResult> IsAlterXClusterReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  // target_master_addresses is optional. If set the Inbound replication group on the target will be
+  // deleted. If not set the target has to be separately deled with
+  // RemoveNamespaceFromUniverseReplication.
+  Status RemoveNamespaceFromOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::string& target_master_addresses);
+
+  Status RemoveNamespaceFromUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& source_namespace_id, const UniverseUuid& target_universe_uuid);
+
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id);
+
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
+
+  Result<xrepl::StreamId> CreateXClusterStream(
+      const TableId& table_id, bool active, cdc::StreamModeTransactional transactional);
+
+  void CreateXClusterStreamAsync(
+      const TableId& table_id, bool active, cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
 
  private:
+  CoarseTimePoint GetDeadline() const;
+
   template <typename ResponsePB, typename RequestPB, typename Method>
   Result<ResponsePB> SyncLeaderMasterRpc(
       const RequestPB& req, const char* method_name, const Method& method);
@@ -99,7 +156,9 @@ class XClusterRemoteClient {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<HostPort>& remote_masters);
 
-  YB_STRONGLY_TYPED_BOOL(Transactional);
+  XClusterClient* operator->() {return GetXClusterClient();}
+  XClusterClient* GetXClusterClient();
+
   // This requires flag enable_xcluster_api_v2 to be set.
   virtual Result<UniverseUuid> SetupDbScopedUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -117,6 +176,12 @@ class XClusterRemoteClient {
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
       BootstrapProducerCallback user_callback);
 
+  virtual Status AddNamespaceToDbScopedUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const UniverseUuid& target_universe_uuid, const NamespaceName& namespace_name,
+      const NamespaceId& source_namespace_id, const std::vector<TableId>& source_table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids);
+
  private:
   template <typename ResponsePB, typename RequestPB, typename Method>
   Result<ResponsePB> SyncLeaderMasterRpc(
@@ -128,7 +193,11 @@ class XClusterRemoteClient {
   std::unique_ptr<rpc::Messenger> messenger_;
 
   std::unique_ptr<client::YBClient> yb_client_;
+  std::unique_ptr<client::XClusterClient> xcluster_client_;
 };
+
+// TODO: Move xcluster_util to common and this into it.
+google::protobuf::RepeatedPtrField<master::CDCStreamOptionsPB> GetXClusterStreamOptions();
 
 }  // namespace client
 }  // namespace yb

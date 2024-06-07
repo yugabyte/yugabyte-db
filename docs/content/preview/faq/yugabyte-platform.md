@@ -81,7 +81,7 @@ You install YugabyteDB Anywhere using a standalone installer that you download f
 
 {{< note title="Replicated end of life" >}}
 
-YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
+YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 {{< /note >}}
 
@@ -156,9 +156,9 @@ Currently, there are three ways to provision a node, depending on the level of a
 
 - _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YBA (for example, the `ec2-user` for an AWS EC2 instance).
 
-- [_Assisted manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) via a script (`provision_instance.py`), where YBA doesn't have access to an SSH user with sudo access, but you can run the script interactively in YBA, providing parameters for credentials for the SSH user with sudo access.
+- _Assisted manual provisioning_ via a script (`provision_instance.py`), where YBA doesn't have access to an SSH user with sudo access, but you can run the script interactively in YBA, providing parameters for credentials for the SSH user with sudo access.
 
-- [_Fully manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/), where neither you nor YBA has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
+- _Fully manual provisioning_, where neither you nor YBA has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
 
 For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
 
@@ -193,7 +193,7 @@ Node agent is used to run pre-flight checks on the node during various day-0 and
 
 In v2.18.6 and later, moving a node from one provider to another does not require unregistering the node agent, as node agents aren't linked to providers.
 
-To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#reconfigure-a-node-agent).
+To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#reconfigure-a-node-agent).
 
 As long as the IP does not change, the node agent does not try to register again.
 
@@ -201,7 +201,7 @@ Note that first removing the node instance from the provider is very important, 
 
 ### How does a node agent perform preflight checks?
 
-Prior to adding a node that you have provisioned as an instance to your provider, you [run a preflight](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#preflight-check) check to determine if the node satisfies the requirements for YugabyteDB.
+Prior to adding a node that you have provisioned as an instance to your provider, you run a preflight check to determine if the node satisfies the requirements for YugabyteDB.
 
 A node agent does the following when the preflight-check command is run:
 

@@ -55,13 +55,6 @@ class MiniClusterBase {
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 
-  template <class T>
-  Result<std::unique_ptr<T>> CreateStatefulServiceClient() {
-    auto client = std::make_unique<T>();
-    RETURN_NOT_OK(InitStatefulServiceClient(client.get()));
-    return client;
-  }
-
  protected:
   virtual ~MiniClusterBase() = default;
 
@@ -79,7 +72,6 @@ class MiniClusterBase {
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 
   virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
-  Status InitStatefulServiceClient(client::StatefulServiceClientBase* client);
 };
 
 }  // namespace yb

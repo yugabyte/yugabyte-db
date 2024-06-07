@@ -12,6 +12,7 @@ import java.util.Collection;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
+import org.apache.commons.validator.routines.RegexValidator;
 import org.apache.commons.validator.routines.UrlValidator;
 
 public class CustomerConfigStorageValidator extends ConfigDataValidator {
@@ -29,13 +30,25 @@ public class CustomerConfigStorageValidator extends ConfigDataValidator {
   private final UrlValidator urlValidator;
 
   @Inject
-  public CustomerConfigStorageValidator(BeanValidator beanValidator, Collection<String> schemes) {
+  public CustomerConfigStorageValidator(
+      BeanValidator beanValidator, Collection<String> schemes, String authRegex) {
     super(beanValidator);
 
     DomainValidator domainValidator = DomainValidator.getInstance(true);
+    RegexValidator authorityValidator = null;
+    if (authRegex != null) {
+      authorityValidator = new RegexValidator(authRegex);
+    }
     urlValidator =
         new UrlValidator(
-            schemes.toArray(new String[0]), null, UrlValidator.ALLOW_LOCAL_URLS, domainValidator);
+            schemes.toArray(new String[0]),
+            authorityValidator,
+            UrlValidator.ALLOW_LOCAL_URLS,
+            domainValidator);
+  }
+
+  public CustomerConfigStorageValidator(BeanValidator beanValidator, Collection<String> schemes) {
+    this(beanValidator, schemes, null);
   }
 
   @Override

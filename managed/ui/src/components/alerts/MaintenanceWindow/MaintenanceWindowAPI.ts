@@ -68,7 +68,12 @@ export const getMaintenanceWindowList = (): Promise<MaintenanceWindowSchema[]> =
 export const createMaintenanceWindow = (
   payload: Pick<
     MaintenanceWindowSchema,
-    'name' | 'startTime' | 'endTime' | 'description' | 'alertConfigurationFilter'
+    | 'name'
+    | 'startTime'
+    | 'endTime'
+    | 'description'
+    | 'alertConfigurationFilter'
+    | 'suppressHealthCheckNotificationsConfig'
   >
 ): Promise<MaintenanceWindowSchema> => {
   const customerUUID = getCustomerId();

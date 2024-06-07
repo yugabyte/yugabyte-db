@@ -199,7 +199,7 @@ create unique index fruit_index on insertconflicttest(fruit);
 insert into insertconflicttest values (26, 'Fig') on conflict (key) do update set fruit = excluded.fruit;
 -- fails, since UPDATE is to row with key value 26, and we're updating "fruit"
 -- to a value that happens to exist in another row ('peach'):
-insert into insertconflicttest values (26, 'Peach') on conflict (key) do update set fruit = excluded.fruit;
+insert into insertconflicttest values (26, 'Peach') on conflict (key) do update set fruit = excluded.fruit;  -- YB: output is missing detail because YB handles duplicate detection differently
 -- succeeds, since "key" isn't repeated/referenced in UPDATE, and "fruit"
 -- arbitrates that statement updates existing "Fig" row:
 insert into insertconflicttest values (25, 'Fig') on conflict (fruit) do update set fruit = excluded.fruit;
@@ -214,7 +214,7 @@ create unique index partial_key_index on insertconflicttest(key) where fruit lik
 
 -- Succeeds
 insert into insertconflicttest values (23, 'Blackberry') on conflict (key) where fruit like '%berry' do update set fruit = excluded.fruit;
-insert into insertconflicttest values (23, 'Blackberry') on conflict (key) where fruit like '%berry' and fruit = 'inconsequential' do nothing;
+insert into insertconflicttest as t values (23, 'Blackberry') on conflict (key) where fruit like '%berry' and t.fruit = 'inconsequential' do nothing;
 
 -- fails
 insert into insertconflicttest values (23, 'Blackberry') on conflict (key) do update set fruit = excluded.fruit;
@@ -253,14 +253,12 @@ drop table insertconflicttest;
 --
 -- Verify that EXCLUDED does not allow system column references. These
 -- do not make sense because EXCLUDED isn't an already stored tuple
--- (and thus doesn't have a ctid, oids are not assigned yet, etc).
+-- (and thus doesn't have a ctid etc).
 --
--- YugaByte don't support WITH OIDS
--- create table syscolconflicttest(key int4, data text) WITH OIDS;
--- insert into syscolconflicttest values (1);
--- insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text;
--- insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.oid::text;
--- drop table syscolconflicttest;
+create table syscolconflicttest(key int4, data text);
+insert into syscolconflicttest values (1);
+insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text; -- YB: output shows YB error message hit first before PG one
+drop table syscolconflicttest;
 
 --
 -- Previous tests all managed to not test any expressions requiring
@@ -288,11 +286,10 @@ drop table insertconflict;
 -- test insertion through view
 --
 
--- TODO(neil) CASCADED view not yet supported
 create table insertconflict (f1 int primary key, f2 text);
--- create view insertconflictv as
---   select * from insertconflict with cascaded check option;
-create view insertconflictv as select * from insertconflict;
+create view insertconflictv as
+  select * from insertconflict with cascaded check option;
+create view insertconflictv as select * from insertconflict; -- YB: workaround view to replace above
 
 insert into insertconflictv values (1,'foo')
   on conflict (f1) do update set f2 = excluded.f2;
@@ -310,16 +307,15 @@ drop table insertconflict;
 -- * Test inheritance (example taken from tutorial)                 *
 -- *                                                                *
 -- ******************************************************************
--- TODO (neil) INHERITS not yet supported.
 create table cities (
 	name		text,
 	population	float8,
 	altitude	int		-- (in ft)
 );
 
--- create table capitals (
---	state		char(2)
--- ) inherits (cities);
+create table capitals (
+	state		char(2)
+) inherits (cities);
 
 -- Create unique indexes.  Due to a general limitation of inheritance,
 -- uniqueness is only enforced per-relation.  Unique index inference
@@ -345,19 +341,19 @@ insert into cities values ('Las Vegas', 2.583E+5, 2174) on conflict do nothing;
 -- insert into capitals values ('Sacramento', 50, 2267, 'NE') on conflict (name) do nothing;
 -- select * from capitals;
 insert into cities values ('Las Vegas', 5.83E+5, 2001) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
-select tableoid::regclass, * from cities order by altitude;
+select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
 -- insert into capitals values ('Las Vegas', 5.83E+5, 2222, 'NV') on conflict (name) do update set population = excluded.population;
 -- Capitals will contain new capital, Las Vegas:
 -- select * from capitals;
 -- Cities contains two instances of "Las Vegas", since unique constraints don't
 -- work across inheritance:
-select tableoid::regclass, * from cities order by altitude;
+select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
 -- This only affects "cities" version of "Las Vegas":
 insert into cities values ('Las Vegas', 5.86E+5, 2223) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
-select tableoid::regclass, * from cities order by altitude;
+select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
 
 -- clean up
-drop table capitals;
+drop table capitals; -- YB: errors because of above failure to create capitals table
 drop table cities;
 
 
@@ -375,29 +371,6 @@ insert into excluded values(1, '2') on conflict (key) do update set data = 3 RET
 
 -- clean up
 drop table excluded;
-
-
--- Check tables w/o oids are handled correctly
--- create table testoids(key int primary key, data text) without oids;
-create table testoids(key int primary key, data text);
--- first without oids
-insert into testoids values(1, '1') on conflict (key) do update set data = excluded.data RETURNING *;
-insert into testoids values(1, '2') on conflict (key) do update set data = excluded.data RETURNING *;
--- add oids
-alter table testoids set with oids;
--- update existing row, that didn't have an oid
-insert into testoids values(1, '3') on conflict (key) do update set data = excluded.data RETURNING *;
--- insert a new row
-insert into testoids values(2, '1') on conflict (key) do update set data = excluded.data RETURNING *;
--- and update it
-insert into testoids values(2, '2') on conflict (key) do update set data = excluded.data RETURNING *;
--- remove oids again, test
-alter table testoids set without oids;
-insert into testoids values(1, '4') on conflict (key) do update set data = excluded.data RETURNING *;
-insert into testoids values(3, '1') on conflict (key) do update set data = excluded.data RETURNING *;
-insert into testoids values(3, '2') on conflict (key) do update set data = excluded.data RETURNING *;
-
-DROP TABLE testoids;
 
 
 -- check that references to columns after dropped columns are handled correctly
@@ -431,20 +404,21 @@ insert into dropcol(key, keep1, keep2) values(1, '5', 5) on conflict(key)
 
 DROP TABLE dropcol;
 
--- TODO(neil) EXCLUDE constraint not supported yet - see #997
--- check handling of regular lsm constraint along with gist constraint
+/* YB: EXCLUDE constraint not supported yet - see #997
+-- check handling of regular btree constraint along with gist constraint
 
--- create table twoconstraints (f1 int unique, f2 box,
---                             exclude using gist(f2 with &&));
--- insert into twoconstraints values(1, '((0,0),(1,1))');
--- insert into twoconstraints values(1, '((2,2),(3,3))');  -- fail on f1
--- insert into twoconstraints values(2, '((0,0),(1,2))');  -- fail on f2
--- insert into twoconstraints values(2, '((0,0),(1,2))')
---   on conflict on constraint twoconstraints_f1_key do nothing;  -- fail on f2
--- insert into twoconstraints values(2, '((0,0),(1,2))')
---   on conflict on constraint twoconstraints_f2_excl do nothing;  -- do nothing
--- select * from twoconstraints;
--- drop table twoconstraints;
+create table twoconstraints (f1 int unique, f2 box,
+                             exclude using gist(f2 with &&));
+insert into twoconstraints values(1, '((0,0),(1,1))');
+insert into twoconstraints values(1, '((2,2),(3,3))');  -- fail on f1
+insert into twoconstraints values(2, '((0,0),(1,2))');  -- fail on f2
+insert into twoconstraints values(2, '((0,0),(1,2))')
+  on conflict on constraint twoconstraints_f1_key do nothing;  -- fail on f2
+insert into twoconstraints values(2, '((0,0),(1,2))')
+  on conflict on constraint twoconstraints_f2_excl do nothing;  -- do nothing
+select * from twoconstraints;
+drop table twoconstraints;
+*/ -- YB
 
 -- check handling of self-conflicts at various isolation levels
 
@@ -463,124 +437,153 @@ insert into selfconflict values (3,1), (3,2) on conflict do nothing;
 commit;
 
 begin transaction isolation level read committed;
-insert into selfconflict values (4,1), (4,2) on conflict(f1) do update set f2 = 0;
+insert into selfconflict values (4,1), (4,2) on conflict(f1) do update set f2 = 0; -- YB: succeed because yb_skip_transaction_control_check
 commit;
 
 begin transaction isolation level repeatable read;
-insert into selfconflict values (5,1), (5,2) on conflict(f1) do update set f2 = 0;
+insert into selfconflict values (5,1), (5,2) on conflict(f1) do update set f2 = 0; -- YB: succeed because yb_skip_transaction_control_check
 commit;
 
 begin transaction isolation level serializable;
-insert into selfconflict values (6,1), (6,2) on conflict(f1) do update set f2 = 0;
+insert into selfconflict values (6,1), (6,2) on conflict(f1) do update set f2 = 0; -- YB: succeed because yb_skip_transaction_control_check
 commit;
 
-select * from selfconflict order by f1;
+select * from selfconflict order by f1; -- YB: add ordering; output has extra rows because above inserts don't fail
 
 drop table selfconflict;
 
--- TODO(neil) Partition is not yet supported
 -- check ON CONFLICT handling with partitioned tables
--- create table parted_conflict_test (a int unique, b char) partition by list (a);
--- create table parted_conflict_test_1 partition of parted_conflict_test (b unique) for values in (1, 2);
+create table parted_conflict_test (a int unique, b char) partition by list (a);
+create table parted_conflict_test_1 partition of parted_conflict_test (b unique) for values in (1, 2);
 
 -- no indexes required here
--- insert into parted_conflict_test values (1, 'a') on conflict do nothing;
+insert into parted_conflict_test values (1, 'a') on conflict do nothing;
 
 -- index on a required, which does exist in parent
--- insert into parted_conflict_test values (1, 'a') on conflict (a) do nothing;
--- insert into parted_conflict_test values (1, 'a') on conflict (a) do update set b = excluded.b;
+insert into parted_conflict_test values (1, 'a') on conflict (a) do nothing;
+insert into parted_conflict_test values (1, 'a') on conflict (a) do update set b = excluded.b;
 
 -- targeting partition directly will work
--- insert into parted_conflict_test_1 values (1, 'a') on conflict (a) do nothing;
--- insert into parted_conflict_test_1 values (1, 'b') on conflict (a) do update set b = excluded.b;
+insert into parted_conflict_test_1 values (1, 'a') on conflict (a) do nothing;
+insert into parted_conflict_test_1 values (1, 'b') on conflict (a) do update set b = excluded.b;
 
 -- index on b required, which doesn't exist in parent
--- insert into parted_conflict_test values (2, 'b') on conflict (b) do update set a = excluded.a;
+insert into parted_conflict_test values (2, 'b') on conflict (b) do update set a = excluded.a;
 
 -- targeting partition directly will work
--- insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set a = excluded.a;
+insert into parted_conflict_test_1 values (2, 'b') on conflict (b) do update set a = excluded.a;
 
 -- should see (2, 'b')
--- select * from parted_conflict_test order by a;
+select * from parted_conflict_test order by a;
 
+/* YB: Partition tables with ON CONFLICT DO UPDATE give out wrong results
 -- now check that DO UPDATE works correctly for target partition with
 -- different attribute numbers
--- create table parted_conflict_test_2 (b char, a int unique);
--- alter table parted_conflict_test attach partition parted_conflict_test_2 for values in (3);
--- truncate parted_conflict_test;
--- insert into parted_conflict_test values (3, 'a') on conflict (a) do update set b = excluded.b;
--- insert into parted_conflict_test values (3, 'b') on conflict (a) do update set b = excluded.b;
+create table parted_conflict_test_2 (b char, a int unique);
+alter table parted_conflict_test attach partition parted_conflict_test_2 for values in (3);
+truncate parted_conflict_test;
+insert into parted_conflict_test values (3, 'a') on conflict (a) do update set b = excluded.b;
+insert into parted_conflict_test values (3, 'b') on conflict (a) do update set b = excluded.b;
 
 -- should see (3, 'b')
--- select * from parted_conflict_test order by a;
+select * from parted_conflict_test order by a;
 
 -- case where parent will have a dropped column, but the partition won't
--- alter table parted_conflict_test drop b, add b char;
--- create table parted_conflict_test_3 partition of parted_conflict_test for values in (4);
--- truncate parted_conflict_test;
--- insert into parted_conflict_test (a, b) values (4, 'a') on conflict (a) do update set b = excluded.b;
--- insert into parted_conflict_test (a, b) values (4, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
+alter table parted_conflict_test drop b, add b char;
+create table parted_conflict_test_3 partition of parted_conflict_test for values in (4);
+truncate parted_conflict_test;
+insert into parted_conflict_test (a, b) values (4, 'a') on conflict (a) do update set b = excluded.b;
+insert into parted_conflict_test (a, b) values (4, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
 
 -- should see (4, 'b')
--- select * from parted_conflict_test order by a;
+select * from parted_conflict_test order by a;
 
 -- case with multi-level partitioning
--- create table parted_conflict_test_4 partition of parted_conflict_test for values in (5) partition by list (a);
--- create table parted_conflict_test_4_1 partition of parted_conflict_test_4 for values in (5);
--- truncate parted_conflict_test;
--- insert into parted_conflict_test (a, b) values (5, 'a') on conflict (a) do update set b = excluded.b;
--- insert into parted_conflict_test (a, b) values (5, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
+create table parted_conflict_test_4 partition of parted_conflict_test for values in (5) partition by list (a);
+create table parted_conflict_test_4_1 partition of parted_conflict_test_4 for values in (5);
+truncate parted_conflict_test;
+insert into parted_conflict_test (a, b) values (5, 'a') on conflict (a) do update set b = excluded.b;
+insert into parted_conflict_test (a, b) values (5, 'b') on conflict (a) do update set b = excluded.b where parted_conflict_test.b = 'a';
 
 -- should see (5, 'b')
--- select * from parted_conflict_test order by a;
+select * from parted_conflict_test order by a;
 
 -- test with multiple rows
--- truncate parted_conflict_test;
--- insert into parted_conflict_test (a, b) values (1, 'a'), (2, 'a'), (4, 'a') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
--- insert into parted_conflict_test (a, b) values (1, 'b'), (2, 'c'), (4, 'b') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
+truncate parted_conflict_test;
+insert into parted_conflict_test (a, b) values (1, 'a'), (2, 'a'), (4, 'a') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
+insert into parted_conflict_test (a, b) values (1, 'b'), (2, 'c'), (4, 'b') on conflict (a) do update set b = excluded.b where excluded.b = 'b';
 
 -- should see (1, 'b'), (2, 'a'), (4, 'b')
--- select * from parted_conflict_test order by a;
+select * from parted_conflict_test order by a;
 
--- drop table parted_conflict_test;
+drop table parted_conflict_test;
+*/ -- YB
 
 -- test behavior of inserting a conflicting tuple into an intermediate
 -- partitioning level
--- create table parted_conflict (a int primary key, b text) partition by range (a);
--- create table parted_conflict_1 partition of parted_conflict for values from (0) to (1000) partition by range (a);
--- create table parted_conflict_1_1 partition of parted_conflict_1 for values from (0) to (500);
--- insert into parted_conflict values (40, 'forty');
--- insert into parted_conflict_1 values (40, 'cuarenta')
---   on conflict (a) do update set b = excluded.b;
--- drop table parted_conflict;
+create table parted_conflict (a int primary key, b text) partition by range (a);
+create table parted_conflict_1 partition of parted_conflict for values from (0) to (1000) partition by range (a);
+create table parted_conflict_1_1 partition of parted_conflict_1 for values from (0) to (500);
+insert into parted_conflict values (40, 'forty');
+insert into parted_conflict_1 values (40, 'cuarenta')
+  on conflict (a) do update set b = excluded.b;
+drop table parted_conflict;
 
 -- same thing, but this time try to use an index that's created not in the
 -- partition
--- create table parted_conflict (a int, b text) partition by range (a);
--- create table parted_conflict_1 partition of parted_conflict for values from (0) to (1000) partition by range (a);
--- create table parted_conflict_1_1 partition of parted_conflict_1 for values from (0) to (500);
--- create unique index on only parted_conflict_1 (a);
--- create unique index on only parted_conflict (a);
--- alter index parted_conflict_a_idx attach partition parted_conflict_1_a_idx;
--- insert into parted_conflict values (40, 'forty');
--- insert into parted_conflict_1 values (40, 'cuarenta')
---   on conflict (a) do update set b = excluded.b;
--- drop table parted_conflict;
+create table parted_conflict (a int, b text) partition by range (a);
+create table parted_conflict_1 partition of parted_conflict for values from (0) to (1000) partition by range (a);
+create table parted_conflict_1_1 partition of parted_conflict_1 for values from (0) to (500);
+create unique index on only parted_conflict_1 (a);
+create unique index on only parted_conflict (a);
+alter index parted_conflict_a_idx attach partition parted_conflict_1_a_idx;
+insert into parted_conflict values (40, 'forty');
+insert into parted_conflict_1 values (40, 'cuarenta')
+  on conflict (a) do update set b = excluded.b;
+drop table parted_conflict;
 
 -- test whole-row Vars in ON CONFLICT expressions
--- create table parted_conflict (a int, b text, c int) partition by range (a);
--- create table parted_conflict_1 (drp text, c int, a int, b text);
--- alter table parted_conflict_1 drop column drp;
--- create unique index on parted_conflict (a, b);
--- alter table parted_conflict attach partition parted_conflict_1 for values from (0) to (1000);
--- truncate parted_conflict;
--- insert into parted_conflict values (50, 'cincuenta', 1);
--- insert into parted_conflict values (50, 'cincuenta', 2)
---   on conflict (a, b) do update set (a, b, c) = row(excluded.*)
---   where parted_conflict = (50, text 'cincuenta', 1) and
---         excluded = (50, text 'cincuenta', 2);
+create table parted_conflict (a int, b text, c int) partition by range (a);
+create table parted_conflict_1 (drp text, c int, a int, b text);
+alter table parted_conflict_1 drop column drp;
+create unique index on parted_conflict (a, b);
+alter table parted_conflict attach partition parted_conflict_1 for values from (0) to (1000);
+truncate parted_conflict;
+insert into parted_conflict values (50, 'cincuenta', 1);
+insert into parted_conflict values (50, 'cincuenta', 2)
+  on conflict (a, b) do update set (a, b, c) = row(excluded.*)
+  where parted_conflict = (50, text 'cincuenta', 1) and
+        excluded = (50, text 'cincuenta', 2);
 
 -- should see (50, 'cincuenta', 2)
--- select * from parted_conflict order by a;
+select * from parted_conflict order by a;
 
--- drop table parted_conflict;
+-- test with statement level triggers
+create or replace function parted_conflict_update_func() returns trigger as $$
+declare
+    r record;
+begin
+ for r in select * from inserted loop
+	raise notice 'a = %, b = %, c = %', r.a, r.b, r.c;
+ end loop;
+ return new;
+end;
+$$ language plpgsql;
+
+create trigger parted_conflict_update
+    after update on parted_conflict
+    referencing new table as inserted
+    for each statement
+    execute procedure parted_conflict_update_func();
+
+/* YB: Disabled as create trigger above fails
+truncate parted_conflict;
+
+insert into parted_conflict values (0, 'cero', 1);
+
+insert into parted_conflict values(0, 'cero', 1)
+  on conflict (a,b) do update set c = parted_conflict.c + 1;
+*/ -- YB
+
+drop table parted_conflict;
+drop function parted_conflict_update_func();

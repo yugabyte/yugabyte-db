@@ -42,6 +42,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
@@ -395,6 +396,61 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
   return (*this)(static_cast<LightweightTableYbctid>(value));
 }
 
+ExplicitRowLockBuffer::ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider)
+    : ybctid_container_provider_(*ybctid_container_provider) {
+}
+
+Status ExplicitRowLockBuffer::Add(
+    Info&& info, const LightweightTableYbctid& key, bool is_region_local,
+    const YbctidReader& reader) {
+  if (info_ && *info_ != info) {
+    RETURN_NOT_OK(DoFlush(reader));
+  }
+  if (!info_) {
+    info_.emplace(std::move(info));
+  } else if (intents_.contains(key)) {
+    return Status::OK();
+  }
+
+  if (is_region_local) {
+    region_local_tables_.insert(key.table_id);
+  }
+  DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
+  intents_.emplace(key.table_id, std::string(key.ybctid));
+  return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
+      ? DoFlush(reader) : Status::OK();
+}
+
+Status ExplicitRowLockBuffer::Flush(const YbctidReader& reader) {
+  return IsEmpty() ? Status::OK() : DoFlush(reader);
+}
+
+Status ExplicitRowLockBuffer::DoFlush(const YbctidReader& reader) {
+  DCHECK(!IsEmpty());
+  auto scope = ScopeExit([this] { Clear(); });
+  auto ybctids = ybctid_container_provider_.Get();
+  auto initial_intents_size = intents_.size();
+  ybctids->reserve(initial_intents_size);
+  for (auto it = intents_.begin(); it != intents_.end();) {
+    auto node = intents_.extract(it++);
+    ybctids->push_back(std::move(node.value()));
+  }
+  RETURN_NOT_OK(reader(&*ybctids, *info_, region_local_tables_));
+  SCHECK(initial_intents_size == ybctids->size(), NotFound,
+        "Some of the requested ybctids are missing");
+  return Status::OK();
+}
+
+void ExplicitRowLockBuffer::Clear() {
+  intents_.clear();
+  info_.reset();
+  region_local_tables_.clear();
+}
+
+bool ExplicitRowLockBuffer::IsEmpty() const {
+  return !info_;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
@@ -408,6 +464,7 @@ PgSession::PgSession(
     bool is_pg_binary_upgrade)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
+      explicit_row_lock_buffer_(&aux_ybctid_container_provider_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
       wait_starter_(pg_callbacks_.PgstatReportWaitStart),
@@ -795,9 +852,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
     return false;
   }
 
-  std::vector<TableYbctid> ybctids;
-  ybctids.reserve(std::min<size_t>(
-      fk_reference_intent_.size(), buffering_settings_.max_batch_size));
+  auto ybctids_accessor = aux_ybctid_container_provider_.Get();
+  auto& ybctids = *ybctids_accessor;
+  const auto max_count = std::min<size_t>(
+      fk_reference_intent_.size(), buffering_settings_.max_batch_size);
+  ybctids.reserve(max_count);
 
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
@@ -806,7 +865,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
 
   // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < ybctids.capacity(); ) {
+       it != fk_reference_intent_.end() && ybctids.size() < max_count; ) {
     node = fk_reference_intent_.extract(it++);
     ybctids.push_back(std::move(node.value()));
   }
@@ -816,7 +875,6 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
   for (auto& ybctid : ybctids) {
     fk_reference_cache_.insert(std::move(ybctid));
   }
-
   return fk_reference_cache_.find(key) != fk_reference_cache_.end();
 }
 
@@ -825,9 +883,8 @@ void PgSession::AddForeignKeyReferenceIntent(
   if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
     if (is_region_local) {
       fk_intent_region_local_tables_.insert(key.table_id);
-    } else {
-      fk_intent_region_local_tables_.erase(key.table_id);
     }
+    DCHECK(is_region_local || !fk_intent_region_local_tables_.contains(key.table_id));
     fk_reference_intent_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
@@ -952,7 +1009,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
     std::optional<CacheOptions>&& cache_options) {
   const auto first_table_op = generator();
-  SCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
+  RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
   // read restart error because subsequent cache refresh used an outdated txn to read from the
   // system catalog.

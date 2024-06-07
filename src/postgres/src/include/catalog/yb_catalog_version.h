@@ -36,7 +36,8 @@ extern uint64_t YbGetMasterCatalogVersion();
 
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
-													  bool is_global_ddl);
+													  bool is_global_ddl,
+													  const char *command_tag);
 
 /* Send a request to create the master catalog version for the given database. */
 extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);

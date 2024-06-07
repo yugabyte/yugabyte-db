@@ -1119,4 +1119,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Maximum value of heartbeat delay allowed before master is considered to have failed",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
+      new ConfKeyInfo<>(
+          "yb.node_agent.node_action.use_java_client",
+          ScopeType.UNIVERSE,
+          "Use Node Agent Java Client for Node Actions",
+          "Use node agent java client to run node actions on the remote nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

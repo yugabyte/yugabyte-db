@@ -45,6 +45,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -79,8 +80,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     public final List<NodeDetails> tserversList;
 
     public MastersAndTservers(List<NodeDetails> mastersList, List<NodeDetails> tserversList) {
-      this.mastersList = mastersList;
-      this.tserversList = tserversList;
+      this.mastersList = mastersList == null ? Collections.emptyList() : mastersList;
+      this.tserversList = tserversList == null ? Collections.emptyList() : tserversList;
     }
 
     public Pair<List<NodeDetails>, List<NodeDetails>> asPair() {
@@ -105,6 +106,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     public boolean isEmpty() {
       return CollectionUtils.isEmpty(mastersList) && CollectionUtils.isEmpty(tserversList);
     }
+
+    public Set<NodeDetails> getAllNodes() {
+      return Stream.concat(mastersList.stream(), tserversList.stream()).collect(Collectors.toSet());
+    }
   }
 
   protected final MastersAndTservers getNodesToBeRestarted() {
@@ -127,10 +132,23 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()) {
-      createCheckNodesAreSafeToTakeDownTask(
-          nodesToBeRestarted.mastersList,
-          nodesToBeRestarted.tserversList,
-          getTargetSoftwareVersion());
+      Optional<NodeDetails> nonLive =
+          nodesToBeRestarted.getAllNodes().stream()
+              .filter(n -> n.state != NodeState.Live)
+              .findFirst();
+      if (nonLive.isEmpty()) {
+        createCheckNodesAreSafeToTakeDownTask(
+            nodesToBeRestarted.mastersList,
+            nodesToBeRestarted.tserversList,
+            getTargetSoftwareVersion());
+      }
+    }
+  }
+
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
     }
   }
 
@@ -365,7 +383,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       stopProcessesOnNode(
-          node, processTypes, false, context.reconfigureMaster && activeRole, subGroupType);
+          node,
+          processTypes,
+          context.reconfigureMaster && activeRole /* remove master from quorum */,
+          false /* deconfigure */,
+          subGroupType);
 
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(singletonNodeList, processTypes);

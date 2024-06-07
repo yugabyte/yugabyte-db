@@ -86,7 +86,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       // Sync roles in YBA with YBDB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       XClusterRole currentXClusterRole =
-          clusterConfigResp.getConfig().getConsumerRegistry().getRole();
+          clusterConfigResp.getConfig().getConsumerRegistry().getDEPRECATEDRole();
       if (Objects.nonNull(taskParams().sourceRole)) {
         xClusterConfig.setSourceActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
       } else {

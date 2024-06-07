@@ -2,6 +2,7 @@
 -- AGGREGATES
 --
 
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 

@@ -16,7 +16,7 @@ import { replicationSlotStyles } from './utils/ReplicationSlotStyles';
 
 //icons
 import DatabaseEvent from '../../../../assets/database-event.svg';
-import Flash from '../../../../assets/flash.svg';
+// import Flash from '../../../../assets/flash.svg';
 interface ReplicationTableProps {
   universeUUID: string;
   nodePrefix: string;
@@ -43,14 +43,11 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
     const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
     if (!streamResult) return 'n/a';
     const currentLag = Number(_.last(streamResult?.data?.cdcsdk_sent_lag_micros?.data[0]?.y));
-    return currentLag > 0 ? formatDuration(currentLag) : '0ms';
+    return currentLag;
   };
 
-  const getStatus = (sID: string, label: string) => {
-    const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
-    if (!streamResult) return 'n/a';
-    const expiryTime = Number(_.last(streamResult?.data?.cdcsdk_expiry_time_mins?.data[0]?.y));
-    return expiryTime > 0 ? _.capitalize(label) : _.capitalize(SlotState.EXPIRED);
+  const formatCurrentLag = (lag: number) => {
+    return lag > 0 ? formatDuration(lag) : '0ms';
   };
 
   const handleRowClick = (row: ReplicationSlot) => {
@@ -58,7 +55,15 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
   };
 
   if (isLoading) return <YBLoading />;
-  if (!!replicationSlotData?.replicationSlots?.length)
+
+  if (!!replicationSlotData?.replicationSlots?.length) {
+    const finalSlotData = replicationSlotData?.replicationSlots?.map((rs) => {
+      const currentSlotLag = getCurrentLag(rs?.streamID);
+      return {
+        ...rs,
+        currentLag: currentSlotLag
+      };
+    });
     return (
       <Box display="flex" flexDirection="column" width="100%">
         <Typography>
@@ -66,7 +71,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
         </Typography>
         <Box mt={3} width="100%" height="700px">
           <YBTable
-            data={replicationSlotData?.replicationSlots}
+            data={finalSlotData}
             height={'690px'}
             tableStyle={{
               padding: '24px',
@@ -84,7 +89,16 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
             options={{
               onRowClick: handleRowClick
             }}
+            keyField="streamID"
           >
+            <TableHeaderColumn
+              width={'0%'}
+              dataField="streamID"
+              hidden
+              dataFormat={(cell) => <span>{cell}</span>}
+            >
+              <span>{'streamID'}</span>
+            </TableHeaderColumn>
             <TableHeaderColumn
               width={'35%'}
               dataField="slotName"
@@ -97,16 +111,14 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               width={'20%'}
               dataField="state"
               dataSort
-              dataFormat={(cell, row) => (
+              dataFormat={(cell) => (
                 <StatusBadge
                   statusType={
-                    getStatus(row.streamID, cell) === _.capitalize(SlotState.EXPIRED)
-                      ? Badge_Types.EXPIRED
-                      : [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
-                      ? Badge_Types.EXPIRED
+                    [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
+                      ? Badge_Types.SUCCESS
                       : Badge_Types.DELETED
                   }
-                  customLabel={getStatus(row.streamID, cell)}
+                  customLabel={_.capitalize(cell)}
                 />
               )}
             >
@@ -122,10 +134,9 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
             </TableHeaderColumn>
             <TableHeaderColumn
               width={'20%'}
-              dataField="streamID"
+              dataField="currentLag"
               dataSort
-              dataFormat={(cell) => <span>{getCurrentLag(cell)}</span>}
-              isKey
+              dataFormat={(cell) => <span>{formatCurrentLag(Number(cell))}</span>}
             >
               <span>{t('cdc.currentLag')}</span>
             </TableHeaderColumn>
@@ -133,7 +144,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
         </Box>
       </Box>
     );
-  else
+  } else
     return (
       <Box className={classes.emptyContainer}>
         <img src={DatabaseEvent} alt="--" />
@@ -145,7 +156,8 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
         <Typography variant="body2" className={classes.emptyContainerSubtitle}>
           {t('cdc.emptyContainerSubtitle')}
         </Typography>
-        <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
+        {/* Enable below link when we get something to display */}
+        {/* <Box display="flex" flexDirection="row" mt={2} alignItems={'end'}>
           <img src={Flash} alt="--" /> &nbsp;
           <Link
             component={'button'}
@@ -155,7 +167,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
           >
             {t('cdc.emptyContainerLink')}
           </Link>
-        </Box>
+        </Box> */}
       </Box>
     );
 };

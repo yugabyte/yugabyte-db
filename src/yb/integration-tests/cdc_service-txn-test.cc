@@ -175,8 +175,7 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   auto schema =
       ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
 
-  // Create CDC stream on table.
-  auto stream_id = CreateCDCStream(cdc_proxy_, table_.table()->id());
+  auto stream_id = CreateXClusterStream(*client_, table_.table()->id());
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -252,8 +251,7 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   auto schema =
       ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
 
-  // Create CDC stream on table.
-  auto stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
+  auto stream_id = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -330,8 +328,7 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  // Create CDC stream on table.
-  auto stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
+  auto stream_id = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
 
   auto tablet_id = tablets.Get(0).tablet_id();
 

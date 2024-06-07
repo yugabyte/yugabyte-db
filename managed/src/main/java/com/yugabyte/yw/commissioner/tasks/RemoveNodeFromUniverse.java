@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -43,8 +44,6 @@ import org.yb.util.TabletServerInfo;
 @Slf4j
 @Retryable
 public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
-
-  public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
   @Inject
   protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -155,9 +154,14 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
               Arrays.asList(currCluster),
               Collections.singleton(currentNode),
               null));
-      createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
+      createStopServerTasks(
+              Collections.singleton(currentNode),
+              ServerType.TSERVER,
+              params -> {
+                params.isIgnoreError = true;
+                params.deconfigure = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
       if (universe.isYbcEnabled()) {
         createStopYbControllerTasks(Collections.singleton(currentNode), true /*isIgnoreErrors*/)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -206,6 +210,12 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
   private boolean isTabletMovementAvailable() {
     Universe universe = getUniverse();
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
+      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
+      return true;
+    }
 
     // taskParams().placementUuid is not used because it will be null for RR.
     Cluster currCluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);

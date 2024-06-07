@@ -124,7 +124,7 @@ public class TroubleshootingController {
     return graphService.getGraphs(universeUuid, queries);
   }
 
-  @PostMapping("/queries")
+  @GetMapping("/queries")
   public List<PgStatStatementsQuery> listQueries(
       @RequestParam("universe_uuid") UUID universeUuid,
       @RequestParam(name = "db_id", required = false) String databaseId,
