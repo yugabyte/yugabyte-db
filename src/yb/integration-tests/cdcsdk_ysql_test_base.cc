@@ -31,7 +31,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
 
-DECLARE_bool(cdc_write_post_apply_metadata);
+DECLARE_bool(cdc_immediate_transaction_cleanup);
 
 namespace yb {
 namespace cdc {
@@ -2562,7 +2562,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Status CDCSDKYsqlTest::WaitForPostApplyMetadataWritten(size_t expected_num_transactions) {
-    if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata)) {
+    if (!GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
       return Status::OK();
     }
     size_t num_intents = 0;

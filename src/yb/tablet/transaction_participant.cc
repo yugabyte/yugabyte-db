@@ -52,6 +52,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -107,7 +108,7 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
     "Write post-apply transaction metadata to intentsdb for transaction that have been applied but "
     " have not yet been streamed by CDC.");
 
-DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
+DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, yb::kIsDebug,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
 
