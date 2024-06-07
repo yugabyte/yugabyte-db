@@ -21,14 +21,14 @@ Unless otherwise noted, operating systems are supported by all supported version
 | :--------------- | :------------- | :------------- | :---- |
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform<br>Default for YBA-deployed nodes |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
-| Amazon Linux 2   | {{<icon/no>}}  | {{<icon/no>}}  | v2.18.0 and later<br>Deprecated in v2.20 |
+| Amazon Linux 2   | {{<icon/no>}}  | {{<icon/no>}}  | Supported in v2.18.0 and later<br>Deprecated in v2.20 |
 | Amazon Linux 2<br>(ARM, CIS-hardened) |  | {{<icon/yes>}} | Supported in v2.20.x. Database performance in this environment varies both due to CIS-hardening and ARM. For more information, contact {{% support-general %}}.|
-| CentOS7          | {{<icon/no>}}  |                | Deprecated in v2.20 |
+| CentOS 7          | {{<icon/no>}}  |                | Deprecated in v2.20 |
 | Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20 |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20 |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
-| Red Hat Enterprise Linux&nbsp;9.3 | {{<icon/yes>}} |  | v2.20.3 and later.  {{<badge/ea>}} |
+| Red Hat Enterprise Linux&nbsp;9.3 | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<badge/ea>}} |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<badge/ea>}} |
 | Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20 |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
