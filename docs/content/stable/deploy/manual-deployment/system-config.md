@@ -127,7 +127,7 @@ Something similar may be needed for other distributions.
 
 ### Kernel settings
 
-If running on a virtual machine, execute the following to tune kernel settings :
+If running on a virtual machine, execute the following to tune kernel settings:
 
 1. Configure the parameter `vm.swappiness` as follows:
 
