@@ -234,6 +234,14 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
       return STATUS_FORMAT(
           NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table->id());
     }
+
+    if (l->is_index() && l->pb.index_info().has_vector_idx_options() &&
+        l->pb.index_info().vector_idx_options().idx_type() == PgVectorIndexType::DUMMY) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Tablet splitting is not supported for dummy vector index tables, table_id: $0",
+          table->id());
+    }
   }
 
   if (!ignore_disabled_lists) {

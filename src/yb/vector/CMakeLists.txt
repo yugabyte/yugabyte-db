@@ -22,12 +22,12 @@ set(VECTOR_SRCS
   hnsw_options.cc
   hnsw_util.cc
   usearch_wrapper.cc
+  vectorann.cc
   )
 
 set(VECTOR_LIBS
   yb_common
   yb_util
-  yb_docdb
   )
 
 ADD_YB_LIBRARY(yb_vector

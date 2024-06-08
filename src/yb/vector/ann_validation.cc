@@ -21,6 +21,7 @@
 
 #include "yb/vector/ann_validation.h"
 #include "yb/vector/hnsw_util.h"
+#include "yb/vector/vectorann_util.h"
 
 namespace yb::vectorindex {
 

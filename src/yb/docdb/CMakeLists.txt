@@ -98,6 +98,7 @@ set(DOCDB_DEPS
         yb_pggate
         ql_util
         yb_pgbackend
+        yb_vector
         )
 
 ADD_YB_LIBRARY(yb_docdb
