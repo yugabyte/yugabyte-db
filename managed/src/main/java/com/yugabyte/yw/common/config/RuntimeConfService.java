@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.config;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -172,14 +174,44 @@ public class RuntimeConfService extends AuthenticatedController {
   public String getKeyOrBadRequest(
       UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     Optional<String> value = maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin);
-    if (value.isPresent()) return value.get();
-    else {
-      // return default value if DB doesn't have value defined
-      if (isValidScope(path, scopeUUID)) return staticConfig.getString(path);
-      else {
-        throw new PlatformServiceException(
-            NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    if (value.isPresent()) {
+      return value.get();
+    } else if (isValidScope(path, scopeUUID)) {
+      ScopeType scope = getScopeType(scopeUUID);
+      switch (scope) {
+        case GLOBAL:
+          return settableRuntimeConfigFactory.globalRuntimeConf().getString(path);
+        case CUSTOMER:
+          return settableRuntimeConfigFactory.forCustomer(Customer.get(scopeUUID)).getString(path);
+        case PROVIDER:
+          return settableRuntimeConfigFactory
+              .forProvider(Provider.maybeGet(scopeUUID).get())
+              .getString(path);
+        case UNIVERSE:
+          return settableRuntimeConfigFactory
+              .forUniverse(Universe.maybeGet(scopeUUID).get())
+              .getString(path);
+        default:
+          // should never reach here.
+          return settableRuntimeConfigFactory.staticApplicationConf().getString(path);
       }
+    } else {
+      throw new PlatformServiceException(
+          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    }
+  }
+
+  private ScopeType getScopeType(UUID scopeUUID) {
+    if (scopeUUID.equals(GLOBAL_SCOPE_UUID)) {
+      return ScopeType.GLOBAL;
+    } else if (Customer.get(scopeUUID) != null) {
+      return ScopeType.CUSTOMER;
+    } else if (Provider.maybeGet(scopeUUID).isPresent()) {
+      return ScopeType.PROVIDER;
+    } else if (Universe.maybeGet(scopeUUID).isPresent()) {
+      return ScopeType.UNIVERSE;
+    } else {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Scope UUID!");
     }
   }
 

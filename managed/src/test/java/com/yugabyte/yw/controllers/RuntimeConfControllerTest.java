@@ -87,6 +87,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String EXT_SCRIPT_KEY = "yb.external_script";
   private static final String EXT_SCRIPT_SCHEDULE_KEY = "yb.external_script.schedule";
   private static final String GLOBAL_KEY = "yb.runtime_conf_ui.tag_filter";
+  private static final String PROVIDER_KEY = "yb.internal.allow_unsupported_instances";
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -195,6 +196,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
         defaultInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
+
+    // Make sure we get inherited values if applicable.
+    res = getKey(defaultProvider.getUuid(), PROVIDER_KEY);
+    assertEquals("false", contentAsString(res));
+    setKey(PROVIDER_KEY, "true", GLOBAL_SCOPE_UUID);
+    res = getKey(defaultProvider.getUuid(), PROVIDER_KEY);
+    assertEquals("true", contentAsString(res));
   }
 
   // Multiline json should be posted as triple quoted string
