@@ -45,6 +45,7 @@
      "(^troubleshoot/backend/.*/application[.]properties)",
      "(^troubleshoot/backend/src/main/resources/.*)",
      "(^troubleshoot/backend/src/test/resources/.*)",
+     "(^managed/src/main/resources/gflag_groups/)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",

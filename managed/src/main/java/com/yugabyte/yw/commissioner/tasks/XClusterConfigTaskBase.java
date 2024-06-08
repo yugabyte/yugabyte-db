@@ -64,14 +64,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
-import org.yb.CommonTypes.ReplicationErrorPb;
 import org.yb.CommonTypes.TableType;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
+import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
@@ -715,6 +716,22 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return consumerTableIdsFromClusterConfig;
   }
 
+  public static ProducerEntryPB getReplicationGroupEntry(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
+    return clusterConfig.getConsumerRegistry().getProducerMapOrThrow(replicationGroupName);
+  }
+
+  public static Set<String> getProducerTableIdsFromClusterConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
+    Set<String> producerTableIdsFromClusterConfig = new HashSet<>();
+    ProducerEntryPB replicationGroup =
+        getReplicationGroupEntry(clusterConfig, replicationGroupName);
+    replicationGroup.getStreamMapMap().values().stream()
+        .map(StreamEntryPB::getProducerTableId)
+        .forEach(producerTableIdsFromClusterConfig::add);
+    return producerTableIdsFromClusterConfig;
+  }
+
   /**
    * It reads information for the associated replication group in DB with the xCluster config and
    * updates its state.
@@ -723,7 +740,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param xClusterConfig The xCluster config object to sync
    * @param tableIds The list of tables in the {@code xClusterConfig} to sync
    */
-  protected void syncXClusterConfigWithReplicationGroup(
+  public static void syncXClusterConfigWithReplicationGroup(
       CatalogEntityInfo.SysClusterConfigEntryPB config,
       XClusterConfig xClusterConfig,
       Set<String> tableIds) {
@@ -1391,6 +1408,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   /**
+   * Retrieves the table IDs of all tables in the given universe.
+   *
+   * @param ybService The YBClientService used to interact with the YB cluster.
+   * @param universe The Universe object representing the target universe.
+   * @return A set of table IDs.
+   */
+  public static Set<String> getUniverseTableIds(YBClientService ybService, Universe universe) {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+        getTableInfoList(ybService, universe);
+    Set<String> tableIds =
+        tableInfoList.stream().map(tableInfo -> getTableId(tableInfo)).collect(Collectors.toSet());
+    return tableIds;
+  }
+
+  /**
    * This method returns all the tablesInfo list present in the namespace on a universe.
    *
    * @param ybService The service to get a YB client from
@@ -1656,7 +1688,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         Objects.isNull(xClusterConfig.getTargetUniverseUUID())
             ? Optional.empty()
             : Universe.maybeGet(xClusterConfig.getTargetUniverseUUID());
-    if (targetUniverseOptional.isEmpty()) {
+    if (!targetUniverseOptional.isPresent()) {
       log.warn(
           "The target universe for the xCluster config {} is not found; ignoring gathering"
               + " replication stream statuses",
@@ -1672,16 +1704,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
                 .collect(
                     Collectors.toMap(
-                        status -> status.getStreamId().toStringUtf8(), status -> status));
+                        status -> status.getStreamId().toStringUtf8(), Function.identity()));
         for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
-          if (tableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
+          if (tableConfig.getStatus() == XClusterTableConfig.Status.Running) {
             ReplicationStatusPB replicationStatus =
                 streamIdReplicationStatusMap.get(tableConfig.getStreamId());
             if (Objects.isNull(replicationStatus)) {
               tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch);
             } else {
               List<ReplicationStatusErrorPB> replicationErrors = replicationStatus.getErrorsList();
-              if (replicationErrors.size() > 0) {
+              if (!replicationErrors.isEmpty()) {
                 String errorsString =
                     replicationErrors.stream()
                         .map(
@@ -1698,14 +1730,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     tableConfig.getTableId(),
                     tableConfig.getStreamId(),
                     errorsString);
-                // Only set the status to error for the case of WALs GC-ed
-                // (REPLICATION_MISSING_OP_ID) for UI compatibility.
-                if (replicationErrors.stream()
-                    .anyMatch(
-                        replicationError ->
-                            replicationError
-                                .getError()
-                                .equals(ReplicationErrorPb.REPLICATION_MISSING_OP_ID))) {
+                tableConfig
+                    .getReplicationStatusErrors()
+                    .addAll(
+                        replicationErrors.stream()
+                            .map(
+                                e ->
+                                    XClusterTableConfig.ReplicationStatusError.fromErrorCode(
+                                        e.getError()))
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet()));
+                if (!tableConfig.getReplicationStatusErrors().isEmpty()) {
                   tableConfig.setStatus(XClusterTableConfig.Status.Error);
                 }
               }
@@ -1715,8 +1750,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       } catch (Exception e) {
         log.error("xClusterUniverseService.getReplicationStatus hit error : {}", e.getMessage());
         xClusterConfig.getTableDetails().stream()
-            .filter(
-                tableConfig -> tableConfig.getStatus().equals(XClusterTableConfig.Status.Running))
+            .filter(tableConfig -> tableConfig.getStatus() == XClusterTableConfig.Status.Running)
             .forEach(
                 tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
       }

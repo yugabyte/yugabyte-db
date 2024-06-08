@@ -4,6 +4,8 @@ package com.yugabyte.yw.common.audit.otel;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -53,7 +55,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   public void setUp() {
     new File(OTEL_COL_TMP_PATH).mkdir();
     generator = app.injector().instanceOf(OtelCollectorConfigGenerator.class);
-    telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
+    doNothing().when(mockTelemetryProviderService).validateBean(any());
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.awsProvider(customer);
     universe = ModelFactory.createUniverse(customer.getId());
@@ -97,7 +99,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setSite("ddsite");
     config.setApiKey("apikey");
     telemetryProvider.setConfig(config);
-    telemetryProviderService.save(telemetryProvider);
+    mockTelemetryProviderService.save(telemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
@@ -144,7 +146,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setToken("apitoken");
     config.setSourceType("some_type");
     telemetryProvider.setConfig(config);
-    telemetryProviderService.save(telemetryProvider);
+    mockTelemetryProviderService.save(telemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
@@ -193,7 +195,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     awsConfig.setLogStream("logStream");
     awsConfig.setRegion("us-west2");
     awsTelemetryProvider.setConfig(awsConfig);
-    telemetryProviderService.save(awsTelemetryProvider);
+    mockTelemetryProviderService.save(awsTelemetryProvider);
 
     TelemetryProvider gcpTelemetryProvider = new TelemetryProvider();
     gcpTelemetryProvider.setUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
@@ -205,7 +207,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     gcpConfig.setProject("project");
     gcpConfig.setCredentials(Json.parse("{\"creds\": \"some_creds\"}"));
     gcpTelemetryProvider.setConfig(gcpConfig);
-    telemetryProviderService.save(gcpTelemetryProvider);
+    mockTelemetryProviderService.save(gcpTelemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();

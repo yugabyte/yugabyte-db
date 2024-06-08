@@ -1355,7 +1355,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "SyncDrConfig", "Failover", "Switchover", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "FinalizeUpgrade", "RollbackUpgrade", "UpgradeGFlags", "CreateTelemetryConfig", "DeleteTelemetryConfig", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "ModifyAuditLogging", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "UpgradeYbcGFlags", "SetThrottleParams", "CreateImageBundle", "DeleteImageBundle", "EditImageBundle", "Export", "DeleteMetadata", "Unlock", "LdapUniverseSync", "UpdateProxyConfig" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "SyncDrConfig", "Failover", "Switchover", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "FinalizeUpgrade", "RollbackUpgrade", "UpgradeGFlags", "CreateTelemetryConfig", "DeleteTelemetryConfig", "CreateTroubleshootingConfig", "EditTroubleshootingConfig", "DeleteTroubleshootingConfig", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "ModifyAuditLogging", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "UpgradeYbcGFlags", "SetThrottleParams", "CreateImageBundle", "DeleteImageBundle", "EditImageBundle", "Export", "DeleteMetadata", "Unlock", "LdapUniverseSync", "UpdateProxyConfig" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -1396,7 +1396,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -5429,7 +5429,7 @@
         "description" : "GCPCloudMonitoringConfig Config",
         "properties" : {
           "project" : {
-            "description" : "Project",
+            "description" : "Project ID",
             "type" : "string"
           }
         },
@@ -13263,6 +13263,72 @@
       },
       "type" : "object"
     },
+    "Troubleshooting Platform Details Model" : {
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "inUseStatus" : {
+          "description" : "In Use Status",
+          "enum" : [ "IN_USE", "NOT_IN_USE", "ERROR" ],
+          "type" : "string"
+        },
+        "metricsUrl" : {
+          "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "tpUrl" : {
+          "description" : "Troubleshooting Platform URL",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Troubleshooting Platform UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybaUrl" : {
+          "description" : "YBA URL",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "metricsUrl", "tpUrl", "uuid", "ybaUrl" ],
+      "type" : "object"
+    },
+    "TroubleshootingPlatform" : {
+      "description" : "Troubleshooting Platform Model",
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "metricsUrl" : {
+          "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "tpUrl" : {
+          "description" : "Troubleshooting Platform URL",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Troubleshooting Platform UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybaUrl" : {
+          "description" : "YBA URL",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "metricsUrl", "tpUrl", "uuid", "ybaUrl" ],
+      "type" : "object"
+    },
     "Universe performance advisor status" : {
       "properties" : {
         "customerUUID" : {
@@ -15692,6 +15758,15 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "replicationStatusErrors" : {
+          "description" : "Short human readable replication status error messages",
+          "items" : {
+            "enum" : [ "Missing op ID", "Schema mismatch", "Missing table", "Auto flag config mismatch" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
         },
         "restoreTime" : {
           "description" : "Time of the last try to restore data to the target universe",

@@ -70,6 +70,10 @@
 
 using namespace std::literals;
 
+using yb::common::GetMemberAsArray;
+using yb::common::GetMemberAsStr;
+using yb::common::PrettyWriteRapidJsonToString;
+
 namespace yb {
 namespace tools {
 
@@ -918,21 +922,22 @@ TEST_F(AdminCliTest, DdlLog) {
 
   auto document = ASSERT_RESULT(CallJsonAdmin("ddl_log"));
 
-  auto log = ASSERT_RESULT(Get(document, "log")).get().GetArray();
+  auto log = ASSERT_RESULT(GetMemberAsArray(document, "log"));
   ASSERT_EQ(log.Size(), 3);
   std::vector<std::string> actions;
+  actions.reserve(log.Size());
   for (const auto& entry : log) {
-    LOG(INFO) << "Entry: " << common::PrettyWriteRapidJsonToString(entry);
+    LOG(INFO) << "Entry: " << PrettyWriteRapidJsonToString(entry);
     TableType type;
     bool parse_result = TableType_Parse(
-        ASSERT_RESULT(Get(entry, "table_type")).get().GetString(), &type);
+        std::string(ASSERT_RESULT(GetMemberAsStr(entry, "table_type"))), &type);
     ASSERT_TRUE(parse_result);
     ASSERT_EQ(type, TableType::YQL_TABLE_TYPE);
-    auto namespace_name = ASSERT_RESULT(Get(entry, "namespace")).get().GetString();
+    auto namespace_name = ASSERT_RESULT(GetMemberAsStr(entry, "namespace"));
     ASSERT_EQ(namespace_name, kNamespaceName);
-    auto table_name = ASSERT_RESULT(Get(entry, "table")).get().GetString();
+    auto table_name = ASSERT_RESULT(GetMemberAsStr(entry, "table"));
     ASSERT_EQ(table_name, kTableName);
-    actions.emplace_back(ASSERT_RESULT(Get(entry, "action")).get().GetString());
+    actions.emplace_back(ASSERT_RESULT(GetMemberAsStr(entry, "action")));
   }
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");

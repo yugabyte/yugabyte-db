@@ -22,7 +22,7 @@ import {
   getStrictestReplicationLagAlertThreshold,
   shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
-import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
+import DeleteReplicationTableModal from './DeleteReplicationTableModal';
 import { TableLagGraphModal } from './TableLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
@@ -283,7 +283,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             dataField="statusLabel"
             dataSort
             dataFormat={(_: XClusterTableStatus, xClusterTable: XClusterReplicationTable) => (
-              <XClusterTableStatusLabel status={xClusterTable.status} />
+              <XClusterTableStatusLabel
+                status={xClusterTable.status}
+                errors={xClusterTable.replicationStatusErrors}
+              />
             )}
           >
             Replication Status
@@ -408,7 +411,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           onHide={hideModal}
         />
       )}
-      <DeleteReplicactionTableModal
+      <DeleteReplicationTableModal
         deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({

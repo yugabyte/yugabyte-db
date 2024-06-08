@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -98,6 +99,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
+  private final XClusterSyncScheduler xClusterSyncScheduler;
 
   @Inject
   public XClusterConfigController(
@@ -108,7 +110,8 @@ public class XClusterConfigController extends AuthenticatedController {
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
-      AutoFlagUtil autoFlagUtil) {
+      AutoFlagUtil autoFlagUtil,
+      XClusterSyncScheduler xClusterSyncScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -117,6 +120,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
+    this.xClusterSyncScheduler = xClusterSyncScheduler;
   }
 
   /**
@@ -313,6 +317,9 @@ public class XClusterConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+
+    xClusterSyncScheduler.syncXClusterConfig(xClusterConfig);
+    xClusterConfig.refresh();
 
     JsonNode lagMetricData;
     try {

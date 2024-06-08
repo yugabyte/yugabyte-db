@@ -492,7 +492,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                     const std::string& new_table_name,
                                     bool success);
 
-  Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data);
+  Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data, bool success);
 
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 

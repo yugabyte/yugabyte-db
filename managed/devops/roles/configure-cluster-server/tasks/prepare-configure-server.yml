@@ -498,3 +498,5 @@
         yb_home_dir: "{{ yb_home_dir }}"
 
   when: not systemd_option and not node_exporter_installed.stat.exists
+        and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))

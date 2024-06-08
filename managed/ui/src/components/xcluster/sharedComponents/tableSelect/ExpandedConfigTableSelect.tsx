@@ -27,7 +27,6 @@ interface ExpandedConfigTableSelectProps {
   tables: XClusterTable[];
   selectedTableUUIDs: string[];
   tableType: XClusterTableType;
-  sourceUniverseUUID: string;
   handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
@@ -36,7 +35,6 @@ export const ExpandedConfigTableSelect = ({
   tables,
   selectedTableUUIDs,
   tableType,
-  sourceUniverseUUID,
   handleTableSelect,
   handleAllTableSelect
 }: ExpandedConfigTableSelectProps) => {
@@ -86,7 +84,10 @@ export const ExpandedConfigTableSelect = ({
         <TableHeaderColumn
           dataField="status"
           dataFormat={(xClusterTableStatus: XClusterTableStatus, xClusterTable: XClusterTable) => (
-            <XClusterTableStatusLabel status={xClusterTableStatus} />
+            <XClusterTableStatusLabel
+              status={xClusterTableStatus}
+              errors={xClusterTable.replicationStatusErrors}
+            />
           )}
         >
           Status

@@ -67,7 +67,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     if (isTestRunningWithConnectionManager()) {
       String preview_flags = "ysql_yb_enable_replication_commands," +
         "yb_enable_cdc_consistent_snapshot_streams,enable_ysql_conn_mgr," +
-        "ysql_yb_enable_replica_identity";
+        "ysql_yb_enable_replica_identity,cdcsdk_enable_dynamic_table_support";
       flagMap.put("allowed_preview_flags_csv",preview_flags);
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     } else {

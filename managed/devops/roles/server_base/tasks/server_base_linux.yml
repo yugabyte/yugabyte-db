@@ -97,6 +97,7 @@
     become_method: sudo
     apt:
       update_cache: yes
+      lock_timeout: 600
     when: ansible_pkg_mgr == "apt"
 
   - block:
@@ -128,6 +129,7 @@
       name: "{{ item }}"
       state: latest
       update_cache: yes
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages }}"
     register: result
@@ -142,6 +144,7 @@
     package:
       name: "{{ item }}"
       state: latest
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages }}"
     register: result
@@ -153,12 +156,10 @@
   - name: Install linux packages we need on our YugaByte clusters on RedHat aarch64 architecture
     become: yes
     become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
     package:
       name: "{{ item }}"
       state: latest
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages + aarch64_packages }}"
     register: result
@@ -173,12 +174,10 @@
   - name: Install linux packages we need on our YugaByte clusters on Debian aarch64 architecture
     become: yes
     become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
     package:
       name: "{{ item }}"
       state: latest
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages + debian_aarch64_packages }}"
     register: result
