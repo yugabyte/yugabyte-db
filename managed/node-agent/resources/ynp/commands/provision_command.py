@@ -39,10 +39,11 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
+            temp_file.write("set -ex")
             for key in all_templates:
-                temp_file.write(f"\n######## START {key} #########\n")
+                temp_file.write(f"\n######## {key} #########\n")
                 temp_file.write(all_templates[key][phase])
-                temp_file.write(f"\n######## END {key} #########\n")
+                temp_file.write(f"\n######## {key} #########\n")
         os.chmod(temp_file.name, 0o755)
         logger.info(temp_file.name)
         return temp_file.name

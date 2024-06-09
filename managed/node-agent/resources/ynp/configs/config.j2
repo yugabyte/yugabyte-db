@@ -9,17 +9,18 @@ is_airgap = "{{ ynp.is_airgap }}"
 [Hello]
 message = hello world
 
-[Chrony]
-message = chrony world
+[ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
 
-[Yugabyte]
-message = YB world
-yb_home_dir = "{{ ynp.ybHomeDir }}"
+[CreateYugabyteUser]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+yb_user_id = {{ ynp.yb_user_id }}
+yb_user_password = {{ ynp.yb_user_password }}
+public_key_filepath = {{ ynp.public_key_filepath }}
 
 [OS]
-message = OS world
-{% for disk in ynp.dataDisk %}
+{% for disk in ynp.data_disk %}
 data_disk_deviceName_{{ loop.index }} = {{ disk.deviceName }}
 data_disk_mountPath_{{ loop.index }} = {{ disk.mountPath }}
 {% endfor %}
