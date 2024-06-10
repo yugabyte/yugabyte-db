@@ -47,7 +47,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Manag
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](/preview/quick-start/).
 - installed Visual Studio.
 
 ## Write the HelloWorld C# app

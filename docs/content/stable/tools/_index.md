@@ -82,12 +82,12 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
 
 To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
 
-To create a local cluster, follow the steps in [Quick start](../quick-start/).
+To create a local cluster, follow the steps in [Quick start](/preview/quick-start/).
 
-To create a cluster in YugabyteDB Managed, follow the steps in [Create a cluster](../yugabyte-cloud/cloud-quickstart/). In addition, do the following:
+To create a cluster in YugabyteDB Managed, follow the steps in [Create a cluster](/preview/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 
-- [Download the cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Managed requires the use of TLS
-- [Add your computer to the cluster IP allow list](../yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster
+- [Download the cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Managed requires the use of TLS
+- [Add your computer to the cluster IP allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster
 
 ## Connection parameters
 

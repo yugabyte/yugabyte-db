@@ -86,7 +86,7 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
     title="Quick start"
     description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
     buttonText="Get Started"
-    buttonUrl="../quick-start-yugabytedb-managed/"
+    buttonUrl="/preview/quick-start-yugabytedb-managed/"
   >}}
 
   {{< sections/bottom-image-box
