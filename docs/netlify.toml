@@ -1334,6 +1334,7 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
+            https://c.6sc.co/ # 6sense connect domain
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1358,6 +1359,7 @@
             https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
+            https://j.6sc.co/ # 6sense script domain
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1392,6 +1394,7 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
+            https://b.6sc.co/ # 6sense image domain
         ;
 
         child-src 'self' 'unsafe-inline'
