@@ -1,0 +1,517 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use "sass:color";
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
+
+#config-tab-panel .config-tabs .tab-content {
+  min-height: 400px;
+  padding-top: 20px;
+
+  .tab-pane {
+    padding-bottom: 80px;
+  }
+}
+
+#cloud-config-tab-panel.config-tabs.redesign .tab-content {
+  min-height: 400px;
+  padding: 0;
+
+  background-color: colors.$YB_BACKGROUND;
+
+  .tab-pane {
+    padding-bottom: 0px;
+  }
+}
+
+.provider-config-container {
+  height: 100%;
+  min-height: 450px;
+
+  .list-group {
+    padding: 0;
+    margin: 0;
+
+    .list-group-item {
+      font-size: 16px;
+      margin-bottom: 10px;
+      background-color: transparent;
+      border: none;
+
+      a {
+        font-weight: 500;
+      }
+
+      form,
+      .well {
+        margin: 10px 0 20px 20px;
+      }
+
+      label {
+        font-size: 14px;
+      }
+    }
+  }
+}
+
+.provider-config-container .heading-text {
+  color: colors.$YB_ORANGE;
+}
+
+.detail-text {
+  font-size: 16px;
+  font-weight: 400;
+  padding-left: 20px;
+}
+
+.detail-text span {
+  display: block;
+  margin-top: 10px;
+  padding-left: 20px;
+}
+
+.well {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.provider-config-container:not(:has(div.alert-destination-channels)) {
+  button {
+    float: right;
+    margin-bottom: 4px;
+    width: 220px;
+    text-align: center;
+  }
+}
+
+.backup-config-actions {
+  position: relative;
+  right: 30px;
+  width: 120px !important;
+}
+
+.backup-config-action-but {
+  width: 120px !important;
+}
+
+.storage-config-tab-panel {
+  ul>li {
+    width: 220px;
+  }
+}
+
+.storage-config-del-err-msg {
+  display: flex;
+  align-items: flex-start;
+  font-size: 14px;
+  height: 100px;
+
+  span {
+    margin-left: 18px;
+
+    a {
+      text-decoration: underline;
+    }
+  }
+}
+
+.provider-config-container {
+  .provider-row-flex {
+    display: flex;
+    align-items: flex-end;
+
+    .add-provider-col {
+      width: max-content;
+    }
+
+    .add-provider-config {
+      margin-bottom: 15px;
+      width: max-content;
+      padding: 10px 15px;
+    }
+  }
+
+  .btn-add-region {
+    float: none;
+    width: 100%;
+    margin: 0 auto;
+    height: 60px;
+    border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
+    color: colors.$YB_ORANGE;
+    font-weight: 400;
+
+    &:focus {
+      background-color: #fff;
+    }
+
+    &:hover {
+      @include mixins.transition(0.3s);
+      transform: scale(1.01, 1.01);
+      background-color: #fff;
+      transform-origin: 50% 50%;
+      border-color: white;
+      box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2), 0 0 1px rgba(35, 35, 41, 0.1);
+    }
+
+    .btn-icon {
+      position: relative;
+      display: inline-block;
+      background-color: colors.$YB_ORANGE;
+      height: 30px;
+      width: 30px;
+      font-weight: 200;
+      text-align: center;
+      color: white;
+      border-radius: 15px;
+      margin-right: 5px;
+
+      i {
+        line-height: 32px;
+        font-size: 18px;
+        width: 34px;
+        height: 32px;
+        text-align: center;
+        vertical-align: middle;
+        transition: none;
+        color: white;
+      }
+    }
+
+    &.has-error {
+      border: 1px solid color.adjust(colors.$YB_ERROR_TEXT_COLOR, $saturation: -20%);
+    }
+
+    &+.standart-error {
+      color: colors.$YB_ERROR_TEXT_COLOR;
+      display: block;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+  }
+
+  .config-region-list {
+    display: table;
+    margin-left: 0;
+    padding-left: 0;
+    width: 100%;
+    border-spacing: 0 10px;
+
+    li {
+      display: table-row;
+      margin-left: 10px;
+      margin-right: 10px;
+      @include mixins.transition(0.15s);
+      border-radius: 7px;
+      font-size: 14px;
+
+      &:first-child {
+        div {
+          padding-bottom: 10px;
+        }
+      }
+
+      &>div:first-child {
+        padding: 0 10px 0 20px;
+        border-radius: 7px 0 0 7px;
+      }
+
+      &>div:last-child {
+        border-radius: 0 7px 7px 0;
+        width: 50px;
+      }
+
+      &:not(:first-child) {
+        background-color: colors.$YB_BACKGROUND;
+
+        div {
+          padding-top: 6px;
+          padding-bottom: 6px;
+        }
+
+        &>*:first-child * {
+          font-weight: 700;
+          color: colors.$YB_ORANGE !important;
+        }
+      }
+
+      &:not(:first-child):hover {
+        position: relative;
+        z-index: 2;
+        cursor: pointer;
+        padding: 0 10px;
+        @include mixins.transition(0.3s);
+        transform: scale(1.01, 1.01);
+        background-color: #fff;
+        transform-origin: 50% 50%;
+        border-color: white;
+        box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2), 0 0 1px rgba(35, 35, 41, 0.1);
+      }
+
+      &.header-row {
+        text-transform: uppercase;
+        font-size: 0.8em;
+        font-weight: 500;
+      }
+
+      &>div {
+        display: table-cell;
+      }
+
+      div {
+        background: none;
+        border: none;
+        outline: none;
+        box-shadow: none;
+
+        input {
+          background: none;
+          border: none;
+          outline: none;
+          box-shadow: none;
+          cursor: pointer;
+        }
+
+        .form-group,
+        .yb-field-group,
+        input {
+          padding: 0;
+        }
+
+        .delete-provider {
+          float: none;
+          width: 50px;
+          background: none;
+          border: none;
+        }
+      }
+    }
+  }
+}
+
+.regions-form-title {
+  margin: 20px 0;
+}
+
+.yb-breadcrumb {
+  color: #cd6500;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.provider-config-container h2 {
+  font-size: 20px;
+  padding: 0;
+  margin: 0 10px 10px 4px;
+  font-weight: 500;
+}
+
+.provider-config-container .list-group {
+  list-style: decimal inside;
+}
+
+.provider-config-container .list-group-item {
+  display: list-item;
+}
+
+.save-btn {
+  background-color: colors.$YB_ORANGE;
+  color: white;
+  border: none;
+  float: right;
+}
+
+.back-btn {
+  float: right;
+}
+
+.cancel-btn {
+  float: left;
+}
+
+.delete-btn {
+  background-color: colors.$YB_FAIL_COLOR;
+  border-color: transparent;
+  color: white;
+
+  i {
+    color: colors.$YB_FAIL_COLOR_ICON;
+  }
+
+  &:hover {
+    color: white;
+    background-color: color.adjust(colors.$YB_FAIL_COLOR, $lightness: -5%) !important;
+    border-color: transparent;
+
+    i {
+      color: colors.$YB_FAIL_COLOR_DARK;
+    }
+  }
+}
+
+.provider-config-container {
+
+  .save-btn,
+  .delete-btn {
+    font-weight: 500;
+  }
+}
+
+.host-item-label {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.add-host-data-container .row {
+  padding: 6px;
+}
+
+.host-current-file-container {
+  font-size: 18px;
+  font-weight: 500;
+  color: colors.$YB_DARK_GRAY;
+  margin-top: 6px;
+  padding: 2px 14px;
+}
+
+.data-row-input-container {
+  margin-top: 10px;
+}
+
+.config-tabs .nav-tabs {
+  @media screen and (max-width: 1620px) {
+    >li {
+      width: calc(100% / 7);
+
+      >a {
+        margin-right: 0px;
+      }
+    }
+  }
+
+  @media screen and (min-width: 768px) {
+    >li>a {
+      min-width: unset;
+    }
+  }
+
+  li:not(.active) {
+
+    img,
+    svg {
+      filter: grayscale(1) brightness(1.2);
+    }
+
+    :before {
+      filter: sepia(0.6);
+    }
+  }
+
+  >li>a {
+    height: 52px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .title {
+      justify-content: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+
+      @media screen and (max-width: 980px) {
+        >span {
+          display: none;
+        }
+      }
+    }
+
+    img {
+      height: 28px;
+      margin-right: 5px;
+
+      &.aws-logo {
+        width: 32px;
+      }
+
+      &.gcp-logo {
+        width: 30px;
+      }
+
+      &.azure-logo {
+        height: 24px;
+        object-fit: cover;
+        width: 33px;
+        object-position: left;
+      }
+
+      &.s3-logo {
+        width: 28px;
+        object-fit: cover;
+        object-position: left;
+      }
+
+      &.encryption-transit-icon {
+        height: 24px;
+      }
+    }
+
+    .tab-logo {
+      font-size: medium;
+      vertical-align: middle;
+      margin-right: 5px;
+    }
+
+    h3 {
+      margin: 0;
+      vertical-align: middle;
+      line-height: 50px;
+
+      i {
+        color: #679;
+        margin-right: 10px;
+      }
+    }
+
+    .custom-tab {
+      display: flex;
+      align-items: center;
+      width: 180px;
+      font-size: 15px;
+      font-weight: 500;
+      text-align: left;
+      line-height: 1;
+    }
+  }
+
+  .kubernetes-logo {
+    width: 140px;
+    height: auto;
+    margin-top: 12px;
+  }
+}
+
+.yb-hidden {
+  display: none !important;
+}
+
+.action-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  column-gap: 8px;
+
+  .disable-delete {
+    display: inline-block;
+    font-size: inherit;
+
+    .fa-ban {
+      color: colors.$YB_FAIL_COLOR;
+    }
+  }
+
+  .provider-config-container button {
+    margin-bottom: 0;
+  }
+}

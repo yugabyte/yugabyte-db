@@ -1,0 +1,9 @@
+title: Data Placement Specification for the cluster
+type: object
+required:
+  - cloud_list
+properties:
+  cloud_list:
+    type: array
+    items:
+      $ref: ./PlacementCloud.yaml

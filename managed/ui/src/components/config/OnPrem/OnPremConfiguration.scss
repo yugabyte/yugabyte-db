@@ -1,0 +1,207 @@
+/* Copyright (c) YugaByte, Inc. */
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
+
+.form-action-button-container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 30px;
+  padding: 14px 12px;
+  border-top: 1px solid #ececea;
+  background-color: #f6f6f5;
+  margin-bottom: 0 !important;
+
+  .btn {
+    margin: 0 6px;
+    min-width: 120px !important;
+  }
+}
+
+.onprem-node-instances__title {
+  margin-top: 20px;
+}
+
+.onprem-config__json {
+  background: colors.$YB_CODE_BACKGROUND;
+  border: 1px solid colors.$YB_GRAY;
+  border-radius: 7px;
+  padding: 0 15px;
+  margin: 15px 0;
+}
+
+.node-link-container {
+  cursor: pointer;
+  margin-left: 8px;
+  font-weight: 500;
+  color: colors.$YB_ORANGE;
+}
+
+.remove-cell-container {
+  font-size: 16px;
+}
+
+.remove-cell-container-active {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.precheck-status-container {
+  cursor: pointer;
+}
+
+.precheck-action-container {
+  margin-left: 3px;
+  cursor: pointer;
+}
+
+.form-item-custom-label {
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 0px;
+}
+.onprem-ntp {
+  width: 200px;
+}
+.form-radio-values {
+  padding: 8px 0px;
+  margin-right: 20px;
+}
+
+.editor-container {
+  padding-bottom: 60px;
+}
+
+.config-provider-row {
+  margin-top: 10px;
+
+  .config-provider-tooltip {
+    margin-left: -10px;
+    padding: 10px 10px 0 0;
+    font-size: 1.2em;
+  }
+}
+
+.config-zone-tooltip {
+  margin-top: 8px;
+  font-size: 1.2em;
+}
+
+.provider-task-progress-container .progressbar {
+  margin-left: 0px;
+}
+
+.file-label {
+  padding-top: 12px;
+  font-size: 14px;
+  color: colors.$YB_DARK_GRAY;
+}
+
+.upload-file-button {
+  height: 42px;
+  cursor: pointer;
+  text-align: center;
+  padding-top: 11px;
+  padding-left: 15px;
+  padding-right: 15px;
+  color: #444;
+  background-color: #ddd;
+  box-shadow: 0 0 5px -1px rgba(0, 0, 0, 0.2);
+  vertical-align: middle;
+  @include mixins.transition(0.125s);
+
+  &:hover {
+    background-color: hsl(0, 0%, 80%);
+    @include mixins.transition(0.35s);
+  }
+}
+
+.config-section-header .buttons {
+  .btn,
+  button {
+    margin-left: 8px;
+  }
+}
+
+.zone-name {
+  display: inline-block;
+  font-weight: 300;
+  margin-right: 8px;
+}
+
+.zone-bs-table {
+  height: 30px;
+  padding-top: 3px;
+  padding-bottom: 4px;
+}
+
+.zone-form-wrapper {
+  margin-top: 15px;
+}
+
+.provider-task-progress-container {
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.remove-cell-active {
+  color: colors.$YB_ORANGE;
+}
+
+.UniverseHealthCheckList {
+  .header .row {
+    margin-right: 0px;
+    margin-left: 0px;
+  }
+
+  .pre-provision-message .yb-code-block {
+    margin-top: 5px;
+    margin-bottom: -5px;
+  }
+  .alert.pre-provision-message {
+    position: relative;
+    z-index: 980;
+    width: fit-content;
+    margin: 0 auto;
+    left: unset;
+
+    @media screen and (min-width: 1440px) {
+      position: absolute;
+      top: 10px;
+      width: 600px;
+      left: calc(50% - 300px);
+    }
+  }
+}
+
+.onprem-nodes-table.react-bs-table-container {
+  margin-top: 90px;
+
+  .form-group.react-bs-table-search-form {
+    margin-right: 50px;
+    margin-top: -72px;
+
+    .input-group-btn {
+      button.react-bs-table-search-clear-btn {
+        height: 42px;
+        padding: 5px 15px;
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
+      }
+    }
+  }
+}
+
+.on-prem-provider-form-container {
+  .form-item-label {
+    min-width: 200px !important;
+  }
+  .form-right-aligned-labels {
+    display: block;
+    & > .form-group {
+      display: flex;
+      align-items: center;
+    }
+  }
+}

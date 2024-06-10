@@ -1,0 +1,699 @@
+# LANGUAGE message translation file for ecpg
+# Copyright (C) 2009 PostgreSQL Global Development Group
+# This file is distributed under the same license as the PostgreSQL package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2009.
+# Abdullah GÜLNER <agulner@gmail.com>, 2018.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PostgreSQL 8.4\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2019-04-26 13:39+0000\n"
+"PO-Revision-Date: 2021-09-16 09:37+0200\n"
+"Last-Translator: Abdullah GÜLNER <agulner@gmail.com>\n"
+"Language-Team: Turkish <ceviri@postgresql.org.tr>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 1.8.7.1\n"
+
+#: descriptor.c:64
+#, c-format
+msgid "variable \"%s\" must have a numeric type"
+msgstr "\"%s\" değişkeninin sayısal veri tipi olmalı"
+
+#: descriptor.c:124 descriptor.c:146
+#, c-format
+msgid "descriptor \"%s\" does not exist"
+msgstr "\"%s\" açıklayıcısı mevcut değil"
+
+#: descriptor.c:161 descriptor.c:213
+#, c-format
+msgid "descriptor header item \"%d\" does not exist"
+msgstr "\"%d\" açıklayıcı başlık maddesi mevcut değil"
+
+#: descriptor.c:183
+#, c-format
+msgid "nullable is always 1"
+msgstr "nullable her zaman 1'dir"
+
+#: descriptor.c:186
+#, c-format
+msgid "key_member is always 0"
+msgstr "key_member her zaman 0'dır."
+
+#: descriptor.c:280
+#, c-format
+msgid "descriptor item \"%s\" is not implemented"
+msgstr "\"%s\" açıklayıcı öğesi kodlanmamıştır"
+
+#: descriptor.c:290
+#, c-format
+msgid "descriptor item \"%s\" cannot be set"
+msgstr "\"%s\" açıklayıcı öğesi ayarlanamaz"
+
+#: ecpg.c:36
+#, c-format
+msgid ""
+"%s is the PostgreSQL embedded SQL preprocessor for C programs.\n"
+"\n"
+msgstr ""
+"%s C programları için PostgreSQL'e gömüşü SQL önişlemcisidir.\n"
+"\n"
+
+#: ecpg.c:38
+#, c-format
+msgid ""
+"Usage:\n"
+"  %s [OPTION]... FILE...\n"
+"\n"
+msgstr ""
+"Kullanımı:\n"
+"  %s [SEÇENEK]... DOSYA...\n"
+"\n"
+
+#: ecpg.c:41
+#, c-format
+msgid "Options:\n"
+msgstr "Seçenekler:\n"
+
+#: ecpg.c:42
+#, c-format
+msgid ""
+"  -c             automatically generate C code from embedded SQL code;\n"
+"                 this affects EXEC SQL TYPE\n"
+msgstr ""
+"  -c             gömülü SQL kodundan otomatik olarak C kodu üret;\n"
+"                 bu EXEC SQL TYPE'ı etkiler\n"
+
+#: ecpg.c:44
+#, c-format
+msgid ""
+"  -C MODE        set compatibility mode; MODE can be one of\n"
+"                 \"INFORMIX\", \"INFORMIX_SE\", \"ORACLE\"\n"
+msgstr ""
+"  -C MOD         uyumluluk modunu ayarla; MOD aşağıdakilerden birisi olabilir\n"
+"                 \"INFORMIX\", \"INFORMIX_SE\", \"ORACLE\"\n"
+
+#: ecpg.c:47
+#, c-format
+msgid "  -d             generate parser debug output\n"
+msgstr "  -d            ayrıştırıcı hata ayıklama çıktısını oluştur\n"
+
+#: ecpg.c:49
+#, c-format
+msgid "  -D SYMBOL      define SYMBOL\n"
+msgstr "  -D SEMBOL      SEMBOLü tanımla\n"
+
+#: ecpg.c:50
+#, c-format
+msgid "  -h             parse a header file, this option includes option \"-c\"\n"
+msgstr "  -h             başlık dosyasını ayrıştır; bu seçenek \"-c\" seçeneğini içerir\n"
+
+#: ecpg.c:51
+#, c-format
+msgid "  -i             parse system include files as well\n"
+msgstr "  -i             sistem include dosyalarını da ayrıştırl\n"
+
+#: ecpg.c:52
+#, c-format
+msgid "  -I DIRECTORY   search DIRECTORY for include files\n"
+msgstr "  -I DİZİN   dosyaları içermek için DİZİN dizinini araştır\n"
+
+#: ecpg.c:53
+#, c-format
+msgid "  -o OUTFILE     write result to OUTFILE\n"
+msgstr "  -o ÇIKTI DOSYASI     sonucu ÇIKTI DOSYASIna yaz\n"
+
+#: ecpg.c:54
+#, c-format
+msgid ""
+"  -r OPTION      specify run-time behavior; OPTION can be:\n"
+"                 \"no_indicator\", \"prepare\", \"questionmarks\"\n"
+msgstr ""
+"  -r SEÇENEK     çalışma zamanı davranışını belirt; SEÇENEK şunlardan birisi olabilir:\n"
+"                 \"no_indicator\", \"prepare\", \"questionmarks\"\n"
+
+#: ecpg.c:56
+#, c-format
+msgid "  --regression   run in regression testing mode\n"
+msgstr "  --regression   regression testi modunda çalış\n"
+
+#: ecpg.c:57
+#, c-format
+msgid "  -t             turn on autocommit of transactions\n"
+msgstr "  -t             transactionların otomatik commit olması özelliğini aç\n"
+
+#: ecpg.c:58
+#, c-format
+msgid "  -V, --version  output version information, then exit\n"
+msgstr "  -V, --version  sürüm bilgisini göster, sonra çık\n"
+
+#: ecpg.c:59
+#, c-format
+msgid "  -?, --help     show this help, then exit\n"
+msgstr "  -?, --help     bu yardımı göster, sonra çık\n"
+
+#: ecpg.c:60
+#, c-format
+msgid ""
+"\n"
+"If no output file is specified, the name is formed by adding .c to the\n"
+"input file name, after stripping off .pgc if present.\n"
+msgstr ""
+"\n"
+"Eğer çıktı dosyası belirtilmediyse, dosyanın adı eğer sonunda .pgc varsa\n"
+"kaldırıldıktan sonra girdi dosyasının sonuna .c eklenerek oluşturulur.\n"
+
+#: ecpg.c:62
+#, c-format
+msgid ""
+"\n"
+"Report bugs to <pgsql-bugs@lists.postgresql.org>.\n"
+msgstr ""
+"\n"
+"Hataları <pgsql-bugs@lists.postgresql.org> adresine bildirebilirsiniz.\n"
+
+#: ecpg.c:182
+#, c-format
+msgid "%s: could not locate my own executable path\n"
+msgstr "%s: kendi çalıştırılabilir dosyamın yolunu bulamadım\n"
+
+#: ecpg.c:217 ecpg.c:374 ecpg.c:385
+#, c-format
+msgid "%s: could not open file \"%s\": %s\n"
+msgstr "%s: \"%s\" dosyası açılamadı: %s\n"
+
+#: ecpg.c:260 ecpg.c:273 ecpg.c:289 ecpg.c:315
+#, c-format
+msgid "Try \"%s --help\" for more information.\n"
+msgstr "Daha fazla bilgi için \"%s --help\" yazın\n"
+
+#: ecpg.c:284
+#, c-format
+msgid "%s: parser debug support (-d) not available\n"
+msgstr "%s: ayrıştırıcı hata ayıklama desteği (-d) yok\n"
+
+#: ecpg.c:303
+#, c-format
+msgid "%s, the PostgreSQL embedded C preprocessor, version %s\n"
+msgstr "%s, PostgreSQL gömülü C önişlemcisi, %s sürümü\n"
+
+#: ecpg.c:305
+#, c-format
+msgid "EXEC SQL INCLUDE ... search starts here:\n"
+msgstr "EXEC SQL INCLUDE ... araması burada başlıyor:\n"
+
+#: ecpg.c:308
+#, c-format
+msgid "end of search list\n"
+msgstr "arama listesinin sonu\n"
+
+#: ecpg.c:314
+#, c-format
+msgid "%s: no input files specified\n"
+msgstr "%s: girdi dosyası belirtilmedi\n"
+
+#: ecpg.c:497
+#, c-format
+msgid "cursor \"%s\" has been declared but not opened"
+msgstr "\"%s\" imleci tanımlanmış ama açılmamış"
+
+#: ecpg.c:510 preproc.y:129
+#, c-format
+msgid "could not remove output file \"%s\"\n"
+msgstr "\"%s\" çıktı dosyası kaldırılamadı\n"
+
+#: pgc.l:472
+#, c-format
+msgid "unterminated /* comment"
+msgstr "/* açıklama sonlandırılmamış"
+
+#: pgc.l:490
+#, c-format
+msgid "invalid bit string literal"
+msgstr "geçersiz bit dizini bilgisi"
+
+#: pgc.l:502
+#, c-format
+msgid "unterminated bit string literal"
+msgstr "sonuçlandırılmamış bit string literal"
+
+#: pgc.l:518
+#, c-format
+msgid "unterminated hexadecimal string literal"
+msgstr "sonuçlandırılmamış hexadecimal string literal"
+
+#: pgc.l:614 pgc.l:718
+#, c-format
+msgid "unterminated quoted string"
+msgstr "sonuçlandırılmamış tırnakla sınırlandırılmış satır"
+
+#: pgc.l:665
+#, c-format
+msgid "unterminated dollar-quoted string"
+msgstr "sonlandırılmamış dolar işaretiyle sınırlandırılmış satır"
+
+#: pgc.l:684 pgc.l:697
+#, c-format
+msgid "zero-length delimited identifier"
+msgstr "sınırlandırılmış tanım sıfır uzunluklu"
+
+#: pgc.l:709
+#, c-format
+msgid "unterminated quoted identifier"
+msgstr "sonuçlandırılmamış tırnakla sınırlandırılmış tanım"
+
+#: pgc.l:1040
+#, c-format
+msgid "nested /* ... */ comments"
+msgstr "iç içe /* ... */ açıklamalar (comment)"
+
+#: pgc.l:1133
+#, c-format
+msgid "missing identifier in EXEC SQL UNDEF command"
+msgstr "EXEC SQL UNDEF komutunda eksik tanımlayıcı"
+
+#: pgc.l:1179 pgc.l:1193
+#, c-format
+msgid "missing matching \"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\""
+msgstr "eksik  \"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\" eşleşmesi"
+
+#: pgc.l:1182 pgc.l:1195 pgc.l:1371
+#, c-format
+msgid "missing \"EXEC SQL ENDIF;\""
+msgstr "eksik \"EXEC SQL ENDIF;\""
+
+#: pgc.l:1211 pgc.l:1230
+#, c-format
+msgid "more than one EXEC SQL ELSE"
+msgstr "birden fazla EXEC SQL ELSE"
+
+#: pgc.l:1252 pgc.l:1266
+#, c-format
+msgid "unmatched EXEC SQL ENDIF"
+msgstr "eşlenmeyen EXEC SQL ENDIF"
+
+#: pgc.l:1286
+#, c-format
+msgid "too many nested EXEC SQL IFDEF conditions"
+msgstr "Çok fazla yuvalanmış EXEC SQL IFDEF koşulu"
+
+#: pgc.l:1319
+#, c-format
+msgid "missing identifier in EXEC SQL IFDEF command"
+msgstr "EXEC SQL IFDEF komutunda eksik belirteç"
+
+#: pgc.l:1328
+#, c-format
+msgid "missing identifier in EXEC SQL DEFINE command"
+msgstr "EXEC SQL DEFINE komutunda eksik tanımlayıcı"
+
+#: pgc.l:1361
+#, c-format
+msgid "syntax error in EXEC SQL INCLUDE command"
+msgstr "EXEC SQL INCLUDE komutunda sözdizimi hatası"
+
+#: pgc.l:1411
+#, c-format
+msgid "internal error: unreachable state; please report this to <pgsql-bugs@lists.postgresql.org>"
+msgstr "dahili hata: erişilemeyen durum: bunu lütfen <pgsql-bugs@lists.postgresql.org> adresine bildiriniz."
+
+#: pgc.l:1562
+#, c-format
+msgid "Error: include path \"%s/%s\" is too long on line %d, skipping\n"
+msgstr "Hata: \"%s/%s\" include yolu çok uzun, satır numarası %d; atlanıyor\n"
+
+#: pgc.l:1585
+#, c-format
+msgid "could not open include file \"%s\" on line %d"
+msgstr " \"%s\" include dosyası %d. satırda açılamadı"
+
+#: preproc.y:31
+msgid "syntax error"
+msgstr "söz dizim hatası "
+
+#: preproc.y:83
+#, c-format
+msgid "WARNING: "
+msgstr "UYARI:"
+
+#: preproc.y:86
+#, c-format
+msgid "ERROR: "
+msgstr "HATA:"
+
+#: preproc.y:510
+#, c-format
+msgid "cursor \"%s\" does not exist"
+msgstr "\"%s\" imleci mevcut değil"
+
+#: preproc.y:539
+#, c-format
+msgid "initializer not allowed in type definition"
+msgstr "tip tanımlamasında ilklendiriciye izin verilmez"
+
+#: preproc.y:541
+#, c-format
+msgid "type name \"string\" is reserved in Informix mode"
+msgstr "\"string\" tip adı Informix modunda ayrılmıştır"
+
+#: preproc.y:548 preproc.y:15828
+#, c-format
+msgid "type \"%s\" is already defined"
+msgstr "\"%s\" tipi zaten tanımlanmış"
+
+#: preproc.y:573 preproc.y:16499 preproc.y:16824 variable.c:621
+#, c-format
+msgid "multidimensional arrays for simple data types are not supported"
+msgstr "basit veri tipleri için çok boyutlu diziler desteklenmemektedir."
+
+#: preproc.y:1896
+#, c-format
+msgid "AT option not allowed in CONNECT statement"
+msgstr "AT seçeneğine CONNECT ifadesinde izin verilmemektedir"
+
+#: preproc.y:1934
+#, c-format
+msgid "AT option not allowed in DISCONNECT statement"
+msgstr "AT seçeneğine DISCONNECT ifadesinde izin verilmemektedir"
+
+#: preproc.y:1996
+#, c-format
+msgid "AT option not allowed in SET CONNECTION statement"
+msgstr "AT seçeneğine SET CONNECTION ifadesinde izin verilmemektedir"
+
+#: preproc.y:2018
+#, c-format
+msgid "AT option not allowed in TYPE statement"
+msgstr "AT seçeneğine TYPE ifadesinde izin verilmemektedir"
+
+#: preproc.y:2027
+#, c-format
+msgid "AT option not allowed in VAR statement"
+msgstr "AT seçeneğine VAR ifadesinde izin verilmemektedir"
+
+#: preproc.y:2034
+#, c-format
+msgid "AT option not allowed in WHENEVER statement"
+msgstr "AT seçeneğine WHENEVER ifadesinde izin verilmemektedir"
+
+#: preproc.y:2111 preproc.y:2283 preproc.y:2288 preproc.y:2411 preproc.y:4004
+#: preproc.y:5593 preproc.y:5893 preproc.y:7521 preproc.y:9033 preproc.y:9038
+#: preproc.y:11831
+#, c-format
+msgid "unsupported feature will be passed to server"
+msgstr "desteklenmeyen  özellik sunucuya aktarılacaktır"
+
+#: preproc.y:2669
+#, c-format
+msgid "SHOW ALL is not implemented"
+msgstr "SHOW ALL kodlanmamıştır"
+
+#: preproc.y:3327
+#, c-format
+msgid "AT option not allowed in CLOSE DATABASE statement"
+msgstr "AT seçeneğine CLOSE DATABASE ifadesinde izin verilmemektedir"
+
+#: preproc.y:3352
+#, c-format
+msgid "COPY FROM STDIN is not implemented"
+msgstr "COPY FROM STDIN kodlanmamıştır"
+
+#: preproc.y:9977 preproc.y:15411
+#, c-format
+msgid "using variable \"%s\" in different declare statements is not supported"
+msgstr "\"%s\" değşkenini farklı declare ifadeleri arasında kullanmak desteklenmemektedir"
+
+#: preproc.y:9979 preproc.y:15413
+#, c-format
+msgid "cursor \"%s\" is already defined"
+msgstr "\"%s\" imleci zaten tanımlanmış"
+
+#: preproc.y:10420
+#, c-format
+msgid "no longer supported LIMIT #,# syntax passed to server"
+msgstr "artık desteklenmeyen LIMIT #,# sözdizimi sunucuya aktarıldı"
+
+#: preproc.y:10745 preproc.y:10752
+#, c-format
+msgid "subquery in FROM must have an alias"
+msgstr "FROM öğesindeki subquery bir aliası almalıdır"
+
+#: preproc.y:15102 preproc.y:15109
+#, c-format
+msgid "CREATE TABLE AS cannot specify INTO"
+msgstr "CREATE TABLE AS işleminde INTO kullanılamaz"
+
+#: preproc.y:15145
+#, c-format
+msgid "expected \"@\", found \"%s\""
+msgstr "\"@\" bekleniyordu; \"%s\" bulundu"
+
+#: preproc.y:15157
+#, c-format
+msgid "only protocols \"tcp\" and \"unix\" and database type \"postgresql\" are supported"
+msgstr "sadece \"tcp\" ve \"unix\" protokolleri ile \"postgresql\" veritabanı tipi desteklenmektedir."
+
+#: preproc.y:15160
+#, c-format
+msgid "expected \"://\", found \"%s\""
+msgstr "\"://\" bekleniyordu; \"%s\" bulundu"
+
+#: preproc.y:15165
+#, c-format
+msgid "Unix-domain sockets only work on \"localhost\" but not on \"%s\""
+msgstr "Unix-domain soketleri sadece \"localhost\" üzerinde çalışabilir; ancak  \"%s\" üzerinde çalışamaz."
+
+#: preproc.y:15191
+#, c-format
+msgid "expected \"postgresql\", found \"%s\""
+msgstr "\"postgresql\" bekleniyordu; \"%s\" bulundu"
+
+#: preproc.y:15194
+#, c-format
+msgid "invalid connection type: %s"
+msgstr "Geçersiz bağlantı tipi: %s"
+
+#: preproc.y:15203
+#, c-format
+msgid "expected \"@\" or \"://\", found \"%s\""
+msgstr "\"@\" or \"://\" bekleniyordu; \"%s\" bulundu"
+
+#: preproc.y:15278 preproc.y:15296
+#, c-format
+msgid "invalid data type"
+msgstr "geçersiz veri tipi"
+
+#: preproc.y:15307 preproc.y:15324
+#, c-format
+msgid "incomplete statement"
+msgstr "eksik ifade"
+
+#: preproc.y:15310 preproc.y:15327
+#, c-format
+msgid "unrecognized token \"%s\""
+msgstr "tanımlanmayan imge \"%s\""
+
+#: preproc.y:15373
+#, c-format
+msgid "declared name %s is already defined"
+msgstr "belirtilen isim, %s zaten tanımlanmış"
+
+#: preproc.y:15631
+#, c-format
+msgid "only data types numeric and decimal have precision/scale argument"
+msgstr "sadece sayısal ve ondalıklı verip tiplerinin ondalık bilgisi vardır"
+
+#: preproc.y:15643
+#, c-format
+msgid "interval specification not allowed here"
+msgstr "aralık belirtimine burada izin verilmiyor"
+
+#: preproc.y:15803 preproc.y:15855
+#, c-format
+msgid "too many levels in nested structure/union definition"
+msgstr "içiçe gelmiş yapı/birleşme tanımında çok fazla seviye"
+
+#: preproc.y:16006
+#, c-format
+msgid "pointers to varchar are not implemented"
+msgstr "varcharlara işaretçiler henüz uyarlanmadı"
+
+#: preproc.y:16193 preproc.y:16218
+#, c-format
+msgid "using unsupported DESCRIBE statement"
+msgstr "desteklenmeyen DESCRIBE ifadesi kullanılıyor"
+
+#: preproc.y:16465
+#, c-format
+msgid "initializer not allowed in EXEC SQL VAR command"
+msgstr "EXEC SQL VAR konutunda ilklendiriciye izin verilmemektedir"
+
+#: preproc.y:16782
+#, c-format
+msgid "arrays of indicators are not allowed on input"
+msgstr "belirticilerin dizilerine girdide izin verilmez"
+
+#: preproc.y:17003
+#, c-format
+msgid "operator not allowed in variable definition"
+msgstr "değişken tanımlamasında operatöre izin verilmez"
+
+#. translator: %s is typically the translation of "syntax error"
+#: preproc.y:17044
+#, c-format
+msgid "%s at or near \"%s\""
+msgstr "\"%2$s\"  yerinde %1$s"
+
+#: type.c:18 type.c:30
+#, c-format
+msgid "out of memory"
+msgstr "yetersiz bellek"
+
+#: type.c:214 type.c:685
+#, c-format
+msgid "unrecognized variable type code %d"
+msgstr "tanımsız değişken tipi kodu %d"
+
+#: type.c:263
+#, c-format
+msgid "variable \"%s\" is hidden by a local variable of a different type"
+msgstr "\"%s\" değişkeni farklı tipteki yerel bir değişken tarafından gizlenmiştir"
+
+#: type.c:265
+#, c-format
+msgid "variable \"%s\" is hidden by a local variable"
+msgstr "\"%s\" değişkeni yerel bir değişken tarafından gizlenmiştir"
+
+#: type.c:277
+#, c-format
+msgid "indicator variable \"%s\" is hidden by a local variable of a different type"
+msgstr "\"%s\" belirteç değişkeni farklı tipteki yerel bir değişken tarafından gizlenmiştir"
+
+#: type.c:279
+#, c-format
+msgid "indicator variable \"%s\" is hidden by a local variable"
+msgstr "\"%s\" gösterge değişkeni yerel bir değişken tarafından gizlenmektedir"
+
+#: type.c:287
+#, c-format
+msgid "indicator for array/pointer has to be array/pointer"
+msgstr "array/pointer için gösterici array/pointer olmalıdır"
+
+#: type.c:291
+#, c-format
+msgid "nested arrays are not supported (except strings)"
+msgstr "içiçe geçmiş diziler, dizgiler haricinde desteklenmez"
+
+#: type.c:333
+#, c-format
+msgid "indicator for struct has to be a struct"
+msgstr "struct için gösterici (indicator) yine struct olmalı"
+
+#: type.c:353 type.c:374 type.c:394
+#, c-format
+msgid "indicator for simple data type has to be simple"
+msgstr "basit veri tipinin göstergesi basit olmalı"
+
+#: type.c:625
+#, c-format
+msgid "indicator struct \"%s\" has too few members"
+msgstr "\"%s\" gösterge yapısının (struct) çok az üyesi var"
+
+#: type.c:633
+#, c-format
+msgid "indicator struct \"%s\" has too many members"
+msgstr "\"%s\" gösterge yapısının (struct) çok fazla üyesi var"
+
+#: type.c:744
+#, c-format
+msgid "unrecognized descriptor item code %d"
+msgstr "tanımlanmayan açıklayıcı madde kodu %d"
+
+#: variable.c:89 variable.c:116
+#, c-format
+msgid "incorrectly formed variable \"%s\""
+msgstr "doğru şekilde oluşturulmamış \"%s\" değişkeni"
+
+#: variable.c:139
+#, c-format
+msgid "variable \"%s\" is not a pointer"
+msgstr "\"%s\" değişkeni bir pointer değil"
+
+#: variable.c:142 variable.c:167
+#, c-format
+msgid "variable \"%s\" is not a pointer to a structure or a union"
+msgstr "\"%s\" değişkeni structure ya da union'a pointer değil"
+
+#: variable.c:154
+#, c-format
+msgid "variable \"%s\" is neither a structure nor a union"
+msgstr "\"%s\" değişkeni structure ya da union değil"
+
+#: variable.c:164
+#, c-format
+msgid "variable \"%s\" is not an array"
+msgstr "\"%s\" değişkeni bir dizi değil"
+
+#: variable.c:233 variable.c:255
+#, c-format
+msgid "variable \"%s\" is not declared"
+msgstr "\"%s\" değişkeni bildirilmemiş"
+
+#: variable.c:494
+#, c-format
+msgid "indicator variable must have an integer type"
+msgstr "belirteç değişkeni tamsayı veri tipine sahip olmalı"
+
+#: variable.c:506
+#, c-format
+msgid "unrecognized data type name \"%s\""
+msgstr "tanımlanmayan veri tipi adı \"%s\""
+
+#: variable.c:517 variable.c:525 variable.c:542 variable.c:545
+#, c-format
+msgid "multidimensional arrays are not supported"
+msgstr "çok boyutlu diziler desteklenmiyor"
+
+#: variable.c:534
+#, c-format
+msgid "multilevel pointers (more than 2 levels) are not supported; found %d level"
+msgid_plural "multilevel pointers (more than 2 levels) are not supported; found %d levels"
+msgstr[0] "çoklu seviye işaretçileri (İkiden fazla) desteklenmiyor: %d seviye bulundu"
+
+#: variable.c:539
+#, c-format
+msgid "pointer to pointer is not supported for this data type"
+msgstr "Bu veri tipi için işaretçiden işaretçiye desteklenmemektedir"
+
+#: variable.c:559
+#, c-format
+msgid "multidimensional arrays for structures are not supported"
+msgstr "yapılar için çok boyutlu diziler desteklenmemektedir"
+
+#~ msgid "  --help         show this help, then exit\n"
+#~ msgstr "  --help         bu yardımı göster ve çık\n"
+
+#~ msgid "  --version      output version information, then exit\n"
+#~ msgstr "  --version      sürüm numarasını yaz ve çık\n"
+
+#~ msgid "AT option not allowed in DEALLOCATE statement"
+#~ msgstr "AT seçeneğine DEALLOCATE ifadesinde izin verilmemektedir"
+
+#~ msgid "COPY TO STDIN is not possible"
+#~ msgstr "COPY TO STDIN mümkün değildir"
+
+#~ msgid "COPY FROM STDOUT is not possible"
+#~ msgstr "COPY FROM STDOUT mümkün değildir"
+
+#~ msgid "constraint declared INITIALLY DEFERRED must be DEFERRABLE"
+#~ msgstr "INITIALLY DEFERRED olarak tanımlanan kısıtlayıcı DEFERRABLE özelliğine sahip olmalıdır"
+
+#~ msgid "OLD used in query that is not in a rule"
+#~ msgstr "rule olmayan sorgusunda OLD kullanıldı"
+
+#~ msgid "NEW used in query that is not in a rule"
+#~ msgstr "rule olmayan sorgusunda NEW kullanıldı"

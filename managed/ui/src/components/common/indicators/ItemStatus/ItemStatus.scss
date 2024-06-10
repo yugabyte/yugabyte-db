@@ -1,0 +1,22 @@
+@use '../../../../_style/colors.scss';
+
+.universe-status {
+  display: inline-block;
+  font-size: 70%;
+  margin-left: 24px;
+
+  &.good {
+    color: colors.$YB_SUCCESS_COLOR;
+  }
+  &.pending {
+    color: colors.$YB_PENDING_COLOR;
+  }
+  &.bad {
+    color: colors.$YB_FAIL_COLOR;
+  }
+
+  span {
+    display: inline-block;
+    padding-left: 4px;
+  }
+}

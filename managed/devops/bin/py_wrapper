@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -e
+# py_wrapper is already in bin/
+. "${BASH_SOURCE%/*}"/common.sh
+
+detect_os
+
+# The PEX environment is used if the operating system is not macOS, the
+# environment variable YB_USE_VIRTUAL_ENV is unset (default unset), and
+# the pexEnv directory exists
+if [ "$is_mac" == false ] && \
+   [[ -z ${YB_USE_VIRTUAL_ENV:-} ]] && \
+   [ -d "$yb_devops_home/pex/pexEnv" ]; then
+    activate_pex
+    $PYTHON_EXECUTABLE "$@"
+# The PEX environment is used in all other cases.
+else
+    activate_virtualenv
+    cd "$yb_devops_home"
+    $PYTHON_EXECUTABLE "$@"
+fi

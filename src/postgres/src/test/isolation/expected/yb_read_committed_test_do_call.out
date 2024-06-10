@@ -1,0 +1,23 @@
+Parsed test spec with 2 sessions
+
+starting permutation: update_k1_in_s2_do update_k1_in_s1_do c2 select c1
+step update_k1_in_s2_do: DO $$ BEGIN UPDATE test SET v=v+2 WHERE k=1; END $$;
+step update_k1_in_s1_do: DO $$ BEGIN UPDATE test SET v=v*5 WHERE k=1; END $$; <waiting ...>
+step c2: COMMIT;
+step update_k1_in_s1_do: <... completed>
+step select: SELECT * FROM test;
+k              v              
+
+1              15             
+step c1: COMMIT;
+
+starting permutation: update_k1_in_s2_call update_k1_in_s1_call c2 select c1
+step update_k1_in_s2_call: CALL update_k1_in_s2();
+step update_k1_in_s1_call: CALL update_k1_in_s1(); <waiting ...>
+step c2: COMMIT;
+step update_k1_in_s1_call: <... completed>
+step select: SELECT * FROM test;
+k              v              
+
+1              15             
+step c1: COMMIT;

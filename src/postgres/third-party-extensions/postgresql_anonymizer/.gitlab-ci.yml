@@ -1,0 +1,580 @@
+---
+## PRO TIP : Test your modifications locally with:
+## $ gitlab-ci-multi-runner exec docker {name_of_the_job}
+
+
+variables:
+  PGDATA: /var/lib/postgresql/data
+  PGUSER: postgres
+  EXTDIR: /usr/share/postgresql/13/extension/
+  PSQL: psql -v ON_ERROR_STOP=1
+  POSTGRES_DB: nice_marmot
+  POSTGRES_USER: runner
+  POSTGRES_PASSWORD: plop
+  PGPASSWORD: CHANGEME
+  SAST_EXCLUDED_PATHS: '_venv, docs/howto/_venv'
+  GIT_SUBMODULE_STRATEGY: recursive
+  PROJECT_API: "$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+  DATA_ZIP_API_URL: "$PROJECT_API/packages/generic/data/$CI_COMMIT_REF_NAME"
+  ## Uncomment this to run only windows specific jobs
+  # WINDOWS_ONLY: "True"
+
+
+stages:
+  - lint
+  - build
+  - test
+  - deploy
+  - release
+
+image: postgres:13
+
+
+##
+## L I N T
+##
+
+lint-bash:
+  stage: lint
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends shellcheck
+    - shellcheck bin/pg_dump_anon.sh
+    - shellcheck docker/anon.sh
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+lint-markdown:
+  stage: lint
+  image: ruby:alpine
+  script:
+    - gem install mdl
+    - mdl docs/*.md *.md
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+lint-py:
+  stage: lint
+  image: python:3.7
+  script:
+    - pip3 install flake8
+    - flake8 python/*.py
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+lint-go:
+  stage: lint
+  image: golang:alpine
+  script:
+    - apk add --no-cache gcc musl-dev
+    - cd ./pg_dump_anon/
+    - go mod download github.com/lib/pq
+    - go vet main.go
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+##
+## B U I L D
+##
+
+pg_dump_anon:
+  stage: build
+  image: golang:bullseye
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        sudo make gcc postgresql-13 postgresql-server-dev-13 python3-pip
+        diffutils
+    - make && make install
+    - pg_ctlcluster -o
+        "-c client_encoding='UTF8'
+         -c hba_file=$PWD/pg_dump_anon/tests/pg_hba.conf
+         -c shared_preload_libraries='anon'"
+        13 main start
+    - psql -f $PWD/pg_dump_anon/tests/sql/roles.sql
+    - make -C pg_dump_anon
+    - make -C pg_dump_anon test
+  artifacts:
+    paths:
+      - _build
+
+windows-2016:
+  stage: build
+  tags:
+    - windows  # run this job inside a windows gitlab runner
+  script:
+    - .\build.bat
+  artifacts:
+    paths:
+      - '*'
+    expire_in: 1 day
+  only:
+    variables:
+      - $WINDOWS
+
+# We need to launch manually the instance because the entrypoint is skipped.
+.init_PG_instance: &init_PG_instance
+  before_script:
+    - mkdir -p $PGDATA
+    - mkdir -p $EXTDIR
+    - chown postgres $PGDATA
+    - gosu postgres initdb
+    - gosu postgres pg_ctl start
+
+PG9.6-debian10:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:9.6-buster
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        build-essential postgresql-server-dev-9.6 pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+  when: manual  # PostgreSQL 9.6 is EOL
+
+PG10-debian10:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:10-buster
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        build-essential postgresql-server-dev-10 pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - anon*
+      - regression.*
+      - results/
+  except:
+    variables:
+      - $WINDOWS_ONLY
+  when: manual  # PostgreSQL 10 is EOL
+
+PG11-debian10:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:11-buster
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-11 pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+  when: manual  # PostgreSQL 11 is EOL
+
+PG12-debian11:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:12
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc git postgresql-server-dev-12 pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+PG13-debian11:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:13
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-13 diffutils
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+PG14-debian11:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:14
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-14 diffutils
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - _build
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+PG15-debian11:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:15
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-15 diffutils
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - _build
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+PG16-debian12:
+  <<: *init_PG_instance
+  stage: build
+  image: postgres:16
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-16 diffutils
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  artifacts:
+    paths:
+      - _build
+      - anon*
+      - regression.*
+      - results/
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+
+blackbox:
+  stage: build
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker build -t blackbox . --file docker/Dockerfile
+    - mkdir results
+    - cat tests/sql/blackbox.sql |
+        docker run --rm -i blackbox /anon.sh  > results/blackbox.out
+    # we remove comments because pg_dump ouputs the PG version and we don't want
+    # this test to break every time a new minor version is released
+    - sed -i 's/^--.*$//' results/blackbox.out
+    - diff tests/expected/blackbox.out results/blackbox.out
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+how-to:
+  image:
+    name: dalibo/pandocker:latest
+    entrypoint: [""]
+  stage: build
+  script:
+    - cd docs/how-to
+    - ./init_postgres.sh
+    - export PGUSER=paul
+    - export PGDATABASE=boutique
+    - export PGPASSWORD=CHANGEME
+    - make how-to
+  # when: manual
+  artifacts:
+    paths:
+      - docs/how-to
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+##
+## T E S T
+##
+
+## automatic SAST from Gitlab.com
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+## basic user sories
+demo:
+  <<: *init_PG_instance
+  stage: test
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-13 postgresql-contrib-13  pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make demo
+  when: manual
+  artifacts:
+    paths:
+      - demo/*.out
+    expire_in: 1 day
+
+
+## Test various installation process
+
+install_pgxn:
+  stage: test
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends make gcc
+                                                 postgresql-server-dev-13
+                                                 pgxnclient
+    - pgxn install postgresql_anonymizer
+  when: manual
+
+install_yum_centos7_pg12:
+  stage: test
+  image: centos:7
+  script:
+    - yum -y install
+      https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    - yum -y install postgresql12-contrib postgresql_anonymizer12
+    - mkdir -p $PGDATA
+    - chown postgres $PGDATA
+    - su postgres -c /usr/pgsql-12/bin/initdb $PGDATA
+    - su postgres -c "/usr/pgsql-12/bin/pg_ctl start"
+    - su postgres -c "psql -c 'CREATE EXTENSION anon CASCADE;'"
+  when: manual
+
+install_source_fedora:
+  stage: test
+  image: fedora:34
+  script:
+    - dnf install --assumeyes postgresql-server postgresql-contrib
+                              postgresql-server-devel libpq-devel make git
+                              redhat-rpm-config diffutils
+    - cd /tmp
+    - git clone https://gitlab.com/dalibo/postgresql_anonymizer.git
+    - cd postgresql_anonymizer
+    - make
+    - make install
+    - export PGDATA=/var/lib/postgresql/data
+    - mkdir -p $PGDATA
+    - chown postgres $PGDATA
+    - su postgres -c initdb
+    - su postgres -c "pg_ctl start"
+    - export PGUSER=postgres
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make installcheck || diff results tests/expected
+  when: manual
+
+
+##
+## D E P L O Y
+##
+
+docker_latest:
+  stage: deploy
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY/dalibo/postgresql_anonymizer:latest .
+                   --file docker/Dockerfile
+    - docker push $CI_REGISTRY/dalibo/postgresql_anonymizer:latest
+  only:
+    - master@dalibo/postgresql_anonymizer
+
+docker_stable:
+  stage: deploy
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY/dalibo/postgresql_anonymizer:stable .
+        --file docker/Dockerfile
+    - docker push $CI_REGISTRY/dalibo/postgresql_anonymizer:stable
+  only:
+    - stable@dalibo/postgresql_anonymizer
+
+debian_packages:
+  stage: build
+  image: postgres:14
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        postgresql-server-dev-all debhelper lintian make gcc
+    - make debian
+  artifacts:
+    paths:
+      - _build
+    expire_in: 1 day
+  except:
+    variables:
+      - $WINDOWS_ONLY
+
+
+pgxn:
+  stage: deploy
+  image: alpine
+  script:
+    - apk add -U make git zip
+    - make pgxn
+  artifacts:
+    paths:
+      - anon*
+      - _pgxn/
+    expire_in: 1 day
+  only:
+    - master
+
+windows_zip:
+  stage: deploy
+  image: alpine
+  script:
+    - apk add -U make git zip
+    - make windows_zip
+  only:
+    variables:
+      - $WINDOWS_ONLY
+
+data_zip:
+  stage: deploy
+  image: alpine
+  rules:
+    - if: $CI_COMMIT_TAG                 # Run this job when a tag is created
+  script:
+    - apk add -U make git zip curl
+    - make data_zip
+    - echo $DATA_ZIP_API_URL
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN"
+            --upload-file _build/postgresql_anonymizer_data_en_US.zip
+            "$DATA_ZIP_API_URL/postgresql_anonymizer_data_en_US.zip"'
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN"
+            --upload-file _build/postgresql_anonymizer_data_fr_FR.zip
+            "$DATA_ZIP_API_URL/postgresql_anonymizer_data_fr_FR.zip"'
+  artifacts:
+    paths:
+      - _build
+
+pages:
+  stage: deploy
+  image: alpine
+  script:
+    - apk add tree
+    - mkdir public
+    - cp docs/how-to/_build/* public
+    - tree ./public -H '.' -T "$title" -I "" --noreport --charset utf-8
+        > ./public/index.html
+  artifacts:
+    paths:
+      - public
+  only:
+    variables:
+      # git push -o ci.variable="CI_PUBLISH_PAGES=1"
+      - $CI_COMMIT_BRANCH == 'master' || $CI_PUBLISH_PAGES
+
+##
+## R E L E A S E
+##
+
+release_anon:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG                 # Run this job when a tag is created
+  script:
+    - echo "running release_job"
+  release:
+    tag_name: '$CI_COMMIT_TAG'
+    description: '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: 'English dataset'
+          url: '$DATA_ZIP_API_URL/postgresql_anonymizer_data_en_US.zip'
+          link_type: 'package'
+          filepath: 'postgresql_anonymizer_data_en_US.zip'
+        - name: 'French dataset'
+          url: '$DATA_ZIP_API_URL/postgresql_anonymizer_data_fr_FR.zip'
+          link_type: 'package'
+          filepath: 'postgresql_anonymizer_data_fr_FR.zip'
+
+release_pg_dump_anon:
+  stage: release
+  image:
+    name: goreleaser/goreleaser
+    entrypoint: ['']
+  only:
+    - tags
+  variables:
+    # Disable shallow cloning so that goreleaser can diff between tags to
+    # generate a changelog.
+    GIT_DEPTH: 0
+  script:
+    - cd pg_dump_anon
+    - goreleaser release --rm-dist

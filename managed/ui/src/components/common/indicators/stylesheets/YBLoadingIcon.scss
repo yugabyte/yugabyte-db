@@ -1,0 +1,463 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use "sass:color";
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/mixins.scss';
+
+.dashboard-container,
+.container-body {
+  .loading-icon-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin: -45px 0 0 -25px;
+  }
+}
+.loading-icon-container,
+.panel-body .loading-icon-container {
+  position: static;
+  font-size: 16px;
+  font-weight: 300;
+  margin: 15px auto;
+}
+
+.provider-config-container {
+  .loading-icon-container {
+    margin: 0;
+  }
+}
+
+.yb-loader-circle {
+  margin: 10px auto;
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+.yb-loader-circle .yb-child {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.yb-loader-circle .yb-child:before {
+  content: '';
+  display: block;
+  margin: 0 auto;
+  width: 15%;
+  height: 15%;
+  background-color: colors.$YB_ORANGE;
+  border-radius: 100%;
+  -webkit-animation: circleBounceDelay 1.2s infinite ease-in-out both;
+  animation: circleBounceDelay 1.2s infinite ease-in-out both;
+}
+.yb-loader-circle .yb-loader-circle2 {
+  @include mixins.spinner-transform(30deg);
+}
+.yb-loader-circle .yb-loader-circle3 {
+  @include mixins.spinner-transform(60deg);
+}
+.yb-loader-circle .yb-loader-circle4 {
+  @include mixins.spinner-transform(90deg);
+}
+.yb-loader-circle .yb-loader-circle5 {
+  @include mixins.spinner-transform(120deg);
+}
+.yb-loader-circle .yb-loader-circle6 {
+  @include mixins.spinner-transform(150deg);
+}
+.yb-loader-circle .yb-loader-circle7 {
+  @include mixins.spinner-transform(180deg);
+}
+.yb-loader-circle .yb-loader-circle8 {
+  @include mixins.spinner-transform(210deg);
+}
+.yb-loader-circle .yb-loader-circle9 {
+  @include mixins.spinner-transform(240deg);
+}
+.yb-loader-circle .yb-loader-circle10 {
+  @include mixins.spinner-transform(270deg);
+}
+.yb-loader-circle .yb-loader-circle11 {
+  @include mixins.spinner-transform(300deg);
+}
+.yb-loader-circle .yb-loader-circle12 {
+  @include mixins.spinner-transform(330deg);
+}
+.yb-loader-circle .yb-loader-circle2:before {
+  @include mixins.spinner-animation-delay(-1.1s);
+}
+.yb-loader-circle .yb-loader-circle3:before {
+  @include mixins.spinner-animation-delay(-1s);
+}
+.yb-loader-circle .yb-loader-circle4:before {
+  @include mixins.spinner-animation-delay(-0.9s);
+}
+.yb-loader-circle .yb-loader-circle5:before {
+  @include mixins.spinner-animation-delay(-0.8s);
+}
+.yb-loader-circle .yb-loader-circle6:before {
+  @include mixins.spinner-animation-delay(-0.7s);
+}
+.yb-loader-circle .yb-loader-circle7:before {
+  @include mixins.spinner-animation-delay(-0.6s);
+}
+.yb-loader-circle .yb-loader-circle8:before {
+  @include mixins.spinner-animation-delay(-0.5s);
+}
+.yb-loader-circle .yb-loader-circle9:before {
+  @include mixins.spinner-animation-delay(-0.4s);
+}
+.yb-loader-circle .yb-loader-circle10:before {
+  @include mixins.spinner-animation-delay(-0.3s);
+}
+.yb-loader-circle .yb-loader-circle11:before {
+  @include mixins.spinner-animation-delay(-0.2s);
+}
+.yb-loader-circle .yb-loader-circle12:before {
+  @include mixins.spinner-animation-delay(-0.1s);
+}
+
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle2 {
+  @include mixins.spinner-transform(45deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle3 {
+  @include mixins.spinner-transform(90deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle4 {
+  @include mixins.spinner-transform(135deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle5 {
+  @include mixins.spinner-transform(180deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle6 {
+  @include mixins.spinner-transform(225deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle7 {
+  @include mixins.spinner-transform(270deg);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle8 {
+  @include mixins.spinner-transform(315deg);
+}
+.yb-loader-circle.yb-loader-circle-small {
+  .yb-loader-circle9,
+  .yb-loader-circle10,
+  .yb-loader-circle11,
+  .yb-loader-circle12 {
+    display: none;
+  }
+}
+.yb-loader-circle.yb-loader-circle-small .yb-child-primary:before {
+  background-color: #44518b !important;
+}
+.yb-loader-circle.yb-loader-circle-small .yb-child:before {
+  content: '';
+  display: block;
+  margin: 0 auto;
+  width: 22.5%;
+  height: 22.5%;
+  background-color: colors.$YB_ORANGE;
+  border-radius: 100%;
+  -webkit-animation: circleBounceDelay 1.2s infinite ease-in-out both;
+  animation: circleBounceDelay 1.2s infinite ease-in-out both;
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle2:before {
+  @include mixins.spinner-animation-delay(-1.05s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle3:before {
+  @include mixins.spinner-animation-delay(-0.9s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle4:before {
+  @include mixins.spinner-animation-delay(-0.75s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle5:before {
+  @include mixins.spinner-animation-delay(-0.6s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle6:before {
+  @include mixins.spinner-animation-delay(-0.45s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle7:before {
+  @include mixins.spinner-animation-delay(-0.3s);
+}
+.yb-loader-circle.yb-loader-circle-small .yb-loader-circle8:before {
+  @include mixins.spinner-animation-delay(-0.15s);
+}
+
+.yb-loader-circle.yb-loader-circle-small {
+  margin: 10px auto;
+  width: 26px;
+  height: 26px;
+  position: relative;
+}
+
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle2 {
+  @include mixins.spinner-transform(45deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle3 {
+  @include mixins.spinner-transform(90deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle4 {
+  @include mixins.spinner-transform(135deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle5 {
+  @include mixins.spinner-transform(180deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle6 {
+  @include mixins.spinner-transform(225deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle7 {
+  @include mixins.spinner-transform(270deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle8 {
+  @include mixins.spinner-transform(315deg);
+}
+.yb-loader-circle.yb-loader-circle-xsmall {
+  .yb-loader-circle9,
+  .yb-loader-circle10,
+  .yb-loader-circle11,
+  .yb-loader-circle12 {
+    display: none;
+  }
+}
+
+.yb-loader-circle.yb-loader-circle-xsmall .yb-child-primary:before {
+  background-color: #44518b !important;
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-child:before {
+  content: '';
+  display: block;
+  margin: 0 auto;
+  width: 22.5%;
+  height: 22.5%;
+  background-color: colors.$YB_ORANGE;
+  border-radius: 100%;
+  -webkit-animation: circleBounceDelay 1.2s infinite ease-in-out both;
+  animation: circleBounceDelay 1.2s infinite ease-in-out both;
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle2:before {
+  @include mixins.spinner-animation-delay(-1.05s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle3:before {
+  @include mixins.spinner-animation-delay(-0.9s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle4:before {
+  @include mixins.spinner-animation-delay(-0.75s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle5:before {
+  @include mixins.spinner-animation-delay(-0.6s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle6:before {
+  @include mixins.spinner-animation-delay(-0.45s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle7:before {
+  @include mixins.spinner-animation-delay(-0.3s);
+}
+.yb-loader-circle.yb-loader-circle-xsmall .yb-loader-circle8:before {
+  @include mixins.spinner-animation-delay(-0.15s);
+}
+
+.yb-loader-circle.yb-loader-circle-xsmall {
+  margin: 10px auto;
+  width: 20px;
+  height: 20px;
+  position: relative;
+}
+
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle2 {
+  @include mixins.spinner-transform(45deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle3 {
+  @include mixins.spinner-transform(90deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle4 {
+  @include mixins.spinner-transform(135deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle5 {
+  @include mixins.spinner-transform(180deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle6 {
+  @include mixins.spinner-transform(225deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle7 {
+  @include mixins.spinner-transform(270deg);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle8 {
+  @include mixins.spinner-transform(315deg);
+}
+.yb-loader-circle.yb-loader-circle-inline {
+  .yb-loader-circle9,
+  .yb-loader-circle10,
+  .yb-loader-circle11,
+  .yb-loader-circle12 {
+    display: none;
+  }
+}
+
+.yb-loader-circle.yb-loader-circle-inline .yb-child-primary:before {
+  background-color: #44518b !important;
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-child:before {
+  content: '';
+  display: block;
+  margin: 0 auto;
+  width: 22.5%;
+  height: 22.5%;
+  background-color: colors.$YB_ORANGE;
+  border-radius: 100%;
+  -webkit-animation: circleBounceDelay 1.2s infinite ease-in-out both;
+  animation: circleBounceDelay 1.2s infinite ease-in-out both;
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle2:before {
+  @include mixins.spinner-animation-delay(-1.05s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle3:before {
+  @include mixins.spinner-animation-delay(-0.9s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle4:before {
+  @include mixins.spinner-animation-delay(-0.75s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle5:before {
+  @include mixins.spinner-animation-delay(-0.6s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle6:before {
+  @include mixins.spinner-animation-delay(-0.45s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle7:before {
+  @include mixins.spinner-animation-delay(-0.3s);
+}
+.yb-loader-circle.yb-loader-circle-inline .yb-loader-circle8:before {
+  @include mixins.spinner-animation-delay(-0.15s);
+}
+
+.yb-loader-circle.yb-loader-circle-inline {
+  margin: 10px auto;
+  width: 14px;
+  height: 14px;
+  position: relative;
+  display: inline-block;
+  margin: 0 auto;
+  margin-right: 5px;
+  top: 2px;
+}
+
+@-webkit-keyframes circleBounceDelay {
+  0%,
+  80%,
+  100% {
+    -webkit-transform: scale(0);
+    transform: scale(0);
+  }
+  40% {
+    -webkit-transform: scale(1);
+    transform: scale(1);
+  }
+}
+
+@keyframes circleBounceDelay {
+  0%,
+  80%,
+  100% {
+    -webkit-transform: scale(0);
+    transform: scale(0);
+  }
+  40% {
+    -webkit-transform: scale(1);
+    transform: scale(1);
+  }
+}
+
+.yb-loader-linear {
+  height: 20px;
+  display: block;
+
+  div {
+    &,
+    &:before,
+    &:after {
+      border-radius: 50%;
+      width: 2.5em;
+      height: 2.5em;
+      -webkit-animation-fill-mode: both;
+      animation-fill-mode: both;
+      -webkit-animation: load7 1.2s infinite ease-in-out;
+      animation: load7 1.2s infinite ease-in-out;
+      vertical-align: middle;
+    }
+
+    & {
+      color: #ffffff;
+      font-size: 10px;
+      margin: 0 auto;
+
+      position: relative;
+      text-indent: -9999em;
+      -webkit-transform: translateZ(0);
+      -ms-transform: translateZ(0);
+      transform: translateZ(0);
+      -webkit-animation-delay: -0.124s;
+      animation-delay: -0.14s;
+    }
+
+    &:before,
+    &:after {
+      content: '';
+      position: absolute;
+      top: 0;
+    }
+    &:before {
+      left: -3.5em;
+      -webkit-animation-delay: -0.28s;
+      animation-delay: -0.28s;
+    }
+    &:after {
+      left: 3.5em;
+    }
+  }
+}
+
+@-webkit-keyframes load7 {
+  0%,
+  70%,
+  100% {
+    box-shadow: 0 2.5em 0 -1.3em;
+  }
+  30% {
+    box-shadow: 0 2.5em 0 0;
+  }
+}
+@keyframes load7 {
+  0%,
+  70%,
+  100% {
+    box-shadow: 0 2.5em 0 -1.3em;
+  }
+  30% {
+    box-shadow: 0 2.5em 0 0;
+  }
+}
+
+.btn {
+  .yb-loader-linear div {
+    & {
+      font-size: 6px;
+      -webkit-transform: translateZ(0) translateY(calc(-2.5em + 6px)) scale(0.8, 0.8);
+      -ms-transform: translateZ(0) translateY(calc(-2.5em + 6px)) scale(0.8, 0.8);
+      transform: translateZ(0) translateY(calc(-2.5em + 6px)) scale(0.8, 0.8);
+    }
+  }
+  &.btn-default {
+    .yb-loader-linear div {
+      & {
+        color: colors.$YB_SUBTITLE_COLOR;
+      }
+    }
+  }
+  &.btn-orange {
+    .yb-loader-linear div {
+      & {
+        color: color.adjust(colors.$YB_ORANGE, $lightness: -15%);
+      }
+    }
+  }
+}

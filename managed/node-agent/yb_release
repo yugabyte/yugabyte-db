@@ -1,0 +1,74 @@
+#!/bin/bash
+# Copyright (c) YugaByte, Inc.
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
+set -euo pipefail
+
+print_help() {
+  cat <<-EOT
+Generates the node agent packages in destination.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the binary should be copied.
+  -l, --local
+    Generate pre-release packages in /opt/yugabyte/node-agent/releases.
+  -p, --rebuild_pex
+    Build ansible only pex for node agent.
+EOT
+}
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
+
+destination=""
+local=""
+pre_release=""
+include_pex=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+    ;;
+    -l|--local)
+      local="true"
+    ;;
+    -p|--include_pex)
+      include_pex="--include_pex"
+    ;;
+  esac
+  shift
+done
+
+if [[ "$local" == "true" ]]; then
+  pre_release="--pre_release"
+  if [[ ! -d $destination ]]; then
+    destination="/opt/yugabyte/node-agent/releases"
+    mkdir -p "$destination"
+  fi
+elif [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+
+activate_virtualenv
+$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination \
+                                                            $pre_release $include_pex

@@ -1,0 +1,182 @@
+@use '../../../_style/colors.scss';
+
+.universe-status {
+  display: inline-block;
+  font-size: 16px;
+  font-weight: 500;
+  margin-left: 24px;
+  line-height: 42px;
+
+  &.good {
+    color: colors.$YB_SUCCESS_COLOR;
+  }
+
+  &.paused {
+    color: colors.$YB_WARNING_COLOR;
+  }
+
+  &.pending {
+    margin-top: 0 !important;
+    margin-bottom: 0;
+    color: colors.$YB_PENDING_COLOR;
+  }
+
+  &.bad {
+    color: colors.$YB_FAIL_COLOR;
+  }
+
+  &.warning {
+    color: colors.$YB_WARNING_COLOR;
+  }
+
+  &.unknown {
+    color: colors.$YB_PENDING_COLOR;
+  }
+
+  span {
+    display: inline-block;
+    padding-left: 4px;
+  }
+
+  .view-task-details-btn {
+    margin-left: 17px !important;
+    font-weight: 500;
+    font-size: 12px;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+    border-radius: 6px;
+    line-height: 12px;
+    padding: 5px 10px;
+  }
+}
+
+.status-success-item {
+  width: 26px;
+  border-radius: 50%;
+  height: 26px;
+  padding: 0;
+  color: white;
+  background-color: colors.$YB_SUCCESS_COLOR;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.status-success-item i {
+  line-height: 26px;
+  margin-left: 3px;
+  font-size: 15px;
+}
+
+.status-failure-item {
+  width: 0;
+  height: 0;
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
+  border-bottom: 24px solid colors.$YB_FAIL_COLOR;
+  color: white;
+  padding: 0;
+  margin: 0;
+  display: inline-block;
+}
+
+.status-success-label {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.status-failure-container {
+  float: right;
+  margin-top: 6px;
+}
+
+.status-failure-item i {
+  padding: 0;
+  width: 50%;
+  margin: 0 0 0 -2px;
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.status-failure-name {
+  display: inline-block;
+  color: colors.$YB_FAIL_COLOR;
+  font-size: 15px;
+  font-weight: 500;
+  padding-left: 6px;
+}
+
+.status-pending-display-container {
+  display: inline-block;
+  color: colors.$YB_ORANGE;
+  float: right;
+
+  .yb-loader-circle {
+    margin: 0;
+    display: inline-block;
+    top: 7px;
+  }
+}
+
+.status-pending-display-container .fa-spin {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.status-pending-name {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 500;
+  padding-left: 6px;
+}
+
+.pending-action-progress {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.status-pending-progress-container {
+  display: inline-block;
+  position: relative;
+  top: 8px;
+  width: 120px;
+
+  .progress-bar {
+    background-color: colors.$YB_ORANGE;
+  }
+}
+
+.status-pending {
+  float: right;
+}
+
+.status-error {
+  display: flex;
+  align-items: center;
+
+  &__reason {
+    max-width: 215px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  &__noHideText {
+    width: 'auto';
+    white-space: nowrap;
+  }
+}
+
+.universe-pending-spinner {
+  display: inline;
+}
+
+.pre-finalize-pending {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #c88900;
+}
+
+.blue-loader {
+  color: #44518b;
+}

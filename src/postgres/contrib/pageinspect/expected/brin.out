@@ -1,0 +1,90 @@
+CREATE TABLE test1 (a int, b text);
+INSERT INTO test1 VALUES (1, 'one');
+CREATE INDEX test1_a_idx ON test1 USING brin (a);
+SELECT brin_page_type(get_raw_page('test1_a_idx', 0));
+ brin_page_type 
+----------------
+ meta
+(1 row)
+
+SELECT brin_page_type(get_raw_page('test1_a_idx', 1));
+ brin_page_type 
+----------------
+ revmap
+(1 row)
+
+SELECT brin_page_type(get_raw_page('test1_a_idx', 2));
+ brin_page_type 
+----------------
+ regular
+(1 row)
+
+SELECT * FROM brin_metapage_info(get_raw_page('test1_a_idx', 0));
+   magic    | version | pagesperrange | lastrevmappage 
+------------+---------+---------------+----------------
+ 0xA8109CFA |       1 |           128 |              1
+(1 row)
+
+SELECT * FROM brin_metapage_info(get_raw_page('test1_a_idx', 1));
+ERROR:  page is not a BRIN page of type "metapage"
+DETAIL:  Expected special type 0000f091, got 0000f092.
+SELECT * FROM brin_revmap_data(get_raw_page('test1_a_idx', 0)) LIMIT 5;
+ERROR:  page is not a BRIN page of type "revmap"
+DETAIL:  Expected special type 0000f092, got 0000f091.
+SELECT * FROM brin_revmap_data(get_raw_page('test1_a_idx', 1)) LIMIT 5;
+ pages 
+-------
+ (2,1)
+ (0,0)
+ (0,0)
+ (0,0)
+ (0,0)
+(5 rows)
+
+SELECT * FROM brin_page_items(get_raw_page('test1_a_idx', 2), 'test1_a_idx')
+    ORDER BY blknum, attnum LIMIT 5;
+ itemoffset | blknum | attnum | allnulls | hasnulls | placeholder |  value   
+------------+--------+--------+----------+----------+-------------+----------
+          1 |      0 |      1 | f        | f        | f           | {1 .. 1}
+(1 row)
+
+-- Failure for non-BRIN index.
+CREATE INDEX test1_a_btree ON test1 (a);
+SELECT brin_page_items(get_raw_page('test1_a_btree', 0), 'test1_a_btree');
+ERROR:  "test1_a_btree" is not a BRIN index
+-- Mask DETAIL messages as these are not portable across architectures.
+\set VERBOSITY terse
+-- Invalid special area size
+SELECT brin_page_type(get_raw_page('test1', 0));
+ERROR:  input page is not a valid BRIN page
+SELECT * FROM brin_metapage_info(get_raw_page('test1', 0));
+ERROR:  input page is not a valid BRIN page
+SELECT * FROM brin_revmap_data(get_raw_page('test1', 0));
+ERROR:  input page is not a valid BRIN page
+\set VERBOSITY default
+-- Tests with all-zero pages.
+SHOW block_size \gset
+SELECT brin_page_type(decode(repeat('00', :block_size), 'hex'));
+ brin_page_type 
+----------------
+ 
+(1 row)
+
+SELECT brin_page_items(decode(repeat('00', :block_size), 'hex'), 'test1_a_idx');
+ brin_page_items 
+-----------------
+(0 rows)
+
+SELECT brin_metapage_info(decode(repeat('00', :block_size), 'hex'));
+ brin_metapage_info 
+--------------------
+ 
+(1 row)
+
+SELECT brin_revmap_data(decode(repeat('00', :block_size), 'hex'));
+ brin_revmap_data 
+------------------
+ 
+(1 row)
+
+DROP TABLE test1;

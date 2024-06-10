@@ -1,0 +1,108 @@
+CREATE TABLE test1 (a int8, b int4range);
+INSERT INTO test1 VALUES (72057594037927937, '[0,1)');
+CREATE INDEX test1_a_idx ON test1 USING btree (a);
+\x
+SELECT * FROM bt_metap('test1_a_idx');
+-[ RECORD 1 ]-------------+-------
+magic                     | 340322
+version                   | 4
+root                      | 1
+level                     | 0
+fastroot                  | 1
+fastlevel                 | 0
+last_cleanup_num_delpages | 0
+last_cleanup_num_tuples   | -1
+allequalimage             | t
+
+SELECT * FROM bt_page_stats('test1_a_idx', -1);
+ERROR:  invalid block number
+SELECT * FROM bt_page_stats('test1_a_idx', 0);
+ERROR:  block 0 is a meta page
+SELECT * FROM bt_page_stats('test1_a_idx', 1);
+-[ RECORD 1 ]-+-----
+blkno         | 1
+type          | l
+live_items    | 1
+dead_items    | 0
+avg_item_size | 16
+page_size     | 8192
+free_size     | 8128
+btpo_prev     | 0
+btpo_next     | 0
+btpo_level    | 0
+btpo_flags    | 3
+
+SELECT * FROM bt_page_stats('test1_a_idx', 2);
+ERROR:  block number out of range
+SELECT * FROM bt_page_items('test1_a_idx', -1);
+ERROR:  invalid block number
+SELECT * FROM bt_page_items('test1_a_idx', 0);
+ERROR:  block 0 is a meta page
+SELECT * FROM bt_page_items('test1_a_idx', 1);
+-[ RECORD 1 ]-----------------------
+itemoffset | 1
+ctid       | (0,1)
+itemlen    | 16
+nulls      | f
+vars       | f
+data       | 01 00 00 00 00 00 00 01
+dead       | f
+htid       | (0,1)
+tids       | 
+
+SELECT * FROM bt_page_items('test1_a_idx', 2);
+ERROR:  block number out of range
+SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', -1));
+ERROR:  invalid block number
+SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 0));
+ERROR:  block is a meta page
+SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 1));
+-[ RECORD 1 ]-----------------------
+itemoffset | 1
+ctid       | (0,1)
+itemlen    | 16
+nulls      | f
+vars       | f
+data       | 01 00 00 00 00 00 00 01
+dead       | f
+htid       | (0,1)
+tids       | 
+
+SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 2));
+ERROR:  block number 2 is out of range for relation "test1_a_idx"
+-- Failure when using a non-btree index.
+CREATE INDEX test1_a_hash ON test1 USING hash(a);
+SELECT bt_metap('test1_a_hash');
+ERROR:  "test1_a_hash" is not a btree index
+SELECT bt_page_stats('test1_a_hash', 0);
+ERROR:  "test1_a_hash" is not a btree index
+SELECT bt_page_items('test1_a_hash', 0);
+ERROR:  "test1_a_hash" is not a btree index
+SELECT bt_page_items(get_raw_page('test1_a_hash', 0));
+ERROR:  block is a meta page
+CREATE INDEX test1_b_gist ON test1 USING gist(b);
+-- Special area of GiST is the same as btree, this complains about inconsistent
+-- leaf data on the page.
+SELECT bt_page_items(get_raw_page('test1_b_gist', 0));
+ERROR:  block is not a valid btree leaf page
+-- Several failure modes.
+-- Suppress the DETAIL message, to allow the tests to work across various
+-- page sizes and architectures.
+\set VERBOSITY terse
+-- invalid page size
+SELECT bt_page_items('aaa'::bytea);
+ERROR:  invalid page size
+-- invalid special area size
+CREATE INDEX test1_a_brin ON test1 USING brin(a);
+SELECT bt_page_items(get_raw_page('test1', 0));
+ERROR:  input page is not a valid btree page
+SELECT bt_page_items(get_raw_page('test1_a_brin', 0));
+ERROR:  input page is not a valid btree page
+\set VERBOSITY default
+-- Tests with all-zero pages.
+SHOW block_size \gset
+SELECT bt_page_items(decode(repeat('00', :block_size), 'hex'));
+-[ RECORD 1 ]-+-
+bt_page_items | 
+
+DROP TABLE test1;

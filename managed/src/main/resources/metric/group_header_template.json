@@ -1,0 +1,12 @@
+{
+    "collapsed": false,
+    "datasource": "$datasource",
+    "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+    },
+    "panels": [],
+    "type": "row"
+}

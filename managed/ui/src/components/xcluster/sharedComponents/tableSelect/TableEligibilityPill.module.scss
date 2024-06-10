@@ -1,0 +1,16 @@
+@use '../../../../_style/colors.scss';
+
+.pill {
+  height: fit-content;
+  padding: 4px 6px;
+
+  font-size: 10px;
+  border-radius: 6px;
+
+  &.bad {
+    background: colors.$YB_LABEL_DANGER_BACKGROUND;
+  }
+  &.good {
+    background: colors.$YB_LABEL_GOOD_BACKGROUND;
+  }
+}

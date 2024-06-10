@@ -1,0 +1,95 @@
+<!-- doc/src/sgml/release.sgml -->
+<!--
+
+Typical markup:
+
+&<>                             use & escapes
+PostgreSQL                      <productname>
+postgresql.conf, pg_hba.conf    <filename>
+\<[A-Z][A-Z_ ]+[A-Z_]\>         <command>, <literal>, <envar>, <acronym>
+\<[A-Za-z_][A-Za-z0-9_]+()      <function>
+\-\-?[A-Za-z_]+[-A-Za-z_]*      <option> (use backslashes to avoid SGML markup)
+\<[A-Za-z_]+/[A-Za-z_]+\>       <filename>
+psql                            <application>
+pg_[A-Za-z0-9_]+                <application>, <structname>
+\<[A-Z][A-Z][A-Z_ ]*\>          <type>
+\<[a-z]+_[a-z_]+\>              <varname>, <structfield>
+                                <systemitem class="osname">
+
+non-ASCII characters            find using grep -P '[\x80-\xFF]'
+                                convert to HTML4 named entity (&) escapes
+
+        official:      http://www.w3.org/TR/html4/sgml/entities.html
+        one page:      http://www.zipcon.net/~swhite/docs/computers/browsers/entities_page.html
+        other lists:   http://www.zipcon.net/~swhite/docs/computers/browsers/entities.html
+                       http://www.zipcon.net/~swhite/docs/computers/browsers/entities_page.html
+                       https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
+
+        We cannot use UTF8 because back branches still use SGML Docbook,
+        which does not support it.  Also, rendering engines have to
+        support the referenced characters.
+
+        Do not use numeric _UTF_ numeric character escapes (&#nnn;),
+        we can only use Latin1.
+
+        Example: Alvaro Herrera is &Aacute;lvaro Herrera
+        Find non-ASCII characters (remove 'X'):
+             grep -X-color='auto' -P -n "[\x80-\xFF]"
+
+wrap long lines
+
+For new features, add links to the documentation sections.
+
+-->
+
+<appendix id="release">
+ <title>Release Notes</title>
+
+  <para>
+   The release notes contain the significant changes in each
+   <productname>PostgreSQL</productname> release, with major features and migration
+   issues listed at the top.  The release notes do not contain changes
+   that affect only a few users or changes that are internal and therefore not
+   user-visible.  For example, the optimizer is improved in almost every
+   release, but the improvements are usually observed by users as simply
+   faster queries.
+  </para>
+
+  <para>
+   A complete list of changes for each release can be obtained by
+   viewing the <link linkend="git">Git</link> logs for each release.
+   The <ulink
+   url="https://www.postgresql.org/list/pgsql-committers/"><literal>pgsql-committers</literal>
+   email list</ulink> records all source code changes as well.  There is also
+   a <ulink url="https://git.postgresql.org/gitweb/?p=postgresql.git;a=summary">web
+   interface</ulink> that shows changes to specific files.
+  </para>
+
+  <para>
+   The name appearing next to each item represents the major developer for
+   that item.  Of course all changes involve community discussion and patch
+   review, so each item is truly a community effort.
+  </para>
+
+<!--
+  When beginning a new major-release series, create a new release-NN.sgml
+  file, removing the previous one, and change the &-reference here.
+  Don't forget to update filelist.sgml.
+
+  The reason for keeping each branch's release notes in a differently-named
+  file is to reduce confusion when preparing minor-release updates.
+  All the active branches have to be edited concurrently when doing that.
+-->
+
+&release-15;
+
+ <sect1 id="release-prior">
+  <title>Prior Releases</title>
+
+  <para>
+   Release notes for prior release branches can be found at
+   <ulink url="https://www.postgresql.org/docs/release/"><literal>https://www.postgresql.org/docs/release/</literal></ulink>
+  </para>
+ </sect1>
+
+</appendix>

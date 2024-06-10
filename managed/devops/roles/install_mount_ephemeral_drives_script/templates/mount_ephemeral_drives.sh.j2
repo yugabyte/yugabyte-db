@@ -1,0 +1,290 @@
+#!/bin/bash
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This script detects any ephemeral drives on an EC2 node and mounts them
+# at /mnt/d0, /mnt/d1, etc. The /etc/fstab file is also updated so that
+# if the machine reboots, these drives are mounted back.
+#
+# This script is based on (is a customized version of) the script:
+#     https://gist.github.com/joemiller/6049831
+#
+set -euo pipefail
+
+readonly CLOUD_TYPE="{{ cloud_type }}"
+readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
+readonly MOUNT_PATHS="{{ mount_paths }}"
+readonly LUN_INDEXES="{{ disk_lun_indexes }}"
+readonly IMDSv2Required="{{ imdsv2required }}"
+
+{% raw %}
+should_check_aws_meta() {
+  [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
+}
+
+if [[ "$IMDSv2Required" == "True" ]]; then
+  TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 120")
+  CURL_COMMANND="curl -H \"X-aws-ec2-metadata-token: $TOKEN\""
+else 
+  CURL_COMMANND="curl"
+fi
+# Figure out how many ephemerals we have by querying the metadata API, and then:
+#  - convert the drive name returned from the API to the hosts DRIVE_SCHEME, if necessary
+#  - verify a matching device is available in /dev/
+#  - mount the drives at the provided mount points
+readonly METADATA_URL_BASE="http://169.254.169.254/2012-01-12"
+
+# arg: ephemeral
+get_device_path() {
+  local ephemeral_name=$1
+  local output=
+  if should_check_aws_meta; then
+    output=$($CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/$ephemeral_name)
+  else
+    output=$ephemeral_name
+  fi
+  get_device_path_rv="/dev/$output"
+}
+
+get_azu_scsi_drives() {
+  # Check if we have enough LUN indexes passed.
+  lun_indexes=( $LUN_INDEXES )
+  num_lun_indexes=${#lun_indexes[@]}
+  if [[ $num_lun_indexes -lt ${#mounts[@]} ]]; then
+    echo >&2 "Too less LUN indexes provided, cannot mount all the devices."
+    exit
+  fi
+
+  get_azu_scsi_drives_rv=""
+
+  # Iterate through LUN indexes to search device names.
+  lun_indexes=( $LUN_INDEXES )
+  for (( i=0; i<$num_lun_indexes; ++i )); do
+    current_lun_index=${lun_indexes[i]}
+    device=$(ls -l /dev/disk/azure/scsi1/lun$current_lun_index | awk -F'/' '{print $NF}' | grep -o "sd\w*$")
+    # Checking vendor.
+    device_info=$(lsscsi | awk -v device="/dev/$device" '($7 == device) && ($3 == "Msft") && ($4 == "Virtual") && ($5 == "Disk") {print $0}')
+    if [ -n "$device" ] && [ -n "$device_info" ]; then
+      get_azu_scsi_drives_rv="$get_azu_scsi_drives_rv $device"
+    fi
+  done
+}
+
+get_ephemeral_drives() {
+  if should_check_aws_meta; then
+    local -i attempt=0
+    local ephemerals=""
+    while true; do
+      if $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/ | grep block-device-mapping >/dev/null; then
+        break
+      fi
+      echo >&2 "$METADATA_URL_BASE/meta-data/block-device-mapping not yet available"
+      echo >&2 "Retrying after 200ms..."
+      sleep 0.2
+      let attempt+=1
+      if [[ $attempt -ge 300 ]]; then
+        echo "Retried enough times. Exiting..."
+        exit 1
+      fi
+    done
+
+    # Verify that we can curl this URL successfully.
+    $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ >/dev/null
+
+    # Turn off error checking and grep for ephemeral drives. We won't fail even if none are present.
+    set +e
+    get_ephemeral_drives_rv=$(
+        $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
+    set -e
+  elif [[ $CLOUD_TYPE == "azu" ]]; then
+    get_azu_scsi_drives
+    get_ephemeral_drives_rv=$get_azu_scsi_drives_rv
+  else
+    get_ephemeral_drives_rv=$DEFAULT_SSD_DRIVES
+  fi
+}
+
+# Starting a block whose output will be redirected to syslog.
+(
+  declare -i exit_code=0
+
+  # Take into account xvdb or sdb
+  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
+
+  if [[ "$root_drive" =~ .*xvd.* ]]; then
+    echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
+    DRIVE_SCHEME='xvd'
+  elif [[ "$root_drive" =~ .*nvme.* ]]; then
+    echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
+    DRIVE_SCHEME='nvme'
+  else
+    echo "Detected 'sd' drive naming scheme (root: $root_drive)"
+    DRIVE_SCHEME='sd'
+  fi
+
+  declare -g mounts=( $MOUNT_PATHS )
+
+  get_ephemeral_drives
+  ephemerals=( $get_ephemeral_drives_rv )
+
+  declare -i num_devices=${#ephemerals[@]}
+
+  if [[ $num_devices -eq 0 ]]; then
+    echo "Found no volumes to mount"
+    exit
+  fi
+
+  echo "============================"
+  echo "Drives supporting SSDs:"
+  echo "${ephemerals[@]}"
+  echo "============================"
+
+  # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
+  # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
+  if [[ ${#mounts[@]} -eq 0 ]]; then
+    echo >&2 "No mount points provided, cannot mount any devices."
+    exit 1
+  fi
+
+  if [[ ${#mounts[@]} -lt $num_devices ]]; then
+    echo >&2 "Only ${#mounts[@]} mount points provided: $MOUNT_PATHS, but num_devices=$num_devices."
+    declare -i num_devices=${#mounts[@]}
+    echo >&2 "Will only mount $num_devices volumes, and return an error after that."
+    exit_code=1
+  fi
+
+  declare -g eph_idx=0
+  declare -g max_iterations=$((num_devices+1))
+  # iterate through 1 more than num_devices to skip over root volume
+  for (( i=0; i<max_iterations; ++i )); do
+    fs_opts="defaults,noatime,nofail,allocsize=4m"
+    e=${ephemerals[eph_idx]}
+    echo "Probing $e ..."
+    # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
+    # In which case we want to make the device path to match that
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
+    if [[ "$DRIVE_SCHEME" == "nvme" ]]; then
+        device_idx=$((i))
+        device_path="/dev/nvme${device_idx}n1"
+    else
+        get_device_path "$e"
+        device_path=$get_device_path_rv
+
+        # If needed, convert 'sdb' -> 'xvdb'
+        device_path=$(echo $device_path | sed "s/sd/$DRIVE_SCHEME/")
+    fi
+
+    echo "Device path $device_path"
+
+    if ! [[ -b "$device_path" ]]; then
+      echo "Ephemeral disk $e, $device_path is not present. Skipping."
+      continue
+    fi
+
+    # In aws we cannot clearly identify whether disk is provided with ami or added by yba
+    # So if we see that disk is already mounted to some mount point that is not managed by yba
+    # then we skip it
+    declare -g active_mount_points=$(lsblk -o MOUNTPOINT -nr "$device_path" | grep -v '^$')
+    if ! [[ -z "$active_mount_points" ]]; then
+      declare -g mount_points_arr=(${active_mount_points})
+      for value in "${mount_points_arr[@]}"
+      do
+        if ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
+          echo "$device_path is mounted at $value, which is not expected to be managed by yba"
+          max_iterations=$((max_iterations+1))
+          continue 2
+        fi
+      done
+    fi
+
+    # Test that the device actually exists since you can request more ephemeral drives than are
+    # available for an instance type and the meta-data API will happily tell you it exists when it
+    # really does not.
+    # Also check to make sure we don't try to mount on root volume
+    if ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
+      echo "Detected ephemeral disk: $device_path"
+      set +e
+      # NOTE: This does not seem to return the actual file system
+      file_system=$(/sbin/blkid -o value -s TYPE -c /dev/null $device_path)
+      blkid_error=$?
+      set -e
+      # On some EC2 instance types (e.g., i2.4xlarge), the above command or fdisk doesn't discover
+      # the drive correctly. It in turn returns an exit code of 2 indicating that the drive was not
+      # found.  In that case, we go ahead and create XFS on that drive.
+      if [[ $blkid_error -ne 0 && $blkid_error -ne 2 ]]; then
+        echo "blkid returned exit code $blkid_error for $device_path"
+        exit 1
+      fi
+      if [[ $blkid_error -eq 2 || $file_system != xfs ]]; then
+        if [[ -f /sbin/mkfs.xfs ]]; then
+          echo "Creating xfs on: " $device_path
+          /sbin/mkfs.xfs $device_path -f
+          file_system=xfs
+          fs_opts="${fs_opts},ikeep"
+        else
+          echo "mkfs.xfs not found. Using the default - $file_system"
+        fi
+      fi
+
+      mount_path=${mounts[$eph_idx]}
+
+      mkdir -p "$mount_path"
+      chmod 777 "$mount_path"
+
+      device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
+      echo "device uuid = $device_uuid"
+
+      if grep -q "#$mount_path" /etc/fstab; then
+        echo "Entry for $mount_path in fstab already exists."
+        if egrep -q "^$device_path .*" /etc/fstab; then
+          echo "Device $device_path is mounted not using UUID, need to rewrite"
+          sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
+        fi
+      else
+        echo "Adding entry for $mount_path to fstab..."
+        echo "#$mount_path" >> /etc/fstab
+        # Mounting using UUID
+        echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
+                        >> /etc/fstab
+      fi
+      echo "checking actual path"
+      already_mounted=false
+      # Sometimes link does not exist at the time of checking
+      if test -e "/dev/disk/by-uuid/$device_uuid"; then
+        actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+        echo "actual_path is $actual_path"
+        mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
+      fi
+      if $already_mounted; then
+        echo "$device_path is already mounted on $mount_path"
+      else
+        echo "Mounting $device_path on $mount_path"
+        ( set -x; mount $device_path $mount_path )
+      fi
+      # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
+      # there's a better way to set the permissions in fstab itself. But couldn't find one that
+      # works. For now, updating the permissions again. On subsequent mount/umounts, this problem
+      # does not happen. So we are covered on that front (e.g. as might happen during a reboot).
+      chmod 777 $mount_path
+      # only increment ephemeral index when mount path is used for a device
+      eph_idx=$((eph_idx+1))
+      # break when we are done with all mounts
+      if [ "$eph_idx" = "$num_devices" ]; then
+        break
+      fi
+    else
+      echo "Ephemeral disk $e, $device_path is a part of root $root_drive. Skipping."
+    fi
+  done
+
+  exit $exit_code
+
+  {% endraw %}
+
+) 2>&1 | logger -t "${0##*/}"

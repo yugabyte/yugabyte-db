@@ -1,0 +1,550 @@
+<!-- doc/src/sgml/biblio.sgml -->
+
+ <bibliography id="biblio">
+  <title>Bibliography</title>
+
+  <para>
+   Selected references and readings for <acronym>SQL</acronym>
+   and <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   Some white papers and technical reports from the original
+   <productname>POSTGRES</productname> development team
+   are available at the University of California, Berkeley, Computer Science
+   Department <ulink url="https://dsf.berkeley.edu/papers/">web site</ulink>.
+  </para>
+
+  <bibliodiv>
+   <title><acronym>SQL</acronym> Reference Books</title>
+
+   <biblioentry id="bowman01">
+    <title>The Practical <acronym>SQL</acronym> Handbook</title>
+    <subtitle>Using SQL Variants</subtitle>
+    <edition>Fourth Edition</edition>
+    <authorgroup>
+     <author>
+      <firstname>Judith</firstname>
+      <surname>Bowman</surname>
+     </author>
+     <author>
+      <firstname>Sandra</firstname>
+      <surname>Emerson</surname>
+     </author>
+     <author>
+      <firstname>Marcy</firstname>
+      <surname>Darnovsky</surname>
+     </author>
+    </authorgroup>
+    <isbn>0-201-70309-2</isbn>
+    <publisher>
+     <publishername>Addison-Wesley Professional</publishername>
+    </publisher>
+    <pubdate>2001</pubdate>
+   </biblioentry>
+
+   <biblioentry id="date97">
+    <title>A Guide to the <acronym>SQL</acronym> Standard</title>
+    <subtitle>A user's guide to the standard database language <acronym>SQL</acronym></subtitle>
+    <edition>Fourth Edition</edition>
+    <authorgroup>
+     <author>
+      <firstname>C. J.</firstname>
+      <surname>Date</surname>
+     </author>
+     <author>
+      <firstname>Hugh</firstname>
+      <surname>Darwen</surname>
+     </author>
+    </authorgroup>
+    <isbn>0-201-96426-0</isbn>
+    <publisher>
+     <publishername>Addison-Wesley</publishername>
+    </publisher>
+    <pubdate>1997</pubdate>
+   </biblioentry>
+
+   <biblioentry id="date04">
+    <title>An Introduction to Database Systems</title>
+    <edition>Eighth Edition</edition>
+    <authorgroup>
+     <author>
+      <firstname>C. J.</firstname>
+      <surname>Date</surname>
+     </author>
+    </authorgroup>
+    <isbn>0-321-19784-4</isbn>
+    <publisher>
+     <publishername>Addison-Wesley</publishername>
+    </publisher>
+    <pubdate>2003</pubdate>
+   </biblioentry>
+
+  <biblioentry id="elma04">
+   <title>Fundamentals of Database Systems</title>
+   <edition>Fourth Edition</edition>
+   <authorgroup>
+    <author>
+     <firstname>Ramez</firstname>
+     <surname>Elmasri</surname>
+    </author>
+    <author>
+     <firstname>Shamkant</firstname>
+     <surname>Navathe</surname>
+    </author>
+   </authorgroup>
+   <isbn>0-321-12226-7</isbn>
+   <publisher>
+    <publishername>Addison-Wesley</publishername>
+   </publisher>
+   <pubdate>2003</pubdate>
+  </biblioentry>
+
+   <biblioentry id="melt93">
+    <title>Understanding the New <acronym>SQL</acronym></title>
+    <subtitle>A complete guide</subtitle>
+    <authorgroup>
+     <author>
+      <firstname>Jim</firstname>
+      <surname>Melton</surname>
+     </author>
+     <author>
+      <firstname>Alan R.</firstname>
+      <surname>Simon</surname>
+     </author>
+    </authorgroup>
+    <isbn>1-55860-245-3</isbn>
+    <publisher>
+     <publishername>Morgan Kaufmann</publishername>
+    </publisher>
+    <pubdate>1993</pubdate>
+   </biblioentry>
+
+   <biblioentry id="ull88">
+    <title>Principles of Database and Knowledge-Base Systems</title>
+    <subtitle>Classical Database Systems</subtitle>
+    <authorgroup>
+     <author>
+      <firstname>Jeffrey D.</firstname>
+      <surname>Ullman</surname>
+     </author>
+    </authorgroup>
+    <volumenum>Volume 1</volumenum>
+    <publisher>
+     <publishername>Computer Science Press</publishername>
+    </publisher>
+    <pubdate>1988</pubdate>
+   </biblioentry>
+
+   <biblioentry id="sqltr-19075-6">
+    <title>SQL Technical Report</title>
+    <subtitle>Part 6: SQL support for JavaScript Object
+      Notation (JSON)</subtitle>
+    <edition>First Edition</edition>
+    <pubdate>2017</pubdate>
+   </biblioentry>
+
+  </bibliodiv>
+
+  <bibliodiv>
+   <title>PostgreSQL-specific Documentation</title>
+
+   <biblioentry id="sim98">
+    <title>Enhancement of the ANSI SQL Implementation of PostgreSQL</title>
+    <authorgroup>
+     <author>
+      <firstname>Stefan</firstname>
+      <surname>Simkovics</surname>
+<!--
+Paul-Peters-Gasse 36
+2384 Breitenfurt
+AUSTRIA
+ssimkovi@ag.or.at
+-->
+     </author>
+    </authorgroup>
+<!--
+    <othercredit>
+     <contrib>
+      with support by
+     </contrib>
+     <honorific>O. Univ. Prof. Dr.</honorific>
+     <firstname>Georg</firstname>
+     <surname>Gottlob</surname>
+     <honorific>Univ. Ass. Mag.</honorific>
+     <firstname>Katrin</firstname>
+     <surname>Seyr</surname>
+    </othercredit>
+-->
+    <abstract>
+     <para>
+      Discusses SQL history and syntax, and describes the addition of
+      <literal>INTERSECT</literal> and <literal>EXCEPT</literal> constructs into
+      <productname>PostgreSQL</productname>.  Prepared as a Master's
+      Thesis with the support of O. Univ. Prof. Dr. Georg Gottlob and
+      Univ. Ass. Mag. Katrin Seyr at Vienna University of Technology.
+     </para>
+    </abstract>
+
+    <publisher>
+     <publishername>Department of Information Systems, Vienna University of Technology</publishername>
+     <address>Vienna, Austria</address>
+    </publisher>
+    <pubdate>November 29, 1998</pubdate>
+   </biblioentry>
+
+   <biblioentry id="yu95">
+    <title>The <productname>Postgres95</productname> User Manual</title>
+    <authorgroup>
+     <author>
+      <firstname>A.</firstname>
+      <surname>Yu</surname>
+     </author>
+     <author>
+      <firstname>J.</firstname>
+      <surname>Chen</surname>
+     </author>
+    </authorgroup>
+    <publisher>
+     <publishername>University  of  California</publishername>
+     <address>Berkeley, California</address>
+    </publisher>
+    <pubdate>Sept. 5, 1995</pubdate>
+   </biblioentry>
+
+  <biblioentry id="fong">
+   <title><ulink url="https://dsf.berkeley.edu/papers/UCB-MS-zfong.pdf">The
+   design and implementation of the <productname>POSTGRES</productname> query
+   optimizer</ulink></title>
+   <author>
+    <firstname>Zelaine</firstname>
+    <surname>Fong</surname>
+   </author>
+   <publisher>
+    <publishername>University of California, Berkeley, Computer Science Department</publishername>
+   </publisher>
+  </biblioentry>
+
+  </bibliodiv>
+
+  <bibliodiv>
+   <title>Proceedings and Articles</title>
+
+   <biblioentry id="ports12">
+    <biblioset relation="article">
+     <title><ulink url="https://arxiv.org/pdf/1208.4179">Serializable Snapshot Isolation in PostgreSQL</ulink></title>
+     <authorgroup>
+      <author>
+       <firstname>D.</firstname>
+       <surname>Ports</surname>
+      </author>
+      <author>
+       <firstname>K.</firstname>
+       <surname>Grittner</surname>
+      </author>
+     </authorgroup>
+    </biblioset>
+    <confgroup>
+     <conftitle>VLDB Conference</conftitle>
+     <confdates>August 2012</confdates>
+     <address>Istanbul, Turkey</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="berenson95">
+    <biblioset relation="article">
+     <title><ulink url="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-95-51.pdf">A Critique of ANSI SQL Isolation Levels</ulink></title>
+     <authorgroup>
+      <author>
+       <firstname>H.</firstname>
+       <surname>Berenson</surname>
+      </author>
+      <author>
+       <firstname>P.</firstname>
+       <surname>Bernstein</surname>
+      </author>
+      <author>
+       <firstname>J.</firstname>
+       <surname>Gray</surname>
+      </author>
+      <author>
+       <firstname>J.</firstname>
+       <surname>Melton</surname>
+      </author>
+      <author>
+       <firstname>E.</firstname>
+       <surname>O'Neil</surname>
+      </author>
+      <author>
+       <firstname>P.</firstname>
+       <surname>O'Neil</surname>
+      </author>
+     </authorgroup>
+    </biblioset>
+    <confgroup>
+     <conftitle>ACM-SIGMOD Conference on Management of Data</conftitle>
+     <confdates>June 1995</confdates>
+     <address>San Jose, California</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="olson93">
+    <title>Partial indexing in POSTGRES: research project</title>
+    <authorgroup>
+     <author>
+      <firstname>Nels</firstname>
+      <surname>Olson</surname>
+     </author>
+    </authorgroup>
+    <pubsnumber>UCB Engin T7.49.1993 O676</pubsnumber>
+    <publisher>
+     <publishername>University  of  California</publishername>
+     <address>Berkeley, California</address>
+    </publisher>
+    <pubdate>1993</pubdate>
+   </biblioentry>
+
+   <biblioentry id="ong90">
+   <biblioset relation="article">
+    <title>A Unified Framework for Version Modeling Using Production Rules in a Database System</title>
+    <authorgroup>
+     <author>
+      <firstname>L.</firstname>
+      <surname>Ong</surname>
+     </author>
+     <author>
+      <firstname>J.</firstname>
+      <surname>Goh</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+   <biblioset relation="journal">
+    <title>ERL Technical Memorandum M90/33</title>
+    <publisher>
+     <publishername>University  of  California</publishername>
+     <address>Berkeley, California</address>
+    </publisher>
+    <pubdate>April, 1990</pubdate>
+   </biblioset>
+   </biblioentry>
+
+   <biblioentry id="rowe87">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M87-13.pdf">The <productname>POSTGRES</productname>
+    data model</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>L.</firstname>
+      <surname>Rowe</surname>
+     </author>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+    </authorgroup>
+    </biblioset>
+    <confgroup>
+     <conftitle>VLDB Conference</conftitle>
+     <confdates>Sept. 1987</confdates>
+     <address>Brighton, England</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="seshadri95">
+   <biblioset relation="article">
+    <title><ulink url="https://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.40.5740">Generalized
+    Partial Indexes</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>P.</firstname>
+      <surname>Seshadri</surname>
+     </author>
+     <author>
+      <firstname>A.</firstname>
+      <surname>Swami</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+    <confgroup>
+     <conftitle>Eleventh International Conference on Data Engineering</conftitle>
+     <confdates>6&ndash;10 March 1995</confdates>
+     <address>Taipeh, Taiwan</address>
+    </confgroup>
+    <pubsnumber>Cat. No.95CH35724</pubsnumber>
+    <publisher>
+     <publishername>IEEE Computer Society Press</publishername>
+     <address>Los Alamitos, California</address>
+    </publisher>
+    <pubdate>1995</pubdate>
+    <pagenums>420&ndash;7</pagenums>
+   </biblioentry>
+
+   <biblioentry id="ston86">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M85-95.pdf">The
+    design of <productname>POSTGRES</productname></ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+     <author>
+      <firstname>L.</firstname>
+      <surname>Rowe</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+    <confgroup>
+     <conftitle>ACM-SIGMOD Conference on Management of Data</conftitle>
+     <confdates>May 1986</confdates>
+     <address>Washington, DC</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="ston87a">
+   <biblioset relation="article">
+    <title>The design of the <productname>POSTGRES</productname> rules system</title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+     <author>
+      <firstname>E.</firstname>
+      <surname>Hanson</surname>
+     </author>
+     <author>
+      <firstname>C. H.</firstname>
+      <surname>Hong</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+    <confgroup>
+     <conftitle>IEEE Conference on Data Engineering</conftitle>
+     <confdates>Feb. 1987</confdates>
+     <address>Los Angeles, California</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="ston87b">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M87-06.pdf">The
+    design of the <productname>POSTGRES</productname> storage
+    system</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+    <confgroup>
+     <conftitle>VLDB Conference</conftitle>
+     <confdates>Sept. 1987</confdates>
+     <address>Brighton, England</address>
+    </confgroup>
+   </biblioentry>
+
+   <biblioentry id="ston89">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M89-82.pdf">A
+    commentary on the <productname>POSTGRES</productname> rules
+    system</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Hearst</surname>
+     </author>
+     <author>
+      <firstname>S.</firstname>
+      <surname>Potamianos</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+   <biblioset relation="journal">
+    <title>SIGMOD Record 18(3)</title>
+    <date>Sept. 1989</date>
+   </biblioset>
+   </biblioentry>
+
+   <biblioentry id="ston89b">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M89-17.pdf">The
+    case for partial indexes</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+   <biblioset relation="journal">
+    <title>SIGMOD Record 18(4)</title>
+    <date>Dec. 1989</date>
+    <pagenums>4&ndash;11</pagenums>
+   </biblioset>
+   </biblioentry>
+
+   <biblioentry id="ston90a">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M90-34.pdf">The
+    implementation of <productname>POSTGRES</productname></ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+     <author>
+      <firstname>L. A.</firstname>
+      <surname>Rowe</surname>
+     </author>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Hirohama</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+   <biblioset relation="journal">
+    <title>Transactions on Knowledge and Data Engineering 2(1)</title>
+    <publisher>
+     <publishername>IEEE</publishername>
+    </publisher>
+    <date>March 1990</date>
+   </biblioset>
+   </biblioentry>
+
+   <biblioentry id="ston90b">
+   <biblioset relation="article">
+    <title><ulink url="https://dsf.berkeley.edu/papers/ERL-M90-36.pdf">On
+    Rules, Procedures, Caching and Views in Database Systems</ulink></title>
+    <authorgroup>
+     <author>
+      <firstname>M.</firstname>
+      <surname>Stonebraker</surname>
+     </author>
+     <author>
+      <firstname>A.</firstname>
+      <surname>Jhingran</surname>
+     </author>
+     <author>
+      <firstname>J.</firstname>
+      <surname>Goh</surname>
+     </author>
+     <author>
+      <firstname>S.</firstname>
+      <surname>Potamianos</surname>
+     </author>
+    </authorgroup>
+   </biblioset>
+    <confgroup>
+     <conftitle>ACM-SIGMOD Conference on Management of Data</conftitle>
+     <confdates>June 1990</confdates>
+    </confgroup>
+   </biblioentry>
+
+  </bibliodiv>
+ </bibliography>

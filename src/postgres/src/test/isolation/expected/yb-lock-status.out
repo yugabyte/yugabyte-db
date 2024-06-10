@@ -1,0 +1,104 @@
+Parsed test spec with 3 sessions
+
+starting permutation: totalrows
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+0
+
+starting permutation: s1lock wait2s totalrows totaltxns
+step s1lock: SELECT * FROM lock_status_test WHERE k = 1 FOR UPDATE;
+k
+
+1
+step wait2s: SELECT pg_sleep(2);
+pg_sleep
+
+
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+2
+step totaltxns: SELECT COUNT(DISTINCT transaction_id) from yb_lock_status(null, null);
+count
+
+1
+
+starting permutation: s1lock s2lock wait2s totalrows totaltxns
+step s1lock: SELECT * FROM lock_status_test WHERE k = 1 FOR UPDATE;
+k
+
+1
+step s2lock: SELECT * FROM lock_status_test WHERE k = 2 FOR UPDATE;
+k
+
+2
+step wait2s: SELECT pg_sleep(2);
+pg_sleep
+
+
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+4
+step totaltxns: SELECT COUNT(DISTINCT transaction_id) from yb_lock_status(null, null);
+count
+
+2
+
+starting permutation: max1 0secold s1lock s2lock wait5s totalrows totaltxns
+step max1: SET yb_locks_max_transactions TO 1;
+step 0secold: SET yb_locks_min_txn_age TO 0;
+step s1lock: SELECT * FROM lock_status_test WHERE k = 1 FOR UPDATE;
+k
+
+1
+step s2lock: SELECT * FROM lock_status_test WHERE k = 2 FOR UPDATE;
+k
+
+2
+step wait5s: SELECT pg_sleep(5); <waiting ...>
+step wait5s: <... completed>
+pg_sleep
+
+
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+2
+step totaltxns: SELECT COUNT(DISTINCT transaction_id) from yb_lock_status(null, null);
+count
+
+1
+
+starting permutation: 7secold s1lock s2lock wait2s totalrows wait5s totalrows totaltxns
+step 7secold: SET yb_locks_min_txn_age TO 7000;
+step s1lock: SELECT * FROM lock_status_test WHERE k = 1 FOR UPDATE;
+k
+
+1
+step s2lock: SELECT * FROM lock_status_test WHERE k = 2 FOR UPDATE;
+k
+
+2
+step wait2s: SELECT pg_sleep(2);
+pg_sleep
+
+
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+0
+step wait5s: SELECT pg_sleep(5); <waiting ...>
+step wait5s: <... completed>
+pg_sleep
+
+
+step totalrows: SELECT COUNT(*) FROM yb_lock_status(null, null);
+count
+
+4
+step totaltxns: SELECT COUNT(DISTINCT transaction_id) from yb_lock_status(null, null);
+count
+
+2

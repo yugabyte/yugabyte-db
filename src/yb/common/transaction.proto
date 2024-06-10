@@ -1,0 +1,175 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb;
+
+option java_package = "org.yb";
+
+import "yb/common/opid.proto";
+
+enum IsolationLevel {
+  NON_TRANSACTIONAL = 0;
+  SNAPSHOT_ISOLATION = 1;
+  SERIALIZABLE_ISOLATION = 2;
+  READ_COMMITTED = 3;
+}
+
+enum TransactionStatus {
+  CREATED = 1;
+  PENDING = 2;
+
+  COMMITTED = 4;
+  SEALED = 5;
+  APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
+
+  ABORTED = 8;
+
+  PROMOTED = 9;
+
+  // The APPLYING status is used in Raft in transaction participant tablets but not in status
+  // tablets.
+  APPLYING = 20;
+
+  // All following entries are not used in RAFT, but as events between status tablet and involved
+  // tablets:
+  APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
+  IMMEDIATE_CLEANUP = 22;
+  GRACEFUL_CLEANUP = 23;
+}
+
+enum TransactionLocality {
+  GLOBAL = 1;
+  LOCAL = 2;
+}
+
+// This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
+// The exception is ROW_MARK_ABSENT, which signifies the absence of a row mark.
+enum RowMarkType {
+  // Obtain exclusive tuple lock.
+  ROW_MARK_EXCLUSIVE = 0;
+
+  // Obtain no-key exclusive tuple lock.
+  ROW_MARK_NOKEYEXCLUSIVE = 1;
+
+  // Obtain shared tuple lock.
+  ROW_MARK_SHARE = 2;
+
+  // Obtain keyshare tuple lock.
+  ROW_MARK_KEYSHARE = 3;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_REFERENCE = 4;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_COPY = 5;
+
+  // Obtain no tuple lock (this should never sent be on the wire).  The value
+  // should be high for convenient comparisons with the other row lock types.
+  ROW_MARK_ABSENT = 15;
+}
+
+message SubtxnSetPB {
+  // This is not a simple set representation, but rather the encoded output of a
+  // yb::UnsignedIntSet<uint32_t>.
+  //
+  // An ascending nonoverlapping series of integer ranges [a,b) [c,d) ... (a<=b<c<=d...) are encoded
+  // as taking a,b, c,d, ...  then compressing it by storing the set of deltas starting from 0.
+  // This gives: a-0, b-a, c-b,c-d, ...
+  repeated uint32 set = 1;
+}
+
+message SubTransactionMetadataPB {
+  optional uint32 subtransaction_id = 1;
+
+  optional SubtxnSetPB aborted = 2;
+}
+
+message PostApplyTransactionMetadataPB {
+  optional bytes transaction_id = 1; // 16 byte uuid
+
+  optional OpIdPB apply_op_id = 2;
+  optional fixed64 commit_ht = 3;
+  optional fixed64 log_ht = 4;
+}
+
+enum LockMode {
+  WEAK_READ = 0;
+  WEAK_WRITE = 1;
+  STRONG_READ = 2;
+  STRONG_WRITE = 3;
+}
+
+message LockInfoPB {
+  // TODO(pglocks): Omit prefix locks, which are implied to exist if their fully-qualified forms
+  // are present.
+  repeated bytes hash_cols = 1;
+
+  repeated bytes range_cols = 2;
+
+  optional int32 attnum = 3;
+
+  optional uint32 column_id = 4;
+
+  optional bool multiple_rows_locked = 5;
+
+  // If this is set, then the lock has been granted.
+  optional fixed64 wait_end_ht = 6;
+
+  optional uint32 subtransaction_id = 7;
+
+  optional bool is_explicit = 8;
+
+  repeated LockMode modes = 9;
+
+  // Populated only when the lock belongs to a colocated table. When set,
+  // TabletLockInfoPB::pg_table_id should be ignored.
+  optional bytes pg_table_id = 10;
+}
+
+message TabletLockInfoPB {
+  // The TableId containing the PG table OID. Note: This will NOT match the DocDB table's uuid
+  // if the table was rewritten.
+  optional bytes pg_table_id = 1;
+
+  optional bytes tablet_id = 2;
+
+  message WaiterInfoPB {
+    repeated LockInfoPB locks = 1;
+
+    optional fixed64 wait_start_ht = 2;
+
+    repeated bytes blocking_txn_ids = 3;
+
+    optional bool has_additional_waiting_locks = 4;
+  }
+
+  // Lock info for a given transaction at this tablet.
+  message TransactionLockInfoPB {
+    optional bytes id = 1;
+
+    repeated LockInfoPB granted_locks = 2;
+
+    optional WaiterInfoPB waiting_locks = 3;
+
+    optional bool has_additional_granted_locks = 4;
+  }
+  repeated TransactionLockInfoPB transaction_locks = 3;
+
+  // Awaiting lock info of single shard waiters.
+  repeated WaiterInfoPB single_shard_waiters = 4;
+
+  // Leader term of the peer populating the response. Used to filter out duplicate responses for
+  // the same tablet and ensure we pick the most recent results.
+  optional uint64 term = 5;
+}

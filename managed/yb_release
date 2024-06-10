@@ -1,0 +1,43 @@
+#!/bin/bash
+# Copyright (c) YugaByte, Inc.
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "This target doesn't support $(uname -m)."
+  exit 0
+fi
+
+if [[ $(uname) != "Linux" ]]; then
+  echo "This target doesn't support $(uname)."
+  exit 0
+fi
+
+set -euo pipefail
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/devops
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+# If JAVA_HOME is set explicitly - use that
+if [ ! -z  ${JAVA_HOME+x} ]; then
+  echo "Using JDK, defined in JAVA_HOME: $JAVA_HOME"
+  PATH="$JAVA_HOME/bin:$PATH"
+else
+  # Otherwise use zulu JDK 17 installed by setup_workstation
+  if [[ ${is_linux} == "true" && -d /usr/lib/jvm/zulu-17.jdk ]]; then
+    echo "Using JDK 17, installed by setup_workstation.sh: \
+      /usr/lib/jvm/zulu-17.jdk"
+    PATH="/usr/lib/jvm/zulu-17.jdk/bin:$PATH"
+  elif [[ ${is_mac} == "true" && -d /Library/Java/JavaVirtualMachines/zulu-17.jdk ]]; then
+    echo "Using JDK 17, installed by setup_workstation.sh: \
+      /Library/Java/JavaVirtualMachines/zulu-17.jdk"
+    PATH="/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home/bin:$PATH"
+  else
+    echo "Using JDK, available in PATH"
+  fi
+fi
+
+# Use dynamic paths to shorten shebangs below 64 characters.
+"$DEVOPS_HOME/bin/install_python_requirements.sh" --use_dynamic_paths
+
+activate_virtualenv
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py "$@"

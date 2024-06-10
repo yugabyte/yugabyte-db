@@ -1,0 +1,436 @@
+#!/usr/bin/perl
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
+use strict;
+use warnings;
+use 5.008001;
+
+use Cwd qw(abs_path getcwd);
+use File::Find;
+use File::Spec qw(devnull);
+use File::Temp;
+use IO::Handle;
+use Getopt::Long;
+
+# Update for pg_bsd_indent version
+my $INDENT_VERSION = "2.1.1";
+
+# Our standard indent settings
+my $indent_opts =
+  "-bad -bap -bbb -bc -bl -cli1 -cp33 -cdb -nce -d0 -di12 -nfc1 -i4 -l79 -lp -lpl -nip -npro -sac -tpg -ts4";
+
+my $devnull = File::Spec->devnull;
+
+my ($typedefs_file, $typedef_str, $code_base, $excludes, $indent, $build);
+
+my %options = (
+	"typedefs=s"         => \$typedefs_file,
+	"list-of-typedefs=s" => \$typedef_str,
+	"code-base=s"        => \$code_base,
+	"excludes=s"         => \$excludes,
+	"indent=s"           => \$indent,
+	"build"              => \$build,);
+GetOptions(%options) || die "bad command line argument\n";
+
+run_build($code_base) if ($build);
+
+# command line option wins, then first non-option arg,
+# then environment (which is how --build sets it) ,
+# then locations. based on current dir, then default location
+$typedefs_file ||= shift if @ARGV && $ARGV[0] !~ /\.[ch]$/;
+$typedefs_file ||= $ENV{PGTYPEDEFS};
+
+# build mode sets PGINDENT
+$indent ||= $ENV{PGINDENT} || $ENV{INDENT} || "pg_bsd_indent";
+
+# no non-option arguments given. so do everything in the current directory
+$code_base ||= '.' unless @ARGV;
+
+# if it's the base of a postgres tree, we will exclude the files
+# postgres wants excluded
+$excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns"
+  if $code_base && -f "$code_base/src/tools/pgindent/exclude_file_patterns";
+
+# The typedef list that's mechanically extracted by the buildfarm may omit
+# some names we want to treat like typedefs, e.g. "bool" (which is a macro
+# according to <stdbool.h>), and may include some names we don't want
+# treated as typedefs, although various headers that some builds include
+# might make them so.  For the moment we just hardwire a list of names
+# to add and a list of names to exclude; eventually this may need to be
+# easier to configure.  Note that the typedefs need trailing newlines.
+my @additional = ("bool\n");
+
+my %excluded = map { +"$_\n" => 1 } qw(
+  ANY FD_SET U abs allocfunc boolean date digit ilist interval iterator other
+  pointer printfunc reference string timestamp type wrap
+);
+
+# globals
+my @files;
+my $filtered_typedefs_fh;
+
+
+sub check_indent
+{
+	system("$indent -? < $devnull > $devnull 2>&1");
+	if ($? >> 8 != 1)
+	{
+		print STDERR
+		  "You do not appear to have $indent installed on your system.\n";
+		exit 1;
+	}
+
+	if (`$indent --version` !~ m/ $INDENT_VERSION /)
+	{
+		print STDERR
+		  "You do not appear to have $indent version $INDENT_VERSION installed on your system.\n";
+		exit 1;
+	}
+
+	system("$indent -gnu < $devnull > $devnull 2>&1");
+	if ($? == 0)
+	{
+		print STDERR
+		  "You appear to have GNU indent rather than BSD indent.\n";
+		exit 1;
+	}
+
+	return;
+}
+
+
+sub load_typedefs
+{
+
+	# try fairly hard to find the typedefs file if it's not set
+
+	foreach my $try ('.', 'src/tools/pgindent', '/usr/local/etc')
+	{
+		$typedefs_file ||= "$try/typedefs.list"
+		  if (-f "$try/typedefs.list");
+	}
+
+	# try to find typedefs by moving up directory levels
+	my $tdtry = "..";
+	foreach (1 .. 5)
+	{
+		$typedefs_file ||= "$tdtry/src/tools/pgindent/typedefs.list"
+		  if (-f "$tdtry/src/tools/pgindent/typedefs.list");
+		$tdtry = "$tdtry/..";
+	}
+	die "cannot locate typedefs file \"$typedefs_file\"\n"
+	  unless $typedefs_file && -f $typedefs_file;
+
+	open(my $typedefs_fh, '<', $typedefs_file)
+	  || die "cannot open typedefs file \"$typedefs_file\": $!\n";
+	my @typedefs = <$typedefs_fh>;
+	close($typedefs_fh);
+
+	# add command-line-supplied typedefs?
+	if (defined($typedef_str))
+	{
+		foreach my $typedef (split(m/[, \t\n]+/, $typedef_str))
+		{
+			push(@typedefs, $typedef . "\n");
+		}
+	}
+
+	# add additional entries
+	push(@typedefs, @additional);
+
+	# remove excluded entries
+	@typedefs = grep { !$excluded{$_} } @typedefs;
+
+	# write filtered typedefs
+	my $filter_typedefs_fh = new File::Temp(TEMPLATE => "pgtypedefXXXXX");
+	print $filter_typedefs_fh @typedefs;
+	$filter_typedefs_fh->close();
+
+	# temp file remains because we return a file handle reference
+	return $filter_typedefs_fh;
+}
+
+
+sub process_exclude
+{
+	if ($excludes && @files)
+	{
+		open(my $eh, '<', $excludes)
+		  || die "cannot open exclude file \"$excludes\"\n";
+		while (my $line = <$eh>)
+		{
+			chomp $line;
+			next if $line =~ m/^#/;
+			my $rgx = qr!$line!;
+			@files = grep { $_ !~ /$rgx/ } @files if $rgx;
+		}
+		close($eh);
+	}
+	return;
+}
+
+
+sub read_source
+{
+	my $source_filename = shift;
+	my $source;
+
+	open(my $src_fd, '<', $source_filename)
+	  || die "cannot open file \"$source_filename\": $!\n";
+	local ($/) = undef;
+	$source = <$src_fd>;
+	close($src_fd);
+
+	return $source;
+}
+
+
+sub write_source
+{
+	my $source          = shift;
+	my $source_filename = shift;
+
+	open(my $src_fh, '>', $source_filename)
+	  || die "cannot open file \"$source_filename\": $!\n";
+	print $src_fh $source;
+	close($src_fh);
+	return;
+}
+
+
+sub pre_indent
+{
+	my $source = shift;
+
+	## Comments
+
+	# Convert // comments to /* */
+	$source =~ s!^([ \t]*)//(.*)$!$1/* $2 */!gm;
+
+	# Adjust dash-protected block comments so indent won't change them
+	$source =~ s!/\* +---!/*---X_X!g;
+
+	## Other
+
+	# Prevent indenting of code in 'extern "C"' blocks.
+	# we replace the braces with comments which we'll reverse later
+	my $extern_c_start = '/* Open extern "C" */';
+	my $extern_c_stop  = '/* Close extern "C" */';
+	$source =~
+	  s!(^#ifdef[ \t]+__cplusplus.*\nextern[ \t]+"C"[ \t]*\n)\{[ \t]*$!$1$extern_c_start!gm;
+	$source =~ s!(^#ifdef[ \t]+__cplusplus.*\n)\}[ \t]*$!$1$extern_c_stop!gm;
+
+	# Protect wrapping in CATALOG()
+	$source =~ s!^(CATALOG\(.*)$!/*$1*/!gm;
+
+	return $source;
+}
+
+
+sub post_indent
+{
+	my $source          = shift;
+	my $source_filename = shift;
+
+	# Restore CATALOG lines
+	$source =~ s!^/\*(CATALOG\(.*)\*/$!$1!gm;
+
+	# Put back braces for extern "C"
+	$source =~ s!^/\* Open extern "C" \*/$!{!gm;
+	$source =~ s!^/\* Close extern "C" \*/$!}!gm;
+
+	## Comments
+
+	# Undo change of dash-protected block comments
+	$source =~ s!/\*---X_X!/* ---!g;
+
+	# Fix run-together comments to have a tab between them
+	$source =~ s!\*/(/\*.*\*/)$!*/\t$1!gm;
+
+	## Functions
+
+	# Use a single space before '*' in function return types
+	$source =~ s!^([A-Za-z_]\S*)[ \t]+\*$!$1 *!gm;
+
+	return $source;
+}
+
+
+sub run_indent
+{
+	my $source        = shift;
+	my $error_message = shift;
+
+	my $cmd = "$indent $indent_opts -U" . $filtered_typedefs_fh->filename;
+
+	my $tmp_fh = new File::Temp(TEMPLATE => "pgsrcXXXXX");
+	my $filename = $tmp_fh->filename;
+	print $tmp_fh $source;
+	$tmp_fh->close();
+
+	$$error_message = `$cmd $filename 2>&1`;
+
+	return "" if ($? || length($$error_message) > 0);
+
+	unlink "$filename.BAK";
+
+	open(my $src_out, '<', $filename);
+	local ($/) = undef;
+	$source = <$src_out>;
+	close($src_out);
+
+	return $source;
+
+}
+
+
+# for development diagnostics
+sub diff
+{
+	my $pre   = shift;
+	my $post  = shift;
+	my $flags = shift || "";
+
+	print STDERR "running diff\n";
+
+	my $pre_fh  = new File::Temp(TEMPLATE => "pgdiffbXXXXX");
+	my $post_fh = new File::Temp(TEMPLATE => "pgdiffaXXXXX");
+
+	print $pre_fh $pre;
+	print $post_fh $post;
+
+	$pre_fh->close();
+	$post_fh->close();
+
+	system( "diff $flags "
+		  . $pre_fh->filename . " "
+		  . $post_fh->filename
+		  . " >&2");
+	return;
+}
+
+
+sub run_build
+{
+	eval "use LWP::Simple;";    ## no critic (ProhibitStringyEval);
+
+	my $code_base = shift || '.';
+	my $save_dir = getcwd();
+
+	# look for the code root
+	foreach (1 .. 5)
+	{
+		last if -d "$code_base/src/tools/pgindent";
+		$code_base = "$code_base/..";
+	}
+
+	die "cannot locate src/tools/pgindent directory in \"$code_base\"\n"
+	  unless -d "$code_base/src/tools/pgindent";
+
+	chdir "$code_base/src/tools/pgindent";
+
+	my $typedefs_list_url =
+	  "https://buildfarm.postgresql.org/cgi-bin/typedefs.pl";
+
+	my $rv = getstore($typedefs_list_url, "tmp_typedefs.list");
+
+	die "cannot fetch typedefs list from $typedefs_list_url\n"
+	  unless is_success($rv);
+
+	$ENV{PGTYPEDEFS} = abs_path('tmp_typedefs.list');
+
+	my $indentrepo = "https://git.postgresql.org/git/pg_bsd_indent.git";
+	system("git clone $indentrepo >$devnull 2>&1");
+	die "could not fetch pg_bsd_indent sources from $indentrepo\n"
+	  unless $? == 0;
+
+	chdir "pg_bsd_indent" || die;
+	system("make all check >$devnull");
+	die "could not build pg_bsd_indent from source\n"
+	  unless $? == 0;
+
+	$ENV{PGINDENT} = abs_path('pg_bsd_indent');
+
+	chdir $save_dir;
+	return;
+}
+
+
+sub build_clean
+{
+	my $code_base = shift || '.';
+
+	# look for the code root
+	foreach (1 .. 5)
+	{
+		last if -d "$code_base/src/tools/pgindent";
+		$code_base = "$code_base/..";
+	}
+
+	die "cannot locate src/tools/pgindent directory in \"$code_base\"\n"
+	  unless -d "$code_base/src/tools/pgindent";
+
+	chdir "$code_base";
+
+	system("rm -rf src/tools/pgindent/pg_bsd_indent");
+	system("rm -f src/tools/pgindent/tmp_typedefs.list");
+	return;
+}
+
+
+# main
+
+# get the list of files under code base, if it's set
+File::Find::find(
+	{
+		wanted => sub {
+			my ($dev, $ino, $mode, $nlink, $uid, $gid);
+			(($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_))
+			  && -f _
+			  && /^.*\.[ch]\z/s
+			  && push(@files, $File::Find::name);
+		}
+	},
+	$code_base) if $code_base;
+
+process_exclude();
+
+$filtered_typedefs_fh = load_typedefs();
+
+check_indent();
+
+# any non-option arguments are files to be processed
+push(@files, @ARGV);
+
+foreach my $source_filename (@files)
+{
+
+	# Automatically ignore .c and .h files that correspond to a .y or .l
+	# file.  indent tends to get badly confused by Bison/flex output,
+	# and there's no value in indenting derived files anyway.
+	my $otherfile = $source_filename;
+	$otherfile =~ s/\.[ch]$/.y/;
+	next if $otherfile ne $source_filename && -f $otherfile;
+	$otherfile =~ s/\.y$/.l/;
+	next if $otherfile ne $source_filename && -f $otherfile;
+
+	my $source        = read_source($source_filename);
+	my $orig_source   = $source;
+	my $error_message = '';
+
+	$source = pre_indent($source);
+
+	$source = run_indent($source, \$error_message);
+	if ($source eq "")
+	{
+		print STDERR "Failure in $source_filename: " . $error_message . "\n";
+		next;
+	}
+
+	$source = post_indent($source, $source_filename);
+
+	write_source($source, $source_filename) if $source ne $orig_source;
+}
+
+build_clean($code_base) if $build;

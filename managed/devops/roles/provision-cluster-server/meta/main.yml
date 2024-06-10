@@ -1,0 +1,50 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+dependencies:
+  - role: server_base
+    tags: yb-prebuilt-ami
+
+  - role: mount_ephemeral_drives
+    when: cloud_type != "onprem"
+
+  - role: create_user
+    create_user:
+      name: "{{ user_name }}"
+      group: "{{ user_name }}"
+      shell: "/bin/bash"
+      comment: "{{ user_name }}"
+      home_dir: "{{ yb_home_dir }}"
+    ssh_config:
+      ssh_type: "{{ ssh_version | default('ssh') }}"
+      enabled: "{{ cluster_server_vault|default(False) }}"
+      id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"
+      id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
+      sudo_user: "{{ yb_server_ssh_user | default(omit) }}"
+      authorized_keys: "{{ cluster_server_vault | get_value('authorized_keys') }}"
+
+  - role: swamper
+    prometheus_components:
+      - node_exporter
+    tags: yb-prebuilt-ami
+
+  - role: install_backup_util
+    when: ansible_architecture != "aarch64"
+    util:
+      name: "azcopy"
+    tags: yb-prebuilt-ami
+
+  - role: install_backup_util
+    util:
+      name: "gsutil"
+    tags: yb-prebuilt-ami
+
+  - role: install_backup_util
+    util:
+      name: "s3cmd"
+    tags: yb-prebuilt-ami

@@ -1,0 +1,55 @@
+--
+-- Build dependency objects found in the create_index test.  This is a faster
+-- version of yb_pg_create_index due to usage of NONCONCURRENTLY and omission
+-- of queries that are of no use to followup tests.
+--
+-- A common dependency chain would be yb_pg_test_setup, yb_dep_create_index.
+--
+--
+-- BTREE
+--
+CREATE INDEX NONCONCURRENTLY onek_unique1 ON onek USING btree(unique1 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY onek_unique2 ON onek USING btree(unique2 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY onek_hundred ON onek USING btree(hundred int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY onek_stringu1 ON onek USING btree(stringu1 name_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk1_unique1 ON tenk1 USING btree(unique1 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk1_hundred ON tenk1 USING btree(hundred int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand ASC, tenthous ASC);
+CREATE INDEX NONCONCURRENTLY tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY tenk2_hundred ON tenk2 USING btree(hundred int4_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY rix ON road USING btree (name text_ops ASC);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY iix ON ihighway USING btree (name text_ops ASC);
+ERROR:  relation "ihighway" does not exist
+--
+-- BTREE partial indices
+--
+CREATE INDEX NONCONCURRENTLY onek2_u1_prtl ON onek2 USING btree(unique1 int4_ops ASC)
+	where unique1 < 20 or unique1 > 980;
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY onek2_u2_prtl ON onek2 USING btree(unique2 int4_ops ASC)
+	where stringu1 < 'B';
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE INDEX NONCONCURRENTLY onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
+	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+---
+CREATE TABLE fast_emp4000 (
+	home_base	 box
+);
+---
+-- TODO(jason): botharrayidx is used by amutils test, but this query currently
+-- fails for multiple reasons.
+-- CREATE INDEX NONCONCURRENTLY botharrayidx ON array_index_op_test USING gin (i, t);

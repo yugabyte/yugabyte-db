@@ -1,0 +1,54 @@
+
+.td-main {
+  container-type: inline-size;
+  container-name: maincontainer;
+
+  .content-parent {
+    container-type: inline-size;
+    container-name: sidebar;
+  }
+
+  @container maincontainer (min-width: 991px) {
+    .td-sidebar:not(.close-bar) {
+      flex: 1 1 75%;
+    }
+
+    .content-parent {
+      flex: 1 1 25%;
+    }
+
+    .content-parent {
+      padding: 0 30px;
+    }
+  }
+
+  @container sidebar (max-width: 500px) {
+    .td-content [class^=col] {
+      width: auto;
+      flex: 0 0 100%;
+      max-width: none;
+    }
+
+    .main-heading-with-version {
+      flex-flow: column;
+      align-items: flex-start;
+    }
+
+    .main-heading-with-version .heading-content {
+      width: 100%;
+    }
+
+    ul.nav.yb-pills li {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    footer .footer-top {
+      justify-content: center;
+
+      .footer-socials {
+        display: none;
+      }
+    }
+  }
+}

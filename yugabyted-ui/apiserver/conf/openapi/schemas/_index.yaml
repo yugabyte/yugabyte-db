@@ -1,0 +1,1162 @@
+ApiError:
+  title: API Error
+  type: object
+  properties:
+    error:
+      type: object
+      properties:
+        detail:
+          description: Error message
+          type: string
+        status:
+          description: Error code
+          type: integer
+LiveQueryResponseSchema:
+  title: Live Query Response Schema
+  description: Live Query Response Schema
+  type: object
+  properties:
+    data:
+      $ref: '#/LiveQueryResponseData'
+LiveQueryResponseData:
+  title: Live Query Response Data
+  description: Live Query Response Data
+  type: object
+  properties:
+    ysql:
+      $ref: '#/LiveQueryResponseYSQLData'
+    ycql:
+      $ref: '#/LiveQueryResponseYCQLData'
+LiveQueryResponseYSQLData:
+  title: Live Query Response YSQL Data
+  description: Schema for Live Query Response YSQL Data
+  type: object
+  properties:
+    error_count:
+      description: Count of Errors
+      type: integer
+    queries:
+      type: array
+      items:
+        $ref: '#/LiveQueryResponseYSQLQueryItem'
+LiveQueryResponseYSQLQueryItem:
+  title: Live Query Response YSQL Query Item
+  description: Schema for Live Query Response YSQL Query Item
+  type: object
+  properties:
+    id:
+      type: string
+      format: uuid
+    node_name:
+      type: string
+    db_name:
+      type: string
+    session_status:
+      type: string
+    query:
+      type: string
+    elapsed_millis:
+      type: integer
+      format: int64
+    query_start_time:
+      type: string
+    app_name:
+      type: string
+    client_host:
+      type: string
+    client_port:
+      type: string
+LiveQueryResponseYCQLData:
+  title: Live Query Response YCQL Data
+  description: Schema for Live Query Response YCQL Data
+  type: object
+  properties:
+    error_count:
+      description: Count of Errors
+      type: integer
+    queries:
+      type: array
+      items:
+        $ref: '#/LiveQueryResponseYCQLQueryItem'
+LiveQueryResponseYCQLQueryItem:
+  title: Live Query Response YCQL Query Item
+  description: Schema for Live Query Response YCQL Query Item
+  type: object
+  properties:
+    id:
+      type: string
+      format: uuid
+    node_name:
+      type: string
+    keyspace:
+      type: string
+    query:
+      type: string
+    type:
+      type: string
+    elapsed_millis:
+      type: integer
+      format: int64
+    client_host:
+      type: string
+    client_port:
+      type: string
+SlowQueryResponseSchema:
+  title: Slow Query Response Schema
+  description: Slow Query Response Schema
+  type: object
+  properties:
+    data:
+      $ref: '#/SlowQueryResponseData'
+SlowQueryResponseData:
+  title: Slow Query Response Data
+  description: Slow Query Response Data
+  type: object
+  properties:
+    ysql:
+      $ref: '#/SlowQueryResponseYSQLData'
+SlowQueryResponseYSQLData:
+  title: Slow Query Response YSQL Data
+  description: Schema for Slow Query Response YSQL Data
+  type: object
+  properties:
+    error_count:
+      description: Count of Errors
+      type: integer
+    queries:
+      type: array
+      items:
+        $ref: '#/SlowQueryResponseYSQLQueryItem'
+SlowQueryResponseYSQLQueryItem:
+  title: Slow Query Response YSQL Query Item
+  description: Schema for Slow Query Response YSQL Query Item
+  type: object
+  properties:
+    queryid:
+      type: integer
+      format: int64
+    query:
+      type: string
+    rolname:
+      type: string
+    datname:
+      type: string
+    calls:
+      type: integer
+    local_blks_hit:
+      type: integer
+    local_blks_written:
+      type: integer
+    max_time:
+      type: number
+      format: double
+    mean_time:
+      type: number
+      format: double
+    min_time:
+      type: number
+      format: double
+    rows:
+      type: integer
+    stddev_time:
+      type: number
+      format: double
+    total_time:
+      type: number
+      format: double
+NodeData:
+  type: object
+  description: Node data
+  properties:
+    name:
+      type: string
+      nullable: false
+    host:
+      type: string
+      nullable: false
+    is_node_up:
+      type: boolean
+    is_master:
+      type: boolean
+    is_tserver:
+      type: boolean
+    is_read_replica:
+      type: boolean
+    preference_order:
+     type: integer
+    is_master_up:
+      type: boolean
+    is_bootstrapping:
+      type: boolean
+    metrics:
+      type: object
+      properties:
+        memory_used_bytes:
+          type: integer
+          format: int64
+          default: 0
+        total_sst_file_size_bytes:
+          type: integer
+          format: int64
+          default: 0
+          nullable: true
+        uncompressed_sst_file_size_bytes:
+          type: integer
+          format: int64
+          default: 0
+          nullable: true
+        read_ops_per_sec:
+          type: number
+          format: double
+          default: 0
+        write_ops_per_sec:
+          type: number
+          format: double
+          default: 0
+        time_since_hb_sec:
+          type: number
+          format: double
+          default: 0
+        uptime_seconds:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        user_tablets_total:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        user_tablets_leaders:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        system_tablets_total:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        system_tablets_leaders:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        active_connections:
+          type: object
+          properties:
+            ysql:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            ycql:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+          required:
+            - ysql
+            - ycql
+        master_uptime_us:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        ram_used_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        ram_provisioned_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+        disk_provisioned_bytes:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+      required:
+        - memory_used_bytes
+        - total_sst_file_size_bytes
+        - uncompressed_sst_file_size_bytes
+        - read_ops_per_sec
+        - write_ops_per_sec
+        - time_since_hb_sec
+        - uptime_seconds
+        - user_tablets_total
+        - user_tablets_leaders
+        - system_tablets_total
+        - system_tablets_leaders
+        - active_connections
+        - master_uptime_us
+        - ram_used_bytes
+        - ram_provisioned_bytes
+        - disk_provisioned_bytes
+    cloud_info:
+      type: object
+      properties:
+        cloud:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+      required:
+        - region
+        - zone
+    software_version:
+      type: string
+  required:
+    - name
+    - host
+    - is_node_up
+    - is_master
+    - is_tserver
+    - is_read_replica
+    - is_master_up
+    - is_bootstrapping
+    - cloud_info
+    - metrics
+    - software_version
+MetricData:
+  title: Metric Data
+  description: Metric data
+  type: object
+  properties:
+    name:
+      description: The name of the metric
+      type: string
+    values:
+      description: Array of (timestamp, value) tuples
+      type: array
+      items:
+        type: array
+        items:
+          type: number
+          format: double
+        minItems: 2
+        maxItems: 2
+  required:
+    - name
+    - values
+ActivityData:
+  title: Activity Data
+  description: Activity Data
+  type: object
+  properties:
+    name:
+      type: string
+    data:
+      type: object
+  required:
+    - name
+    - data
+AlertsInfo:
+  title: Alerts Info
+  description: Alerts Info
+  type: object
+  properties:
+    name:
+      description: Name of alert
+      type: string
+    info:
+      description: Array of alerts
+      type: string
+  required:
+    - name
+    - info
+ClusterTableData:
+  title: Cluster Table Data
+  description: List of cluster tables
+  type: array
+  uniqueItems: true
+  nullable: false
+  items:
+    $ref: '#/ClusterTable'
+ClusterTable:
+  title: Cluster Table Object
+  description: Model representing a DB table
+  type: object
+  properties:
+    name:
+      type: string
+      minLength: 1
+      nullable: false
+    keyspace:
+      type: string
+      minLength: 1
+      nullable: false
+    uuid:
+      type: string
+      minLength: 1
+      nullable: false
+    type:
+      $ref: '#/YbApiEnum'
+    size_bytes:
+      type: integer
+      format: int64
+      minimum: 0
+  required:
+    - name
+    - keyspace
+    - uuid
+    - type
+    - size_bytes
+YbApiEnum:
+  title: Yb Api Enum
+  description: Type of DB API (YSQL/YCQL)
+  type: string
+  enum:
+    - YSQL
+    - YCQL
+ClusterData:
+  title: Cluster Data
+  description: Cluster data
+  type: object
+  required:
+    - spec
+    - info
+  properties:
+    spec:
+      $ref: '#/ClusterSpec'
+    info:
+      $ref: '#/ClusterDataInfo'
+ClusterSpec:
+  title: Cluster Specification
+  description: Cluster spec
+  type: object
+  properties:
+    name:
+      description: The name of the cluster
+      type: string
+      minLength: 3
+      maxLength: 63
+      pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+    cloud_info:
+      $ref: '#/CloudInfo'
+    cluster_info:
+      $ref: '#/ClusterInfo'
+    cluster_region_info:
+      type: array
+      uniqueItems: true
+      items:
+        $ref: '#/ClusterRegionInfo'
+      nullable: true
+    encryption_info:
+      $ref: '#/EncryptionInfo'
+  required:
+    - name
+    - cloud_info
+    - cluster_info
+    - network_info
+    - software_info
+    - encryption_info
+CloudInfo:
+  title: Cloud Info
+  description: Cloud deployment information
+  type: object
+  properties:
+    code:
+      $ref: '#/CloudEnum'
+    region:
+      type: string
+      minLength: 1
+      default: us-west2
+  required:
+    - code
+    - region
+CloudEnum:
+  title: Cloud Enum
+  description: Which cloud the cluster is deployed in
+  type: string
+  default: MANUAL
+  enum:
+    - AWS
+    - GCP
+    - MANUAL
+ClusterInfo:
+  title: Cluster Info
+  description: Cluster level information
+  type: object
+  properties:
+    num_nodes:
+      description: How many nodes are in the cluster
+      type: integer
+      minimum: 1
+      maximum: 24
+      default: 3
+    fault_tolerance:
+      $ref: '#/ClusterFaultTolerance'
+    replication_factor:
+      description: The replication factor applied on the cluster
+      type: integer
+      minimum: 1
+      maximum: 24
+    node_info:
+      $ref: '#/ClusterNodeInfo'
+    is_production:
+      description: Describes if the cluster is a production cluster
+      type: boolean
+      default: false
+    version:
+      description: cluster data version
+      type: integer
+      nullable: true
+  required:
+    - num_nodes
+    - fault_tolerance
+    - node_info
+    - cluster_tier
+    - is_production
+ClusterFaultTolerance:
+  title: Cluster Fault Tolerance
+  description: The level of fault tolerance for the cluster
+  type: string
+  enum:
+    - NONE
+    - NODE
+    - ZONE
+    - REGION
+  default: ZONE
+ClusterNodeInfo:
+  title: Cluster Node Info
+  description: Node level information
+  type: object
+  properties:
+    memory_mb:
+      description: The total amount of RAM (MB) used by all nodes
+      type: number
+      format: double
+      default: 0
+    disk_size_gb:
+      description: The total size of disk (GB)
+      type: number
+      format: double
+      default: 0
+    disk_size_used_gb:
+      description: The total size of used disk space (GB)
+      type: number
+      format: double
+      default: 0
+    cpu_usage:
+      description: The average CPU usage over all nodes
+      type: number
+      format: double
+      default: 0
+    num_cores:
+      description: The number of CPU cores per node
+      type: integer
+      default: 0
+    ram_provisioned_gb:
+      description: The total size of provisioned ram (GB)
+      type: number
+      format: double
+      default: 0
+  required:
+    - num_cores
+    - memory_mb
+    - disk_size_gb
+    - ram_provisioned_gb
+ClusterRegionInfo:
+  title: Cluster Region Info
+  description: Cluster region info list
+  type: object
+  properties:
+    placement_info:
+      $ref: '#/PlacementInfo'
+  required:
+    - placement_info
+PlacementInfo:
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/CloudInfo'
+    num_nodes:
+      description: How many nodes are in the region
+      type: integer
+      minimum: 1
+      maximum: 24
+      default: 3
+  required:
+    - cloud_info
+    - num_nodes
+EncryptionInfo:
+  title: Encryption Info
+  description: Cluster encryption info
+  type: object
+  properties:
+    encryption_at_rest:
+      type: boolean
+      default: false
+    encryption_in_transit:
+      type: boolean
+      default: false
+ClusterDataInfo:
+  type: object
+  properties:
+    id:
+      description: The UUID of the cluster
+      type: string
+      format: uuid
+    state:
+      description: The current state of the cluster
+      type: string
+    software_version:
+      description: The current version of YugabyteDB installed on the cluster
+      type: string
+    metadata:
+      $ref: '#/EntityMetadata'
+  required:
+    - id
+    - state
+    - project_id
+    - metadata
+EntityMetadata:
+  title: Entity Metadata
+  description: Common metadata for entities
+  type: object
+  properties:
+    created_on:
+      description: Timestamp when the entity was created (UTC)
+      type: string
+      nullable: true
+    updated_on:
+      description: Timestamp when the entity was last updated (UTC)
+      type: string
+      nullable: true
+HealthCheckInfo:
+  title: Health Check Info
+  type: object
+  properties:
+    dead_nodes:
+      type: array
+      description: UUIDs of dead nodes
+      items:
+        type: string
+        format: uuid
+    most_recent_uptime:
+      type: integer
+      format: int64
+      minimum: 0
+    under_replicated_tablets:
+      type: array
+      description: UUIDs of under-replicated tablets
+      items:
+        type: string
+        format: uuid
+    leaderless_tablets:
+      type: array
+      description: UUIDs of leaderless tablets
+      items:
+        type: string
+        format: uuid
+  required:
+    - dead_nodes
+    - most_recent_uptime
+    - under_replicated_tablets
+    - leaderless_tablets
+ClusterTabletData:
+  title: Cluster Tablet Data
+  description: List of cluster tablets
+  type: object
+  additionalProperties:
+    $ref: '#/ClusterTablet'
+ClusterTablet:
+  title: Cluster Tablet Object
+  description: Model representing a tablet
+  type: object
+  properties:
+    namespace:
+      type: string
+    table_name:
+      type: string
+    table_uuid:
+      type: string
+      format: uuid
+    tablet_id:
+      type: string
+      format: uuid
+    has_leader:
+      type: boolean
+  required:
+    - namespace
+    - table_name
+    - table_uuid
+    - table_id
+    - has_leader
+GflagsInfo:
+  title: Gflags Info
+  description: Gflags Info
+  type: object
+  properties:
+    master_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+    tserver_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+  required:
+    - master_flags
+    - tserver_flags
+Gflag:
+  title: Gflag
+  description: Gflag
+  type: object
+  properties:
+    name:
+      type: string
+    value:
+      type: string
+    type:
+      type: string
+TableInfo:
+  title: Table Info
+  description: Table Info
+  type: object
+  properties:
+    table_name:
+      type: string
+    table_id:
+      type: string
+      format: uuid
+    table_version:
+      type: integer
+    table_type:
+      type: string
+    table_state:
+      type: string
+    table_state_message:
+      type: string
+    table_tablespace_oid:
+      type: string
+    table_replication_info:
+      type: object
+      properties:
+        live_replicas:
+          $ref: '#/TableReplicationInfo'
+        read_replicas:
+          type: array
+          items:
+            $ref: '#/TableReplicationInfo'
+    columns:
+      type: array
+      items:
+        $ref: '#/ColumnInfo'
+    tablets:
+      type: array
+      items:
+        $ref: '#/TabletInfo'
+  required:
+    - table_name
+    - table_id
+    - table_version
+    - table_type
+    - table_state
+    - table_state_message
+    - table_replication_info
+    - columns
+    - tablets
+TabletInfo:
+  title: Tablet Info
+  description: Tablet Info
+  type: object
+  properties:
+    tablet_id:
+      type: string
+      format: uuid
+    partition:
+      type: string
+    split_depth:
+      type: integer
+    state:
+      type: string
+    hidden:
+      type: boolean
+    message:
+      type: string
+    raft_config:
+      type: array
+      items:
+        $ref: '#/RaftConfig'
+RaftConfig:
+  title: Raft Config
+  description: Raft Config
+  type: object
+  properties:
+    uuid:
+      type: string
+      format: uuid
+    role:
+      type: string
+    location:
+      type: string
+ColumnInfo:
+  title: Column Info
+  description: Column Info
+  type: object
+  properties:
+    column:
+      type: string
+    id:
+      type: string
+    type:
+      type: string
+TableReplicationInfo:
+  title: TableReplicationInfo
+  description: TableReplicationInfo
+  type: object
+  properties:
+    num_replicas:
+      type: integer
+    placement_blocks:
+      type: array
+      items:
+        $ref: '#/PlacementBlock'
+    placement_uuid:
+      type: string
+      format: uuid
+PlacementBlock:
+  title: Placement Block
+  description: Placement Block
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/PlacementCloudInfo'
+    min_num_replicas:
+      type: integer
+PlacementCloudInfo:
+  title: Placement Cloud Info
+  description: Placement Cloud Info
+  type: object
+  properties:
+    placement_cloud:
+      type: string
+    placement_region:
+      type: string
+    placement_zone:
+      type: string
+VersionInfo:
+  title: YugabyteDB Version Info
+  description: YugabyteDB version info
+  type: object
+  properties:
+    version:
+      type: string
+VoyagerMigrationsInfo:
+  title: YB Voyager migrations Info
+  description: YB Voyager migrations Info
+  type: object
+  properties:
+    migrations:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrationDetails'
+VoyagerMigrationDetails:
+  title: Voyager task details
+  description: Information regarding a specific voyager migration task
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    migration_name:
+      type: string
+    migration_phase:
+      type: integer
+    invocation_sequence:
+      type: integer
+    source_db:
+      type: string
+    complexity:
+      type: string
+    database_name:
+      type: string
+    schema_name:
+      type: string
+    status:
+      type: string
+    invocation_timestamp:
+      type: string
+VoyagerMigrateDataMetrics:
+  title: YB Voyager Migrate Data metrics Info
+  description: List of YB Voyager Data migrations metrics
+  type: object
+  properties:
+    metrics:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrateDataMetricsDetails'
+VoyagerMigrateDataMetricsDetails:
+  title: Voyager Migrate Data Metrics details
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    table_name:
+      type: string
+    schema_name:
+      type: string
+    migration_phase:
+      type: integer
+    status:
+      type: integer
+    count_live_rows:
+      type: integer
+    count_total_rows:
+      type: integer
+    invocation_timestamp:
+      type: string
+# MigrateSchemaTasks:
+#   title: YB Voyager Migrate schema tasks
+#   description: List of schema migrations tasks
+#   type: object
+#   properties:
+#     metrics:
+#       type: array
+#       items:
+#         $ref: '#/MigrateSchemaTaskDetail'
+MigrateSchemaTaskInfo:
+  title: Details for export schema, import schema and analyze schema steps
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    overall_status:
+      type: string
+    export_schema:
+      type: string
+    analyze_schema:
+      type: string
+    import_schema:
+      type: string
+    suggestions_errors:
+      type: array
+      items:
+        $ref: '#/ErrorsAndSuggestionsDetails'
+    sql_objects:
+      type: array
+      items:
+        $ref: '#/SqlObjectsDetails'
+ErrorsAndSuggestionsDetails:
+  title: Errors and Suggestions details
+  description: Errors and suggestions details
+  type: object
+  properties:
+    objectType:
+      type: string
+    objectName:
+      type: string
+    reason:
+      type: string
+    sqlStatement:
+      type: string
+    filePath:
+      type: string
+    suggestion:
+      type: string
+    GH:
+      type: string
+SqlObjectsDetails:
+  title: Sql Objects
+  description: Sql obejcts type and count
+  type: object
+  properties:
+    objectType:
+      type: string
+    totalCount:
+      type: integer
+    invalidCount:
+      type: integer
+    objectNames:
+      type: string
+    objectDetails:
+      type: string
+MigrationAssesmentInfo:
+  title: Details for Voyager migrations assesment
+  description: Details for Voyager migrations assesment
+  type: object
+  properties:
+    assesment_status:
+      type: boolean
+    top_errors:
+      type: array
+      items:
+        type: string
+    top_suggestions:
+      type: array
+      items:
+        type: string
+    complexity_overview:
+      type: array
+      items:
+        $ref: '#/AssesmentComplexityInfo'
+AssesmentComplexityInfo:
+  title: Assesment complexity details
+  description: Assesment complexity details
+  type: object
+  properties:
+    schema:
+      type: string
+    sql_objects_count:
+      type: integer
+    table_count:
+      type: integer
+    complexity:
+      type: string
+ConnectionsStats:
+  title: YSQL connection manager stats
+  description: YSQL connection manager stats
+  type: object
+  properties:
+    data:
+      $ref: '#/ConnectionsStatsData'
+ConnectionsStatsData:
+  type: object
+  additionalProperties:
+    $ref: '#/ConnectionStats'
+ConnectionStats:
+  type: array
+  items:
+    $ref: '#/ConnectionStatsItem'
+ConnectionStatsItem:
+  type: object
+  properties:
+    database_name:
+      type: string
+    user_name:
+      type: string
+    active_logical_connections:
+      type: integer
+      format: int64
+    queued_logical_connections:
+      type: integer
+      format: int64
+    idle_or_pending_logical_connections:
+      type: integer
+      format: int64
+    active_physical_connections:
+      type: integer
+      format: int64
+    idle_physical_connections:
+      type: integer
+      format: int64
+    avg_wait_time_ns:
+      type: integer
+      format: int64
+    qps:
+      type: integer
+      format: int64
+    tps:
+      type: integer
+      format: int64
+  required:
+    - active_logical_connections
+    - queued_logical_connections
+    - idle_or_pending_logical_connections
+    - active_physical_connections
+    - idle_physical_connections
+    - avg_wait_time_ns
+    - qps
+    - tps
+PITRSchedule:
+  title: List of PITR Schedules in the cluster
+  description: Details of a Point-in-Time Recovery (PITR) schedule
+  type: object
+  properties:
+    id:
+      type: integer
+    databaseKeyspace:
+      type: string
+    interval:
+      type: string
+    retention:
+      type: string
+    earliestRecoverableTime:
+      type: string
+  required:
+    - id
+    - databaseKeyspace
+    - interval
+    - retention
+    - earliestRecoverableTime
+BackupDetails:
+  title: Get Backup Details
+  description: Details of backup enabled on databases in YugabyteDB cluster
+  type: object
+  properties:
+    ybc_task_id:
+      type: string
+    tserver_ip:
+      type: string
+    user_operation:
+      type: string
+    ybdb_api:
+      type: string
+    database_keyspace:
+      type: string
+    task_start_time:
+      type: string
+    task_status:
+      type: string
+    time_taken:
+      type: string
+    bytes_transferred:
+      type: string
+    actual_size:
+      type: string
+  required:
+    - ybc_task_id
+    - tserver_ip
+    - user_operation
+    - ybdb_api
+    - database_keyspace
+    - task_start_time
+    - task_status
+    - time_taken
+    - bytes_transferred
+    - actual_size
+RestoreDetails:
+  title: Get Restore Details
+  description: Details of databases in YugabyteDB cluster on which restore operation in run
+  type: object
+  properties:
+    ybc_task_id:
+      type: string
+    tserver_ip:
+      type: string
+    user_operation:
+      type: string
+    ybdb_api:
+      type: string
+    database_keyspace:
+      type: string
+    task_start_time:
+      type: string
+    task_status:
+      type: string
+    time_taken:
+      type: string
+    bytes_transferred:
+      type: string
+    actual_size:
+      type: string
+  required:
+    - ybc_task_id
+    - tserver_ip
+    - user_operation
+    - ybdb_api
+    - database_keyspace
+    - task_start_time
+    - task_status
+    - time_taken
+    - bytes_transferred
+    - actual_size

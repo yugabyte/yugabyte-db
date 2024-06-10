@@ -1,0 +1,26 @@
+#----------------------------------------------------------------------
+#
+# pg_namespace.dat
+#    Initial contents of the pg_namespace system catalog.
+#
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
+#
+# src/include/catalog/pg_namespace.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+{ oid => '11', oid_symbol => 'PG_CATALOG_NAMESPACE',
+  descr => 'system catalog schema',
+  nspname => 'pg_catalog', nspacl => '_null_' },
+{ oid => '99', oid_symbol => 'PG_TOAST_NAMESPACE',
+  descr => 'reserved schema for TOAST tables',
+  nspname => 'pg_toast', nspacl => '_null_' },
+# update dumpNamespace() if changing this descr
+{ oid => '2200', oid_symbol => 'PG_PUBLIC_NAMESPACE',
+  descr => 'standard public schema',
+  nspname => 'public', nspowner => 'pg_database_owner', nspacl => '_null_' },
+
+]

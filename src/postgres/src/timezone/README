@@ -1,0 +1,140 @@
+src/timezone/README
+
+This is a PostgreSQL adapted version of the IANA timezone library from
+
+	https://www.iana.org/time-zones
+
+The latest version of the timezone data and library source code is
+available right from that page.  It's best to get the merged file
+tzdb-NNNNX.tar.lz, since the other archive formats omit tzdata.zi.
+Historical versions, as well as release announcements, can be found
+elsewhere on the site.
+
+Since time zone rules change frequently in some parts of the world,
+we should endeavor to update the data files before each PostgreSQL
+release.  The code need not be updated as often, but we must track
+changes that might affect interpretation of the data files.
+
+
+Time Zone data
+==============
+
+We distribute the time zone source data as-is under src/timezone/data/.
+Currently, we distribute just the abbreviated single-file format
+"tzdata.zi", to reduce the size of our tarballs as well as churn
+in our git repo.  Feeding that file to zic produces the same compiled
+output as feeding the bulkier individual data files would do.
+
+While data/tzdata.zi can just be duplicated when updating, manual effort
+is needed to update the time zone abbreviation lists under tznames/.
+These need to be changed whenever new abbreviations are invented or the
+UTC offset associated with an existing abbreviation changes.  To detect
+if this has happened, after installing new files under data/ do
+	make abbrevs.txt
+which will produce a file showing all abbreviations that are in current
+use according to the data/ files.  Compare this to known_abbrevs.txt,
+which is the list that existed last time the tznames/ files were updated.
+Update tznames/ as seems appropriate, then replace known_abbrevs.txt
+in the same commit.  Usually, if a known abbreviation has changed meaning,
+the appropriate fix is to make it refer to a long-form zone name instead
+of a fixed GMT offset.
+
+The core regression test suite does some simple validation of the zone
+data and abbreviations data (notably by checking that the pg_timezone_names
+and pg_timezone_abbrevs views don't throw errors).  It's worth running it
+as a cross-check on proposed updates.
+
+When there has been a new release of Windows (probably including Service
+Packs), findtimezone.c's mapping from Windows zones to IANA zones may
+need to be updated.  We have two approaches to doing this:
+1. Consult the CLDR project's windowsZones.xml file, and add any zones
+   listed there that we don't have.  Use their "territory=001" mapping
+   if there's more than one IANA zone listed.
+2. Run the script in src/tools/win32tzlist.pl on a Windows machine
+   running the new release, and add any new timezones that it detects.
+   (This is not a full substitute for #1, though, as win32tzlist.pl
+   can't tell you which IANA zone to map to.)
+In either case, never remove any zone names that have disappeared from
+Windows, since we still need to match properly on older versions.
+
+
+Time Zone code
+==============
+
+The code in this directory is currently synced with tzcode release 2020d.
+There are many cosmetic (and not so cosmetic) differences from the
+original tzcode library, but diffs in the upstream version should usually
+be propagated to our version.  Here are some notes about that.
+
+For the most part we want to use the upstream code as-is, but there are
+several considerations preventing an exact match:
+
+* For readability/maintainability we reformat the code to match our own
+conventions; this includes pgindent'ing it and getting rid of upstream's
+overuse of "register" declarations.  (It used to include conversion of
+old-style function declarations to C89 style, but thank goodness they
+fixed that.)
+
+* We need the code to follow Postgres' portability conventions; this
+includes relying on configure's results rather than hand-hacked
+#defines (see private.h in particular).
+
+* Similarly, avoid relying on <stdint.h> features that may not exist on old
+systems.  In particular this means using Postgres' definitions of the int32
+and int64 typedefs, not int_fast32_t/int_fast64_t.  Likewise we use
+PG_INT32_MIN/MAX not INT32_MIN/MAX.  (Once we desupport all PG versions
+that don't require C99, it'd be practical to rely on <stdint.h> and remove
+this set of diffs; but that day is not yet.)
+
+* Since Postgres is typically built on a system that has its own copy
+of the <time.h> functions, we must avoid conflicting with those.  This
+mandates renaming typedef time_t to pg_time_t, and similarly for most
+other exposed names.
+
+* zic.c's typedef "lineno" is renamed to "lineno_t", because having
+"lineno" in our typedefs list would cause unfortunate pgindent behavior
+in some other files where we have variables named that.
+
+* We have exposed the tzload() and tzparse() internal functions, and
+slightly modified the API of the former, in part because it now relies
+on our own pg_open_tzfile() rather than opening files for itself.
+
+* tzparse() is adjusted to never try to load the TZDEFRULES zone.
+
+* There's a fair amount of code we don't need and have removed,
+including all the nonstandard optional APIs.  We have also added
+a few functions of our own at the bottom of localtime.c.
+
+* In zic.c, we have added support for a -P (print_abbrevs) switch, which
+is used to create the "abbrevs.txt" summary of currently-in-use zone
+abbreviations that was described above.
+
+
+The most convenient way to compare a new tzcode release to our code is
+to first run the tzcode source files through a sed filter like this:
+
+    sed -r \
+        -e 's/^([ \t]*)\*\*([ \t])/\1 *\2/' \
+        -e 's/^([ \t]*)\*\*$/\1 */' \
+        -e 's|^\*/| */|' \
+        -e 's/\bregister[ \t]//g' \
+        -e 's/\bATTRIBUTE_PURE[ \t]//g' \
+        -e 's/int_fast32_t/int32/g' \
+        -e 's/int_fast64_t/int64/g' \
+        -e 's/intmax_t/int64/g' \
+        -e 's/INT32_MIN/PG_INT32_MIN/g' \
+        -e 's/INT32_MAX/PG_INT32_MAX/g' \
+        -e 's/INTMAX_MIN/PG_INT64_MIN/g' \
+        -e 's/INTMAX_MAX/PG_INT64_MAX/g' \
+        -e 's/struct[ \t]+tm\b/struct pg_tm/g' \
+        -e 's/\btime_t\b/pg_time_t/g' \
+        -e 's/lineno/lineno_t/g' \
+
+and then run them through pgindent.  (The first three sed patterns deal
+with conversion of their block comment style to something pgindent
+won't make a hash of; the remainder address other points noted above.)
+After that, the files can be diff'd directly against our corresponding
+files.  Also, it's typically helpful to diff against the previous tzcode
+release (after processing that the same way), and then try to apply the
+diff to our files.  This will take care of most of the changes
+mechanically.

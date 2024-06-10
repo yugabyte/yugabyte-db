@@ -1,0 +1,148 @@
+<!-- doc/src/sgml/pgprewarm.sgml -->
+
+<sect1 id="pgprewarm" xreflabel="pg_prewarm">
+ <title>pg_prewarm</title>
+
+ <indexterm zone="pgprewarm">
+  <primary>pg_prewarm</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_prewarm</filename> module provides a convenient way
+  to load relation data into either the operating system buffer cache
+  or the <productname>PostgreSQL</productname> buffer cache.  Prewarming
+  can be performed manually using the <filename>pg_prewarm</filename> function,
+  or can be performed automatically by including <literal>pg_prewarm</literal> in
+  <xref linkend="guc-shared-preload-libraries"/>.  In the latter case, the
+  system will run a background worker which periodically records the contents
+  of shared buffers in a file called <filename>autoprewarm.blocks</filename> and
+  will, using 2 background workers, reload those same blocks after a restart.
+ </para>
+
+ <sect2>
+  <title>Functions</title>
+
+<synopsis>
+pg_prewarm(regclass, mode text default 'buffer', fork text default 'main',
+           first_block int8 default null,
+           last_block int8 default null) RETURNS int8
+</synopsis>
+
+  <para>
+   The first argument is the relation to be prewarmed.  The second argument
+   is the prewarming method to be used, as further discussed below; the third
+   is the relation fork to be prewarmed, usually <literal>main</literal>.
+   The fourth argument is the first block number to prewarm
+   (<literal>NULL</literal> is accepted as a synonym for zero).  The fifth
+   argument is the last block number to prewarm (<literal>NULL</literal>
+   means prewarm through the last block in the relation).  The return value
+   is the number of blocks prewarmed.
+  </para>
+
+  <para>
+   There are three available prewarming methods.  <literal>prefetch</literal>
+   issues asynchronous prefetch requests to the operating system, if this is
+   supported, or throws an error otherwise.  <literal>read</literal> reads
+   the requested range of blocks; unlike <literal>prefetch</literal>, this is
+   synchronous and supported on all platforms and builds, but may be slower.
+   <literal>buffer</literal> reads the requested range of blocks into the
+   database buffer cache.
+  </para>
+
+  <para>
+   Note that with any of these methods, attempting to prewarm more blocks than
+   can be cached &mdash; by the OS when using <literal>prefetch</literal> or
+   <literal>read</literal>, or by <productname>PostgreSQL</productname> when
+   using <literal>buffer</literal> &mdash; will likely result in lower-numbered
+   blocks being evicted as higher numbered blocks are read in.  Prewarmed data
+   also enjoys no special protection from cache evictions, so it is possible
+   that other system activity may evict the newly prewarmed blocks shortly
+   after they are read; conversely, prewarming may also evict other data from
+   cache. For these reasons, prewarming is typically most useful at startup,
+   when caches are largely empty.
+  </para>
+
+<synopsis>
+autoprewarm_start_worker() RETURNS void
+</synopsis>
+
+  <para>
+   Launch the main autoprewarm worker.  This will normally happen
+   automatically, but is useful if automatic prewarm was not configured at
+   server startup time and you wish to start up the worker at a later time.
+  </para>
+
+<synopsis>
+autoprewarm_dump_now() RETURNS int8
+</synopsis>
+
+  <para>
+   Update <filename>autoprewarm.blocks</filename> immediately.  This may be useful
+   if the autoprewarm worker is not running but you anticipate running it
+   after the next restart.  The return value is the number of records written
+   to <filename>autoprewarm.blocks</filename>.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Configuration Parameters</title>
+
+ <variablelist>
+   <varlistentry>
+    <term>
+     <varname>pg_prewarm.autoprewarm</varname> (<type>boolean</type>)
+     <indexterm>
+      <primary><varname>pg_prewarm.autoprewarm</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      Controls whether the server should run the autoprewarm worker. This is
+      on by default. This parameter can only be set at server start.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <variablelist>
+   <varlistentry>
+   <term>
+     <varname>pg_prewarm.autoprewarm_interval</varname> (<type>integer</type>)
+     <indexterm>
+      <primary><varname>pg_prewarm.autoprewarm_interval</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      This is the interval between updates to <literal>autoprewarm.blocks</literal>.
+      The default is 300 seconds. If set to 0, the file will not be
+      dumped at regular intervals, but only when the server is shut down.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  <para>
+   These parameters must be set in <filename>postgresql.conf</filename>.
+   Typical usage might be:
+  </para>
+
+<programlisting>
+# postgresql.conf
+shared_preload_libraries = 'pg_prewarm'
+
+pg_prewarm.autoprewarm = true
+pg_prewarm.autoprewarm_interval = 300s
+
+</programlisting>
+
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Robert Haas <email>rhaas@postgresql.org</email>
+  </para>
+ </sect2>
+
+</sect1>

@@ -1,0 +1,845 @@
+<!--
+doc/src/sgml/ref/postgres-ref.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-postgres">
+ <indexterm zone="app-postgres">
+  <primary>postgres</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>postgres</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>postgres</refname>
+  <refpurpose><productname>PostgreSQL</productname> database server</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>postgres</command>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>postgres</command> is the
+   <productname>PostgreSQL</productname> database server.  In order
+   for a client application to access a database it connects (over a
+   network or locally) to a running <command>postgres</command> instance.
+   The <command>postgres</command> instance then starts a separate server
+   process to handle the connection.
+  </para>
+
+  <para>
+   One <command>postgres</command> instance always manages the data of
+   exactly one database cluster.  A database cluster is a collection
+   of databases that is stored at a common file system location (the
+   <quote>data area</quote>).  More than one
+   <command>postgres</command> instance can run on a system at one
+   time, so long as they use different data areas and different
+   communication ports (see below).  When
+   <command>postgres</command> starts it needs to know the location
+   of the data area.  The location must be specified by the
+   <option>-D</option> option or the <envar>PGDATA</envar> environment
+   variable; there is no default.  Typically, <option>-D</option> or
+   <envar>PGDATA</envar> points directly to the data area directory
+   created by <xref linkend="app-initdb"/>.  Other possible file layouts are
+   discussed in <xref linkend="runtime-config-file-locations"/>.
+  </para>
+
+  <para>
+   By default <command>postgres</command> starts in the
+   foreground and prints log messages to the standard error stream.  In
+   practical applications <command>postgres</command>
+   should be started as a background process, perhaps at boot time.
+  </para>
+
+  <para>
+   The <command>postgres</command> command can also be called in
+   single-user mode.  The primary use for this mode is during
+   bootstrapping by <xref linkend="app-initdb"/>.  Sometimes it is used
+   for debugging or disaster recovery;  note that running a single-user
+   server is not truly suitable for debugging the server, since no
+   realistic interprocess communication and locking will happen.
+   When invoked in single-user
+   mode from the shell, the user can enter queries and the results
+   will be printed to the screen, but in a form that is more useful
+   for developers than end users.  In the single-user mode,
+   the session user will be set to the user with ID 1, and implicit
+   superuser powers are granted to this user.
+   This user does not actually have to exist, so the single-user mode
+   can be used to manually recover from certain
+   kinds of accidental damage to the system catalogs.
+  </para>
+ </refsect1>
+
+ <refsect1 id="app-postgres-options">
+  <title>Options</title>
+
+   <para>
+    <command>postgres</command> accepts the following command-line
+    arguments.  For a detailed discussion of the options consult <xref
+    linkend="runtime-config"/>.  You can save typing most of these
+    options by setting up a configuration file.  Some (safe) options
+    can also be set from the connecting client in an
+    application-dependent way to apply only for that session.  For
+    example, if the environment variable <envar>PGOPTIONS</envar> is
+    set, then <application>libpq</application>-based clients will pass that
+    string to the server, which will interpret it as
+    <command>postgres</command> command-line options.
+   </para>
+
+   <refsect2>
+    <title>General Purpose</title>
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-B <replaceable class="parameter">nbuffers</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets the number of shared buffers for use by the server
+        processes.  The default value of this parameter is chosen
+        automatically by <application>initdb</application>.
+        Specifying this option is equivalent to setting the
+        <xref linkend="guc-shared-buffers"/> configuration parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-c <replaceable>name</replaceable>=<replaceable>value</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets a named run-time parameter. The configuration parameters
+        supported by <productname>PostgreSQL</productname> are
+        described in <xref linkend="runtime-config"/>. Most of the
+        other command line options are in fact short forms of such a
+        parameter assignment.  <option>-c</option> can appear multiple times
+        to set multiple parameters.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-C <replaceable>name</replaceable></option></term>
+      <listitem>
+       <para>
+        Prints the value of the named run-time parameter, and exits.
+        (See the <option>-c</option> option above for details.)  This
+        returns values from
+        <filename>postgresql.conf</filename>, modified by any parameters
+        supplied in this invocation.  It does not reflect parameters
+        supplied when the cluster was started.
+       </para>
+
+       <para>
+        This can be used on a running server for most parameters.  However,
+        the server must be shut down for some runtime-computed parameters
+        (e.g., <xref linkend="guc-shared-memory-size"/>,
+        <xref linkend="guc-shared-memory-size-in-huge-pages"/>, and
+        <xref linkend="guc-wal-segment-size"/>).
+       </para>
+
+       <para>
+        This option is meant for other programs that interact with a server
+        instance, such as <xref linkend="app-pg-ctl"/>, to query configuration
+        parameter values.  User-facing applications should instead use <link
+        linkend="sql-show"><command>SHOW</command></link> or the <structname>pg_settings</structname> view.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-d <replaceable>debug-level</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets the debug level.  The higher this value is set, the more
+        debugging output is written to the server log.  Values are
+        from 1 to 5.  It is also possible to pass <literal>-d
+        0</literal> for a specific session, which will prevent the
+        server log level of the parent <command>postgres</command> process from being
+        propagated to this session.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-D <replaceable class="parameter">datadir</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the file system location of the database
+        configuration files.  See
+        <xref linkend="runtime-config-file-locations"/> for details.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</option></term>
+      <listitem>
+       <para>
+        Sets the default date style to <quote>European</quote>, that is
+        <literal>DMY</literal> ordering of input date fields.  This also causes
+        the day to be printed before the month in certain date output formats.
+        See <xref linkend="datatype-datetime"/> for more information.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-F</option></term>
+      <listitem>
+       <para>
+        Disables <function>fsync</function> calls for improved
+        performance, at the risk of data corruption in the event of a
+        system crash.  Specifying this option is equivalent to
+        disabling the <xref linkend="guc-fsync"/> configuration
+        parameter. Read the detailed documentation before using this!
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">hostname</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the IP host name or address on which
+        <command>postgres</command> is to listen for TCP/IP
+        connections from client applications.  The value can also be a
+        comma-separated list of addresses, or <literal>*</literal> to specify
+        listening on all available interfaces.  An empty value
+        specifies not listening on any IP addresses, in which case
+        only Unix-domain sockets can be used to connect to the
+        server.  Defaults to listening only on
+        <systemitem class="systemname">localhost</systemitem>.
+        Specifying this option is equivalent to setting the <xref
+        linkend="guc-listen-addresses"/> configuration parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-i</option></term>
+      <listitem>
+       <para>
+        Allows remote clients to connect via TCP/IP (Internet domain)
+        connections.  Without this option, only local connections are
+        accepted.  This option is equivalent to setting
+        <varname>listen_addresses</varname> to <literal>*</literal> in
+        <filename>postgresql.conf</filename> or via <option>-h</option>.
+       </para>
+       <para>
+        This option is deprecated since it does not allow access to the
+        full functionality of <xref linkend="guc-listen-addresses"/>.
+        It's usually better to set <varname>listen_addresses</varname> directly.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-k <replaceable class="parameter">directory</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the directory of the Unix-domain socket on which
+        <command>postgres</command> is to listen for
+        connections from client applications.  The value can also be a
+        comma-separated list of directories.  An empty value
+        specifies not listening on any Unix-domain sockets, in which case
+        only TCP/IP sockets can be used to connect to the server.
+        The default value is normally
+        <filename>/tmp</filename>, but that can be changed at build time.
+        Specifying this option is equivalent to setting the <xref
+        linkend="guc-unix-socket-directories"/> configuration parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-l</option></term>
+      <listitem>
+       <para>
+        Enables secure connections using <acronym>SSL</acronym>.
+        <productname>PostgreSQL</productname> must have been compiled with
+        support for <acronym>SSL</acronym> for this option to be
+        available. For more information on using <acronym>SSL</acronym>,
+        refer to <xref linkend="ssl-tcp"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-N <replaceable class="parameter">max-connections</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets the maximum number of client connections that this
+        server will accept.  The default value of this parameter is chosen
+        automatically by <application>initdb</application>.
+        Specifying this option is equivalent to setting the
+        <xref linkend="guc-max-connections"/> configuration parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the TCP/IP port or local Unix domain socket file
+        extension on which <command>postgres</command>
+        is to listen for connections from client applications.
+        Defaults to the value of the <envar>PGPORT</envar> environment
+        variable, or if <envar>PGPORT</envar> is not set, then
+        defaults to the value established during compilation (normally
+        5432).  If you specify a port other than the default port,
+        then all client applications must specify the same port using
+        either command-line options or <envar>PGPORT</envar>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-s</option></term>
+      <listitem>
+       <para>
+        Print time information and other statistics at the end of each command.
+        This is useful for benchmarking or for use in tuning the number of
+        buffers.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-S</option> <replaceable class="parameter">work-mem</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the base amount of memory to be used by sorts and
+        hash tables before resorting to temporary disk files.  See the
+        description of the <varname>work_mem</varname> configuration
+        parameter in <xref linkend="runtime-config-resource-memory"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-V</option></term>
+      <term><option>--version</option></term>
+      <listitem>
+       <para>
+        Print the <application>postgres</application> version and exit.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--<replaceable>name</replaceable>=<replaceable>value</replaceable></option></term>
+      <listitem>
+       <para>
+        Sets a named run-time parameter; a shorter form of
+        <option>-c</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--describe-config</option></term>
+      <listitem>
+       <para>
+        This option dumps out the server's internal configuration variables,
+        descriptions, and defaults in tab-delimited <command>COPY</command> format.
+        It is designed primarily for use by administration tools.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-?</option></term>
+      <term><option>--help</option></term>
+      <listitem>
+       <para>
+        Show help about <application>postgres</application> command line
+        arguments, and exit.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </refsect2>
+
+   <refsect2>
+    <title>Semi-Internal Options</title>
+
+    <para>
+     The options described here are used
+     mainly for debugging purposes, and in some cases to assist with
+     recovery of severely damaged databases. There should be no reason
+     to use them in a production database setup.  They are listed
+     here only for use by <productname>PostgreSQL</productname>
+     system developers.  Furthermore, these options might
+     change or be removed in a future release without notice.
+    </para>
+
+    <variablelist>
+     <varlistentry>
+      <term><option>-f</option> <literal>{ s | i | o | b | t | n | m | h }</literal></term>
+      <listitem>
+       <para>
+        Forbids the use of particular scan and join methods:
+        <literal>s</literal> and <literal>i</literal>
+        disable sequential and index scans respectively,
+        <literal>o</literal>, <literal>b</literal> and <literal>t</literal>
+        disable index-only scans, bitmap index scans, and TID scans
+        respectively, while
+        <literal>n</literal>, <literal>m</literal>, and <literal>h</literal>
+        disable nested-loop, merge and hash joins respectively.
+       </para>
+
+       <para>
+        Neither sequential scans nor nested-loop joins can be disabled
+        completely; the <literal>-fs</literal> and
+        <literal>-fn</literal> options simply discourage the optimizer
+        from using those plan types if it has any other alternative.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-n</option></term>
+      <listitem>
+       <para>
+        This option is for debugging problems that cause a server
+        process to die abnormally.  The ordinary strategy in this
+        situation is to notify all other server processes that they
+        must terminate and then reinitialize the shared memory and
+        semaphores.  This is because an errant server process could
+        have corrupted some shared state before terminating.  This
+        option specifies that <command>postgres</command> will
+        not reinitialize shared data structures.  A knowledgeable
+        system programmer can then use a debugger to examine shared
+        memory and semaphore state.
+       </para>
+     </listitem>
+    </varlistentry>
+
+     <varlistentry>
+      <term><option>-O</option></term>
+      <listitem>
+       <para>
+        Allows the structure of system tables to be modified.  This is
+        used by <command>initdb</command>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-P</option></term>
+      <listitem>
+       <para>
+        Ignore system indexes when reading system tables, but still update
+        the indexes when modifying the tables.  This is useful when
+        recovering from damaged system indexes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-t</option> <literal>pa[rser] | pl[anner] | e[xecutor]</literal></term>
+      <listitem>
+       <para>
+        Print timing statistics for each query relating to each of the
+        major system modules.  This option cannot be used together
+        with the <option>-s</option> option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-T</option></term>
+      <listitem>
+       <para>
+        This option is for debugging problems that cause a server
+        process to die abnormally.  The ordinary strategy in this
+        situation is to notify all other server processes that they
+        must terminate and then reinitialize the shared memory and
+        semaphores.  This is because an errant server process could
+        have corrupted some shared state before terminating.  This
+        option specifies that <command>postgres</command> will
+        stop all other server processes by sending the signal
+        <literal>SIGSTOP</literal>, but will not cause them to
+        terminate.  This permits system programmers to collect core
+        dumps from all server processes by hand.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-v</option> <replaceable class="parameter">protocol</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the version number of the frontend/backend protocol
+        to be used for a particular session.  This option is for
+        internal use only.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option> <replaceable class="parameter">seconds</replaceable></term>
+      <listitem>
+       <para>
+        A delay of this many seconds occurs when a new server process
+        is started, after it conducts the authentication procedure.
+        This is intended to give an opportunity to attach to the
+        server process with a debugger.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </refsect2>
+
+   <refsect2>
+    <title>Options for Single-User Mode</title>
+
+    <indexterm>
+     <primary>single-user mode</primary>
+    </indexterm>
+
+    <para>
+     The following options only apply to the single-user mode
+     (see <xref linkend="app-postgres-single-user"/> below).
+    </para>
+
+    <variablelist>
+     <varlistentry>
+      <term><option>--single</option></term>
+      <listitem>
+       <para>
+        Selects the single-user mode.  This must be the first argument
+        on the command line.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">database</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to be accessed.  This must be
+        the last argument on the command line.  If it is
+        omitted it defaults to the user name.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-E</option></term>
+      <listitem>
+       <para>
+        Echo all commands to standard output before executing them.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-j</option></term>
+      <listitem>
+       <para>
+        Use semicolon followed by two newlines, rather than just newline,
+        as the command entry terminator.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-r</option> <replaceable class="parameter">filename</replaceable></term>
+      <listitem>
+       <para>
+        Send all server log output to <replaceable
+        class="parameter">filename</replaceable>.  This option is only
+        honored when supplied as a command-line option.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </refsect2>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGCLIENTENCODING</envar></term>
+
+    <listitem>
+     <para>
+      Default character encoding used by clients.  (The clients can
+      override this individually.)  This value can also be set in the
+      configuration file.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PGDATA</envar></term>
+
+    <listitem>
+     <para>
+      Default data directory location
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PGDATESTYLE</envar></term>
+
+    <listitem>
+     <para>
+      Default value of the <xref linkend="guc-datestyle"/> run-time
+      parameter.  (The use of this environment variable is deprecated.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PGPORT</envar></term>
+
+    <listitem>
+     <para>
+      Default port number (preferably set in the configuration file)
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+   <title>Diagnostics</title>
+
+   <para>
+    A failure message mentioning <literal>semget</literal> or
+    <literal>shmget</literal> probably indicates you need to configure your
+    kernel to provide adequate shared memory and semaphores.  For more
+    discussion see <xref linkend="kernel-resources"/>.  You might be able
+    to postpone reconfiguring your kernel by decreasing <xref
+    linkend="guc-shared-buffers"/> to reduce the shared memory
+    consumption of <productname>PostgreSQL</productname>, and/or by reducing
+    <xref linkend="guc-max-connections"/> to reduce the semaphore
+    consumption.
+   </para>
+
+   <para>
+    A failure message suggesting that another server is already running
+    should be checked carefully, for example by using the command
+<screen>
+<prompt>$</prompt> <userinput>ps ax | grep postgres</userinput>
+</screen>
+        or
+<screen>
+<prompt>$</prompt> <userinput>ps -ef | grep postgres</userinput>
+</screen>
+    depending on your system.  If you are certain that no conflicting
+    server is running, you can remove the lock file mentioned in the
+    message and try again.
+   </para>
+
+   <para>
+    A failure message indicating inability to bind to a port might
+    indicate that that port is already in use by some
+    non-<productname>PostgreSQL</productname> process.  You might also
+    get this error if you terminate <command>postgres</command>
+    and immediately restart it using the same port; in this case, you
+    must simply wait a few seconds until the operating system closes
+    the port before trying again.  Finally, you might get this error if
+    you specify a port number that your operating system considers to
+    be reserved.  For example, many versions of Unix consider port
+    numbers under 1024 to be <quote>trusted</quote> and only permit
+    the Unix superuser to access them.
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The utility command <xref linkend="app-pg-ctl"/> can be used to
+   start and shut down the <command>postgres</command> server
+   safely and comfortably.
+  </para>
+
+  <para>
+   If at all possible, <emphasis>do not</emphasis> use
+   <literal>SIGKILL</literal> to kill the main
+   <command>postgres</command> server.  Doing so will prevent
+   <command>postgres</command> from freeing the system
+   resources (e.g., shared memory and semaphores) that it holds before
+   terminating.  This might cause problems for starting a fresh
+   <command>postgres</command> run.
+  </para>
+
+  <para>
+   To terminate the <command>postgres</command> server normally, the
+   signals <literal>SIGTERM</literal>, <literal>SIGINT</literal>, or
+   <literal>SIGQUIT</literal> can be used.  The first will wait for
+   all clients to terminate before quitting, the second will
+   forcefully disconnect all clients, and the third will quit
+   immediately without proper shutdown, resulting in a recovery run
+   during restart.
+  </para>
+
+  <para>
+   The <literal>SIGHUP</literal> signal will reload
+   the server configuration files.  It is also possible to send
+   <literal>SIGHUP</literal> to an individual server process, but that
+   is usually not sensible.
+  </para>
+
+  <para>
+   To cancel a running query, send the <literal>SIGINT</literal> signal
+   to the process running that command. To terminate a backend process
+   cleanly, send <literal>SIGTERM</literal> to that process. See
+   also <function>pg_cancel_backend</function> and <function>pg_terminate_backend</function>
+   in <xref linkend="functions-admin-signal"/> for the SQL-callable equivalents
+   of these two actions.
+  </para>
+
+  <para>
+   The <command>postgres</command> server uses <literal>SIGQUIT</literal>
+   to tell subordinate server processes to terminate without normal
+   cleanup.
+   This signal <emphasis>should not</emphasis> be used by users.  It
+   is also unwise to send <literal>SIGKILL</literal> to a server
+   process &mdash; the main <command>postgres</command> process will
+   interpret this as a crash and will force all the sibling processes
+   to quit as part of its standard crash-recovery procedure.
+  </para>
+ </refsect1>
+
+ <refsect1 id="app-postgres-bugs">
+  <title>Bugs</title>
+  <para>
+   The <option>--</option> options will not work on <systemitem
+   class="osname">FreeBSD</systemitem> or <systemitem class="osname">OpenBSD</systemitem>.
+   Use <option>-c</option> instead. This is a bug in the affected operating
+   systems; a future release of <productname>PostgreSQL</productname>
+   will provide a workaround if this is not fixed.
+  </para>
+ </refsect1>
+
+ <refsect1 id="app-postgres-single-user" xreflabel="Single-User Mode">
+  <title>Single-User Mode</title>
+
+   <para>
+    To start a single-user mode server, use a command like
+<screen>
+<userinput>postgres --single -D /usr/local/pgsql/data <replaceable>other-options</replaceable> my_database</userinput>
+</screen>
+    Provide the correct path to the database directory with <option>-D</option>, or
+    make sure that the environment variable <envar>PGDATA</envar> is set.
+    Also specify the name of the particular database you want to work in.
+   </para>
+
+   <para>
+    Normally, the single-user mode server treats newline as the command
+    entry terminator; there is no intelligence about semicolons,
+    as there is in <application>psql</application>.  To continue a command
+    across multiple lines, you must type backslash just before each
+    newline except the last one.  The backslash and adjacent newline are
+    both dropped from the input command.  Note that this will happen even
+    when within a string literal or comment.
+   </para>
+
+   <para>
+    But if you use the <option>-j</option> command line switch, a single newline
+    does not terminate command entry; instead, the sequence
+    semicolon-newline-newline does.  That is, type a semicolon immediately
+    followed by a completely empty line.  Backslash-newline is not
+    treated specially in this mode.  Again, there is no intelligence about
+    such a sequence appearing within a string literal or comment.
+   </para>
+
+   <para>
+    In either input mode, if you type a semicolon that is not just before or
+    part of a command entry terminator, it is considered a command separator.
+    When you do type a command entry terminator, the multiple statements
+    you've entered will be executed as a single transaction.
+   </para>
+
+   <para>
+    To quit the session, type <acronym>EOF</acronym>
+    (<keycombo action="simul"><keycap>Control</keycap><keycap>D</keycap></keycombo>, usually).
+    If you've entered any text since the last command entry terminator,
+    then <acronym>EOF</acronym> will be taken as a command entry terminator,
+    and another <acronym>EOF</acronym> will be needed to exit.
+   </para>
+
+   <para>
+    Note that the single-user mode server does not provide sophisticated
+    line-editing features (no command history, for example).
+    Single-user mode also does not do any background processing, such as
+    automatic checkpoints or replication.
+   </para>
+ </refsect1>
+
+ <refsect1 id="app-postgres-examples">
+  <title>Examples</title>
+
+  <para>
+   To start <command>postgres</command> in the background
+   using default values, type:
+
+<screen>
+<prompt>$</prompt> <userinput>nohup postgres &gt;logfile 2&gt;&amp;1 &lt;/dev/null &amp;</userinput>
+</screen>
+  </para>
+
+  <para>
+   To start <command>postgres</command> with a specific
+   port, e.g., 1234:
+<screen>
+<prompt>$</prompt> <userinput>postgres -p 1234</userinput>
+</screen>
+   To connect to this server using <application>psql</application>, specify this port with the -p option:
+<screen>
+<prompt>$</prompt> <userinput>psql -p 1234</userinput>
+</screen>
+   or set the environment variable <envar>PGPORT</envar>:
+<screen>
+<prompt>$</prompt> <userinput>export PGPORT=1234</userinput>
+<prompt>$</prompt> <userinput>psql</userinput>
+</screen>
+  </para>
+
+  <para>
+   Named run-time parameters can be set in either of these styles:
+<screen>
+<prompt>$</prompt> <userinput>postgres -c work_mem=1234</userinput>
+<prompt>$</prompt> <userinput>postgres --work-mem=1234</userinput>
+</screen>
+   Either form overrides whatever setting might exist for
+   <varname>work_mem</varname> in <filename>postgresql.conf</filename>.  Notice that
+   underscores in parameter names can be written as either underscore
+   or dash on the command line.  Except for short-term experiments,
+   it's probably better practice to edit the setting in
+   <filename>postgresql.conf</filename> than to rely on a command-line switch
+   to set a parameter.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <para>
+   <xref linkend="app-initdb"/>,
+   <xref linkend="app-pg-ctl"/>
+  </para>
+ </refsect1>
+</refentry>

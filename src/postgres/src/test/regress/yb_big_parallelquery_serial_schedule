@@ -1,0 +1,7 @@
+# src/test/regress/yb_big_parallelquery_serial_schedule
+#
+####################################################################################################
+# Postgres parallel query feature on big tables.
+####################################################################################################
+
+test: yb_parallel_big_colocated

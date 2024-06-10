@@ -1,0 +1,2738 @@
+<!-- doc/src/sgml/queries.sgml -->
+
+<chapter id="queries">
+ <title>Queries</title>
+
+ <indexterm zone="queries">
+  <primary>query</primary>
+ </indexterm>
+
+ <indexterm zone="queries">
+  <primary>SELECT</primary>
+ </indexterm>
+
+ <para>
+  The previous chapters explained how to create tables, how to fill
+  them with data, and how to manipulate that data.  Now we finally
+  discuss how to retrieve the data from the database.
+ </para>
+
+
+ <sect1 id="queries-overview">
+  <title>Overview</title>
+
+  <para>
+   The process of retrieving or the command to retrieve data from a
+   database is called a <firstterm>query</firstterm>.  In SQL the
+   <link linkend="sql-select"><command>SELECT</command></link> command is
+   used to specify queries.  The general syntax of the
+   <command>SELECT</command> command is
+<synopsis>
+<optional>WITH <replaceable>with_queries</replaceable></optional> SELECT <replaceable>select_list</replaceable> FROM <replaceable>table_expression</replaceable> <optional><replaceable>sort_specification</replaceable></optional>
+</synopsis>
+   The following sections describe the details of the select list, the
+   table expression, and the sort specification.  <literal>WITH</literal>
+   queries are treated last since they are an advanced feature.
+  </para>
+
+  <para>
+   A simple kind of query has the form:
+<programlisting>
+SELECT * FROM table1;
+</programlisting>
+  Assuming that there is a table called <literal>table1</literal>,
+  this command would retrieve all rows and all user-defined columns from
+  <literal>table1</literal>.  (The method of retrieval depends on the
+  client application.  For example, the
+  <application>psql</application> program will display an ASCII-art
+  table on the screen, while client libraries will offer functions to
+  extract individual values from the query result.)  The select list
+  specification <literal>*</literal> means all columns that the table
+  expression happens to provide.  A select list can also select a
+  subset of the available columns or make calculations using the
+  columns.  For example, if
+  <literal>table1</literal> has columns named <literal>a</literal>,
+  <literal>b</literal>, and <literal>c</literal> (and perhaps others) you can make
+  the following query:
+<programlisting>
+SELECT a, b + c FROM table1;
+</programlisting>
+  (assuming that <literal>b</literal> and <literal>c</literal> are of a numerical
+  data type).
+  See <xref linkend="queries-select-lists"/> for more details.
+ </para>
+
+ <para>
+  <literal>FROM table1</literal> is a simple kind of
+  table expression: it reads just one table.  In general, table
+  expressions can be complex constructs of base tables, joins, and
+  subqueries.  But you can also omit the table expression entirely and
+  use the <command>SELECT</command> command as a calculator:
+<programlisting>
+SELECT 3 * 4;
+</programlisting>
+  This is more useful if the expressions in the select list return
+  varying results.  For example, you could call a function this way:
+<programlisting>
+SELECT random();
+</programlisting>
+  </para>
+ </sect1>
+
+
+ <sect1 id="queries-table-expressions">
+  <title>Table Expressions</title>
+
+  <indexterm zone="queries-table-expressions">
+   <primary>table expression</primary>
+  </indexterm>
+
+  <para>
+   A <firstterm>table expression</firstterm> computes a table.  The
+   table expression contains a <literal>FROM</literal> clause that is
+   optionally followed by <literal>WHERE</literal>, <literal>GROUP BY</literal>, and
+   <literal>HAVING</literal> clauses.  Trivial table expressions simply refer
+   to a table on disk, a so-called base table, but more complex
+   expressions can be used to modify or combine base tables in various
+   ways.
+  </para>
+
+  <para>
+   The optional <literal>WHERE</literal>, <literal>GROUP BY</literal>, and
+   <literal>HAVING</literal> clauses in the table expression specify a
+   pipeline of successive transformations performed on the table
+   derived in the <literal>FROM</literal> clause.  All these transformations
+   produce a virtual table that provides the rows that are passed to
+   the select list to compute the output rows of the query.
+  </para>
+
+  <sect2 id="queries-from">
+   <title>The <literal>FROM</literal> Clause</title>
+
+   <para>
+    The <link linkend="sql-from"><literal>FROM</literal></link> clause derives a
+    table from one or more other tables given in a comma-separated
+    table reference list.
+<synopsis>
+FROM <replaceable>table_reference</replaceable> <optional>, <replaceable>table_reference</replaceable> <optional>, ...</optional></optional>
+</synopsis>
+
+    A table reference can be a table name (possibly schema-qualified),
+    or a derived table such as a subquery, a <literal>JOIN</literal> construct, or
+    complex combinations of these.  If more than one table reference is
+    listed in the <literal>FROM</literal> clause, the tables are cross-joined
+    (that is, the Cartesian product of their rows is formed; see below).
+    The result of the <literal>FROM</literal> list is an intermediate virtual
+    table that can then be subject to
+    transformations by the <literal>WHERE</literal>, <literal>GROUP BY</literal>,
+    and <literal>HAVING</literal> clauses and is finally the result of the
+    overall table expression.
+   </para>
+
+   <indexterm>
+    <primary>ONLY</primary>
+   </indexterm>
+
+   <para>
+    When a table reference names a table that is the parent of a
+    table inheritance hierarchy, the table reference produces rows of
+    not only that table but all of its descendant tables, unless the
+    key word <literal>ONLY</literal> precedes the table name.  However, the
+    reference produces only the columns that appear in the named table
+    &mdash; any columns added in subtables are ignored.
+   </para>
+
+   <para>
+    Instead of writing <literal>ONLY</literal> before the table name, you can write
+    <literal>*</literal> after the table name to explicitly specify that descendant
+    tables are included.  There is no real reason to use this syntax any more,
+    because searching descendant tables is now always the default behavior.
+    However, it is supported for compatibility with older releases.
+   </para>
+
+   <sect3 id="queries-join">
+    <title>Joined Tables</title>
+
+    <indexterm zone="queries-join">
+     <primary>join</primary>
+    </indexterm>
+
+    <para>
+     A joined table is a table derived from two other (real or
+     derived) tables according to the rules of the particular join
+     type.  Inner, outer, and cross-joins are available.
+     The general syntax of a joined table is
+<synopsis>
+<replaceable>T1</replaceable> <replaceable>join_type</replaceable> <replaceable>T2</replaceable> <optional> <replaceable>join_condition</replaceable> </optional>
+</synopsis>
+     Joins of all types can be chained together, or nested: either or
+     both <replaceable>T1</replaceable> and
+     <replaceable>T2</replaceable> can be joined tables.  Parentheses
+     can be used around <literal>JOIN</literal> clauses to control the join
+     order.  In the absence of parentheses, <literal>JOIN</literal> clauses
+     nest left-to-right.
+    </para>
+
+    <variablelist>
+     <title>Join Types</title>
+
+     <varlistentry>
+      <term>Cross join
+      <indexterm>
+       <primary>join</primary>
+       <secondary>cross</secondary>
+      </indexterm>
+
+      <indexterm>
+       <primary>cross join</primary>
+      </indexterm>
+      </term>
+
+      <listitem>
+<synopsis>
+<replaceable>T1</replaceable> CROSS JOIN <replaceable>T2</replaceable>
+</synopsis>
+
+       <para>
+        For every possible combination of rows from
+        <replaceable>T1</replaceable> and
+        <replaceable>T2</replaceable> (i.e., a Cartesian product),
+        the joined table will contain a
+        row consisting of all columns in <replaceable>T1</replaceable>
+        followed by all columns in <replaceable>T2</replaceable>.  If
+        the tables have N and M rows respectively, the joined
+        table will have N * M rows.
+       </para>
+
+       <para>
+        <literal>FROM <replaceable>T1</replaceable> CROSS JOIN
+        <replaceable>T2</replaceable></literal> is equivalent to
+        <literal>FROM <replaceable>T1</replaceable> INNER JOIN
+        <replaceable>T2</replaceable> ON TRUE</literal> (see below).
+        It is also equivalent to
+        <literal>FROM <replaceable>T1</replaceable>,
+        <replaceable>T2</replaceable></literal>.
+        <note>
+        <para>
+         This latter equivalence does not hold exactly when more than two
+         tables appear, because <literal>JOIN</literal> binds more tightly than
+         comma.  For example
+         <literal>FROM <replaceable>T1</replaceable> CROSS JOIN
+         <replaceable>T2</replaceable> INNER JOIN <replaceable>T3</replaceable>
+         ON <replaceable>condition</replaceable></literal>
+         is not the same as
+         <literal>FROM <replaceable>T1</replaceable>,
+         <replaceable>T2</replaceable> INNER JOIN <replaceable>T3</replaceable>
+         ON <replaceable>condition</replaceable></literal>
+         because the <replaceable>condition</replaceable> can
+         reference <replaceable>T1</replaceable> in the first case but not
+         the second.
+        </para>
+        </note>
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term>Qualified joins
+      <indexterm>
+       <primary>join</primary>
+       <secondary>outer</secondary>
+      </indexterm>
+
+      <indexterm>
+       <primary>outer join</primary>
+      </indexterm>
+      </term>
+
+      <listitem>
+<synopsis>
+<replaceable>T1</replaceable> { <optional>INNER</optional> | { LEFT | RIGHT | FULL } <optional>OUTER</optional> } JOIN <replaceable>T2</replaceable> ON <replaceable>boolean_expression</replaceable>
+<replaceable>T1</replaceable> { <optional>INNER</optional> | { LEFT | RIGHT | FULL } <optional>OUTER</optional> } JOIN <replaceable>T2</replaceable> USING ( <replaceable>join column list</replaceable> )
+<replaceable>T1</replaceable> NATURAL { <optional>INNER</optional> | { LEFT | RIGHT | FULL } <optional>OUTER</optional> } JOIN <replaceable>T2</replaceable>
+</synopsis>
+
+       <para>
+        The words <literal>INNER</literal> and
+        <literal>OUTER</literal> are optional in all forms.
+        <literal>INNER</literal> is the default;
+        <literal>LEFT</literal>, <literal>RIGHT</literal>, and
+        <literal>FULL</literal> imply an outer join.
+       </para>
+
+       <para>
+        The <firstterm>join condition</firstterm> is specified in the
+        <literal>ON</literal> or <literal>USING</literal> clause, or implicitly by
+        the word <literal>NATURAL</literal>.  The join condition determines
+        which rows from the two source tables are considered to
+        <quote>match</quote>, as explained in detail below.
+       </para>
+
+       <para>
+        The possible types of qualified join are:
+
+       <variablelist>
+        <varlistentry>
+         <term><literal>INNER JOIN</literal></term>
+
+         <listitem>
+          <para>
+           For each row R1 of T1, the joined table has a row for each
+           row in T2 that satisfies the join condition with R1.
+          </para>
+         </listitem>
+        </varlistentry>
+
+        <varlistentry>
+         <term><literal>LEFT OUTER JOIN</literal>
+         <indexterm>
+          <primary>join</primary>
+          <secondary>left</secondary>
+         </indexterm>
+
+         <indexterm>
+          <primary>left join</primary>
+         </indexterm>
+         </term>
+
+         <listitem>
+          <para>
+           First, an inner join is performed.  Then, for each row in
+           T1 that does not satisfy the join condition with any row in
+           T2, a joined row is added with null values in columns of
+           T2.  Thus, the joined table always has at least
+           one row for each row in T1.
+          </para>
+         </listitem>
+        </varlistentry>
+
+        <varlistentry>
+         <term><literal>RIGHT OUTER JOIN</literal>
+         <indexterm>
+          <primary>join</primary>
+          <secondary>right</secondary>
+         </indexterm>
+
+         <indexterm>
+          <primary>right join</primary>
+         </indexterm>
+         </term>
+
+         <listitem>
+          <para>
+           First, an inner join is performed.  Then, for each row in
+           T2 that does not satisfy the join condition with any row in
+           T1, a joined row is added with null values in columns of
+           T1.  This is the converse of a left join: the result table
+           will always have a row for each row in T2.
+          </para>
+         </listitem>
+        </varlistentry>
+
+        <varlistentry>
+         <term><literal>FULL OUTER JOIN</literal></term>
+
+         <listitem>
+          <para>
+           First, an inner join is performed.  Then, for each row in
+           T1 that does not satisfy the join condition with any row in
+           T2, a joined row is added with null values in columns of
+           T2.  Also, for each row of T2 that does not satisfy the
+           join condition with any row in T1, a joined row with null
+           values in the columns of T1 is added.
+          </para>
+         </listitem>
+        </varlistentry>
+       </variablelist>
+       </para>
+
+       <para>
+        The <literal>ON</literal> clause is the most general kind of join
+        condition: it takes a Boolean value expression of the same
+        kind as is used in a <literal>WHERE</literal> clause.  A pair of rows
+        from <replaceable>T1</replaceable> and <replaceable>T2</replaceable> match if the
+        <literal>ON</literal> expression evaluates to true.
+       </para>
+
+       <para>
+        The <literal>USING</literal> clause is a shorthand that allows you to take
+        advantage of the specific situation where both sides of the join use
+        the same name for the joining column(s).  It takes a
+        comma-separated list of the shared column names
+        and forms a join condition that includes an equality comparison
+        for each one.  For example, joining <replaceable>T1</replaceable>
+        and <replaceable>T2</replaceable> with <literal>USING (a, b)</literal> produces
+        the join condition <literal>ON <replaceable>T1</replaceable>.a
+        = <replaceable>T2</replaceable>.a AND <replaceable>T1</replaceable>.b
+        = <replaceable>T2</replaceable>.b</literal>.
+       </para>
+
+       <para>
+        Furthermore, the output of <literal>JOIN USING</literal> suppresses
+        redundant columns: there is no need to print both of the matched
+        columns, since they must have equal values.  While <literal>JOIN
+        ON</literal> produces all columns from <replaceable>T1</replaceable> followed by all
+        columns from <replaceable>T2</replaceable>, <literal>JOIN USING</literal> produces one
+        output column for each of the listed column pairs (in the listed
+        order), followed by any remaining columns from <replaceable>T1</replaceable>,
+        followed by any remaining columns from <replaceable>T2</replaceable>.
+       </para>
+
+       <para>
+        <indexterm>
+         <primary>join</primary>
+         <secondary>natural</secondary>
+        </indexterm>
+        <indexterm>
+         <primary>natural join</primary>
+        </indexterm>
+        Finally, <literal>NATURAL</literal> is a shorthand form of
+        <literal>USING</literal>: it forms a <literal>USING</literal> list
+        consisting of all column names that appear in both
+        input tables.  As with <literal>USING</literal>, these columns appear
+        only once in the output table.  If there are no common
+        column names, <literal>NATURAL JOIN</literal> behaves like
+        <literal>JOIN ... ON TRUE</literal>, producing a cross-product join.
+       </para>
+
+       <note>
+        <para>
+         <literal>USING</literal> is reasonably safe from column changes
+         in the joined relations since only the listed columns
+         are combined.  <literal>NATURAL</literal> is considerably more risky since
+         any schema changes to either relation that cause a new matching
+         column name to be present will cause the join to combine that new
+         column as well.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+
+    <para>
+     To put this together, assume we have tables <literal>t1</literal>:
+<programlisting>
+ num | name
+-----+------
+   1 | a
+   2 | b
+   3 | c
+</programlisting>
+     and <literal>t2</literal>:
+<programlisting>
+ num | value
+-----+-------
+   1 | xxx
+   3 | yyy
+   5 | zzz
+</programlisting>
+     then we get the following results for the various joins:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 CROSS JOIN t2;</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   1 | a    |   3 | yyy
+   1 | a    |   5 | zzz
+   2 | b    |   1 | xxx
+   2 | b    |   3 | yyy
+   2 | b    |   5 | zzz
+   3 | c    |   1 | xxx
+   3 | c    |   3 | yyy
+   3 | c    |   5 | zzz
+(9 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 INNER JOIN t2 ON t1.num = t2.num;</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   3 | c    |   3 | yyy
+(2 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 INNER JOIN t2 USING (num);</userinput>
+ num | name | value
+-----+------+-------
+   1 | a    | xxx
+   3 | c    | yyy
+(2 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 NATURAL INNER JOIN t2;</userinput>
+ num | name | value
+-----+------+-------
+   1 | a    | xxx
+   3 | c    | yyy
+(2 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 LEFT JOIN t2 ON t1.num = t2.num;</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   2 | b    |     |
+   3 | c    |   3 | yyy
+(3 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 LEFT JOIN t2 USING (num);</userinput>
+ num | name | value
+-----+------+-------
+   1 | a    | xxx
+   2 | b    |
+   3 | c    | yyy
+(3 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 RIGHT JOIN t2 ON t1.num = t2.num;</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   3 | c    |   3 | yyy
+     |      |   5 | zzz
+(3 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 FULL JOIN t2 ON t1.num = t2.num;</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   2 | b    |     |
+   3 | c    |   3 | yyy
+     |      |   5 | zzz
+(4 rows)
+</screen>
+    </para>
+
+    <para>
+     The join condition specified with <literal>ON</literal> can also contain
+     conditions that do not relate directly to the join.  This can
+     prove useful for some queries but needs to be thought out
+     carefully.  For example:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 LEFT JOIN t2 ON t1.num = t2.num AND t2.value = 'xxx';</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+   2 | b    |     |
+   3 | c    |     |
+(3 rows)
+</screen>
+     Notice that placing the restriction in the <literal>WHERE</literal> clause
+     produces a different result:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM t1 LEFT JOIN t2 ON t1.num = t2.num WHERE t2.value = 'xxx';</userinput>
+ num | name | num | value
+-----+------+-----+-------
+   1 | a    |   1 | xxx
+(1 row)
+</screen>
+     This is because a restriction placed in the <literal>ON</literal>
+     clause is processed <emphasis>before</emphasis> the join, while
+     a restriction placed in the <literal>WHERE</literal> clause is processed
+     <emphasis>after</emphasis> the join.
+     That does not matter with inner joins, but it matters a lot with outer
+     joins.
+    </para>
+   </sect3>
+
+   <sect3 id="queries-table-aliases">
+    <title>Table and Column Aliases</title>
+
+    <indexterm zone="queries-table-aliases">
+     <primary>alias</primary>
+     <secondary>in the FROM clause</secondary>
+    </indexterm>
+
+    <indexterm>
+     <primary>label</primary>
+     <see>alias</see>
+    </indexterm>
+
+    <para>
+     A temporary name can be given to tables and complex table
+     references to be used for references to the derived table in
+     the rest of the query.  This is called a <firstterm>table
+     alias</firstterm>.
+    </para>
+
+    <para>
+     To create a table alias, write
+<synopsis>
+FROM <replaceable>table_reference</replaceable> AS <replaceable>alias</replaceable>
+</synopsis>
+     or
+<synopsis>
+FROM <replaceable>table_reference</replaceable> <replaceable>alias</replaceable>
+</synopsis>
+     The <literal>AS</literal> key word is optional noise.
+     <replaceable>alias</replaceable> can be any identifier.
+    </para>
+
+    <para>
+     A typical application of table aliases is to assign short
+     identifiers to long table names to keep the join clauses
+     readable.  For example:
+<programlisting>
+SELECT * FROM some_very_long_table_name s JOIN another_fairly_long_name a ON s.id = a.num;
+</programlisting>
+    </para>
+
+    <para>
+     The alias becomes the new name of the table reference so far as the
+     current query is concerned &mdash; it is not allowed to refer to the
+     table by the original name elsewhere in the query.  Thus, this is not
+     valid:
+<programlisting>
+SELECT * FROM my_table AS m WHERE my_table.a &gt; 5;    -- wrong
+</programlisting>
+    </para>
+
+    <para>
+     Table aliases are mainly for notational convenience, but it is
+     necessary to use them when joining a table to itself, e.g.:
+<programlisting>
+SELECT * FROM people AS mother JOIN people AS child ON mother.id = child.mother_id;
+</programlisting>
+     Additionally, an alias is required if the table reference is a
+     subquery (see <xref linkend="queries-subqueries"/>).
+    </para>
+
+    <para>
+     Parentheses are used to resolve ambiguities.  In the following example,
+     the first statement assigns the alias <literal>b</literal> to the second
+     instance of <literal>my_table</literal>, but the second statement assigns the
+     alias to the result of the join:
+<programlisting>
+SELECT * FROM my_table AS a CROSS JOIN my_table AS b ...
+SELECT * FROM (my_table AS a CROSS JOIN my_table) AS b ...
+</programlisting>
+    </para>
+
+    <para>
+     Another form of table aliasing gives temporary names to the columns of
+     the table, as well as the table itself:
+<synopsis>
+FROM <replaceable>table_reference</replaceable> <optional>AS</optional> <replaceable>alias</replaceable> ( <replaceable>column1</replaceable> <optional>, <replaceable>column2</replaceable> <optional>, ...</optional></optional> )
+</synopsis>
+     If fewer column aliases are specified than the actual table has
+     columns, the remaining columns are not renamed.  This syntax is
+     especially useful for self-joins or subqueries.
+    </para>
+
+    <para>
+     When an alias is applied to the output of a <literal>JOIN</literal>
+     clause, the alias hides the original
+     name(s) within the <literal>JOIN</literal>.  For example:
+<programlisting>
+SELECT a.* FROM my_table AS a JOIN your_table AS b ON ...
+</programlisting>
+     is valid SQL, but:
+<programlisting>
+SELECT a.* FROM (my_table AS a JOIN your_table AS b ON ...) AS c
+</programlisting>
+     is not valid; the table alias <literal>a</literal> is not visible
+     outside the alias <literal>c</literal>.
+    </para>
+   </sect3>
+
+   <sect3 id="queries-subqueries">
+    <title>Subqueries</title>
+
+    <indexterm zone="queries-subqueries">
+     <primary>subquery</primary>
+    </indexterm>
+
+    <para>
+     Subqueries specifying a derived table must be enclosed in
+     parentheses and <emphasis>must</emphasis> be assigned a table
+     alias name (as in <xref linkend="queries-table-aliases"/>).  For
+     example:
+<programlisting>
+FROM (SELECT * FROM table1) AS alias_name
+</programlisting>
+    </para>
+
+    <para>
+     This example is equivalent to <literal>FROM table1 AS
+     alias_name</literal>.  More interesting cases, which cannot be
+     reduced to a plain join, arise when the subquery involves
+     grouping or aggregation.
+    </para>
+
+    <para>
+     A subquery can also be a <command>VALUES</command> list:
+<programlisting>
+FROM (VALUES ('anne', 'smith'), ('bob', 'jones'), ('joe', 'blow'))
+     AS names(first, last)
+</programlisting>
+     Again, a table alias is required.  Assigning alias names to the columns
+     of the <command>VALUES</command> list is optional, but is good practice.
+     For more information see <xref linkend="queries-values"/>.
+    </para>
+   </sect3>
+
+   <sect3 id="queries-tablefunctions">
+    <title>Table Functions</title>
+
+    <indexterm zone="queries-tablefunctions"><primary>table function</primary></indexterm>
+
+    <indexterm zone="queries-tablefunctions">
+     <primary>function</primary>
+     <secondary>in the FROM clause</secondary>
+    </indexterm>
+
+    <para>
+     Table functions are functions that produce a set of rows, made up
+     of either base data types (scalar types) or composite data types
+     (table rows).  They are used like a table, view, or subquery in
+     the <literal>FROM</literal> clause of a query. Columns returned by table
+     functions can be included in <literal>SELECT</literal>,
+     <literal>JOIN</literal>, or <literal>WHERE</literal> clauses in the same manner
+     as columns of a table, view, or subquery.
+    </para>
+
+    <para>
+     Table functions may also be combined using the <literal>ROWS FROM</literal>
+     syntax, with the results returned in parallel columns; the number of
+     result rows in this case is that of the largest function result, with
+     smaller results padded with null values to match.
+    </para>
+
+<synopsis>
+<replaceable>function_call</replaceable> <optional>WITH ORDINALITY</optional> <optional><optional>AS</optional> <replaceable>table_alias</replaceable> <optional>(<replaceable>column_alias</replaceable> <optional>, ... </optional>)</optional></optional>
+ROWS FROM( <replaceable>function_call</replaceable> <optional>, ... </optional> ) <optional>WITH ORDINALITY</optional> <optional><optional>AS</optional> <replaceable>table_alias</replaceable> <optional>(<replaceable>column_alias</replaceable> <optional>, ... </optional>)</optional></optional>
+</synopsis>
+
+    <para>
+     If the <literal>WITH ORDINALITY</literal> clause is specified, an
+     additional column of type <type>bigint</type> will be added to the
+     function result columns.  This column numbers the rows of the function
+     result set, starting from 1. (This is a generalization of the
+     SQL-standard syntax for <literal>UNNEST ... WITH ORDINALITY</literal>.)
+     By default, the ordinal column is called <literal>ordinality</literal>, but
+     a different column name can be assigned to it using
+     an <literal>AS</literal> clause.
+    </para>
+
+    <para>
+     The special table function <literal>UNNEST</literal> may be called with
+     any number of array parameters, and it returns a corresponding number of
+     columns, as if <literal>UNNEST</literal>
+     (<xref linkend="functions-array"/>) had been called on each parameter
+     separately and combined using the <literal>ROWS FROM</literal> construct.
+    </para>
+
+<synopsis>
+UNNEST( <replaceable>array_expression</replaceable> <optional>, ... </optional> ) <optional>WITH ORDINALITY</optional> <optional><optional>AS</optional> <replaceable>table_alias</replaceable> <optional>(<replaceable>column_alias</replaceable> <optional>, ... </optional>)</optional></optional>
+</synopsis>
+
+    <para>
+     If no <replaceable>table_alias</replaceable> is specified, the function
+     name is used as the table name; in the case of a <literal>ROWS FROM()</literal>
+     construct, the first function's name is used.
+    </para>
+
+    <para>
+     If column aliases are not supplied, then for a function returning a base
+     data type, the column name is also the same as the function name.  For a
+     function returning a composite type, the result columns get the names
+     of the individual attributes of the type.
+    </para>
+
+    <para>
+     Some examples:
+<programlisting>
+CREATE TABLE foo (fooid int, foosubid int, fooname text);
+
+CREATE FUNCTION getfoo(int) RETURNS SETOF foo AS $$
+    SELECT * FROM foo WHERE fooid = $1;
+$$ LANGUAGE SQL;
+
+SELECT * FROM getfoo(1) AS t1;
+
+SELECT * FROM foo
+    WHERE foosubid IN (
+                        SELECT foosubid
+                        FROM getfoo(foo.fooid) z
+                        WHERE z.fooid = foo.fooid
+                      );
+
+CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
+
+SELECT * FROM vw_getfoo;
+</programlisting>
+    </para>
+
+    <para>
+     In some cases it is useful to define table functions that can
+     return different column sets depending on how they are invoked.
+     To support this, the table function can be declared as returning
+     the pseudo-type <type>record</type> with no <literal>OUT</literal>
+     parameters.  When such a function is used in
+     a query, the expected row structure must be specified in the
+     query itself, so that the system can know how to parse and plan
+     the query.  This syntax looks like:
+    </para>
+
+<synopsis>
+<replaceable>function_call</replaceable> <optional>AS</optional> <replaceable>alias</replaceable> (<replaceable>column_definition</replaceable> <optional>, ... </optional>)
+<replaceable>function_call</replaceable> AS <optional><replaceable>alias</replaceable></optional> (<replaceable>column_definition</replaceable> <optional>, ... </optional>)
+ROWS FROM( ... <replaceable>function_call</replaceable> AS (<replaceable>column_definition</replaceable> <optional>, ... </optional>) <optional>, ... </optional> )
+</synopsis>
+
+    <para>
+     When not using the <literal>ROWS FROM()</literal> syntax,
+     the <replaceable>column_definition</replaceable> list replaces the column
+     alias list that could otherwise be attached to the <literal>FROM</literal>
+     item; the names in the column definitions serve as column aliases.
+     When using the <literal>ROWS FROM()</literal> syntax,
+     a <replaceable>column_definition</replaceable> list can be attached to
+     each member function separately; or if there is only one member function
+     and no <literal>WITH ORDINALITY</literal> clause,
+     a <replaceable>column_definition</replaceable> list can be written in
+     place of a column alias list following <literal>ROWS FROM()</literal>.
+    </para>
+
+    <para>
+     Consider this example:
+<programlisting>
+SELECT *
+    FROM dblink('dbname=mydb', 'SELECT proname, prosrc FROM pg_proc')
+      AS t1(proname name, prosrc text)
+    WHERE proname LIKE 'bytea%';
+</programlisting>
+     The <xref linkend="contrib-dblink-function"/> function
+     (part of the <xref linkend="dblink"/> module) executes
+     a remote query.  It is declared to return
+     <type>record</type> since it might be used for any kind of query.
+     The actual column set must be specified in the calling query so
+     that the parser knows, for example, what <literal>*</literal> should
+     expand to.
+    </para>
+
+    <para>
+     This example uses <literal>ROWS FROM</literal>:
+<programlisting>
+SELECT *
+FROM ROWS FROM
+    (
+        json_to_recordset('[{"a":40,"b":"foo"},{"a":"100","b":"bar"}]')
+            AS (a INTEGER, b TEXT),
+        generate_series(1, 3)
+    ) AS x (p, q, s)
+ORDER BY p;
+
+  p  |  q  | s
+-----+-----+---
+  40 | foo | 1
+ 100 | bar | 2
+     |     | 3
+</programlisting>
+     It joins two functions into a single <literal>FROM</literal>
+     target.  <function>json_to_recordset()</function> is instructed
+     to return two columns, the first <type>integer</type>
+     and the second <type>text</type>.  The result of
+     <function>generate_series()</function> is used directly.
+     The <literal>ORDER BY</literal> clause sorts the column values
+     as integers.
+    </para>
+   </sect3>
+
+   <sect3 id="queries-lateral">
+    <title><literal>LATERAL</literal> Subqueries</title>
+
+    <indexterm zone="queries-lateral">
+     <primary>LATERAL</primary>
+     <secondary>in the FROM clause</secondary>
+    </indexterm>
+
+    <para>
+     Subqueries appearing in <literal>FROM</literal> can be
+     preceded by the key word <literal>LATERAL</literal>.  This allows them to
+     reference columns provided by preceding <literal>FROM</literal> items.
+     (Without <literal>LATERAL</literal>, each subquery is
+     evaluated independently and so cannot cross-reference any other
+     <literal>FROM</literal> item.)
+    </para>
+
+    <para>
+     Table functions appearing in <literal>FROM</literal> can also be
+     preceded by the key word <literal>LATERAL</literal>, but for functions the
+     key word is optional; the function's arguments can contain references
+     to columns provided by preceding <literal>FROM</literal> items in any case.
+    </para>
+
+    <para>
+     A <literal>LATERAL</literal> item can appear at top level in the
+     <literal>FROM</literal> list, or within a <literal>JOIN</literal> tree.  In the latter
+     case it can also refer to any items that are on the left-hand side of a
+     <literal>JOIN</literal> that it is on the right-hand side of.
+    </para>
+
+    <para>
+     When a <literal>FROM</literal> item contains <literal>LATERAL</literal>
+     cross-references, evaluation proceeds as follows: for each row of the
+     <literal>FROM</literal> item providing the cross-referenced column(s), or
+     set of rows of multiple <literal>FROM</literal> items providing the
+     columns, the <literal>LATERAL</literal> item is evaluated using that
+     row or row set's values of the columns.  The resulting row(s) are
+     joined as usual with the rows they were computed from.  This is
+     repeated for each row or set of rows from the column source table(s).
+    </para>
+
+    <para>
+     A trivial example of <literal>LATERAL</literal> is
+<programlisting>
+SELECT * FROM foo, LATERAL (SELECT * FROM bar WHERE bar.id = foo.bar_id) ss;
+</programlisting>
+     This is not especially useful since it has exactly the same result as
+     the more conventional
+<programlisting>
+SELECT * FROM foo, bar WHERE bar.id = foo.bar_id;
+</programlisting>
+     <literal>LATERAL</literal> is primarily useful when the cross-referenced
+     column is necessary for computing the row(s) to be joined.  A common
+     application is providing an argument value for a set-returning function.
+     For example, supposing that <function>vertices(polygon)</function> returns the
+     set of vertices of a polygon, we could identify close-together vertices
+     of polygons stored in a table with:
+<programlisting>
+SELECT p1.id, p2.id, v1, v2
+FROM polygons p1, polygons p2,
+     LATERAL vertices(p1.poly) v1,
+     LATERAL vertices(p2.poly) v2
+WHERE (v1 &lt;-&gt; v2) &lt; 10 AND p1.id != p2.id;
+</programlisting>
+     This query could also be written
+<programlisting>
+SELECT p1.id, p2.id, v1, v2
+FROM polygons p1 CROSS JOIN LATERAL vertices(p1.poly) v1,
+     polygons p2 CROSS JOIN LATERAL vertices(p2.poly) v2
+WHERE (v1 &lt;-&gt; v2) &lt; 10 AND p1.id != p2.id;
+</programlisting>
+     or in several other equivalent formulations.  (As already mentioned,
+     the <literal>LATERAL</literal> key word is unnecessary in this example, but
+     we use it for clarity.)
+    </para>
+
+    <para>
+     It is often particularly handy to <literal>LEFT JOIN</literal> to a
+     <literal>LATERAL</literal> subquery, so that source rows will appear in
+     the result even if the <literal>LATERAL</literal> subquery produces no
+     rows for them.  For example, if <function>get_product_names()</function> returns
+     the names of products made by a manufacturer, but some manufacturers in
+     our table currently produce no products, we could find out which ones
+     those are like this:
+<programlisting>
+SELECT m.name
+FROM manufacturers m LEFT JOIN LATERAL get_product_names(m.id) pname ON true
+WHERE pname IS NULL;
+</programlisting>
+    </para>
+   </sect3>
+  </sect2>
+
+  <sect2 id="queries-where">
+   <title>The <literal>WHERE</literal> Clause</title>
+
+   <indexterm zone="queries-where">
+    <primary>WHERE</primary>
+   </indexterm>
+
+   <para>
+    The syntax of the <link linkend="sql-where"><literal>WHERE</literal></link>
+    clause is
+<synopsis>
+WHERE <replaceable>search_condition</replaceable>
+</synopsis>
+    where <replaceable>search_condition</replaceable> is any value
+    expression (see <xref linkend="sql-expressions"/>) that
+    returns a value of type <type>boolean</type>.
+   </para>
+
+   <para>
+    After the processing of the <literal>FROM</literal> clause is done, each
+    row of the derived virtual table is checked against the search
+    condition.  If the result of the condition is true, the row is
+    kept in the output table, otherwise (i.e., if the result is
+    false or null) it is discarded.  The search condition typically
+    references at least one column of the table generated in the
+    <literal>FROM</literal> clause; this is not required, but otherwise the
+    <literal>WHERE</literal> clause will be fairly useless.
+   </para>
+
+   <note>
+    <para>
+     The join condition of an inner join can be written either in
+     the <literal>WHERE</literal> clause or in the <literal>JOIN</literal> clause.
+     For example, these table expressions are equivalent:
+<programlisting>
+FROM a, b WHERE a.id = b.id AND b.val &gt; 5
+</programlisting>
+     and:
+<programlisting>
+FROM a INNER JOIN b ON (a.id = b.id) WHERE b.val &gt; 5
+</programlisting>
+     or perhaps even:
+<programlisting>
+FROM a NATURAL JOIN b WHERE b.val &gt; 5
+</programlisting>
+     Which one of these you use is mainly a matter of style.  The
+     <literal>JOIN</literal> syntax in the <literal>FROM</literal> clause is
+     probably not as portable to other SQL database management systems,
+     even though it is in the SQL standard.  For
+     outer joins there is no choice:  they must be done in
+     the <literal>FROM</literal> clause.  The <literal>ON</literal> or <literal>USING</literal>
+     clause of an outer join is <emphasis>not</emphasis> equivalent to a
+     <literal>WHERE</literal> condition, because it results in the addition
+     of rows (for unmatched input rows) as well as the removal of rows
+     in the final result.
+    </para>
+   </note>
+
+   <para>
+    Here are some examples of <literal>WHERE</literal> clauses:
+<programlisting>
+SELECT ... FROM fdt WHERE c1 &gt; 5
+
+SELECT ... FROM fdt WHERE c1 IN (1, 2, 3)
+
+SELECT ... FROM fdt WHERE c1 IN (SELECT c1 FROM t2)
+
+SELECT ... FROM fdt WHERE c1 IN (SELECT c3 FROM t2 WHERE c2 = fdt.c1 + 10)
+
+SELECT ... FROM fdt WHERE c1 BETWEEN (SELECT c3 FROM t2 WHERE c2 = fdt.c1 + 10) AND 100
+
+SELECT ... FROM fdt WHERE EXISTS (SELECT c1 FROM t2 WHERE c2 &gt; fdt.c1)
+</programlisting>
+    <literal>fdt</literal> is the table derived in the
+    <literal>FROM</literal> clause. Rows that do not meet the search
+    condition of the <literal>WHERE</literal> clause are eliminated from
+    <literal>fdt</literal>. Notice the use of scalar subqueries as
+    value expressions.  Just like any other query, the subqueries can
+    employ complex table expressions.  Notice also how
+    <literal>fdt</literal> is referenced in the subqueries.
+    Qualifying <literal>c1</literal> as <literal>fdt.c1</literal> is only necessary
+    if <literal>c1</literal> is also the name of a column in the derived
+    input table of the subquery.  But qualifying the column name adds
+    clarity even when it is not needed.  This example shows how the column
+    naming scope of an outer query extends into its inner queries.
+   </para>
+  </sect2>
+
+
+  <sect2 id="queries-group">
+   <title>The <literal>GROUP BY</literal> and <literal>HAVING</literal> Clauses</title>
+
+   <indexterm zone="queries-group">
+    <primary>GROUP BY</primary>
+   </indexterm>
+
+   <indexterm zone="queries-group">
+    <primary>grouping</primary>
+   </indexterm>
+
+   <para>
+    After passing the <literal>WHERE</literal> filter, the derived input
+    table might be subject to grouping, using the <literal>GROUP BY</literal>
+    clause, and elimination of group rows using the <literal>HAVING</literal>
+    clause.
+   </para>
+
+<synopsis>
+SELECT <replaceable>select_list</replaceable>
+    FROM ...
+    <optional>WHERE ...</optional>
+    GROUP BY <replaceable>grouping_column_reference</replaceable> <optional>, <replaceable>grouping_column_reference</replaceable></optional>...
+</synopsis>
+
+   <para>
+    The <link linkend="sql-groupby"><literal>GROUP BY</literal></link> clause is
+    used to group together those rows in a table that have the same
+    values in all the columns listed. The order in which the columns
+    are listed does not matter.  The effect is to combine each set
+    of rows having common values into one group row that
+    represents all rows in the group.  This is done to
+    eliminate redundancy in the output and/or compute aggregates that
+    apply to these groups.  For instance:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM test1;</userinput>
+ x | y
+---+---
+ a | 3
+ c | 2
+ b | 5
+ a | 1
+(4 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT x FROM test1 GROUP BY x;</userinput>
+ x
+---
+ a
+ b
+ c
+(3 rows)
+</screen>
+   </para>
+
+   <para>
+    In the second query, we could not have written <literal>SELECT *
+    FROM test1 GROUP BY x</literal>, because there is no single value
+    for the column <literal>y</literal> that could be associated with each
+    group.  The grouped-by columns can be referenced in the select list since
+    they have a single value in each group.
+   </para>
+
+   <para>
+    In general, if a table is grouped, columns that are not
+    listed in <literal>GROUP BY</literal> cannot be referenced except in aggregate
+    expressions.  An example with aggregate expressions is:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT x, sum(y) FROM test1 GROUP BY x;</userinput>
+ x | sum
+---+-----
+ a |   4
+ b |   5
+ c |   2
+(3 rows)
+</screen>
+    Here <literal>sum</literal> is an aggregate function that
+    computes a single value over the entire group.  More information
+    about the available aggregate functions can be found in <xref
+    linkend="functions-aggregate"/>.
+   </para>
+
+   <tip>
+    <para>
+     Grouping without aggregate expressions effectively calculates the
+     set of distinct values in a column.  This can also be achieved
+     using the <literal>DISTINCT</literal> clause (see <xref
+     linkend="queries-distinct"/>).
+    </para>
+   </tip>
+
+   <para>
+    Here is another example:  it calculates the total sales for each
+    product (rather than the total sales of all products):
+<programlisting>
+SELECT product_id, p.name, (sum(s.units) * p.price) AS sales
+    FROM products p LEFT JOIN sales s USING (product_id)
+    GROUP BY product_id, p.name, p.price;
+</programlisting>
+    In this example, the columns <literal>product_id</literal>,
+    <literal>p.name</literal>, and <literal>p.price</literal> must be
+    in the <literal>GROUP BY</literal> clause since they are referenced in
+    the query select list (but see below).  The column
+    <literal>s.units</literal> does not have to be in the <literal>GROUP
+    BY</literal> list since it is only used in an aggregate expression
+    (<literal>sum(...)</literal>), which represents the sales
+    of a product.  For each product, the query returns a summary row about
+    all sales of the product.
+   </para>
+
+   <indexterm><primary>functional dependency</primary></indexterm>
+
+   <para>
+    If the products table is set up so that, say,
+    <literal>product_id</literal> is the primary key, then it would be
+    enough to group by <literal>product_id</literal> in the above example,
+    since name and price would be <firstterm>functionally
+    dependent</firstterm> on the product ID, and so there would be no
+    ambiguity about which name and price value to return for each product
+    ID group.
+   </para>
+
+   <para>
+    In strict SQL, <literal>GROUP BY</literal> can only group by columns of
+    the source table but <productname>PostgreSQL</productname> extends
+    this to also allow <literal>GROUP BY</literal> to group by columns in the
+    select list.  Grouping by value expressions instead of simple
+    column names is also allowed.
+   </para>
+
+   <indexterm>
+    <primary>HAVING</primary>
+   </indexterm>
+
+   <para>
+    If a table has been grouped using <literal>GROUP BY</literal>,
+    but only certain groups are of interest, the
+    <literal>HAVING</literal> clause can be used, much like a
+    <literal>WHERE</literal> clause, to eliminate groups from the result.
+    The syntax is:
+<synopsis>
+SELECT <replaceable>select_list</replaceable> FROM ... <optional>WHERE ...</optional> GROUP BY ... HAVING <replaceable>boolean_expression</replaceable>
+</synopsis>
+    Expressions in the <literal>HAVING</literal> clause can refer both to
+    grouped expressions and to ungrouped expressions (which necessarily
+    involve an aggregate function).
+   </para>
+
+   <para>
+    Example:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT x, sum(y) FROM test1 GROUP BY x HAVING sum(y) &gt; 3;</userinput>
+ x | sum
+---+-----
+ a |   4
+ b |   5
+(2 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT x, sum(y) FROM test1 GROUP BY x HAVING x &lt; 'c';</userinput>
+ x | sum
+---+-----
+ a |   4
+ b |   5
+(2 rows)
+</screen>
+   </para>
+
+   <para>
+    Again, a more realistic example:
+<programlisting>
+SELECT product_id, p.name, (sum(s.units) * (p.price - p.cost)) AS profit
+    FROM products p LEFT JOIN sales s USING (product_id)
+    WHERE s.date &gt; CURRENT_DATE - INTERVAL '4 weeks'
+    GROUP BY product_id, p.name, p.price, p.cost
+    HAVING sum(p.price * s.units) &gt; 5000;
+</programlisting>
+    In the example above, the <literal>WHERE</literal> clause is selecting
+    rows by a column that is not grouped (the expression is only true for
+    sales during the last four weeks), while the <literal>HAVING</literal>
+    clause restricts the output to groups with total gross sales over
+    5000.  Note that the aggregate expressions do not necessarily need
+    to be the same in all parts of the query.
+   </para>
+
+   <para>
+    If a query contains aggregate function calls, but no <literal>GROUP BY</literal>
+    clause, grouping still occurs: the result is a single group row (or
+    perhaps no rows at all, if the single row is then eliminated by
+    <literal>HAVING</literal>).
+    The same is true if it contains a <literal>HAVING</literal> clause, even
+    without any aggregate function calls or <literal>GROUP BY</literal> clause.
+   </para>
+  </sect2>
+
+  <sect2 id="queries-grouping-sets">
+   <title><literal>GROUPING SETS</literal>, <literal>CUBE</literal>, and <literal>ROLLUP</literal></title>
+
+   <indexterm zone="queries-grouping-sets">
+    <primary>GROUPING SETS</primary>
+   </indexterm>
+   <indexterm zone="queries-grouping-sets">
+    <primary>CUBE</primary>
+   </indexterm>
+   <indexterm zone="queries-grouping-sets">
+    <primary>ROLLUP</primary>
+   </indexterm>
+
+   <para>
+    More complex grouping operations than those described above are possible
+    using the concept of <firstterm>grouping sets</firstterm>.  The data selected by
+    the <literal>FROM</literal> and <literal>WHERE</literal> clauses is grouped separately
+    by each specified grouping set, aggregates computed for each group just as
+    for simple <literal>GROUP BY</literal> clauses, and then the results returned.
+    For example:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT * FROM items_sold;</userinput>
+ brand | size | sales
+-------+------+-------
+ Foo   | L    |  10
+ Foo   | M    |  20
+ Bar   | M    |  15
+ Bar   | L    |  5
+(4 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT brand, size, sum(sales) FROM items_sold GROUP BY GROUPING SETS ((brand), (size), ());</userinput>
+ brand | size | sum
+-------+------+-----
+ Foo   |      |  30
+ Bar   |      |  20
+       | L    |  15
+       | M    |  35
+       |      |  50
+(5 rows)
+</screen>
+   </para>
+
+   <para>
+    Each sublist of <literal>GROUPING SETS</literal> may specify zero or more columns
+    or expressions and is interpreted the same way as though it were directly
+    in the <literal>GROUP BY</literal> clause.  An empty grouping set means that all
+    rows are aggregated down to a single group (which is output even if no
+    input rows were present), as described above for the case of aggregate
+    functions with no <literal>GROUP BY</literal> clause.
+   </para>
+
+   <para>
+    References to the grouping columns or expressions are replaced
+    by null values in result rows for grouping sets in which those
+    columns do not appear.  To distinguish which grouping a particular output
+    row resulted from, see <xref linkend="functions-grouping-table"/>.
+   </para>
+
+   <para>
+    A shorthand notation is provided for specifying two common types of grouping set.
+    A clause of the form
+<programlisting>
+ROLLUP ( <replaceable>e1</replaceable>, <replaceable>e2</replaceable>, <replaceable>e3</replaceable>, ... )
+</programlisting>
+    represents the given list of expressions and all prefixes of the list including
+    the empty list; thus it is equivalent to
+<programlisting>
+GROUPING SETS (
+    ( <replaceable>e1</replaceable>, <replaceable>e2</replaceable>, <replaceable>e3</replaceable>, ... ),
+    ...
+    ( <replaceable>e1</replaceable>, <replaceable>e2</replaceable> ),
+    ( <replaceable>e1</replaceable> ),
+    ( )
+)
+</programlisting>
+    This is commonly used for analysis over hierarchical data; e.g., total
+    salary by department, division, and company-wide total.
+   </para>
+
+   <para>
+    A clause of the form
+<programlisting>
+CUBE ( <replaceable>e1</replaceable>, <replaceable>e2</replaceable>, ... )
+</programlisting>
+    represents the given list and all of its possible subsets (i.e., the power
+    set).  Thus
+<programlisting>
+CUBE ( a, b, c )
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUPING SETS (
+    ( a, b, c ),
+    ( a, b    ),
+    ( a,    c ),
+    ( a       ),
+    (    b, c ),
+    (    b    ),
+    (       c ),
+    (         )
+)
+</programlisting>
+   </para>
+
+   <para>
+    The individual elements of a <literal>CUBE</literal> or <literal>ROLLUP</literal>
+    clause may be either individual expressions, or sublists of elements in
+    parentheses.  In the latter case, the sublists are treated as single
+    units for the purposes of generating the individual grouping sets.
+    For example:
+<programlisting>
+CUBE ( (a, b), (c, d) )
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUPING SETS (
+    ( a, b, c, d ),
+    ( a, b       ),
+    (       c, d ),
+    (            )
+)
+</programlisting>
+    and
+<programlisting>
+ROLLUP ( a, (b, c), d )
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUPING SETS (
+    ( a, b, c, d ),
+    ( a, b, c    ),
+    ( a          ),
+    (            )
+)
+</programlisting>
+   </para>
+
+   <para>
+    The <literal>CUBE</literal> and <literal>ROLLUP</literal> constructs can be used either
+    directly in the <literal>GROUP BY</literal> clause, or nested inside a
+    <literal>GROUPING SETS</literal> clause.  If one <literal>GROUPING SETS</literal> clause
+    is nested inside another, the effect is the same as if all the elements of
+    the inner clause had been written directly in the outer clause.
+   </para>
+
+   <para>
+    If multiple grouping items are specified in a single <literal>GROUP BY</literal>
+    clause, then the final list of grouping sets is the cross product of the
+    individual items.  For example:
+<programlisting>
+GROUP BY a, CUBE (b, c), GROUPING SETS ((d), (e))
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUP BY GROUPING SETS (
+    (a, b, c, d), (a, b, c, e),
+    (a, b, d),    (a, b, e),
+    (a, c, d),    (a, c, e),
+    (a, d),       (a, e)
+)
+</programlisting>
+   </para>
+
+   <para>
+    <indexterm zone="queries-grouping-sets">
+     <primary>ALL</primary>
+     <secondary>GROUP BY ALL</secondary>
+    </indexterm>
+    <indexterm zone="queries-grouping-sets">
+     <primary>DISTINCT</primary>
+     <secondary>GROUP BY DISTINCT</secondary>
+    </indexterm>
+    When specifying multiple grouping items together, the final set of grouping
+    sets might contain duplicates. For example:
+<programlisting>
+GROUP BY ROLLUP (a, b), ROLLUP (a, c)
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUP BY GROUPING SETS (
+    (a, b, c),
+    (a, b),
+    (a, b),
+    (a, c),
+    (a),
+    (a),
+    (a, c),
+    (a),
+    ()
+)
+</programlisting>
+    If these duplicates are undesirable, they can be removed using the
+    <literal>DISTINCT</literal> clause directly on the <literal>GROUP BY</literal>.
+    Therefore:
+<programlisting>
+GROUP BY <emphasis>DISTINCT</emphasis> ROLLUP (a, b), ROLLUP (a, c)
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUP BY GROUPING SETS (
+    (a, b, c),
+    (a, b),
+    (a, c),
+    (a),
+    ()
+)
+</programlisting>
+    This is not the same as using <literal>SELECT DISTINCT</literal> because the output
+    rows may still contain duplicates.  If any of the ungrouped columns contains NULL,
+    it will be indistinguishable from the NULL used when that same column is grouped.
+   </para>
+
+  <note>
+   <para>
+    The construct <literal>(a, b)</literal> is normally recognized in expressions as
+    a <link linkend="sql-syntax-row-constructors">row constructor</link>.
+    Within the <literal>GROUP BY</literal> clause, this does not apply at the top
+    levels of expressions, and <literal>(a, b)</literal> is parsed as a list of
+    expressions as described above.  If for some reason you <emphasis>need</emphasis>
+    a row constructor in a grouping expression, use <literal>ROW(a, b)</literal>.
+   </para>
+  </note>
+  </sect2>
+
+  <sect2 id="queries-window">
+   <title>Window Function Processing</title>
+
+   <indexterm zone="queries-window">
+    <primary>window function</primary>
+    <secondary>order of execution</secondary>
+   </indexterm>
+
+   <para>
+    If the query contains any window functions (see
+    <xref linkend="tutorial-window"/>,
+    <xref linkend="functions-window"/> and
+    <xref linkend="syntax-window-functions"/>), these functions are evaluated
+    after any grouping, aggregation, and <literal>HAVING</literal> filtering is
+    performed.  That is, if the query uses any aggregates, <literal>GROUP
+    BY</literal>, or <literal>HAVING</literal>, then the rows seen by the window functions
+    are the group rows instead of the original table rows from
+    <literal>FROM</literal>/<literal>WHERE</literal>.
+   </para>
+
+   <para>
+    When multiple window functions are used, all the window functions having
+    syntactically equivalent <literal>PARTITION BY</literal> and <literal>ORDER BY</literal>
+    clauses in their window definitions are guaranteed to be evaluated in a
+    single pass over the data. Therefore they will see the same sort ordering,
+    even if the <literal>ORDER BY</literal> does not uniquely determine an ordering.
+    However, no guarantees are made about the evaluation of functions having
+    different <literal>PARTITION BY</literal> or <literal>ORDER BY</literal> specifications.
+    (In such cases a sort step is typically required between the passes of
+    window function evaluations, and the sort is not guaranteed to preserve
+    ordering of rows that its <literal>ORDER BY</literal> sees as equivalent.)
+   </para>
+
+   <para>
+    Currently, window functions always require presorted data, and so the
+    query output will be ordered according to one or another of the window
+    functions' <literal>PARTITION BY</literal>/<literal>ORDER BY</literal> clauses.
+    It is not recommended to rely on this, however.  Use an explicit
+    top-level <literal>ORDER BY</literal> clause if you want to be sure the
+    results are sorted in a particular way.
+   </para>
+  </sect2>
+ </sect1>
+
+
+ <sect1 id="queries-select-lists">
+  <title>Select Lists</title>
+
+  <indexterm>
+   <primary>SELECT</primary>
+   <secondary>select list</secondary>
+  </indexterm>
+
+  <para>
+   As shown in the previous section,
+   the table expression in the <command>SELECT</command> command
+   constructs an intermediate virtual table by possibly combining
+   tables, views, eliminating rows, grouping, etc.  This table is
+   finally passed on to processing by the <firstterm>select list</firstterm>.  The select
+   list determines which <emphasis>columns</emphasis> of the
+   intermediate table are actually output.
+  </para>
+
+  <sect2 id="queries-select-list-items">
+   <title>Select-List Items</title>
+
+   <indexterm>
+    <primary>*</primary>
+   </indexterm>
+
+   <para>
+    The simplest kind of select list is <literal>*</literal> which
+    emits all columns that the table expression produces.  Otherwise,
+    a select list is a comma-separated list of value expressions (as
+    defined in <xref linkend="sql-expressions"/>).  For instance, it
+    could be a list of column names:
+<programlisting>
+SELECT a, b, c FROM ...
+</programlisting>
+     The columns names <literal>a</literal>, <literal>b</literal>, and <literal>c</literal>
+     are either the actual names of the columns of tables referenced
+     in the <literal>FROM</literal> clause, or the aliases given to them as
+     explained in <xref linkend="queries-table-aliases"/>.  The name
+     space available in the select list is the same as in the
+     <literal>WHERE</literal> clause, unless grouping is used, in which case
+     it is the same as in the <literal>HAVING</literal> clause.
+   </para>
+
+   <para>
+    If more than one table has a column of the same name, the table
+    name must also be given, as in:
+<programlisting>
+SELECT tbl1.a, tbl2.a, tbl1.b FROM ...
+</programlisting>
+    When working with multiple tables, it can also be useful to ask for
+    all the columns of a particular table:
+<programlisting>
+SELECT tbl1.*, tbl2.a FROM ...
+</programlisting>
+    See <xref linkend="rowtypes-usage"/> for more about
+    the <replaceable>table_name</replaceable><literal>.*</literal> notation.
+   </para>
+
+   <para>
+    If an arbitrary value expression is used in the select list, it
+    conceptually adds a new virtual column to the returned table.  The
+    value expression is evaluated once for each result row, with
+    the row's values substituted for any column references.  But the
+    expressions in the select list do not have to reference any
+    columns in the table expression of the <literal>FROM</literal> clause;
+    they can be constant arithmetic expressions, for instance.
+   </para>
+  </sect2>
+
+  <sect2 id="queries-column-labels">
+   <title>Column Labels</title>
+
+   <indexterm zone="queries-column-labels">
+    <primary>alias</primary>
+    <secondary>in the select list</secondary>
+   </indexterm>
+
+   <para>
+    The entries in the select list can be assigned names for subsequent
+    processing, such as for use in an <literal>ORDER BY</literal> clause
+    or for display by the client application.  For example:
+<programlisting>
+SELECT a AS value, b + c AS sum FROM ...
+</programlisting>
+   </para>
+
+   <para>
+    If no output column name is specified using <literal>AS</literal>,
+    the system assigns a default column name.  For simple column references,
+    this is the name of the referenced column.  For function
+    calls, this is the name of the function.  For complex expressions,
+    the system will generate a generic name.
+   </para>
+
+   <para>
+    The <literal>AS</literal> key word is usually optional, but in some
+    cases where the desired column name matches a
+    <productname>PostgreSQL</productname> key word, you must write
+    <literal>AS</literal> or double-quote the column name in order to
+    avoid ambiguity.
+    (<xref linkend="sql-keywords-appendix"/> shows which key words
+    require <literal>AS</literal> to be used as a column label.)
+    For example, <literal>FROM</literal> is one such key word, so this
+    does not work:
+<programlisting>
+SELECT a from, b + c AS sum FROM ...
+</programlisting>
+    but either of these do:
+<programlisting>
+SELECT a AS from, b + c AS sum FROM ...
+SELECT a "from", b + c AS sum FROM ...
+</programlisting>
+    For greatest safety against possible
+    future key word additions, it is recommended that you always either
+    write <literal>AS</literal> or double-quote the output column name.
+   </para>
+
+   <note>
+    <para>
+     The naming of output columns here is different from that done in
+     the <literal>FROM</literal> clause (see <xref
+     linkend="queries-table-aliases"/>).  It is possible
+     to rename the same column twice, but the name assigned in
+     the select list is the one that will be passed on.
+    </para>
+   </note>
+  </sect2>
+
+  <sect2 id="queries-distinct">
+   <title><literal>DISTINCT</literal></title>
+
+   <indexterm zone="queries-distinct">
+    <primary>ALL</primary>
+    <secondary>SELECT ALL</secondary>
+   </indexterm>
+   <indexterm zone="queries-distinct">
+    <primary>DISTINCT</primary>
+    <secondary>SELECT DISTINCT</secondary>
+   </indexterm>
+
+   <indexterm zone="queries-distinct">
+    <primary>duplicates</primary>
+   </indexterm>
+
+   <para>
+    After the select list has been processed, the result table can
+    optionally be subject to the elimination of duplicate rows.  The
+    <literal>DISTINCT</literal> key word is written directly after
+    <literal>SELECT</literal> to specify this:
+<synopsis>
+SELECT DISTINCT <replaceable>select_list</replaceable> ...
+</synopsis>
+    (Instead of <literal>DISTINCT</literal> the key word <literal>ALL</literal>
+    can be used to specify the default behavior of retaining all rows.)
+   </para>
+
+   <indexterm>
+    <primary>null value</primary>
+    <secondary sortas="DISTINCT">in DISTINCT</secondary>
+   </indexterm>
+
+   <para>
+    Obviously, two rows are considered distinct if they differ in at
+    least one column value.  Null values are considered equal in this
+    comparison.
+   </para>
+
+   <para>
+    Alternatively, an arbitrary expression can determine what rows are
+    to be considered distinct:
+<synopsis>
+SELECT DISTINCT ON (<replaceable>expression</replaceable> <optional>, <replaceable>expression</replaceable> ...</optional>) <replaceable>select_list</replaceable> ...
+</synopsis>
+    Here <replaceable>expression</replaceable> is an arbitrary value
+    expression that is evaluated for all rows.  A set of rows for
+    which all the expressions are equal are considered duplicates, and
+    only the first row of the set is kept in the output.  Note that
+    the <quote>first row</quote> of a set is unpredictable unless the
+    query is sorted on enough columns to guarantee a unique ordering
+    of the rows arriving at the <literal>DISTINCT</literal> filter.
+    (<literal>DISTINCT ON</literal> processing occurs after <literal>ORDER
+    BY</literal> sorting.)
+   </para>
+
+   <para>
+    The <literal>DISTINCT ON</literal> clause is not part of the SQL standard
+    and is sometimes considered bad style because of the potentially
+    indeterminate nature of its results.  With judicious use of
+    <literal>GROUP BY</literal> and subqueries in <literal>FROM</literal>, this
+    construct can be avoided, but it is often the most convenient
+    alternative.
+   </para>
+  </sect2>
+ </sect1>
+
+
+ <sect1 id="queries-union">
+  <title>Combining Queries (<literal>UNION</literal>, <literal>INTERSECT</literal>, <literal>EXCEPT</literal>)</title>
+
+  <indexterm zone="queries-union">
+   <primary>UNION</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>INTERSECT</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>EXCEPT</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>set union</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>set intersection</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>set difference</primary>
+  </indexterm>
+  <indexterm zone="queries-union">
+   <primary>set operation</primary>
+  </indexterm>
+
+  <para>
+   The results of two queries can be combined using the set operations
+   union, intersection, and difference.  The syntax is
+<synopsis>
+<replaceable>query1</replaceable> UNION <optional>ALL</optional> <replaceable>query2</replaceable>
+<replaceable>query1</replaceable> INTERSECT <optional>ALL</optional> <replaceable>query2</replaceable>
+<replaceable>query1</replaceable> EXCEPT <optional>ALL</optional> <replaceable>query2</replaceable>
+</synopsis>
+   where <replaceable>query1</replaceable> and
+   <replaceable>query2</replaceable> are queries that can use any of
+   the features discussed up to this point.
+  </para>
+
+  <para>
+   <literal>UNION</literal> effectively appends the result of
+   <replaceable>query2</replaceable> to the result of
+   <replaceable>query1</replaceable> (although there is no guarantee
+   that this is the order in which the rows are actually returned).
+   Furthermore, it eliminates duplicate rows from its result, in the same
+   way as <literal>DISTINCT</literal>, unless <literal>UNION ALL</literal> is used.
+  </para>
+
+  <para>
+   <literal>INTERSECT</literal> returns all rows that are both in the result
+   of <replaceable>query1</replaceable> and in the result of
+   <replaceable>query2</replaceable>.  Duplicate rows are eliminated
+   unless <literal>INTERSECT ALL</literal> is used.
+  </para>
+
+  <para>
+   <literal>EXCEPT</literal> returns all rows that are in the result of
+   <replaceable>query1</replaceable> but not in the result of
+   <replaceable>query2</replaceable>.  (This is sometimes called the
+   <firstterm>difference</firstterm> between two queries.)  Again, duplicates
+   are eliminated unless <literal>EXCEPT ALL</literal> is used.
+  </para>
+
+  <para>
+   In order to calculate the union, intersection, or difference of two
+   queries, the two queries must be <quote>union compatible</quote>,
+   which means that they return the same number of columns and
+   the corresponding columns have compatible data types, as
+   described in <xref linkend="typeconv-union-case"/>.
+  </para>
+
+  <para>
+   Set operations can be combined, for example
+<synopsis>
+<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable> EXCEPT <replaceable>query3</replaceable>
+</synopsis>
+   which is equivalent to
+<synopsis>
+(<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable>) EXCEPT <replaceable>query3</replaceable>
+</synopsis>
+   As shown here, you can use parentheses to control the order of
+   evaluation.  Without parentheses, <literal>UNION</literal>
+   and <literal>EXCEPT</literal> associate left-to-right,
+   but <literal>INTERSECT</literal> binds more tightly than those two
+   operators.  Thus
+<synopsis>
+<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable> INTERSECT <replaceable>query3</replaceable>
+</synopsis>
+   means
+<synopsis>
+<replaceable>query1</replaceable> UNION (<replaceable>query2</replaceable> INTERSECT <replaceable>query3</replaceable>)
+</synopsis>
+   You can also surround an individual <replaceable>query</replaceable>
+   with parentheses.  This is important if
+   the <replaceable>query</replaceable> needs to use any of the clauses
+   discussed in following sections, such as <literal>LIMIT</literal>.
+   Without parentheses, you'll get a syntax error, or else the clause will
+   be understood as applying to the output of the set operation rather
+   than one of its inputs.  For example,
+<synopsis>
+SELECT a FROM b UNION SELECT x FROM y LIMIT 10
+</synopsis>
+   is accepted, but it means
+<synopsis>
+(SELECT a FROM b UNION SELECT x FROM y) LIMIT 10
+</synopsis>
+   not
+<synopsis>
+SELECT a FROM b UNION (SELECT x FROM y LIMIT 10)
+</synopsis>
+  </para>
+ </sect1>
+
+
+ <sect1 id="queries-order">
+  <title>Sorting Rows (<literal>ORDER BY</literal>)</title>
+
+  <indexterm zone="queries-order">
+   <primary>sorting</primary>
+  </indexterm>
+
+  <indexterm zone="queries-order">
+   <primary>ORDER BY</primary>
+  </indexterm>
+
+  <para>
+   After a query has produced an output table (after the select list
+   has been processed) it can optionally be sorted.  If sorting is not
+   chosen, the rows will be returned in an unspecified order.  The actual
+   order in that case will depend on the scan and join plan types and
+   the order on disk, but it must not be relied on.  A particular
+   output ordering can only be guaranteed if the sort step is explicitly
+   chosen.
+  </para>
+
+  <para>
+   The <literal>ORDER BY</literal> clause specifies the sort order:
+<synopsis>
+SELECT <replaceable>select_list</replaceable>
+    FROM <replaceable>table_expression</replaceable>
+    ORDER BY <replaceable>sort_expression1</replaceable> <optional>ASC | DESC</optional> <optional>NULLS { FIRST | LAST }</optional>
+             <optional>, <replaceable>sort_expression2</replaceable> <optional>ASC | DESC</optional> <optional>NULLS { FIRST | LAST }</optional> ...</optional>
+</synopsis>
+   The sort expression(s) can be any expression that would be valid in the
+   query's select list.  An example is:
+<programlisting>
+SELECT a, b FROM table1 ORDER BY a + b, c;
+</programlisting>
+   When more than one expression is specified,
+   the later values are used to sort rows that are equal according to the
+   earlier values.  Each expression can be followed by an optional
+   <literal>ASC</literal> or <literal>DESC</literal> keyword to set the sort direction to
+   ascending or descending.  <literal>ASC</literal> order is the default.
+   Ascending order puts smaller values first, where
+   <quote>smaller</quote> is defined in terms of the
+   <literal>&lt;</literal> operator.  Similarly, descending order is
+   determined with the <literal>&gt;</literal> operator.
+    <footnote>
+     <para>
+      Actually, <productname>PostgreSQL</productname> uses the <firstterm>default B-tree
+      operator class</firstterm> for the expression's data type to determine the sort
+      ordering for <literal>ASC</literal> and <literal>DESC</literal>.  Conventionally,
+      data types will be set up so that the <literal>&lt;</literal> and
+      <literal>&gt;</literal> operators correspond to this sort ordering,
+      but a user-defined data type's designer could choose to do something
+      different.
+     </para>
+    </footnote>
+  </para>
+
+  <para>
+   The <literal>NULLS FIRST</literal> and <literal>NULLS LAST</literal> options can be
+   used to determine whether nulls appear before or after non-null values
+   in the sort ordering.  By default, null values sort as if larger than any
+   non-null value; that is, <literal>NULLS FIRST</literal> is the default for
+   <literal>DESC</literal> order, and <literal>NULLS LAST</literal> otherwise.
+  </para>
+
+  <para>
+   Note that the ordering options are considered independently for each
+   sort column.  For example <literal>ORDER BY x, y DESC</literal> means
+   <literal>ORDER BY x ASC, y DESC</literal>, which is not the same as
+   <literal>ORDER BY x DESC, y DESC</literal>.
+  </para>
+
+  <para>
+   A <replaceable>sort_expression</replaceable> can also be the column label or number
+   of an output column, as in:
+<programlisting>
+SELECT a + b AS sum, c FROM table1 ORDER BY sum;
+SELECT a, max(b) FROM table1 GROUP BY a ORDER BY 1;
+</programlisting>
+   both of which sort by the first output column.  Note that an output
+   column name has to stand alone, that is, it cannot be used in an expression
+   &mdash; for example, this is <emphasis>not</emphasis> correct:
+<programlisting>
+SELECT a + b AS sum, c FROM table1 ORDER BY sum + c;          -- wrong
+</programlisting>
+   This restriction is made to reduce ambiguity.  There is still
+   ambiguity if an <literal>ORDER BY</literal> item is a simple name that
+   could match either an output column name or a column from the table
+   expression.  The output column is used in such cases.  This would
+   only cause confusion if you use <literal>AS</literal> to rename an output
+   column to match some other table column's name.
+  </para>
+
+  <para>
+   <literal>ORDER BY</literal> can be applied to the result of a
+   <literal>UNION</literal>, <literal>INTERSECT</literal>, or <literal>EXCEPT</literal>
+   combination, but in this case it is only permitted to sort by
+   output column names or numbers, not by expressions.
+  </para>
+ </sect1>
+
+
+ <sect1 id="queries-limit">
+  <title><literal>LIMIT</literal> and <literal>OFFSET</literal></title>
+
+  <indexterm zone="queries-limit">
+   <primary>LIMIT</primary>
+  </indexterm>
+
+  <indexterm zone="queries-limit">
+   <primary>OFFSET</primary>
+  </indexterm>
+
+  <para>
+   <literal>LIMIT</literal> and <literal>OFFSET</literal> allow you to retrieve just
+   a portion of the rows that are generated by the rest of the query:
+<synopsis>
+SELECT <replaceable>select_list</replaceable>
+    FROM <replaceable>table_expression</replaceable>
+    <optional> ORDER BY ... </optional>
+    <optional> LIMIT { <replaceable>number</replaceable> | ALL } </optional> <optional> OFFSET <replaceable>number</replaceable> </optional>
+</synopsis>
+  </para>
+
+  <para>
+   If a limit count is given, no more than that many rows will be
+   returned (but possibly fewer, if the query itself yields fewer rows).
+   <literal>LIMIT ALL</literal> is the same as omitting the <literal>LIMIT</literal>
+   clause, as is <literal>LIMIT</literal> with a NULL argument.
+  </para>
+
+  <para>
+   <literal>OFFSET</literal> says to skip that many rows before beginning to
+   return rows.  <literal>OFFSET 0</literal> is the same as omitting the
+   <literal>OFFSET</literal> clause, as is <literal>OFFSET</literal> with a NULL argument.
+  </para>
+
+  <para>
+   If both <literal>OFFSET</literal>
+   and <literal>LIMIT</literal> appear, then <literal>OFFSET</literal> rows are
+   skipped before starting to count the <literal>LIMIT</literal> rows that
+   are returned.
+  </para>
+
+  <para>
+   When using <literal>LIMIT</literal>, it is important to use an
+   <literal>ORDER BY</literal> clause that constrains the result rows into a
+   unique order.  Otherwise you will get an unpredictable subset of
+   the query's rows. You might be asking for the tenth through
+   twentieth rows, but tenth through twentieth in what ordering? The
+   ordering is unknown, unless you specified <literal>ORDER BY</literal>.
+  </para>
+
+  <para>
+   The query optimizer takes <literal>LIMIT</literal> into account when
+   generating query plans, so you are very likely to get different
+   plans (yielding different row orders) depending on what you give
+   for <literal>LIMIT</literal> and <literal>OFFSET</literal>.  Thus, using
+   different <literal>LIMIT</literal>/<literal>OFFSET</literal> values to select
+   different subsets of a query result <emphasis>will give
+   inconsistent results</emphasis> unless you enforce a predictable
+   result ordering with <literal>ORDER BY</literal>.  This is not a bug; it
+   is an inherent consequence of the fact that SQL does not promise to
+   deliver the results of a query in any particular order unless
+   <literal>ORDER BY</literal> is used to constrain the order.
+  </para>
+
+  <para>
+   The rows skipped by an <literal>OFFSET</literal> clause still have to be
+   computed inside the server; therefore a large <literal>OFFSET</literal>
+   might be inefficient.
+  </para>
+ </sect1>
+
+
+ <sect1 id="queries-values">
+  <title><literal>VALUES</literal> Lists</title>
+
+  <indexterm zone="queries-values">
+   <primary>VALUES</primary>
+  </indexterm>
+
+  <para>
+   <literal>VALUES</literal> provides a way to generate a <quote>constant table</quote>
+   that can be used in a query without having to actually create and populate
+   a table on-disk.  The syntax is
+<synopsis>
+VALUES ( <replaceable class="parameter">expression</replaceable> [, ...] ) [, ...]
+</synopsis>
+   Each parenthesized list of expressions generates a row in the table.
+   The lists must all have the same number of elements (i.e., the number
+   of columns in the table), and corresponding entries in each list must
+   have compatible data types.  The actual data type assigned to each column
+   of the result is determined using the same rules as for <literal>UNION</literal>
+   (see <xref linkend="typeconv-union-case"/>).
+  </para>
+
+  <para>
+   As an example:
+<programlisting>
+VALUES (1, 'one'), (2, 'two'), (3, 'three');
+</programlisting>
+
+   will return a table of two columns and three rows.  It's effectively
+   equivalent to:
+<programlisting>
+SELECT 1 AS column1, 'one' AS column2
+UNION ALL
+SELECT 2, 'two'
+UNION ALL
+SELECT 3, 'three';
+</programlisting>
+
+   By default, <productname>PostgreSQL</productname> assigns the names
+   <literal>column1</literal>, <literal>column2</literal>, etc. to the columns of a
+   <literal>VALUES</literal> table.  The column names are not specified by the
+   SQL standard and different database systems do it differently, so
+   it's usually better to override the default names with a table alias
+   list, like this:
+<programlisting>
+=&gt; SELECT * FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS t (num,letter);
+ num | letter
+-----+--------
+   1 | one
+   2 | two
+   3 | three
+(3 rows)
+</programlisting>
+  </para>
+
+  <para>
+   Syntactically, <literal>VALUES</literal> followed by expression lists is
+   treated as equivalent to:
+<synopsis>
+SELECT <replaceable>select_list</replaceable> FROM <replaceable>table_expression</replaceable>
+</synopsis>
+   and can appear anywhere a <literal>SELECT</literal> can.  For example, you can
+   use it as part of a <literal>UNION</literal>, or attach a
+   <replaceable>sort_specification</replaceable> (<literal>ORDER BY</literal>,
+   <literal>LIMIT</literal>, and/or <literal>OFFSET</literal>) to it.  <literal>VALUES</literal>
+   is most commonly used as the data source in an <command>INSERT</command> command,
+   and next most commonly as a subquery.
+  </para>
+
+  <para>
+   For more information see <xref linkend="sql-values"/>.
+  </para>
+
+ </sect1>
+
+
+ <sect1 id="queries-with">
+  <title><literal>WITH</literal> Queries (Common Table Expressions)</title>
+
+  <indexterm zone="queries-with">
+   <primary>WITH</primary>
+   <secondary>in SELECT</secondary>
+  </indexterm>
+
+  <indexterm>
+   <primary>common table expression</primary>
+   <see>WITH</see>
+  </indexterm>
+
+  <para>
+   <literal>WITH</literal> provides a way to write auxiliary statements for use in a
+   larger query.  These statements, which are often referred to as Common
+   Table Expressions or <acronym>CTE</acronym>s, can be thought of as defining
+   temporary tables that exist just for one query.  Each auxiliary statement
+   in a <literal>WITH</literal> clause can be a <command>SELECT</command>,
+   <command>INSERT</command>, <command>UPDATE</command>, or <command>DELETE</command>; and the
+   <literal>WITH</literal> clause itself is attached to a primary statement that can
+   also be a <command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>, or
+   <command>DELETE</command>.
+  </para>
+
+ <sect2 id="queries-with-select">
+   <title><command>SELECT</command> in <literal>WITH</literal></title>
+
+  <para>
+   The basic value of <command>SELECT</command> in <literal>WITH</literal> is to
+   break down complicated queries into simpler parts.  An example is:
+
+<programlisting>
+WITH regional_sales AS (
+    SELECT region, SUM(amount) AS total_sales
+    FROM orders
+    GROUP BY region
+), top_regions AS (
+    SELECT region
+    FROM regional_sales
+    WHERE total_sales &gt; (SELECT SUM(total_sales)/10 FROM regional_sales)
+)
+SELECT region,
+       product,
+       SUM(quantity) AS product_units,
+       SUM(amount) AS product_sales
+FROM orders
+WHERE region IN (SELECT region FROM top_regions)
+GROUP BY region, product;
+</programlisting>
+
+   which displays per-product sales totals in only the top sales regions.
+   The <literal>WITH</literal> clause defines two auxiliary statements named
+   <structname>regional_sales</structname> and <structname>top_regions</structname>,
+   where the output of <structname>regional_sales</structname> is used in
+   <structname>top_regions</structname> and the output of <structname>top_regions</structname>
+   is used in the primary <command>SELECT</command> query.
+   This example could have been written without <literal>WITH</literal>,
+   but we'd have needed two levels of nested sub-<command>SELECT</command>s.  It's a bit
+   easier to follow this way.
+  </para>
+ </sect2>
+
+ <sect2 id="queries-with-recursive">
+  <title>Recursive Queries</title>
+
+  <para>
+   <indexterm>
+    <primary>RECURSIVE</primary>
+    <secondary>in common table expressions</secondary>
+   </indexterm>
+   The optional <literal>RECURSIVE</literal> modifier changes <literal>WITH</literal>
+   from a mere syntactic convenience into a feature that accomplishes
+   things not otherwise possible in standard SQL.  Using
+   <literal>RECURSIVE</literal>, a <literal>WITH</literal> query can refer to its own
+   output.  A very simple example is this query to sum the integers from 1
+   through 100:
+
+<programlisting>
+WITH RECURSIVE t(n) AS (
+    VALUES (1)
+  UNION ALL
+    SELECT n+1 FROM t WHERE n &lt; 100
+)
+SELECT sum(n) FROM t;
+</programlisting>
+
+   The general form of a recursive <literal>WITH</literal> query is always a
+   <firstterm>non-recursive term</firstterm>, then <literal>UNION</literal> (or
+   <literal>UNION ALL</literal>), then a
+   <firstterm>recursive term</firstterm>, where only the recursive term can contain
+   a reference to the query's own output.  Such a query is executed as
+   follows:
+  </para>
+
+  <procedure>
+   <title>Recursive Query Evaluation</title>
+
+   <step performance="required">
+    <para>
+     Evaluate the non-recursive term.  For <literal>UNION</literal> (but not
+     <literal>UNION ALL</literal>), discard duplicate rows.  Include all remaining
+     rows in the result of the recursive query, and also place them in a
+     temporary <firstterm>working table</firstterm>.
+    </para>
+   </step>
+
+   <step performance="required">
+    <para>
+     So long as the working table is not empty, repeat these steps:
+    </para>
+    <substeps>
+     <step performance="required">
+      <para>
+       Evaluate the recursive term, substituting the current contents of
+       the working table for the recursive self-reference.
+       For <literal>UNION</literal> (but not <literal>UNION ALL</literal>), discard
+       duplicate rows and rows that duplicate any previous result row.
+       Include all remaining rows in the result of the recursive query, and
+       also place them in a temporary <firstterm>intermediate table</firstterm>.
+      </para>
+     </step>
+
+     <step performance="required">
+      <para>
+       Replace the contents of the working table with the contents of the
+       intermediate table, then empty the intermediate table.
+      </para>
+     </step>
+    </substeps>
+   </step>
+  </procedure>
+
+  <note>
+   <para>
+    While <literal>RECURSIVE</literal> allows queries to be specified
+    recursively, internally such queries are evaluated iteratively.
+   </para>
+  </note>
+
+  <para>
+   In the example above, the working table has just a single row in each step,
+   and it takes on the values from 1 through 100 in successive steps.  In
+   the 100th step, there is no output because of the <literal>WHERE</literal>
+   clause, and so the query terminates.
+  </para>
+
+  <para>
+   Recursive queries are typically used to deal with hierarchical or
+   tree-structured data.  A useful example is this query to find all the
+   direct and indirect sub-parts of a product, given only a table that
+   shows immediate inclusions:
+
+<programlisting>
+WITH RECURSIVE included_parts(sub_part, part, quantity) AS (
+    SELECT sub_part, part, quantity FROM parts WHERE part = 'our_product'
+  UNION ALL
+    SELECT p.sub_part, p.part, p.quantity * pr.quantity
+    FROM included_parts pr, parts p
+    WHERE p.part = pr.sub_part
+)
+SELECT sub_part, SUM(quantity) as total_quantity
+FROM included_parts
+GROUP BY sub_part
+</programlisting>
+  </para>
+
+  <sect3 id="queries-with-search">
+   <title>Search Order</title>
+
+   <para>
+    When computing a tree traversal using a recursive query, you might want to
+    order the results in either depth-first or breadth-first order.  This can
+    be done by computing an ordering column alongside the other data columns
+    and using that to sort the results at the end.  Note that this does not
+    actually control in which order the query evaluation visits the rows; that
+    is as always in SQL implementation-dependent.  This approach merely
+    provides a convenient way to order the results afterwards.
+   </para>
+
+   <para>
+    To create a depth-first order, we compute for each result row an array of
+    rows that we have visited so far.  For example, consider the following
+    query that searches a table <structname>tree</structname> using a
+    <structfield>link</structfield> field:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree;
+</programlisting>
+
+    To add depth-first ordering information, you can write this:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>path</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>ARRAY[t.id]</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>path || t.id</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY path</emphasis>;
+</programlisting>
+   </para>
+
+   <para>
+    In the general case where more than one field needs to be used to identify
+    a row, use an array of rows.  For example, if we needed to track fields
+    <structfield>f1</structfield> and <structfield>f2</structfield>:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>path</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>ARRAY[ROW(t.f1, t.f2)]</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>path || ROW(t.f1, t.f2)</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY path</emphasis>;
+</programlisting>
+   </para>
+
+   <tip>
+    <para>
+     Omit the <literal>ROW()</literal> syntax in the common case where only one
+     field needs to be tracked.  This allows a simple array rather than a
+     composite-type array to be used, gaining efficiency.
+    </para>
+   </tip>
+
+   <para>
+    To create a breadth-first order, you can add a column that tracks the depth
+    of the search, for example:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>depth</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>0</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>depth + 1</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY depth</emphasis>;
+</programlisting>
+
+    To get a stable sort, add data columns as secondary sorting columns.
+   </para>
+
+   <tip>
+    <para>
+     The recursive query evaluation algorithm produces its output in
+     breadth-first search order.  However, this is an implementation detail and
+     it is perhaps unsound to rely on it.  The order of the rows within each
+     level is certainly undefined, so some explicit ordering might be desired
+     in any case.
+    </para>
+   </tip>
+
+   <para>
+    There is built-in syntax to compute a depth- or breadth-first sort column.
+    For example:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+) <emphasis>SEARCH DEPTH FIRST BY id SET ordercol</emphasis>
+SELECT * FROM search_tree ORDER BY ordercol;
+
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+) <emphasis>SEARCH BREADTH FIRST BY id SET ordercol</emphasis>
+SELECT * FROM search_tree ORDER BY ordercol;
+</programlisting>
+    This syntax is internally expanded to something similar to the above
+    hand-written forms.  The <literal>SEARCH</literal> clause specifies whether
+    depth- or breadth first search is wanted, the list of columns to track for
+    sorting, and a column name that will contain the result data that can be
+    used for sorting.  That column will implicitly be added to the output rows
+    of the CTE.
+   </para>
+  </sect3>
+
+  <sect3 id="queries-with-cycle">
+   <title>Cycle Detection</title>
+
+  <para>
+   When working with recursive queries it is important to be sure that
+   the recursive part of the query will eventually return no tuples,
+   or else the query will loop indefinitely.  Sometimes, using
+   <literal>UNION</literal> instead of <literal>UNION ALL</literal> can accomplish this
+   by discarding rows that duplicate previous output rows.  However, often a
+   cycle does not involve output rows that are completely duplicate: it may be
+   necessary to check just one or a few fields to see if the same point has
+   been reached before.  The standard method for handling such situations is
+   to compute an array of the already-visited values.  For example, consider again
+   the following query that searches a table <structname>graph</structname> using a
+   <structfield>link</structfield> field:
+
+<programlisting>
+WITH RECURSIVE search_graph(id, link, data, depth) AS (
+    SELECT g.id, g.link, g.data, 0
+    FROM graph g
+  UNION ALL
+    SELECT g.id, g.link, g.data, sg.depth + 1
+    FROM graph g, search_graph sg
+    WHERE g.id = sg.link
+)
+SELECT * FROM search_graph;
+</programlisting>
+
+   This query will loop if the <structfield>link</structfield> relationships contain
+   cycles.  Because we require a <quote>depth</quote> output, just changing
+   <literal>UNION ALL</literal> to <literal>UNION</literal> would not eliminate the looping.
+   Instead we need to recognize whether we have reached the same row again
+   while following a particular path of links.  We add two columns
+   <structfield>is_cycle</structfield> and <structfield>path</structfield> to the loop-prone query:
+
+<programlisting>
+WITH RECURSIVE search_graph(id, link, data, depth, <emphasis>is_cycle, path</emphasis>) AS (
+    SELECT g.id, g.link, g.data, 0,
+      <emphasis>false,
+      ARRAY[g.id]</emphasis>
+    FROM graph g
+  UNION ALL
+    SELECT g.id, g.link, g.data, sg.depth + 1,
+      <emphasis>g.id = ANY(path),
+      path || g.id</emphasis>
+    FROM graph g, search_graph sg
+    WHERE g.id = sg.link <emphasis>AND NOT is_cycle</emphasis>
+)
+SELECT * FROM search_graph;
+</programlisting>
+
+   Aside from preventing cycles, the array value is often useful in its own
+   right as representing the <quote>path</quote> taken to reach any particular row.
+  </para>
+
+  <para>
+   In the general case where more than one field needs to be checked to
+   recognize a cycle, use an array of rows.  For example, if we needed to
+   compare fields <structfield>f1</structfield> and <structfield>f2</structfield>:
+
+<programlisting>
+WITH RECURSIVE search_graph(id, link, data, depth, <emphasis>is_cycle, path</emphasis>) AS (
+    SELECT g.id, g.link, g.data, 0,
+      <emphasis>false,
+      ARRAY[ROW(g.f1, g.f2)]</emphasis>
+    FROM graph g
+  UNION ALL
+    SELECT g.id, g.link, g.data, sg.depth + 1,
+      <emphasis>ROW(g.f1, g.f2) = ANY(path),
+      path || ROW(g.f1, g.f2)</emphasis>
+    FROM graph g, search_graph sg
+    WHERE g.id = sg.link <emphasis>AND NOT is_cycle</emphasis>
+)
+SELECT * FROM search_graph;
+</programlisting>
+  </para>
+
+  <tip>
+   <para>
+    Omit the <literal>ROW()</literal> syntax in the common case where only one field
+    needs to be checked to recognize a cycle.  This allows a simple array
+    rather than a composite-type array to be used, gaining efficiency.
+   </para>
+  </tip>
+
+  <para>
+   There is built-in syntax to simplify cycle detection.  The above query can
+   also be written like this:
+<programlisting>
+WITH RECURSIVE search_graph(id, link, data, depth) AS (
+    SELECT g.id, g.link, g.data, 1
+    FROM graph g
+  UNION ALL
+    SELECT g.id, g.link, g.data, sg.depth + 1
+    FROM graph g, search_graph sg
+    WHERE g.id = sg.link
+) <emphasis>CYCLE id SET is_cycle USING path</emphasis>
+SELECT * FROM search_graph;
+</programlisting>
+   and it will be internally rewritten to the above form.  The
+   <literal>CYCLE</literal> clause specifies first the list of columns to
+   track for cycle detection, then a column name that will show whether a
+   cycle has been detected, and finally the name of another column that will track the
+   path.  The cycle and path columns will implicitly be added to the output
+   rows of the CTE.
+  </para>
+
+  <tip>
+   <para>
+    The cycle path column is computed in the same way as the depth-first
+    ordering column show in the previous section.  A query can have both a
+    <literal>SEARCH</literal> and a <literal>CYCLE</literal> clause, but a
+    depth-first search specification and a cycle detection specification would
+    create redundant computations, so it's more efficient to just use the
+    <literal>CYCLE</literal> clause and order by the path column.  If
+    breadth-first ordering is wanted, then specifying both
+    <literal>SEARCH</literal> and <literal>CYCLE</literal> can be useful.
+   </para>
+  </tip>
+
+  <para>
+   A helpful trick for testing queries
+   when you are not certain if they might loop is to place a <literal>LIMIT</literal>
+   in the parent query.  For example, this query would loop forever without
+   the <literal>LIMIT</literal>:
+
+<programlisting>
+WITH RECURSIVE t(n) AS (
+    SELECT 1
+  UNION ALL
+    SELECT n+1 FROM t
+)
+SELECT n FROM t <emphasis>LIMIT 100</emphasis>;
+</programlisting>
+
+   This works because <productname>PostgreSQL</productname>'s implementation
+   evaluates only as many rows of a <literal>WITH</literal> query as are actually
+   fetched by the parent query.  Using this trick in production is not
+   recommended, because other systems might work differently.  Also, it
+   usually won't work if you make the outer query sort the recursive query's
+   results or join them to some other table, because in such cases the
+   outer query will usually try to fetch all of the <literal>WITH</literal> query's
+   output anyway.
+  </para>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>Common Table Expression Materialization</title>
+
+  <para>
+   A useful property of <literal>WITH</literal> queries is that they are
+   normally evaluated only once per execution of the parent query, even if
+   they are referred to more than once by the parent query or
+   sibling <literal>WITH</literal> queries.
+   Thus, expensive calculations that are needed in multiple places can be
+   placed within a <literal>WITH</literal> query to avoid redundant work.  Another
+   possible application is to prevent unwanted multiple evaluations of
+   functions with side-effects.
+   However, the other side of this coin is that the optimizer is not able to
+   push restrictions from the parent query down into a multiply-referenced
+   <literal>WITH</literal> query, since that might affect all uses of the
+   <literal>WITH</literal> query's output when it should affect only one.
+   The multiply-referenced <literal>WITH</literal> query will be
+   evaluated as written, without suppression of rows that the parent query
+   might discard afterwards.  (But, as mentioned above, evaluation might stop
+   early if the reference(s) to the query demand only a limited number of
+   rows.)
+  </para>
+
+  <para>
+   However, if a <literal>WITH</literal> query is non-recursive and
+   side-effect-free (that is, it is a <literal>SELECT</literal> containing
+   no volatile functions) then it can be folded into the parent query,
+   allowing joint optimization of the two query levels.  By default, this
+   happens if the parent query references the <literal>WITH</literal> query
+   just once, but not if it references the <literal>WITH</literal> query
+   more than once.  You can override that decision by
+   specifying <literal>MATERIALIZED</literal> to force separate calculation
+   of the <literal>WITH</literal> query, or by specifying <literal>NOT
+   MATERIALIZED</literal> to force it to be merged into the parent query.
+   The latter choice risks duplicate computation of
+   the <literal>WITH</literal> query, but it can still give a net savings if
+   each usage of the <literal>WITH</literal> query needs only a small part
+   of the <literal>WITH</literal> query's full output.
+  </para>
+
+  <para>
+   A simple example of these rules is
+<programlisting>
+WITH w AS (
+    SELECT * FROM big_table
+)
+SELECT * FROM w WHERE key = 123;
+</programlisting>
+   This <literal>WITH</literal> query will be folded, producing the same
+   execution plan as
+<programlisting>
+SELECT * FROM big_table WHERE key = 123;
+</programlisting>
+   In particular, if there's an index on <structfield>key</structfield>,
+   it will probably be used to fetch just the rows having <literal>key =
+   123</literal>.  On the other hand, in
+<programlisting>
+WITH w AS (
+    SELECT * FROM big_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.key = w2.ref
+WHERE w2.key = 123;
+</programlisting>
+   the <literal>WITH</literal> query will be materialized, producing a
+   temporary copy of <structname>big_table</structname> that is then
+   joined with itself &mdash; without benefit of any index.  This query
+   will be executed much more efficiently if written as
+<programlisting>
+WITH w AS NOT MATERIALIZED (
+    SELECT * FROM big_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.key = w2.ref
+WHERE w2.key = 123;
+</programlisting>
+   so that the parent query's restrictions can be applied directly
+   to scans of <structname>big_table</structname>.
+  </para>
+
+  <para>
+   An example where <literal>NOT MATERIALIZED</literal> could be
+   undesirable is
+<programlisting>
+WITH w AS (
+    SELECT key, very_expensive_function(val) as f FROM some_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.f = w2.f;
+</programlisting>
+   Here, materialization of the <literal>WITH</literal> query ensures
+   that <function>very_expensive_function</function> is evaluated only
+   once per table row, not twice.
+  </para>
+
+  <para>
+   The examples above only show <literal>WITH</literal> being used with
+   <command>SELECT</command>, but it can be attached in the same way to
+   <command>INSERT</command>, <command>UPDATE</command>, or <command>DELETE</command>.
+   In each case it effectively provides temporary table(s) that can
+   be referred to in the main command.
+  </para>
+ </sect2>
+
+ <sect2 id="queries-with-modifying">
+   <title>Data-Modifying Statements in <literal>WITH</literal></title>
+
+   <para>
+    You can use data-modifying statements (<command>INSERT</command>,
+    <command>UPDATE</command>, or <command>DELETE</command>) in <literal>WITH</literal>.  This
+    allows you to perform several different operations in the same query.
+    An example is:
+
+<programlisting>
+WITH moved_rows AS (
+    DELETE FROM products
+    WHERE
+        "date" &gt;= '2010-10-01' AND
+        "date" &lt; '2010-11-01'
+    RETURNING *
+)
+INSERT INTO products_log
+SELECT * FROM moved_rows;
+</programlisting>
+
+    This query effectively moves rows from <structname>products</structname> to
+    <structname>products_log</structname>.  The <command>DELETE</command> in <literal>WITH</literal>
+    deletes the specified rows from <structname>products</structname>, returning their
+    contents by means of its <literal>RETURNING</literal> clause; and then the
+    primary query reads that output and inserts it into
+    <structname>products_log</structname>.
+   </para>
+
+   <para>
+    A fine point of the above example is that the <literal>WITH</literal> clause is
+    attached to the <command>INSERT</command>, not the sub-<command>SELECT</command> within
+    the <command>INSERT</command>.  This is necessary because data-modifying
+    statements are only allowed in <literal>WITH</literal> clauses that are attached
+    to the top-level statement.  However, normal <literal>WITH</literal> visibility
+    rules apply, so it is possible to refer to the <literal>WITH</literal>
+    statement's output from the sub-<command>SELECT</command>.
+   </para>
+
+   <para>
+    Data-modifying statements in <literal>WITH</literal> usually have
+    <literal>RETURNING</literal> clauses (see <xref linkend="dml-returning"/>),
+    as shown in the example above.
+    It is the output of the <literal>RETURNING</literal> clause, <emphasis>not</emphasis> the
+    target table of the data-modifying statement, that forms the temporary
+    table that can be referred to by the rest of the query.  If a
+    data-modifying statement in <literal>WITH</literal> lacks a <literal>RETURNING</literal>
+    clause, then it forms no temporary table and cannot be referred to in
+    the rest of the query.  Such a statement will be executed nonetheless.
+    A not-particularly-useful example is:
+
+<programlisting>
+WITH t AS (
+    DELETE FROM foo
+)
+DELETE FROM bar;
+</programlisting>
+
+    This example would remove all rows from tables <structname>foo</structname> and
+    <structname>bar</structname>.  The number of affected rows reported to the client
+    would only include rows removed from <structname>bar</structname>.
+   </para>
+
+   <para>
+    Recursive self-references in data-modifying statements are not
+    allowed.  In some cases it is possible to work around this limitation by
+    referring to the output of a recursive <literal>WITH</literal>, for example:
+
+<programlisting>
+WITH RECURSIVE included_parts(sub_part, part) AS (
+    SELECT sub_part, part FROM parts WHERE part = 'our_product'
+  UNION ALL
+    SELECT p.sub_part, p.part
+    FROM included_parts pr, parts p
+    WHERE p.part = pr.sub_part
+)
+DELETE FROM parts
+  WHERE part IN (SELECT part FROM included_parts);
+</programlisting>
+
+    This query would remove all direct and indirect subparts of a product.
+   </para>
+
+   <para>
+    Data-modifying statements in <literal>WITH</literal> are executed exactly once,
+    and always to completion, independently of whether the primary query
+    reads all (or indeed any) of their output.  Notice that this is different
+    from the rule for <command>SELECT</command> in <literal>WITH</literal>: as stated in the
+    previous section, execution of a <command>SELECT</command> is carried only as far
+    as the primary query demands its output.
+   </para>
+
+   <para>
+    The sub-statements in <literal>WITH</literal> are executed concurrently with
+    each other and with the main query.  Therefore, when using data-modifying
+    statements in <literal>WITH</literal>, the order in which the specified updates
+    actually happen is unpredictable.  All the statements are executed with
+    the same <firstterm>snapshot</firstterm> (see <xref linkend="mvcc"/>), so they
+    cannot <quote>see</quote> one another's effects on the target tables.  This
+    alleviates the effects of the unpredictability of the actual order of row
+    updates, and means that <literal>RETURNING</literal> data is the only way to
+    communicate changes between different <literal>WITH</literal> sub-statements and
+    the main query.  An example of this is that in
+
+<programlisting>
+WITH t AS (
+    UPDATE products SET price = price * 1.05
+    RETURNING *
+)
+SELECT * FROM products;
+</programlisting>
+
+    the outer <command>SELECT</command> would return the original prices before the
+    action of the <command>UPDATE</command>, while in
+
+<programlisting>
+WITH t AS (
+    UPDATE products SET price = price * 1.05
+    RETURNING *
+)
+SELECT * FROM t;
+</programlisting>
+
+    the outer <command>SELECT</command> would return the updated data.
+   </para>
+
+   <para>
+    Trying to update the same row twice in a single statement is not
+    supported.  Only one of the modifications takes place, but it is not easy
+    (and sometimes not possible) to reliably predict which one.  This also
+    applies to deleting a row that was already updated in the same statement:
+    only the update is performed.  Therefore you should generally avoid trying
+    to modify a single row twice in a single statement.  In particular avoid
+    writing <literal>WITH</literal> sub-statements that could affect the same rows
+    changed by the main statement or a sibling sub-statement.  The effects
+    of such a statement will not be predictable.
+   </para>
+
+   <para>
+    At present, any table used as the target of a data-modifying statement in
+    <literal>WITH</literal> must not have a conditional rule, nor an <literal>ALSO</literal>
+    rule, nor an <literal>INSTEAD</literal> rule that expands to multiple statements.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+</chapter>

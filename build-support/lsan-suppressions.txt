@@ -1,0 +1,64 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# False positive from atexit() registration in libc
+leak:*__new_exitfn*
+leak:InitModule
+leak:__res_vinit
+
+# TODO: This PostgreSQL-specific whitelist should only be used for the postgres server, not for
+# YugaByte master/tserver.
+
+# PostgreSQL leak: http://bit.ly/lsan_in_save_ps_display_args
+# In general, PostgreSQL has not yet been adapted to run correctly with LSAN
+# as of 09/2018.
+
+leak:save_ps_display_args
+leak:pg_malloc_internal
+leak:escape_single_quotes_ascii
+leak:gaih_inet
+leak:pg_strdup
+
+# When we push down PG/YSQL expression execution we prepare long-lived, thread-local memory
+# contexts in DocDB to use for evaluating the expressions. These contexts are never deleted, only
+# reset, so LSAN/ASAN reports it as a leak for relevant PG/YSQL tests.
+leak:YbgPrepareMemoryContext
+
+# https://gist.githubusercontent.com/mbautin/015cb594c8281e1afc7ee7b3b5230fce/raw
+leak:__strdup
+
+# https://gist.githubusercontent.com/mbautin/864e341c578f30b478da93f59cf098cc/raw
+leak:guc_strdup
+leak:postmaster_strdup
+
+# https://github.com/yugabyte/yugabyte-db/issues/14745
+leak:ThreadSafeObjectPool
+
+# Regular expressions are allocated outside of a memory context. They have to be manually cleaned
+# up. When regular expressions are used in ysql_ident.conf, they are freed upon the reload of the
+# file but not upon the shutdown since all the memory allocated by the process is anyways going to
+# get freed. LSAN/ASAN reports it as a leak.
+# Starting PG 16 (future release as of 08/2023), regular expressions will also be allocated within a
+# memory context, so this suppression will not be needed.
+# Ref: https://github.com/postgres/postgres/commit/bea3d7e3831fa6a1395eadbad7d97cebc7aa8aee and
+# https://github.com/postgres/postgres/commit/a28269708844246fb1ec00a536b391cac0a64972.
+# We suppress leaks from parse_ident_line instead of pg_regcomp since pg_regcomp is a common
+# function which is used in other areas of the code as well.
+leak:parse_ident_line
+
+# https://github.com/yugabyte/yugabyte-db/issues/20788
+leak:call_string_check_hook

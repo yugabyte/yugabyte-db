@@ -1,0 +1,129 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+
+.on-prem-provider-form-container {
+  margin-top: 30px;
+  padding: 0 40px;
+  min-height: 550px;
+  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  .form-field-grid .form-group {
+    margin-bottom: 0;
+
+    .yb-field-group {
+      padding-bottom: 5px;
+    }
+  }
+}
+
+label textarea {
+  vertical-align: top;
+}
+
+.ssh-key-container {
+  height: 200px;
+  border: 1px solid colors.$YB_DARK_GRAY;
+}
+
+.add-host-options-container {
+  color: colors.$YB_ORANGE;
+  margin-top: 8px;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.on-prem-form-text {
+  padding-bottom: 20px;
+  font-size: 16px;
+}
+
+.on-prem-row-delete-btn {
+  cursor: pointer;
+  background-color: transparent;
+  color: colors.$YB_DARK_GRAY;
+  font-size: 26px;
+  float: right;
+  padding-top: 4px;
+  margin-right: 10px;
+
+  &:hover {
+    color: colors.$YB_FAIL_COLOR;
+  }
+}
+
+.on-prem-row-add-btn {
+  float: right;
+  margin: 4px 10px 0 0;
+  color: colors.$YB_ORANGE;
+  cursor: pointer;
+}
+
+.on-prem-add-link {
+  cursor: pointer;
+  margin-left: -2px;
+  line-height: 32px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.on-prem-form-grid-container {
+  margin-top: 6px;
+}
+
+.row-head-subscript {
+  padding-left: 5px;
+  font-size: 12px;
+  font-style: italic;
+  color: colors.$YB_DARK_GRAY;
+}
+
+.add-instance-btn {
+  font-size: 18px;
+  color: colors.$YB_ORANGE;
+  margin-right: 4px;
+}
+
+.instance-region-type {
+  font-size: 18px;
+  font-weight: 500;
+  padding: 6px 0;
+}
+
+.stepper-container {
+  padding: 0 20px;
+  color: colors.$YB_DARK_GRAY;
+  font-size: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.stepper-cell {
+  box-sizing: border-box;
+  font-size: 16px;
+  line-height: 46px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid colors.$YB_GRAY;
+  color: rgba(black, 0.35);
+  white-space: nowrap;
+}
+.active-stepper-cell {
+  color: black;
+  border-bottom: 3px solid colors.$YB_ORANGE;
+}
+
+.node-list-heading {
+  font-size: 16px;
+  font-weight: 500;
+  padding-top: 6px;
+}
+
+.horizontal-border {
+  border: 1px solid colors.$YB_GRAY;
+  margin-bottom: 10px;
+}
+.add-node-save-btn {
+  float: right;
+}

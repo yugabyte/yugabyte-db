@@ -1,0 +1,188 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.tablet;
+
+option java_package = "org.yb.tablet";
+
+import "yb/common/common.proto";
+import "yb/common/transaction.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/docdb/docdb.proto";
+import "yb/rpc/lightweight_message.proto";
+import "yb/tablet/metadata.proto";
+
+message TransactionStatePB {
+  optional bytes transaction_id = 1;
+  optional TransactionStatus status = 2;
+
+  // tablets has different meaning, depending on status:
+  // PENDING - list of involved tablets, if FLAGS_disable_heartbeat_send_involved_tablets = false.
+  // COMMITTED - list of involved tablets
+  // APPLYING - single entry, status tablet of this transaction
+  // APPLIED - single entry, tablet that applied this transaction
+  // Not used is other cases.
+  repeated bytes tablets = 3;
+
+  // Relevant only in SEALED state.
+  // Number of batches that should be replicated at appropriate tablet to interpret transaction as
+  // committed.
+  repeated int64 tablet_batches = 5;
+
+  // Relevant only in APPLYING state.
+  optional fixed64 commit_hybrid_time = 4;
+
+  // Relevant only in CLEANUP and APPLYING status, true when we perform request
+  // for a transaction that was previously sealed.
+  optional bool sealed = 6;
+
+  // Set of subtransaction IDs which are aborted.
+  optional SubtxnSetPB aborted = 7;
+
+  // Reserved for deprecated xcluster fields external_hybrid_time and external_status_tablet_id.
+  reserved 8, 9;
+
+  // The time at which this transaction started at the client.
+  optional fixed64 start_time = 10;
+
+  // Stores the uuid of the node hosting the transaction at the query layer.
+  optional string host_node_uuid = 11;
+
+  // Status containing deadlock info if the transaction was aborted due to deadlock.
+  optional AppStatusPB deadlock_reason = 12;
+}
+
+message TruncatePB {
+  option (yb.rpc.lightweight_message).force_arena = true;
+}
+
+message WritePB {
+  // TODO(proto3) reserved 2, 3, 5, 6, 8, 9, 10, 12, 13, 18;
+
+  optional bytes unused_tablet_id = 1;
+
+  optional docdb.KeyValueWriteBatchPB write_batch = 7;
+
+  // Use 2 int64 to represent UUID.
+  optional fixed64 client_id1 = 14;
+  optional fixed64 client_id2 = 15;
+  optional int64 request_id = 16;
+  optional int64 min_running_request_id = 17;
+
+  optional fixed64 external_hybrid_time = 19;
+
+  optional uint64 batch_idx = 20;
+
+  optional uint64 start_time_micros = 21;
+}
+
+message ChangeMetadataRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 5;
+
+  required bytes tablet_id = 1;
+
+  // TODO: Replace with the table descriptor
+  // (Schema, Column IDs, Column Attributes)
+  optional SchemaPB schema = 2;
+
+  repeated IndexInfoPB indexes = 7;
+
+  optional uint32 schema_version = 3;
+  optional string new_table_name = 4;
+
+  optional fixed64 propagated_hybrid_time = 6;
+
+  optional tablet.TableInfoPB add_table = 8;
+
+  // For batching multiple adds.
+  repeated tablet.TableInfoPB add_multiple_tables = 17;
+
+  optional uint32 wal_retention_secs = 9;
+
+  optional bytes remove_table_id = 10;
+
+  // Note that we don't use the value of this and just check has_mark_backfill_done.
+  optional bool mark_backfill_done = 11;
+
+  // Used for alter schema on a non-primary table (e.g. colocated user table).
+  optional bytes alter_table_id = 12;
+
+  // Used to update schema of a colocated user table upon backfill completion.
+  optional bytes backfill_done_table_id = 13;
+
+  // Transactions will be aborted except the one with this id which triggered the AlterTable.
+  optional bytes transaction_id = 14; // 16 byte uuid
+
+  // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
+  optional bool should_abort_active_txns = 16 [ default = false ];
+
+  // For CDCSDK Stream creation with consistent snapshot
+  optional bytes retention_requester_id = 18;
+  optional bool cdc_sdk_require_history_cutoff = 19;
+}
+
+message SplitTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  required bytes tablet_id = 3;
+
+  required bytes new_tablet1_id = 4;
+
+  required bytes new_tablet2_id = 5;
+
+  required bytes split_partition_key = 6;
+
+  required bytes split_encoded_key = 7;
+
+  // TODO(tsplit): after we support backward-compatibility conversion for protobufs, switch
+  // SplitOperation class to use a new SplitOperationDataPB that contains both SplitTabletRequestPB
+  // and the following fields that are not part of SplitTablet RPC.
+
+  // Parent tablet leader UUID from SPLIT_OP term.
+  optional string split_parent_leader_uuid = 8;
+}
+
+message CloneTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  // Not called source_tablet_id because some templated functions use req->tablet_id().
+  optional string tablet_id = 3;
+  optional string target_tablet_id = 4;
+
+  optional bytes source_snapshot_id = 5;
+  optional bytes target_snapshot_id = 6;
+
+  optional string target_table_id = 7;
+  optional string target_namespace_name = 8;
+
+  optional uint32 clone_request_seq_no = 9;
+
+  optional string target_pg_table_id = 10;
+  optional IndexInfoPB target_index_info = 11;
+  optional SchemaPB target_schema = 12;
+  optional PartitionSchemaPB target_partition_schema = 13;
+  optional bool target_skip_table_tombstone_check = 14;
+
+  // If set, checkout the active rocksdb folder to the target snapshot.
+  // This is set for tablets that were hidden before the snapshot that covers the clone time was
+  // taken (we do not take snapshots after hiding a tablet).
+  optional bool clone_from_active_rocksdb = 15;
+}

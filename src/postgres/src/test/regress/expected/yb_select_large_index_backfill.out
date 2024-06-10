@@ -1,0 +1,152 @@
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using airport_type_region_idx on airports
+   Index Cond: ((type = 'closed'::text) AND (iso_region = 'US-CA'::text))
+(2 rows)
+
+SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
+ ident |  type  |                  name                  | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates
+-------+--------+----------------------------------------+--------------+-----------+-------------+------------+-----------------+----------+-----------+------------+----------------------------------------
+ 0CA0  | closed | Drew Medical Center Heliport           |          180 | NA        | US          | US-CA      | Los Angeles     |          |           |            | -118.241997, 33.923302
+ 0CA1  | closed | Northside Airpark                      |          190 | NA        | US          | US-CA      | Santa Maria     |          |           |            | -120.458000183, 34.9883003235
+ 0Q6   | closed | Shingletown Airport                    |         3880 | NA        | US          | US-CA      | Shingletown     | 0Q6      |           | 0Q6        | -121.818000793, 40.5220985413
+ 10CL  | closed | Joe Gottlieb Field                     |          347 | NA        | US          | US-CA      | Bakersfield     |          |           |            | -119.195, 35.368
+ 19CL  | closed | Palisades Ranch Airport                |         2510 | NA        | US          | US-CA      | Helendale       |          |           |            | -117.350999, 34.7122
+ 34CA  | closed | Fiddyment Field                        |           98 | NA        | US          | US-CA      | Roseville       | 34CA     |           | 34CA       | -121.37300109863281, 38.79209899902344
+ 35CL  | closed | 59 Ranch Airport                       |          154 | NA        | US          | US-CA      | Merced          |          |           |            | -120.478996, 37.231899
+ 3CA3  | closed | Dixon Airport                          |         2440 | NA        | US          | US-CA      | Cuyama          |          |           |            | -119.526001, 34.922199
+ 3CA5  | closed | Haws Airport                           |          192 | NA        | US          | US-CA      | Madera          |          |           |            | -120.242995, 36.9416
+ 43CN  | closed | Mazza Airport                          |           20 | NA        | US          | US-CA      | Petaluma        |          |           |            | -122.601997, 38.1852
+ 44CA  | closed | W R Byron Airport                      |          400 | NA        | US          | US-CA      | Blythe          |          |           |            | -114.643997, 33.679199
+ 45L   | closed | Parker Center Heliport                 |          450 | NA        | US          | US-CA      | Los Angeles     |          |           |            | -118.240997, 34.0522
+ 46CA  | closed | Rancho Vallecito Airport               |         1680 | NA        | US          | US-CA      | Julian          |          |           |            | -116.408997, 32.970901
+ 52CA  | closed | Lake Mathews Airport                   |         1385 | NA        | US          | US-CA      | Riverside       |          |           |            | -117.424004, 33.8531
+ 57CA  | closed | Merle Norman Cosmetics Bldg 3 Heliport |          126 | NA        | US          | US-CA      | Los Angeles     |          |           |            | -118.380997, 33.9533
+ 59L   | closed | City Hall Heliport                     |          360 | NA        | US          | US-CA      | Los Angeles     |          |           |            | -118.242995, 34.054199
+ 6CL0  | closed | Majors Airport                         |          640 | NA        | US          | US-CA      | Bakersfield     |          |           |            | -119.101997, 35.5261
+ 6CL9  | closed | Peoria Airport                         |          830 | NA        | US          | US-CA      | Jamestown       |          |           |            | -120.514999, 37.9217
+ 74CA  | closed | R.I. San Bernardino G/L Helistop       |         1030 | NA        | US          | US-CA      | San Bernardino  |          |           |            | -117.268997, 34.074501
+ 75CL  | closed | Willis Ranch Airport                   |          115 | NA        | US          | US-CA      | Dos Palos       |          |           |            | -120.567, 37.065497
+ 76CL  | closed | Emmett Field                           |          135 | NA        | US          | US-CA      | Dos Palos       |          |           |            | -120.500999, 37.088799
+ 87CA  | closed | Swanson Ranch Nr 1 Airport             |          248 | NA        | US          | US-CA      | Hanford         |          |           |            | -119.617995, 36.399899
+ 91CL  | closed | Sacatar Meadows Airport                |         6427 | NA        | US          | US-CA      | Kennedy Meadows |          |           |            | -118.080002, 35.989899
+ 97CA  | closed | Tejon Agricultural Airport             |         1065 | NA        | US          | US-CA      | Lebec           |          |           |            | -118.915001, 34.989101
+ 98CL  | closed | Noltas Airport                         |          145 | NA        | US          | US-CA      | Willows         |          |           |            | -122.200996, 39.578999
+ 99L   | closed | Pomona Superior Court Heliport         |         1000 | NA        | US          | US-CA      | Pomona          | 99L      |           | 99L        | -117.74900054932, 34.052498626709
+ 9CL1  | closed | Johnson Ranch Airport                  |          240 | NA        | US          | US-CA      | Le Grand        |          |           |            | -120.276001, 37.191101
+(27 rows)
+
+--
+-- This queries the first 10 rows.
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
+  ORDER BY ident LIMIT 10;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using airport_type_region_idx on airports
+         Index Cond: ((type = 'small_airport'::text) AND (iso_region = 'US-CA'::text))
+(3 rows)
+
+SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
+  ORDER BY ident LIMIT 10;
+ ident |     type      |           name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |               coordinates
+-------+---------------+---------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+-----------------------------------------
+ 00CA  | small_airport | Goldstone /Gts/ Airport   |         3038 | NA        | US          | US-CA      | Barstow      | 00CA     |           | 00CA       | -116.888000488, 35.350498199499995
+ 00CL  | small_airport | Williams Ag Airport       |           87 | NA        | US          | US-CA      | Biggs        | 00CL     |           | 00CL       | -121.763427, 39.427188
+ 01CL  | small_airport | Swansboro Country Airport |         2594 | NA        | US          | US-CA      | Placerville  | 01CL     |           | 01CL       | -120.73400115966797, 38.79990005493164
+ 02CL  | small_airport | Conover Air Lodge Airport |         5160 | NA        | US          | US-CA      | Frazier Park | 02CL     |           | 02CL       | -119.058998, 34.761101
+ 04CA  | small_airport | Gray Butte Field          |         3020 | NA        | US          | US-CA      | Palmdale     | KGXA     |           | 04CA       | -117.675003, 34.5639
+ 04CL  | small_airport | Hunt's Sky Ranch Airport  |         2310 | NA        | US          | US-CA      | Julian       | 04CL     |           | 04CL       | -116.44100189208984, 33.08169937133789
+ 05CL  | small_airport | Pope Valley Airport       |          618 | NA        | US          | US-CA      | Pope Valley  | 05CL     |           | 05CL       | -122.39099884, 38.6106987
+ 07CL  | small_airport | Richvale Airport          |          100 | NA        | US          | US-CA      | Richvale     | 07CL     |           | 07CL       | -121.77100372314453, 39.49769973754883
+ 08CL  | small_airport | Kistler Ranch Airport     |         1025 | NA        | US          | US-CA      | Jamestown    | 08CL     |           | 08CL       | -120.55400085449219, 37.85960006713867
+ 09CL  | small_airport | Alta Sierra Airport       |         2275 | NA        | US          | US-CA      | Grass Valley | 09CL     |           | 09CL       | -121.05699920654297, 39.113800048828125
+(10 rows)
+
+--
+-- This queries the last 10 rows.
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
+  ORDER BY ident DESC LIMIT 10;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan Backward using airport_type_region_idx on airports
+         Index Cond: ((type = 'small_airport'::text) AND (iso_region = 'US-CA'::text))
+(3 rows)
+
+SELECT * FROM airports WHERE type = 'small_airport' AND iso_region = 'US-CA'
+  ORDER BY ident DESC LIMIT 10;
+ ident |     type      |            name            | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+----------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
+ 9CL9  | small_airport | Spezia Airport             |              | NA        | US          | US-CA      | Walnut Grove | 9CL9     |           | 9CL9       | -121.53399658203125, 38.21659851074219
+ 9CL7  | small_airport | Old Aerodrome              |          700 | NA        | US          | US-CA      | Marysville   | 9CL7     |           | 9CL7       | -121.35900115966797, 39.32490158081055
+ 9CL5  | small_airport | Blair Strip                |          231 | NA        | US          | US-CA      | Hanford      | 9CL5     |           | 9CL5       | -119.64099884033203, 36.27519989013672
+ 9CL4  | small_airport | Hart Mine Airport          |         4620 | NA        | US          | US-CA      | Ivanpah      | 9CL4     |           | 9CL4       | -115.19200134277344, 35.28329849243164
+ 9CL3  | small_airport | Likely Airport             |         4420 | NA        | US          | US-CA      | Likely       | 9CL3     |           | 9CL3       | -120.5260009765625, 41.24020004272461
+ 9CL2  | small_airport | Christensen Ranch Airport  |          380 | NA        | US          | US-CA      | Hollister    | 9CL2     |           | 9CL2       | -121.33699798583984, 36.87160110473633
+ 9CL0  | small_airport | Turlock Airpark            |          100 | NA        | US          | US-CA      | Turlock      | 9CL0     |           | 9CL0       | -120.84400177001953, 37.47079849243164
+ 9CA7  | small_airport | Harris River Ranch Airport |          450 | NA        | US          | US-CA      | Sanger       | 9CA7     |           | 9CA7       | -119.43599700927734, 36.7672004699707
+ 9CA6  | small_airport | North Valley Airport       |         4960 | NA        | US          | US-CA      | Bishop       | 9CA6     |           | 9CA6       | -118.09500122070312, 37.86909866333008
+ 9CA0  | small_airport | Psk Ranch Airport          |         3840 | NA        | US          | US-CA      | Tehachapi    | 9CA0     |           | 9CA0       | -118.5979995727539, 35.11389923095703
+(10 rows)
+
+--
+-- This queries the first 10 rows with names in a specified range.
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
+  ORDER BY ident LIMIT 10;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: ident
+         ->  Index Scan using airports_idx_name on airports
+               Index Cond: ((name > 'H'::text) AND (name < 'R'::text))
+               Storage Filter: (iso_region = 'US-CA'::text)
+(6 rows)
+
+SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
+  ORDER BY ident LIMIT 10;
+ ident |     type      |                       name                       | elevation_ft | continent | iso_country | iso_region |  municipality   | gps_code | iata_code | local_code |              coordinates
+-------+---------------+--------------------------------------------------+--------------+-----------+-------------+------------+-----------------+----------+-----------+------------+----------------------------------------
+ 00CN  | heliport      | Kitchen Creek Helibase Heliport                  |         3350 | NA        | US          | US-CA      | Pine Valley     | 00CN     |           | 00CN       | -116.4597417, 32.7273736
+ 01CA  | heliport      | Lugo Substation Heliport                         |         3733 | NA        | US          | US-CA      | Hesperia        | 01CA     |           | 01CA       | -117.370058745, 34.368240591699994
+ 01CN  | heliport      | Los Angeles County Sheriff's Department Heliport |          300 | NA        | US          | US-CA      | Los Angeles     | 01CN     |           | 01CN       | -118.15399932861328, 34.03779983520508
+ 04CL  | small_airport | Hunt's Sky Ranch Airport                         |         2310 | NA        | US          | US-CA      | Julian          | 04CL     |           | 04CL       | -116.44100189208984, 33.08169937133789
+ 05CA  | heliport      | Lost Hills Sheriff's Station Heliport            |          888 | NA        | US          | US-CA      | Calabasas       | 05CA     |           | 05CA       | -118.713996887, 34.137798309299995
+ 05CL  | small_airport | Pope Valley Airport                              |          618 | NA        | US          | US-CA      | Pope Valley     | 05CL     |           | 05CL       | -122.39099884, 38.6106987
+ 08CA  | heliport      | Pg & E Co. Placerville Svc Center Heliport       |         1810 | NA        | US          | US-CA      | Diamond Springs | 08CA     |           | 08CA       | -120.8270034790039, 38.69490051269531
+ 08CL  | small_airport | Kistler Ranch Airport                            |         1025 | NA        | US          | US-CA      | Jamestown       | 08CL     |           | 08CL       | -120.55400085449219, 37.85960006713867
+ 09CA  | heliport      | Mee Memorial Hospital Heliport                   |          320 | NA        | US          | US-CA      | King City       | 09CA     |           | 09CA       | -121.132503, 36.20554
+ 0CA1  | closed        | Northside Airpark                                |          190 | NA        | US          | US-CA      | Santa Maria     |          |           |            | -120.458000183, 34.9883003235
+(10 rows)
+
+--
+-- This queries the last 10 rows with names in a specified range.
+EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
+  ORDER BY ident DESC LIMIT 10;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: ident DESC
+         ->  Index Scan using airports_idx_name on airports
+               Index Cond: ((name > 'H'::text) AND (name < 'R'::text))
+               Storage Filter: (iso_region = 'US-CA'::text)
+(6 rows)
+
+SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
+  ORDER BY ident DESC LIMIT 10;
+ ident |     type      |                   name                   | elevation_ft | continent | iso_country | iso_region | municipality | gps_code | iata_code | local_code |              coordinates
+-------+---------------+------------------------------------------+--------------+-----------+-------------+------------+--------------+----------+-----------+------------+----------------------------------------
+ 9CN1  | heliport      | Hazel Hawkins Memorial Hospital Heliport |          397 | NA        | US          | US-CA      | Hollister    | 9CN1     |           | 9CN1       | -121.386479, 36.834811
+ 9CL7  | small_airport | Old Aerodrome                            |          700 | NA        | US          | US-CA      | Marysville   | 9CL7     |           | 9CL7       | -121.35900115966797, 39.32490158081055
+ 9CL4  | small_airport | Hart Mine Airport                        |         4620 | NA        | US          | US-CA      | Ivanpah      | 9CL4     |           | 9CL4       | -115.19200134277344, 35.28329849243164
+ 9CL3  | small_airport | Likely Airport                           |         4420 | NA        | US          | US-CA      | Likely       | 9CL3     |           | 9CL3       | -120.5260009765625, 41.24020004272461
+ 9CL1  | closed        | Johnson Ranch Airport                    |          240 | NA        | US          | US-CA      | Le Grand     |          |           |            | -120.276001, 37.191101
+ 9CA7  | small_airport | Harris River Ranch Airport               |          450 | NA        | US          | US-CA      | Sanger       | 9CA7     |           | 9CA7       | -119.43599700927734, 36.7672004699707
+ 9CA6  | small_airport | North Valley Airport                     |         4960 | NA        | US          | US-CA      | Bishop       | 9CA6     |           | 9CA6       | -118.09500122070312, 37.86909866333008
+ 9CA4  | heliport      | HDMC Holdings LLC Heliport               |         2652 | NA        | US          | US-CA      | Joshua Tree  | 9CA4     |           | 9CA4       | -116.275786, 34.131379
+ 9CA2  | heliport      | Pioneers Memorial Hospital Heliport      |          -99 | NA        | US          | US-CA      | Brawley      | 9CA2     |           | 9CA2       | -115.555000305, 32.9584007263
+ 9CA0  | small_airport | Psk Ranch Airport                        |         3840 | NA        | US          | US-CA      | Tehachapi    | 9CA0     |           | 9CA0       | -118.5979995727539, 35.11389923095703
+(10 rows)

@@ -1,0 +1,15 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.node-command {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+}
+.node-name-field {
+  width: 20%;
+}
+.yb-actions-cell {
+  max-width: 90px;
+  width: 90px;
+}

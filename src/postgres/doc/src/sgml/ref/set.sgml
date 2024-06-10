@@ -1,0 +1,332 @@
+<!--
+doc/src/sgml/ref/set.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-set">
+ <indexterm zone="sql-set">
+  <primary>SET</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SET</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SET</refname>
+  <refpurpose>change a run-time parameter</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SET [ SESSION | LOCAL ] <replaceable class="parameter">configuration_parameter</replaceable> { TO | = } { <replaceable class="parameter">value</replaceable> | '<replaceable class="parameter">value</replaceable>' | DEFAULT }
+SET [ SESSION | LOCAL ] TIME ZONE { <replaceable class="parameter">value</replaceable> | '<replaceable class="parameter">value</replaceable>' | LOCAL | DEFAULT }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   The <command>SET</command> command changes run-time configuration
+   parameters.  Many of the run-time parameters listed in
+   <xref linkend="runtime-config"/> can be changed on-the-fly with
+   <command>SET</command>.
+   (Some parameters can only be changed by superusers and users who
+   have been granted <literal>SET</literal> privilege on that parameter.
+   There are also parameters that cannot be changed after server or
+   session start.)
+   <command>SET</command> only affects the value used by the current
+   session.
+  </para>
+
+  <para>
+   If <command>SET</command> (or equivalently <command>SET SESSION</command>)
+   is issued within a transaction that is later aborted, the effects of the
+   <command>SET</command> command disappear when the transaction is rolled
+   back.  Once the surrounding transaction is committed, the effects
+   will persist until the end of the session, unless overridden by another
+   <command>SET</command>.
+  </para>
+
+  <para>
+   The effects of <command>SET LOCAL</command> last only till the end of
+   the current transaction, whether committed or not.  A special case is
+   <command>SET</command> followed by <command>SET LOCAL</command> within
+   a single transaction: the <command>SET LOCAL</command> value will be
+   seen until the end of the transaction, but afterwards (if the transaction
+   is committed) the <command>SET</command> value will take effect.
+  </para>
+
+  <para>
+   The effects of <command>SET</command> or <command>SET LOCAL</command> are
+   also canceled by rolling back to a savepoint that is earlier than the
+   command.
+  </para>
+
+  <para>
+   If <command>SET LOCAL</command> is used within a function that has a
+   <literal>SET</literal> option for the same variable (see
+   <xref linkend="sql-createfunction"/>),
+   the effects of the <command>SET LOCAL</command> command disappear at
+   function exit; that is, the value in effect when the function was called is
+   restored anyway.  This allows <command>SET LOCAL</command> to be used for
+   dynamic or repeated changes of a parameter within a function, while still
+   having the convenience of using the <literal>SET</literal> option to save and
+   restore the caller's value.  However, a regular <command>SET</command> command
+   overrides any surrounding function's <literal>SET</literal> option; its effects
+   will persist unless rolled back.
+  </para>
+
+  <note>
+   <para>
+    In <productname>PostgreSQL</productname> versions 8.0 through 8.2,
+    the effects of a <command>SET LOCAL</command> would be canceled by
+    releasing an earlier savepoint, or by successful exit from a
+    <application>PL/pgSQL</application> exception block.  This behavior
+    has been changed because it was deemed unintuitive.
+   </para>
+  </note>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SESSION</literal></term>
+    <listitem>
+     <para>
+      Specifies that the command takes effect for the current session.
+      (This is the default if neither <literal>SESSION</literal> nor
+      <literal>LOCAL</literal> appears.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>LOCAL</literal></term>
+    <listitem>
+     <para>
+      Specifies that the command takes effect for only the current
+      transaction.  After <command>COMMIT</command> or <command>ROLLBACK</command>,
+      the session-level setting takes effect again.  Issuing this
+      outside of a transaction block emits a warning and otherwise has
+      no effect.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">configuration_parameter</replaceable></term>
+    <listitem>
+     <para>
+      Name of a settable run-time parameter.  Available parameters are
+      documented in <xref linkend="runtime-config"/> and below.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">value</replaceable></term>
+    <listitem>
+     <para>
+      New value of parameter.  Values can be specified as string
+      constants, identifiers, numbers, or comma-separated lists of
+      these, as appropriate for the particular parameter.
+      <literal>DEFAULT</literal> can be written to specify
+      resetting the parameter to its default value (that is, whatever
+      value it would have had if no <command>SET</command> had been executed
+      in the current session).
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Besides the configuration parameters documented in <xref
+   linkend="runtime-config"/>, there are a few that can only be
+   adjusted using the <command>SET</command> command or that have a
+   special syntax:
+
+   <variablelist>
+    <varlistentry>
+     <term><literal>SCHEMA</literal></term>
+     <listitem>
+      <para><literal>SET SCHEMA '<replaceable>value</replaceable>'</literal> is an alias for
+       <literal>SET search_path TO <replaceable>value</replaceable></literal>.  Only one
+       schema can be specified using this syntax.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>NAMES</literal></term>
+     <listitem>
+      <para><literal>SET NAMES <replaceable>value</replaceable></literal> is an alias for
+       <literal>SET client_encoding TO <replaceable>value</replaceable></literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>SEED</literal></term>
+     <listitem>
+      <para>
+       Sets the internal seed for the random number generator (the
+       function <function>random</function>).  Allowed values are
+       floating-point numbers between -1 and 1 inclusive.
+      </para>
+
+      <para>
+       The seed can also be set by invoking the function
+       <function>setseed</function>:
+<programlisting>
+SELECT setseed(<replaceable>value</replaceable>);
+</programlisting></para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TIME ZONE</literal></term>
+     <listitem>
+      <para><literal>SET TIME ZONE '<replaceable>value</replaceable>'</literal> is an alias
+       for <literal>SET timezone TO '<replaceable>value</replaceable>'</literal>.  The
+       syntax <literal>SET TIME ZONE</literal> allows special syntax
+       for the time zone specification.  Here are examples of valid
+       values:
+
+       <variablelist>
+        <varlistentry>
+         <term><literal>'PST8PDT'</literal></term>
+         <listitem>
+          <para>
+           The time zone for Berkeley, California.
+          </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><literal>'Europe/Rome'</literal></term>
+         <listitem>
+          <para>
+           The time zone for Italy.
+          </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><literal>-7</literal></term>
+         <listitem>
+          <para>
+           The time zone 7 hours west from UTC (equivalent
+           to PDT).  Positive values are east from UTC.
+          </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><literal>INTERVAL '-08:00' HOUR TO MINUTE</literal></term>
+         <listitem>
+          <para>
+           The time zone 8 hours west from UTC (equivalent
+           to PST).
+          </para>
+         </listitem>
+        </varlistentry>
+        <varlistentry>
+         <term><literal>LOCAL</literal></term>
+         <term><literal>DEFAULT</literal></term>
+         <listitem>
+          <para>
+           Set the time zone to your local time zone (that is, the
+           server's default value of <varname>timezone</varname>).
+          </para>
+         </listitem>
+        </varlistentry>
+       </variablelist>
+      </para>
+
+      <para>
+       Timezone settings given as numbers or intervals are internally
+       translated to POSIX timezone syntax.  For example, after
+       <literal>SET TIME ZONE -7</literal>, <command>SHOW TIME ZONE</command> would
+       report <literal>&lt;-07&gt;+07</literal>.
+      </para>
+
+      <para>
+       Time zone abbreviations are not supported by <command>SET</command>;
+       see <xref linkend="datatype-timezones"/> for more information
+       about time zones.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The function <function>set_config</function> provides equivalent
+   functionality; see <xref linkend="functions-admin-set"/>.
+   Also, it is possible to UPDATE the
+   <link linkend="view-pg-settings"><structname>pg_settings</structname></link>
+   system view to perform the equivalent of <command>SET</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Set the schema search path:
+<programlisting>
+SET search_path TO my_schema, public;
+</programlisting>
+  </para>
+
+  <para>
+   Set the style of date to traditional
+   <productname>POSTGRES</productname> with <quote>day before month</quote>
+   input convention:
+<screen>
+SET datestyle TO postgres, dmy;
+</screen>
+  </para>
+
+  <para>
+   Set the time zone for Berkeley, California:
+<screen>
+SET TIME ZONE 'PST8PDT';
+</screen>
+  </para>
+
+  <para>
+   Set the time zone for Italy:
+<screen>
+SET TIME ZONE 'Europe/Rome';
+</screen></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <literal>SET TIME ZONE</literal> extends syntax defined in the SQL
+   standard.  The standard allows only numeric time zone offsets while
+   <productname>PostgreSQL</productname> allows more flexible
+   time-zone specifications.  All other <literal>SET</literal>
+   features are <productname>PostgreSQL</productname> extensions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-reset"/></member>
+   <member><xref linkend="sql-show"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

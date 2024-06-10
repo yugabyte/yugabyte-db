@@ -1,0 +1,98 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use 'modules/leaflet.scss';
+@use 'modules/highlightjs.scss';
+@use 'modules/react-bs-table.scss';
+
+@use 'body.scss';
+@use 'layout.scss';
+@use 'headings.scss';
+@use 'links.scss';
+@use 'buttons.scss';
+@use 'forms.scss';
+@use 'tabs.scss';
+@use 'modals.scss';
+@use 'spinners.scss';
+@use '../../_style/colors';
+
+.progress {
+  width: 100%;
+}
+
+.region-item-cell {
+  font-size: small;
+}
+
+.text-bold {
+  text-align: center;
+  font-size: 1.4em;
+}
+
+.text-normal {
+  font-weight: 400;
+}
+
+.text-light {
+  font-weight: 300;
+}
+
+.text-red {
+  color: colors.$YB_FAIL_COLOR;
+}
+
+.text-green {
+  color: colors.$YB_SUCCESS_COLOR;
+}
+
+.text-dark {
+  color: colors.$YB_TEXT_COLOR;
+}
+
+.text-lightgray {
+  color: colors.$YB_SUBTITLE_COLOR;
+}
+
+.btn-primary {
+  background-color: colors.$YB_ORANGE;
+  border-color: colors.$YB_ORANGE;
+}
+
+.btn-primary:hover {
+  background-color: #fff;
+  border-color: #ccc;
+  color: colors.$YB_ORANGE;
+}
+.btn-primary:active:focus {
+  background-color: #fff;
+  border-color: #ccc;
+  color: colors.$YB_ORANGE;
+}
+
+.no-margin {
+  margin: 0 !important;
+}
+
+.no-padding {
+  padding: 0 !important;
+}
+
+.Toastify__toast {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+
+  &--error {
+    background-color: colors.$YB_FAIL_COLOR;
+  }
+
+  &--success {
+    background-color: colors.$YB_SUCCESS_COLOR;
+  }
+
+  &--warning {
+    background-color: colors.$YB_WARNING_COLOR;
+  }
+
+  &-container {
+    width: 500px;
+  }
+}

@@ -1,0 +1,11 @@
+title: Region in a cloud provider
+type: object
+properties:
+  aws:
+    $ref: ./AWSRegionCloudInfo.yaml
+  azu:
+    $ref: ./AzureRegionCloudInfo.yaml
+  gcp:
+    $ref: ./GCPRegionCloudInfo.yaml
+  kubernetes:
+    $ref: ./KubernetesRegionInfo.yaml

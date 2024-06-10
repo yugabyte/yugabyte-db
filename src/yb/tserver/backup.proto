@@ -1,0 +1,103 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+syntax = "proto3";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "google/protobuf/any.proto";
+import "yb/common/common.proto";
+import "yb/tserver/tserver_types.proto";
+
+service TabletServerBackupService {
+  rpc TabletSnapshotOp(TabletSnapshotOpRequestPB) returns (TabletSnapshotOpResponsePB);
+}
+
+message TableMetadataPB {
+  uint32 schema_version = 1;
+  SchemaPB schema = 2;
+  repeated IndexInfoPB indexes = 3;
+  bytes table_id = 4;
+}
+
+message TabletSnapshotOpRequestPB {
+  enum Operation {
+    UNKNOWN = 0;
+    CREATE_ON_TABLET = 1; // Replicated at tserver, to create snapshot for a particular tablet.
+    RESTORE_ON_TABLET = 2;
+    DELETE_ON_TABLET = 3;
+    CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
+    DELETE_ON_MASTER = 5;
+    RESTORE_SYS_CATALOG = 6;
+    RESTORE_FINISHED = 7; // Whole restore operation is finished.
+  }
+
+  // UUID of server this request is addressed to.
+  bytes dest_uuid = 1;
+
+  Operation operation = 2;
+
+  // In case of transactional id it is binary representation of snapshot UUID, i.e. 16 bytes.
+  // Otherwise it is hexadecimal representation of snapshot UUID, i.e. 32 bytes.
+  bytes snapshot_id = 3;
+
+  // Tablets to snapshot. In case of CREATE_ON_MASTER it contains UUIDs of all tablets of snapshot.
+  // Otherwise it contains just one tablet.
+  repeated bytes tablet_id = 4;
+
+  fixed64 propagated_hybrid_time = 5;
+
+  // Override the snapshot directory. Used in restoring sys catalog to avoid running initdb.
+  string snapshot_dir_override = 6;
+
+  fixed64 snapshot_hybrid_time = 7;
+
+  fixed64 restoration_hybrid_time = 17;
+
+  // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
+  google.protobuf.Any extra_data = 8;
+
+  bool imported = 9;
+
+  bytes schedule_id = 10;
+
+  bytes restoration_id = 11;
+
+  uint32 schema_version = 12;
+  SchemaPB schema = 13;
+  repeated IndexInfoPB indexes = 14;
+
+  fixed64 previous_snapshot_hybrid_time = 15;
+
+  bool hide = 16;
+
+  // This is the database oid that needs to be restored partially. Applicable
+  // only for tablets of sequences_data table currently.
+  int64 db_oid = 18;
+
+  // Metadata of all colocated tables in the case of RESTORE_ON_TABLET rpc.
+  repeated TableMetadataPB colocated_tables_metadata = 19;
+
+  // Number of hours the snapshot needs to be kept around
+  // before it is deleted. Set only for CREATE_ON_MASTER for non-pitr use-cases.
+  // Set to -1 to retain indefinitely until an explicit delete_snapshot.
+  int32 retention_duration_hours = 20;
+}
+
+message TabletSnapshotOpResponsePB {
+  TabletServerErrorPB error = 1;
+
+  fixed64 propagated_hybrid_time = 2;
+}

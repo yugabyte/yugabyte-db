@@ -1,0 +1,13 @@
+# src/test/regress/yb_misc_independent_schedule
+#
+####################################################################################################
+# This testsuite includes independent tests that do not dependent on each other.
+# The tests in this schedule are not ported from PostgreSQL original tests.
+####################################################################################################
+
+test: yb_catalog_version
+test: yb_boolean
+test: yb_disabled
+test: yb_errors
+test: yb_truncate
+test: yb_local_tablets

@@ -1,0 +1,27 @@
+#contrib/pgcrypto/yb_schedule
+# Since the upstream postgres test works fine without modifications
+# (currently), don't bother porting it to yb_pg_ tests
+
+test: init
+test: 3des
+test: cast5
+test: crypt-des
+test: crypt-xdes
+test: hmac-md5
+test: sha2
+test: blowfish
+test: crypt-blowfish
+test: crypt-md5
+test: des
+test: hmac-sha1
+test: md5
+test: sha1
+test: pgp-pubkey-decrypt
+test: pgp-pubkey-encrypt
+test: pgp-info
+test: pgp-encrypt
+test: pgp-decrypt
+test: pgp-compression
+test: pgp-armor
+test: pgp-zlib-DISABLED
+test: rijndael

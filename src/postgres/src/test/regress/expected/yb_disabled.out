@@ -1,0 +1,39 @@
+--
+-- DISABLED FEATURES
+--
+--
+-- NOTIFY/LISTEN
+--
+NOTIFY channel;
+WARNING:  NOTIFY not supported yet and will be ignored
+LINE 1: NOTIFY channel;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
+NOTIFY channel, 'message';
+WARNING:  NOTIFY not supported yet and will be ignored
+LINE 1: NOTIFY channel, 'message';
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
+SELECT pg_notify('channel', 'text');
+WARNING:  NOTIFY not supported yet and will be ignored
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
+ pg_notify
+-----------
+
+(1 row)
+
+LISTEN channel;
+WARNING:  LISTEN not supported yet and will be ignored
+LINE 1: LISTEN channel;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
+UNLISTEN channel;
+WARNING:  UNLISTEN not supported yet and will be ignored
+LINE 1: UNLISTEN channel;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority
+UNLISTEN *;
+WARNING:  UNLISTEN not supported yet and will be ignored
+LINE 1: UNLISTEN *;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1872. React with thumbs up to raise its priority

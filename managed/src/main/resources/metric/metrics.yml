@@ -1,0 +1,3450 @@
+# Copyright (c) YugaByte, Inc.
+# Prometheus metrics query, and related params
+---
+cpu_usage_user:
+  metric: "node_cpu_usage"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    mode: "user"
+  panel_group: "Node Metrics"
+  layout:
+    title: "CPU Usage (User)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+cpu_usage_system:
+  metric: "node_cpu_usage"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    mode: "system"
+  panel_group: "Node Metrics"
+  layout:
+    title: "CPU Usage (System)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_usage:
+  metric: ""
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
+    mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
+  group_by: saved_name
+  panel_group: "Node Metrics"
+  layout:
+    title: "Data Disks Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_free_bytes": "free"
+        "node_filesystem_size_bytes": "size"
+      ticksuffix: "&nbsp;GB"
+
+disk_usage_percent:
+  metric: "disk_used_size_total/disk_capacity_size_total"
+  panel_group: "Node Metrics"
+  group_by: "mountpoint"
+  layout:
+    title: "Data Disks Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "disk_used_size_total/disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+disk_used_size_total:
+  metric: "node_filesystem_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Data Disks Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+disk_capacity_size_total:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Data Disks Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_size_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
+disk_volume_usage_percent:
+  metric: "disk_volume_used/disk_volume_capacity"
+  panel_group: "Node Metrics"
+  group_by: "mountpoint"
+  layout:
+    title: "Disk Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "disk_used_size_total/disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+disk_volume_used:
+  metric: "node_filesystem_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/|/mnt/d[0-9]+"
+  group_by: "mountpoint"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Disk Volume Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+disk_volume_capacity:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/|/mnt/d[0-9]+"
+  group_by: "mountpoint"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Disk Volume Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_size_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
+cpu_usage:
+  metric: "node_cpu_usage_avg"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    mode: "user|system"
+  group_by: "mode"
+  panel_group: "Node Metrics"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "user": "User"
+        "system": "System"
+      ticksuffix: "&nbsp;%"
+
+disk_iops:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_disk_reads_irate|node_disk_writes_irate|ybp_universe_node_provisioned_iops"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk IOPS / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_disk_reads_irate": "Read"
+        "node_disk_writes_irate": "Write"
+        "ybp_universe_node_provisioned_iops": "Provisioned"
+
+tserver_rpcs_per_sec_by_universe:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write"
+  group_by: "service_method, node_prefix"
+  panel_group: "Tablet Server"
+  layout:
+    xaxis:
+      type: "date"
+
+memory_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes|\
+      node_memory_MemTotal_bytes"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_memory_Cached_bytes": "Cached"
+        "node_memory_Buffers_bytes": "Buffered"
+        "node_memory_MemFree_bytes": "Free"
+        "node_memory_MemTotal_bytes": "Total"
+      ticksuffix: "&nbsp;GB"
+
+container_cpu_usage:
+  metric: "container_cpu_usage"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+    container_name: "yb-tserver"
+  panel_group: "Container"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_cpu_usage": "cpu_usage"
+      ticksuffix: "&nbsp;%"
+
+container_memory_usage:
+  metric: "container_memory_working_set_bytes"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+    container_name: "yb-tserver"
+  panel_group: "Container"
+  layout:
+    title: "Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+      alias:
+        "container_memory_working_set_bytes": "memory_usage"
+
+container_volume_stats:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
+  layout:
+    title: "Persistent Volume Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+      alias:
+        "kubelet_volume_stats_used_bytes": "used"
+
+container_volume_max_usage:
+  metric: "kubelet_volume_stats_capacity_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
+  layout:
+    title: "Persistent Volume Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+      alias:
+        "kubelet_volume_stats_capacity_bytes": "used"
+
+container_volume_usage_percent:
+  metric: "container_volume_stats/container_volume_max_usage"
+  filters:
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
+  layout:
+    title: "Persistent Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_volume_stats/container_volume_max_usage": "Container Usage"
+      ticksuffix: "&nbsp;%"
+
+network_bytes:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_network_receive_bytes_irate|node_network_transmit_bytes_irate"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Network Bytes / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_network_receive_bytes_irate": "RX"
+        "node_network_transmit_bytes_irate": "TX"
+
+disk_io_time:
+  metric: ""
+  function: "avg_over_time|avg"
+  operator: "* 100"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_weighted_seconds_total_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+disk_io_read_latency:
+  metric: "node_disk_io_read_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Read Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
+disk_io_write_latency:
+  metric: "node_disk_io_write_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Write Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
+network_packets:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_network_receive_packets_irate|node_network_transmit_packets_irate"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Network Packets / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_network_receive_packets_irate": "RX"
+        "node_network_transmit_packets_irate": "TX"
+
+network_errors:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_network_receive_errs_irate|node_network_transmit_errs_irate"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Network Errors / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_network_receive_errs_irate": "RX"
+        "node_network_transmit_errs_irate": "TX"
+
+system_load_over_time:
+  metric: ""
+  filters:
+    saved_name: "node_load1|node_load5|node_load15"
+  group_by: "saved_name"
+  function: "avg"
+  panel_group: "Node Metrics"
+  layout:
+    title: "System Load Over Time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_load1": "1 minute"
+        "node_load5": "5 minutes"
+        "node_load15": "15 minutes"
+
+disk_bytes_per_second_per_node:
+  metric: ""
+  filters:
+    saved_name: "node_disk_read_bytes_irate|node_disk_write_bytes_irate"
+  group_by: "saved_name"
+  range: true
+  function: "avg_over_time|avg"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Bytes / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_disk_read_bytes_irate": "Read"
+        "node_disk_write_bytes_irate": "Write"
+
+node_clock_skew:
+  metric: "hybrid_clock_skew"
+  function: "max_over_time|max"
+  range: true
+  group_by: "saved_name"
+  filters:
+    export_type: "(tserver_export|master_export)"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Clock Skew"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "hybrid_clock_skew": "Max"
+      ticksuffix: "&nbsp;\u00B5s"
+
+redis_rpcs_per_sec_all:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "hget": "HGet"
+        "tsget": "TsGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+
+redis_server_rpc_p95:
+  metric: "rpc_latency"
+  function: "quantile_over_time.95|max"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    quantile: "p95"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "hget": "HGet"
+        "tsget": "TsGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+      ticksuffix: "&nbsp;\u00B5s"
+
+redis_server_rpc_p99:
+  metric: "rpc_latency"
+  function: "quantile_over_time.99|max"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    quantile: "p99"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency (P99)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "hget": "HGet"
+        "tsget": "TsGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+      ticksuffix: "&nbsp;\u00B5s"
+
+redis_rpcs_per_sec_hash:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hset|hmset|hdel|hincrby"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec -- Hash"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "hget": "HGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+
+redis_rpcs_per_sec_ts:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "tsget|tsadd|tsrangebytime|tsrem"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec -- TS"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "tsget": "TsGet"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+
+redis_rpcs_per_sec_set:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "smembers|sismember|scard|strlen|sadd|srem"
+  panel_group: "YEDIS Ops & Latency"
+  group_by: "service_method"
+  layout:
+    title: "Total YEDIS Ops / Sec -- Set"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "sadd": "SAdd"
+        "srem": "SRem"
+
+redis_rpcs_per_sec_sortedset:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec -- Sorted Set"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "zadd": "ZAdd"
+        "zrem": "ZRem"
+        "zcard": "ZCard"
+        "zrangebyscore": "ZRangeByScore"
+        "zrevrange": "ZRevRange"
+
+redis_rpcs_per_sec_str:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec -- Str"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+
+redis_rpcs_per_sec_local:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Total YEDIS Ops / Sec -- Others"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+
+redis_ops_latency_all:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "hget": "HGet"
+        "tsget": "TsGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+
+redis_ops_latency_hash:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hincrby|hset|hmset|hdel"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- Hash"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "hget": "HGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+
+redis_ops_latency_ts:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "tsget|tsadd|tsrangebytime|tsrem"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- TS"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "tsget": "TsGet"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+
+redis_ops_latency_set:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "smembers|sismember|scard|strlen|sadd|srem"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- Set"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "sadd": "SAdd"
+        "srem": "SRem"
+
+redis_ops_latency_sorted_set:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- Sorted Set"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "zcard": "ZCard"
+        "zadd": "ZAdd"
+        "zrem": "ZRem"
+        "zrangebyscore": "ZRangeByScore"
+        "zrevrange": "ZRevRange"
+
+redis_ops_latency_str:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- Str"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+
+redis_ops_latency_local:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
+  range: true
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
+  group_by: "service_method"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YEDIS Op Latency -- Others"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+
+# what does this have to do with redis??
+redis_yb_local_vs_remote_ops:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "redis_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YBClient Ops Local vs Remote"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
+
+redis_yb_local_vs_remote_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "redis_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YBClient Latency Local vs Remote"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+redis_reactor_latency:
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "redis_export"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "YBClient Reactor Delays"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_incoming_queue_time.avg": "Incoming Queue"
+        "handler_latency_outbound_transfer.avg": "Outbound Transfer"
+        "handler_latency_outbound_call_queue_time.avg": "Outbound Queue"
+      ticksuffix: "&nbsp;\u00B5s"
+
+# tserver metrics
+tserver_ops_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  # operator: "/ 1000"
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write|Scan"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Average Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      # ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_handler_latency:
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
+  function: "rate|avg"
+  range: true
+  # operator: "/ 1000"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Reactor Delays"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_incoming_queue_time.avg": "Incoming Queue"
+        "handler_latency_outbound_call_queue_time.avg": "Outbound Queue"
+        "handler_latency_outbound_transfer.avg": "Outbound Transfer"
+      ticksuffix: "&nbsp;\u00B5s"
+
+total_rpcs_per_sec:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Write|Read|Scan"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Total Ops / Sec"
+    xaxis:
+      type: "date"
+
+tserver_rpcs_per_sec_per_node:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Write|Read|Scan"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Ops / Sec / Node"
+    xaxis:
+      type: "date"
+
+tserver_consensus_rpcs_per_sec:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Consensus Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
+        "RequestConsensusVote": "RequestConsensusVote"
+
+tserver_change_config:
+  metric: "rpc_latency_count"
+  function: "sum"
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "ChangeConfig|RunLeaderElection|LeaderStepDown|LeaderElectionLost"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Total Consensus Change Config"
+    xaxis:
+      type: "date"
+
+tserver_remote_bootstraps:
+  metric: "rpc_latency_count"
+  function: "sum"
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "StartRemoteBootstrap"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Remote Bootstraps"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        rpc_latency_count: "Remote Bootstraps"
+
+tserver_consensus_rpcs_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Consensus Rpc Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
+        "RequestConsensusVote": "RequestConsensusVote"
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_change_config_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "ChangeConfig"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Change Config Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_threads_running:
+  metric: "threads_running"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Threads Running"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "threads_running": "Running"
+
+tserver_threads_started:
+  metric: "threads_started"
+  function: "avg"
+  filters:
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Threads Started"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "threads_started": "Started"
+
+tserver_context_switches:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "involuntary_context_switches_irate|voluntary_context_switches_irate"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Context Switches"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "involuntary_context_switches_irate": "Involuntary"
+        "voluntary_context_switches_irate": "Voluntary"
+
+tserver_spinlock_server:
+  metric: "spinlock_contention_time_irate"
+  function: "avg_over_time|avg"
+  operator: "/ 1000000"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "SpinLock Time/Server"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "spinlock_contention_time_irate": "SpinLock"
+      ticksuffix: "&nbsp;sec"
+
+tserver_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_log_latency:
+  metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_sync_latency.avg": "Sync"
+        "log_group_commit_latency.avg": "Commit"
+        "log_append_latency.avg": "Append"
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_log_bytes_written:
+  metric: "log_bytes_logged"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Bytes Written / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_bytes_logged": "Written"
+
+tserver_log_bytes_read:
+  metric: "log_reader_bytes_read"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Bytes Read / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Read"
+
+tserver_log_ops_second:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Ops / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_group_commit_latency_count": "Commit"
+        "log_append_latency_count": "Append"
+        "log_sync_latency_count": "Sync"
+
+tserver_tc_malloc_stats:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "generic_current_allocated_bytes|generic_heap_size"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "TCMalloc Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "generic_current_allocated_bytes": "In Use"
+        "generic_heap_size": "Total"
+      ticksuffix: "&nbsp;MB"
+
+tserver_log_stats:
+  metric: ""
+  function: "sum by (exported_instance, saved_name)|avg"
+  operator: "/ 1024"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "log_reader_bytes_read|log_cache_size"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Stats / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Bytes Read"
+        "log_cache_size": "Cache Size"
+      ticksuffix: "&nbsp;KB"
+
+tserver_cache_reader_num_ops:
+  metric: "log_cache_num_ops"
+  function: "sum by (exported_instance)|avg"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL Cache Num Ops / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_cache_num_ops": "Num Ops"
+
+tserver_glog_info_messages:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "glog_info_messages_irate|glog_warning_messages_irate|glog_error_messages_irate"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Glog messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages_irate": "Info"
+        "glog_warning_messages_irate": "Warning"
+        "glog_error_messages_irate": "Error"
+
+tserver_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|bottomk.9|min"
+  range: true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.tabletserver"
+  group_by: "exported_instance"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
+
+node_up:
+  metric: "up"
+  function: "avg"
+  group_by: "instance"
+  panel_group: "Node Metrics"
+
+lsm_rocksdb_seek_next_prev:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next|rocksdb_number_db_prev"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Seek/Next/Prev Ops / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
+        "rocksdb_number_db_prev": "Prev"
+
+lsm_rocksdb_total_sst_per_node:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "sum by (exported_instance)|avg"
+  operator: "/ 1073741824"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "SSTable size / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_current_version_sst_files_size": "Size"
+      ticksuffix: "&nbsp;GB"
+      tickformat: ".2f"
+
+lsm_rocksdb_avg_num_sst_per_node:
+  metric: "rocksdb_current_version_num_sst_files"
+  function: "sum by (exported_instance)|avg"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Average SSTables / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_current_version_num_sst_files": "Files"
+
+lsm_rocksdb_blooms_checked_and_useful:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_bloom_filter_checked": "Blooms Checked"
+        "rocksdb_bloom_filter_useful": "Blooms Useful"
+
+lsm_rocksdb_mem_tracker_db_memtable:
+  metric: ""
+  function: "avg_over_time|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable|\
+      mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Memtable Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "mem_tracker_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable": "IntentsDB"
+
+lsm_rocksdb_latencies_get:
+  metric: "rocksdb_db_get_micros.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Get Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_db_get_micros.avg": "Get"
+      ticksuffix: "&nbsp;\u00B5s"
+
+lsm_rocksdb_latencies_write:
+  metric: "rocksdb_db_write_micros.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Write Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_db_write_micros.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+lsm_rocksdb_latencies_seek:
+  metric: "rocksdb_db_seek_micros.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Seek Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_db_seek_micros.avg": "Seek"
+      ticksuffix: "&nbsp;\u00B5s"
+
+lsm_rocksdb_latencies_mutex:
+  metric: "rocksdb_db_mutex_wait_micros"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Mutex Wait / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "rocksdb_db_mutex_wait_micros": "Mutex"
+
+lsm_rocksdb_block_cache_hit_miss:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Cache Hit & Miss"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_miss": "Miss"
+
+lsm_rocksdb_block_cache_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Block cache usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "block_cache_single_touch_usage": "Single Touch"
+        "block_cache_multi_touch_usage": "Multi Touch"
+      ticksuffix: "&nbsp;GB"
+
+lsm_rocksdb_block_cache_add:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|\
+      rocksdb_block_cache_multi_touch_add"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Cache Add"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_block_cache_add": "Add"
+        "rocksdb_block_cache_single_touch_add": "Single Touch Add"
+        "rocksdb_block_cache_multi_touch_add": "Multi Touch Add"
+
+lsm_rocksdb_stalls:
+  metric: "rocksdb_stall_micros"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Stalls"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_stall_micros": "Stalls"
+      ticksuffix: "&nbsp;\u00B5s"
+
+lsm_rocksdb_write_rejections:
+  metric: "majority_sst_files_rejections"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Write Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "majority_sst_files_rejections": "Rejections"
+
+lsm_rocksdb_memory_rejections:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Memory Pressure Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "leader_memory_pressure_rejections": "Leader"
+        "follower_memory_pressure_rejections": "Follower"
+        "operation_memory_pressure_rejections": "Operations"
+
+lsm_rocksdb_flush_size:
+  metric: "rocksdb_flush_write_bytes"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Flush write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_flush_write_bytes": "Flush"
+      ticksuffix: "&nbsp;MB"
+
+lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+lsm_rocksdb_compaction_tasks:
+  metric: "compaction_tasks"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "state_type"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction tasks"
+    xaxis:
+      type: "date"
+
+lsm_rocksdb_compaction_numfiles:
+  metric: "rocksdb_numfiles_in_singlecompaction.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction num files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_numfiles_in_singlecompaction.avg": "Avg"
+
+lsm_rocksdb_compaction_time:
+  metric: "rocksdb_compaction_times_micros.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  #operator: "/ 1000000"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compaction_times_micros.avg": "Avg"
+      ticksuffix: "&nbsp;\u00B5s"
+
+docdb_transaction_pool_cache:
+  metric: "transaction_pool_cache.avg"
+  function: "increase|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Transaction pool cache hits"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "transaction_pool_cache.avg": "Cache hits"
+      ticksuffix: "&nbsp;%"
+
+docdb_transaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    saved_name: "transaction_conflicts|expired_transactions"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Transaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "transaction_conflicts": "Conflicts"
+        "expired_transactions": "Expired"
+
+#Ysql Metrics
+ysql_server_rpc_per_second:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+
+ysql_sql_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "YSQL Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+      ticksuffix: "&nbsp;\u00B5s"
+
+ysql_connections:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_active_connection_total": "Active"
+        "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
+
+ysql_server_advanced_rpc_per_second:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "BeginStmt|CommitStmt|RollbackStmt|Transactions|OtherStmts"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "BeginStmt": "Begin"
+        "CommitStmt": "Commit"
+        "RollbackStmt": "Rollback"
+        "Transactions": "Transactions"
+        "OtherStmts": "Others"
+
+ysql_sql_advanced_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "BeginStmt|CommitStmt|RollbackStmt|Transactions|OtherStmts"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "YSQL Advanced Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "BeginStmt": "Begin"
+        "CommitStmt": "Commit"
+        "RollbackStmt": "Rollback"
+        "Transactions": "Transactions"
+        "OtherStmts": "Others"
+      ticksuffix: "&nbsp;\u00B5s"
+
+#Cassandra Metrics
+cql_server_rpc_per_second:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  # operator: "/ 1000"
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "Total YCQL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
+        "Transaction": "Transactions"
+
+cql_sql_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  # operator: "/ 1000"
+  range: true
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YCQL Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Others"
+        "Transaction": "Transactions"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_server_rpc_p95:
+  metric: "rpc_latency"
+  function: "quantile_over_time.95|max"
+  range: true
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
+    quantile: "p95"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YCQL Op Latency (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
+        "Transaction": "Transactions"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_server_rpc_p99:
+  metric: "rpc_latency"
+  function: "quantile_over_time.99|max"
+  range: true
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
+    quantile: "p99"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YCQL Op Latency (P99)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
+        "Transaction": "Transactions"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_sql_latency_breakdown:
+  metric: "rpc_latency.avg"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "cql_export"
+    server_type: "yb_cqlserver"
+    service_type: "CQLServerService"
+    service_method: "ProcessRequest|ParseRequest|AnalyzeRequest|ExecuteRequest"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YCQL Latency Breakdown"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ProcessRequest": "Total"
+        "ParseRequest": "Parse"
+        "AnalyzeRequest": "Analyze"
+        "ExecuteRequest": "Execute"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "sum"
+  filters:
+    export_type: "cql_export"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections"
+
+cql_yb_local_vs_remote:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "cql_export|tserver_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YBClient Ops Local vs Remote"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
+
+cql_yb_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "cql_export|tserver_export"
+    service_type: "read|write"
+    service_method: "local|remote"
+  group_by: "service_method,service_type"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "YBClient Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "remote,read": "Remote Read"
+        "remote,write": "Remote Write"
+        "local,read": "Local Read"
+        "local,write": "Local Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_yb_transaction:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "cql_export"
+    service_type: "SQLProcessor"
+    service_method: "Transaction"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "Transaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "Transaction": "Avg"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_reactor_latency:
+  metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
+  function: "rate|avg"
+  range: true
+  # operator: "/ 1000"
+  filters:
+    export_type: "cql_export"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "Reactor Delays"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_incoming_queue_time.avg": "Incoming Queue"
+        "handler_latency_outbound_call_queue_time.avg": "Outbound Queue"
+        "handler_latency_outbound_transfer.avg": "Outbound Transfer"
+      ticksuffix: "&nbsp;\u00B5s"
+
+response_sizes:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "ResponseSize"
+  group_by: "service_method"
+  panel_group: "YCQL Ops & Latency"
+  layout:
+    title: "Response Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ResponseSize": "Response Size"
+      ticksuffix: "&nbsp;B"
+
+tserver_rpc_queue_size_master:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master"
+  layout:
+    title: "RPC Queue Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_master_MasterService": "Master RPC"
+        "rpcs_in_queue_yb_master_MasterBackup": "MasterBackup"
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+
+# Note that the aliases here encode all the possible services, because we're using a simple regex
+# for the saved_name filter.
+tserver_rpc_queue_size_tserver:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "RPC Queue Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_TabletServerBackupService": "Backups"
+        "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
+        "rpcs_in_queue_yb_cdc_CDCService": "CDC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+        "rpcs_in_queue_yb_stateful_service_PgAutoAnalyzeService": "PG AutoAnalyze"
+
+tserver_rpc_queue_size_cql:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "rpcs_in_queue_yb_cqlserver_CQLServerService"
+    export_type: "cql_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "RPC Queue Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_cqlserver_CQLServerService": "YCQL RPC"
+
+tserver_rpc_queue_size_redis:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "rpcs_in_queue_yb_redisserver_RedisServerService"
+    export_type: "redis_export"
+  group_by: "saved_name"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "RPC Queue Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_redisserver_RedisServerService": "YEDIS RPC"
+
+tserver_async_replication_lag_micros:
+  metric: ""
+  operator: "/ 1000"
+  function: "max by (exported_instance, saved_name)|avg"
+  filters:
+    saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
+  group_by: "exported_instance,saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Async Replication Lag"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+      alias:
+        "async_replication_sent_lag_micros": "Sent Lag"
+        "async_replication_committed_lag_micros": "Committed Lag"
+
+cdcsdk_sent_lag_micros:
+  metric: "cdcsdk_sent_lag_micros"
+  operator: "/ 1000"
+  function: "max by (saved_name)"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Lag"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+      alias:
+        "cdcsdk_sent_lag_micros": "Current Lag"
+
+cdcsdk_expiry_time_mins:
+  metric: "cdcsdk_expiry_time_ms"
+  function: "min by (saved_name)"
+  operator: "/ 60000"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Expiry Time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;min(s)"
+      alias:
+        "cdcsdk_expiry_time_ms": "Expiry Time"
+
+cdcsdk_change_event_count:
+  metric: "cdcsdk_change_event_count"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cdcsdk_change_event_count": "Messages Emitted"
+
+cdcsdk_traffic_sent:
+  metric: "cdcsdk_traffic_sent"
+  operator: "/ 1048576"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+      alias:
+        "cdcsdk_traffic_sent": "Messages Emitted size"
+
+async_replication_sent_lag:
+  metric: "async_replication_sent_lag_micros"
+  operator: "/ 1000"
+  function: "max_over_time|max"
+  range: true
+
+consumer_safe_time_lag:
+  metric: "consumer_safe_time_lag"
+  operator: "/ 1000"
+  function: "max_over_time|max"
+  range: true
+
+consumer_safe_time_skew:
+  metric: "consumer_safe_time_skew"
+  operator: "/ 1000"
+  function: "max_over_time|max"
+  range: true
+
+master_overall_rpc_rate:
+  metric: "rpc_inbound_calls_created_irate"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Overall RPCs / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_inbound_calls_created_irate": "RPCs"
+
+master_latency:
+  metric: "rpc_latency.avg"
+  function: "increase|avg"
+  range: true
+  filters:
+    server_type: "yb_master"
+  panel_group: "Master Advanced"
+  group_by: "exported_instance"
+  layout:
+    title: "Average Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency.avg": "RPC Latency"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_get_tablet_location:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService|MasterClient"
+    service_method: "GetTabletLocations"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "GetTabletLocations / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_irate_rps": "GetTabletLocations"
+
+master_tsservice_reads:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Read"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TSService Reads / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_irate_rps": "TS Reads"
+
+master_tsservice_reads_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Read"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TS Read Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency.avg": "TSService Read Latency"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_tsservice_writes:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Write"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TSService Writes / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_irate_rps": "TS Writes"
+
+master_tsservice_writes_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Write"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TS Write Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency.avg": "TSService Write Latency"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_ts_heartbeats:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService|MasterHeartbeat"
+    service_method: "TSHeartbeat"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "TS Heartbeats / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_irate_rps": "TS Heartbeats"
+
+master_consensus_update:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "UpdateConsensus / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_irate_rps": "UpdateConsensus"
+
+master_consensus_update_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "UpdateConsensus Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency.avg": "UpdateConsensus"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_multiraft_consensus_update:
+  metric: "rpc_latency_count"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "MultiRaftUpdateConsensus / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency_count": "MultiRaftUpdateConsensus"
+
+master_multiraft_consensus_update_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "MultiRaftUpdateConsensus Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_latency.avg": "MultiRaftUpdateConsensus"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_table_ops:
+  metric: "rpc_latency_count"
+  function: "sum"
+  filters:
+    export_type: "master_export"
+    service_type: "MasterService|MasterDdl"
+    service_method: "CreateTable|DeleteTable"
+  group_by: "service_method"
+  panel_group: "Master"
+  layout:
+    title: "Create/Delete Table RPCs"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "CreateTable": "Create Table"
+        "DeleteTable": "Delete Table"
+
+master_cpu_util_secs:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1000"
+  filters:
+    export_type: "master_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
+  panel_group: "Master"
+  layout:
+    title: "CPU Util Secs / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cpu_utime_irate": "User"
+        "cpu_stime_irate": "System"
+
+tserver_cpu_util_secs:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1000"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "CPU Util Secs / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cpu_utime_irate": "User"
+        "cpu_stime_irate": "System"
+
+redis_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "sum"
+  filters:
+    export_type: "redis_export"
+  panel_group: "YEDIS Ops & Latency"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections"
+
+tserver_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "sum"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections"
+
+master_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "avg"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Inbound RPC Connections Alive"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections"
+
+master_leaderless_and_underreplicated_tablets:
+  metric: ""
+  filters:
+    export_type: "node_export"
+    saved_name: "yb_node_leaderless_tablet_count|yb_node_underreplicated_tablet_count"
+  group_by: "saved_name"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  layout:
+    title: "Leaderless/Underreplicated Tablets"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_node_leaderless_tablet_count": "Leaderless Tablets"
+        "yb_node_underreplicated_tablet_count": "Underreplicated Tablets"
+
+master_threads_running:
+  metric: "threads_running"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Threads Running"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "threads_running": "Running"
+
+master_log_latency:
+  metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_append_latency.avg": "Append"
+        "log_sync_latency.avg": "Sync"
+        "log_group_commit_latency.avg": "Commit"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_log_bytes_written:
+  metric: "log_bytes_logged"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Bytes Written / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_bytes_logged": "Written"
+
+master_log_bytes_read:
+  metric: "log_reader_bytes_read"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Bytes Read / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Read"
+
+master_tc_malloc_stats:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+    saved_name: "generic_current_allocated_bytes|generic_heap_size"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "TCMalloc Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "generic_current_allocated_bytes": "In Use"
+        "generic_heap_size": "Total"
+      ticksuffix: "&nbsp;MB"
+
+master_glog_info_messages:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "master_export"
+    saved_name: "glog_info_messages_irate|glog_warning_messages_irate|glog_error_messages_irate"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Glog messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages_irate": "Info"
+        "glog_warning_messages_irate": "Warning"
+        "glog_error_messages_irate": "Error"
+
+master_lsm_rocksdb_seek_next_prev:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next|rocksdb_number_db_prev"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Seek/Next/Prev Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
+        "rocksdb_number_db_prev": "Prev"
+
+master_lsm_rocksdb_num_seeks_per_node:
+  metric: "rocksdb_number_db_seek"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Seeks / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_number_db_seek": "Seek"
+
+master_lsm_rocksdb_total_sst_per_node:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "SSTable size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_current_version_sst_files_size": "Size"
+      ticksuffix: "&nbsp;GB"
+      tickformat: ".2f"
+
+master_lsm_rocksdb_avg_num_sst_per_node:
+  metric: "rocksdb_current_version_num_sst_files"
+  function: "sum by (exported_instance)|avg"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Average SSTables"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_current_version_num_sst_files": "SST Files"
+
+master_lsm_rocksdb_block_cache_hit_miss:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Cache Hit & Miss"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_miss": "Miss"
+
+master_lsm_rocksdb_block_cache_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Block cache usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "block_cache_single_touch_usage": "Single Touch"
+        "block_cache_multi_touch_usage": "Multi Touch"
+      ticksuffix: "&nbsp;GB"
+
+master_lsm_rocksdb_blooms_checked_and_useful:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_bloom_filter_checked": "Blooms Checked"
+        "rocksdb_bloom_filter_useful": "Blooms Useful"
+
+master_lsm_rocksdb_flush_size:
+  metric: "rocksdb_flush_write_bytes"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Flush write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_flush_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+master_lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+master_lsm_rocksdb_compaction_numfiles:
+  metric: "rocksdb_numfiles_in_singlecompaction.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction num files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_numfiles_in_singlecompaction.avg": "Num Files"
+
+master_lsm_rocksdb_compaction_time:
+  metric: "rocksdb_compaction_times_micros.avg"
+  function: "rate|sum by (exported_instance)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compaction_times_micros.avg": "Avg"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|min"
+  range: true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.master"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
+
+table_write_latency:
+  metric: "ql_write_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_write_rps:
+  metric: "ql_write_latency_count"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency_count": "Write"
+
+table_read_latency:
+  metric: "ql_read_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Read Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_read_latency.avg": "Read"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_read_rps:
+  metric: "ql_read_latency_count"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Read Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_read_latency_count": "Read"
+
+table_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_mem_tracker_db_memtable:
+  metric: ""
+  function: "avg_over_time|sum by (saved_name, namespace_name, table_id, table_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable|\
+      mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable"
+  group_by: "saved_name"
+  layout:
+    title: "Memtable Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "mem_tracker_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable": "IntentsDB"
+
+table_log_latency:
+  metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "WAL Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_append_latency.avg": "Append"
+        "log_sync_latency.avg": "Sync"
+        "log_group_commit_latency.avg": "Commit"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_log_ops_second:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
+  group_by: "saved_name"
+  layout:
+    title: "WAL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_append_latency_count": "Append"
+        "log_sync_latency_count": "Sync"
+        "log_group_commit_latency_count": "Commit"
+
+table_log_bytes_written:
+  metric: "log_bytes_logged"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "WAL Bytes Written / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_bytes_logged": "Written"
+
+table_seek_next_prev:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next|rocksdb_number_db_prev"
+  group_by: "saved_name"
+  layout:
+    title: "LSM-DB Seek/Next/Prev Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
+        "rocksdb_number_db_prev": "Prev"
+
+table_ops_in_flight:
+  metric: ""
+  function: "avg_over_time|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "all_operations_inflight|write_operations_inflight"
+  group_by: "saved_name"
+  layout:
+    title: "Operations Inflight"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "all_operations_inflight": "All"
+        "write_operations_inflight": "Write"
+
+table_write_rejections:
+  metric: "majority_sst_files_rejections"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "majority_sst_files_rejections": "Rejections"
+
+table_memory_rejections:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+  group_by: "saved_name"
+  layout:
+    title: "Memory Pressure Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "leader_memory_pressure_rejections": "Leader"
+        "follower_memory_pressure_rejections": "Follower"
+        "operation_memory_pressure_rejections": "Operations"
+
+table_compaction:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+table_block_cache_hit_miss:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
+  range: true
+  filters:
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  layout:
+    title: "Cache Hit & Miss"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_miss": "Miss"
+
+tablet_splitting_stats:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    saved_name: "ts_split_op_added|ts_split_op_apply|ts_split_compaction_added|ts_post_split_compaction_added"
+  group_by: saved_name
+  panel_group: "RocksDB"
+  layout:
+    title: "Tablet Splitting Operations"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_split_op_added": "Add"
+        "ts_split_op_apply": "Apply"
+        "ts_split_compaction_added": "Compaction"
+        "ts_post_split_compaction_added": "Compaction"
+
+automatic_split_manager_time:
+  metric: "automatic_split_manager_time"
+  function: "rate|avg"
+  range: true
+  panel_group: "RocksDB"
+  layout:
+    "title": "Tablet Split Manager"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "automatic_split_manager_time": "Runtime"
+      ticksuffix: "&nbsp;ms"
+
+raft_leader:
+  metric: "is_raft_leader"
+  function: "sum"
+  panel_group: "Tablet Server"
+  layout:
+    "title": "Raft Leader"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "is_raft_leader": "Raft Leader"
+
+tserver_live_tablet_peers:
+  metric: "ts_live_tablet_peers"
+  function: "avg_over_time|sum"
+  panel_group: "Tablet Server"
+  layout:
+    "title": "Live Tablet Peers"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_live_tablet_peers": "Live Tablet Peers"
+
+otel_read_log_records:
+  metric: "otelcol_receiver_accepted_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: receiver
+  layout:
+    "title": "Audit Log Records Read / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "filelog/ysql": "YSQL"
+        "filelog/ycql": "YCQL"
+
+otel_refused_log_records:
+  metric: "otelcol_receiver_refused_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: receiver
+  layout:
+    "title": "Audit Log Records Refused / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "filelog/ysql": "YSQL"
+        "filelog/ycql": "YCQL"
+
+otel_sent_log_records:
+  metric: "otelcol_exporter_sent_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Records Sent / Sec"
+    xaxis:
+      type: "date"
+
+otel_send_failed_log_records:
+  metric: "otelcol_exporter_send_failed_log_records"
+  function: "rate|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Records Send Failed / Sec"
+    xaxis:
+      type: "date"
+
+otel_exporter_queue_size:
+  metric: "otelcol_exporter_queue_size"
+  function: "avg_over_time|sum"
+  range: true
+  panel_group: "Otel Collector"
+  group_by: exporter
+  layout:
+    "title": "Audit Log Send Queue Size"
+    xaxis:
+      type: "date"

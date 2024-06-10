@@ -1,0 +1,23 @@
+# contrib/pg_stat_monitor/yb_schedule
+
+# Ported tests listed in the same order as in the Makefile:
+test: yb_pg_basic
+test: yb_pg_version
+test: yb_pg_guc
+test: yb_pg_pgsm_query_id
+test: yb_pg_functions
+test: yb_pg_counters
+test: yb_pg_relations
+test: yb_pg_database
+test: yb_pg_error_insert
+test: yb_pg_application_name
+test: yb_pg_application_name_unique
+test: yb_pg_top_query
+test: yb_pg_cmd_type
+test: yb_pg_error
+test: yb_pg_rows
+test: yb_pg_tags
+test: yb_pg_user
+
+# YB-owned tests:
+test: yb_redact_password

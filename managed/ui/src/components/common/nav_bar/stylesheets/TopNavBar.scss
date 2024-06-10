@@ -1,0 +1,265 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../../_style/colors.scss';
+
+.navbar .container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 60px;
+
+  .navbar-header {
+    margin: 0;
+  }
+
+  & > *:first-child {
+    flex: 1 0 90px;
+  }
+
+  & > *:not(:first-child):not(:last-child) {
+    flex: 1;
+  }
+
+  & > *:last-child {
+    flex: 0 0 auto;
+  }
+}
+
+.yb-nav-bar .navbar {
+  margin-bottom: 0px;
+  border: none;
+}
+
+.sidebar-hidden {
+  .yb-nav-bar .navbar {
+    display: none;
+  }
+  .page-action-buttons {
+    top: 0;
+  }
+}
+
+.nav_title {
+  width: 100% !important;
+}
+
+.yb-logo-img {
+  padding: 0;
+  margin-top: 10px;
+  width: 50px;
+  height: 50px;
+}
+
+/* From gentelella.css need to cleanup */
+
+.navbar {
+  margin-bottom: 0;
+}
+
+.main-container .navbar-right {
+  margin-right: 0;
+}
+
+.navbar-static-top {
+  position: fixed;
+  top: 0;
+  width: 100%;
+}
+
+.navbar-nav {
+  margin: 0;
+
+  > li {
+    float: left;
+  }
+
+  .dropdown {
+    float: left;
+
+    .dropdown-toggle i,
+    .task-list-heading i {
+      color: colors.$YB_VIOLET_TEXT;
+      vertical-align: middle;
+      margin-top: -2px;
+    }
+
+    &.open .dropdown-toggle {
+      background-color: colors.$YB_BACKGROUND !important;
+    }
+
+    #profile-dropdown + ul {
+      padding: 5px 0;
+      border: 0;
+
+      li {
+        a,
+        div {
+          padding: 10px 20px;
+          height: 42px;
+          font-weight: 300;
+        }
+
+        i {
+          color: colors.$YB_ORANGE;
+          vertical-align: middle;
+          margin-right: 10px;
+        }
+      }
+    }
+  }
+  i {
+    font-size: 22px;
+  }
+
+  .caret {
+    position: relative;
+    top: -1px;
+    border-top-color: colors.$YB_VIOLET;
+  }
+}
+
+.dropdown-menu {
+  li {
+    a {
+      &:hover,
+      &:focus {
+        color: colors.$YB_TEXT_COLOR;
+        text-decoration: none;
+        background-color: colors.$YB_BACKGROUND !important;
+      }
+    }
+
+    div {
+      &,
+      &:hover,
+      &:focus {
+        cursor: not-allowed;
+        background-color: colors.$YB_BACKGROUND !important;
+      }
+    }
+  }
+
+  li.disabled {
+    i {
+      color: colors.$YB_GRAY_HOVER !important;
+    }
+  }
+
+  .active {
+    a {
+      background-color: inherit;
+      color: colors.$YB_TEXT_COLOR;
+      &:hover,
+      &:focus {
+        background-color: inherit;
+        color: colors.$YB_TEXT_COLOR;
+      }
+    }
+  }
+  .divider {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
+.navbar-nav > li > a,
+.navbar-brand {
+  color: #fff !important;
+}
+
+.navbar-brand,
+.navbar-nav > li > a {
+  font-weight: 500;
+  color: #ecf0f1 !important;
+  margin-left: 0 !important;
+  height: 60px;
+  padding-top: 20px;
+  padding-bottom: 14px;
+  &.dropdown-toggle {
+    border-left: 1px solid colors.$YB_BACKGROUND !important;
+  }
+}
+
+.nav.navbar-nav > li > a {
+  color: #515356 !important;
+  @media (max-width: 767px) {
+    span {
+      display: none;
+    }
+    span:first-child {
+      display: block;
+      overflow: hidden;
+      width: 26px;
+      height: 26px;
+      i {
+        margin: 0 20px 20px 0;
+      }
+    }
+  }
+}
+
+.navbar-nav .open .dropdown-menu {
+  position: absolute;
+  background: #fff;
+  margin-top: 0;
+  border: none;
+  border-top: 1px solid rgba(#656a70, 0.2);
+  background-color: #fbfbfa;
+  -webkit-box-shadow: none;
+  right: 0;
+  left: auto;
+  width: 220px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+.navbar-nav .open .dropdown-menu.msg_list {
+  width: 300px;
+}
+
+/*
+
+.nav-sm li li span.fa {
+  display: inline-block;
+}
+.nav_menu {
+  float: left;
+  background: #EDEDED;
+  border-bottom: 1px solid #D9DEE4;
+  margin-bottom: 10px;
+  width: 100%;
+  position: relative;
+}
+@media (min-width: 480px) {
+  .nav_menu {
+    position: static;
+  }
+}
+body .container.body .right_col {
+  background: #F7F7F7;
+}
+.nav-md .container.body .right_col {
+  padding: 10px 20px 0;
+  margin-left: 230px;
+}
+.nav_title {
+  width: 230px;
+  float: left;
+  background: #444444;
+  border-radius: 0;
+  height: 57px;
+}
+@media (max-width: 991px) {
+  .nav-md .container.body .right_col, .nav-md .container.body .top_nav {
+    width: 100%;
+    margin: 0;
+  }
+  .nav-md .container.body .right_col {
+    width: 100%;
+    padding-right: 0
+  }
+  .right_col {
+    padding: 10px !important;
+  }
+}
+*/

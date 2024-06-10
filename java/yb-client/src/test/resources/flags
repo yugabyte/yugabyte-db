@@ -1,0 +1,3 @@
+--log_dir=target/testdata
+--max_message_size=67108864
+--webserver_port=0

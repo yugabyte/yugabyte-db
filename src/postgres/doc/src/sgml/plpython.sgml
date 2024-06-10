@@ -1,0 +1,1388 @@
+<!-- doc/src/sgml/plpython.sgml -->
+
+<chapter id="plpython">
+ <title>PL/Python &mdash; Python Procedural Language</title>
+
+ <indexterm zone="plpython"><primary>PL/Python</primary></indexterm>
+ <indexterm zone="plpython"><primary>Python</primary></indexterm>
+
+ <para>
+  The <application>PL/Python</application> procedural language allows
+  <productname>PostgreSQL</productname> functions and procedures to be written in the
+  <ulink url="https://www.python.org">Python language</ulink>.
+ </para>
+
+ <para>
+  To install PL/Python in a particular database, use
+  <literal>CREATE EXTENSION plpython3u</literal>.
+ </para>
+
+  <tip>
+   <para>
+    If a language is installed into <literal>template1</literal>, all subsequently
+    created databases will have the language installed automatically.
+   </para>
+  </tip>
+
+ <para>
+  PL/Python is only available as an <quote>untrusted</quote> language, meaning
+  it does not offer any way of restricting what users can do in it and
+  is therefore named <literal>plpython3u</literal>.  A trusted
+  variant <literal>plpython</literal> might become available in the future
+  if a secure execution mechanism is developed in Python.  The
+  writer of a function in untrusted PL/Python must take care that the
+  function cannot be used to do anything unwanted, since it will be
+  able to do anything that could be done by a user logged in as the
+  database administrator.  Only superusers can create functions in
+  untrusted languages such as <literal>plpython3u</literal>.
+ </para>
+
+ <note>
+  <para>
+   Users of source packages must specially enable the build of
+   PL/Python during the installation process.  (Refer to the
+   installation instructions for more information.)  Users of binary
+   packages might find PL/Python in a separate subpackage.
+  </para>
+ </note>
+
+ <sect1 id="plpython-funcs">
+  <title>PL/Python Functions</title>
+
+  <para>
+   Functions in PL/Python are declared via the
+   standard <xref linkend="sql-createfunction"/> syntax:
+
+<programlisting>
+CREATE FUNCTION <replaceable>funcname</replaceable> (<replaceable>argument-list</replaceable>)
+  RETURNS <replaceable>return-type</replaceable>
+AS $$
+  # PL/Python function body
+$$ LANGUAGE plpython3u;
+</programlisting>
+  </para>
+
+  <para>
+   The body of a function is simply a Python script. When the function
+   is called, its arguments are passed as elements of the list
+   <varname>args</varname>; named arguments are also passed as
+   ordinary variables to the Python script.  Use of named arguments is
+   usually more readable.  The result is returned from the Python code
+   in the usual way, with <literal>return</literal> or
+   <literal>yield</literal> (in case of a result-set statement).  If
+   you do not provide a return value, Python returns the default
+   <symbol>None</symbol>. <application>PL/Python</application> translates
+   Python's <symbol>None</symbol> into the SQL null value.  In a procedure,
+   the result from the Python code must be <symbol>None</symbol> (typically
+   achieved by ending the procedure without a <literal>return</literal>
+   statement or by using a <literal>return</literal> statement without
+   argument); otherwise, an error will be raised.
+  </para>
+
+  <para>
+   For example, a function to return the greater of two integers can be
+   defined as:
+
+<programlisting>
+CREATE FUNCTION pymax (a integer, b integer)
+  RETURNS integer
+AS $$
+  if a &gt; b:
+    return a
+  return b
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+   The Python code that is given as the body of the function definition
+   is transformed into a Python function. For example, the above results in:
+
+<programlisting>
+def __plpython_procedure_pymax_23456():
+  if a &gt; b:
+    return a
+  return b
+</programlisting>
+
+   assuming that 23456 is the OID assigned to the function by
+   <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   The arguments are set as global variables.  Because of the scoping
+   rules of Python, this has the subtle consequence that an argument
+   variable cannot be reassigned inside the function to the value of
+   an expression that involves the variable name itself, unless the
+   variable is redeclared as global in the block.  For example, the
+   following won't work:
+<programlisting>
+CREATE FUNCTION pystrip(x text)
+  RETURNS text
+AS $$
+  x = x.strip()  # error
+  return x
+$$ LANGUAGE plpython3u;
+</programlisting>
+   because assigning to <varname>x</varname>
+   makes <varname>x</varname> a local variable for the entire block,
+   and so the <varname>x</varname> on the right-hand side of the
+   assignment refers to a not-yet-assigned local
+   variable <varname>x</varname>, not the PL/Python function
+   parameter.  Using the <literal>global</literal> statement, this can
+   be made to work:
+<programlisting>
+CREATE FUNCTION pystrip(x text)
+  RETURNS text
+AS $$
+  global x
+  x = x.strip()  # ok now
+  return x
+$$ LANGUAGE plpython3u;
+</programlisting>
+   But it is advisable not to rely on this implementation detail of
+   PL/Python.  It is better to treat the function parameters as
+   read-only.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-data">
+  <title>Data Values</title>
+  <para>
+   Generally speaking, the aim of PL/Python is to provide
+   a <quote>natural</quote> mapping between the PostgreSQL and the
+   Python worlds.  This informs the data mapping rules described
+   below.
+  </para>
+
+  <sect2>
+   <title>Data Type Mapping</title>
+   <para>
+    When a PL/Python function is called, its arguments are converted from
+    their PostgreSQL data type to a corresponding Python type:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       PostgreSQL <type>boolean</type> is converted to Python <type>bool</type>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       PostgreSQL <type>smallint</type>, <type>int</type>, <type>bigint</type>
+       and <type>oid</type> are converted to Python <type>int</type>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       PostgreSQL <type>real</type> and <type>double</type> are converted to
+       Python <type>float</type>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       PostgreSQL <type>numeric</type> is converted to
+       Python <type>Decimal</type>.  This type is imported from
+       the <literal>cdecimal</literal> package if that is available.
+       Otherwise,
+       <literal>decimal.Decimal</literal> from the standard library will be
+       used.  <literal>cdecimal</literal> is significantly faster
+       than <literal>decimal</literal>.  In Python 3.3 and up,
+       however, <literal>cdecimal</literal> has been integrated into the
+       standard library under the name <literal>decimal</literal>, so there is
+       no longer any difference.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       PostgreSQL <type>bytea</type> is converted to Python <type>bytes</type>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       All other data types, including the PostgreSQL character string types,
+       are converted to a Python <type>str</type> (in Unicode like all Python
+       strings).
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       For nonscalar data types, see below.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    When a PL/Python function returns, its return value is converted to the
+    function's declared PostgreSQL return data type as follows:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       When the PostgreSQL return type is <type>boolean</type>, the
+       return value will be evaluated for truth according to the
+       <emphasis>Python</emphasis> rules.  That is, 0 and empty string
+       are false, but notably <literal>'f'</literal> is true.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       When the PostgreSQL return type is <type>bytea</type>, the return value
+       will be converted to Python <type>bytes</type> using the respective
+       Python built-ins, with the result being converted to
+       <type>bytea</type>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       For all other PostgreSQL return types, the return value is converted
+       to a string using the Python built-in <literal>str</literal>, and the
+       result is passed to the input function of the PostgreSQL data type.
+       (If the Python value is a <type>float</type>, it is converted using
+       the <literal>repr</literal> built-in instead of <literal>str</literal>, to
+       avoid loss of precision.)
+      </para>
+
+      <para>
+       Strings are automatically converted to the PostgreSQL server encoding
+       when they are passed to PostgreSQL.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       For nonscalar data types, see below.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    Note that logical mismatches between the declared PostgreSQL
+    return type and the Python data type of the actual return object
+    are not flagged; the value will be converted in any case.
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Null, None</title>
+  <para>
+   If an SQL null value<indexterm><primary>null value</primary><secondary
+   sortas="PL/Python">in PL/Python</secondary></indexterm> is passed to a
+   function, the argument value will appear as <symbol>None</symbol> in
+   Python. For example, the function definition of <function>pymax</function>
+   shown in <xref linkend="plpython-funcs"/> will return the wrong answer for null
+   inputs. We could add <literal>STRICT</literal> to the function definition
+   to make <productname>PostgreSQL</productname> do something more reasonable:
+   if a null value is passed, the function will not be called at all,
+   but will just return a null result automatically. Alternatively,
+   we could check for null inputs in the function body:
+
+<programlisting>
+CREATE FUNCTION pymax (a integer, b integer)
+  RETURNS integer
+AS $$
+  if (a is None) or (b is None):
+    return None
+  if a &gt; b:
+    return a
+  return b
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+   As shown above, to return an SQL null value from a PL/Python
+   function, return the value <symbol>None</symbol>. This can be done whether the
+   function is strict or not.
+  </para>
+  </sect2>
+
+  <sect2 id="plpython-arrays">
+   <title>Arrays, Lists</title>
+  <para>
+   SQL array values are passed into PL/Python as a Python list.  To
+   return an SQL array value out of a PL/Python function, return a
+   Python list:
+
+<programlisting>
+CREATE FUNCTION return_arr()
+  RETURNS int[]
+AS $$
+return [1, 2, 3, 4, 5]
+$$ LANGUAGE plpython3u;
+
+SELECT return_arr();
+ return_arr
+-------------
+ {1,2,3,4,5}
+(1 row)
+</programlisting>
+
+   Multidimensional arrays are passed into PL/Python as nested Python lists.
+   A 2-dimensional array is a list of lists, for example. When returning
+   a multi-dimensional SQL array out of a PL/Python function, the inner
+   lists at each level must all be of the same size. For example:
+
+<programlisting>
+CREATE FUNCTION test_type_conversion_array_int4(x int4[]) RETURNS int4[] AS $$
+plpy.info(x, type(x))
+return x
+$$ LANGUAGE plpython3u;
+
+SELECT * FROM test_type_conversion_array_int4(ARRAY[[1,2,3],[4,5,6]]);
+INFO:  ([[1, 2, 3], [4, 5, 6]], &lt;type 'list'&gt;)
+ test_type_conversion_array_int4
+---------------------------------
+ {{1,2,3},{4,5,6}}
+(1 row)
+</programlisting>
+
+   Other Python sequences, like tuples, are also accepted for
+   backwards-compatibility with PostgreSQL versions 9.6 and below, when
+   multi-dimensional arrays were not supported. However, they are always
+   treated as one-dimensional arrays, because they are ambiguous with
+   composite types. For the same reason, when a composite type is used in a
+   multi-dimensional array, it must be represented by a tuple, rather than a
+   list.
+  </para>
+  <para>
+   Note that in Python, strings are sequences, which can have
+   undesirable effects that might be familiar to Python programmers:
+
+<programlisting>
+CREATE FUNCTION return_str_arr()
+  RETURNS varchar[]
+AS $$
+return "hello"
+$$ LANGUAGE plpython3u;
+
+SELECT return_str_arr();
+ return_str_arr
+----------------
+ {h,e,l,l,o}
+(1 row)
+</programlisting>
+  </para>
+  </sect2>
+
+  <sect2>
+   <title>Composite Types</title>
+  <para>
+   Composite-type arguments are passed to the function as Python mappings. The
+   element names of the mapping are the attribute names of the composite type.
+   If an attribute in the passed row has the null value, it has the value
+   <symbol>None</symbol> in the mapping. Here is an example:
+
+<programlisting>
+CREATE TABLE employee (
+  name text,
+  salary integer,
+  age integer
+);
+
+CREATE FUNCTION overpaid (e employee)
+  RETURNS boolean
+AS $$
+  if e["salary"] &gt; 200000:
+    return True
+  if (e["age"] &lt; 30) and (e["salary"] &gt; 100000):
+    return True
+  return False
+$$ LANGUAGE plpython3u;
+</programlisting>
+  </para>
+
+  <para>
+   There are multiple ways to return row or composite types from a Python
+   function. The following examples assume we have:
+
+<programlisting>
+CREATE TYPE named_value AS (
+  name   text,
+  value  integer
+);
+</programlisting>
+
+   A composite result can be returned as a:
+
+   <variablelist>
+    <varlistentry>
+     <term>Sequence type (a tuple or list, but not a set because
+     it is not indexable)</term>
+     <listitem>
+      <para>
+       Returned sequence objects must have the same number of items as the
+       composite result type has fields. The item with index 0 is assigned to
+       the first field of the composite type, 1 to the second and so on. For
+       example:
+
+<programlisting>
+CREATE FUNCTION make_pair (name text, value integer)
+  RETURNS named_value
+AS $$
+  return ( name, value )
+  # or alternatively, as list: return [ name, value ]
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+       To return an SQL null for any column, insert <symbol>None</symbol> at
+       the corresponding position.
+      </para>
+      <para>
+       When an array of composite types is returned, it cannot be returned as a list,
+       because it is ambiguous whether the Python list represents a composite type,
+       or another array dimension.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>Mapping (dictionary)</term>
+     <listitem>
+      <para>
+       The value for each result type column is retrieved from the mapping
+       with the column name as key. Example:
+
+<programlisting>
+CREATE FUNCTION make_pair (name text, value integer)
+  RETURNS named_value
+AS $$
+  return { "name": name, "value": value }
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+       Any extra dictionary key/value pairs are ignored. Missing keys are
+       treated as errors.
+       To return an SQL null value for any column, insert
+       <symbol>None</symbol> with the corresponding column name as the key.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>Object (any object providing method <literal>__getattr__</literal>)</term>
+     <listitem>
+      <para>
+       This works the same as a mapping.
+       Example:
+
+<programlisting>
+CREATE FUNCTION make_pair (name text, value integer)
+  RETURNS named_value
+AS $$
+  class named_value:
+    def __init__ (self, n, v):
+      self.name = n
+      self.value = v
+  return named_value(name, value)
+
+  # or simply
+  class nv: pass
+  nv.name = name
+  nv.value = value
+  return nv
+$$ LANGUAGE plpython3u;
+</programlisting>
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+   <para>
+    Functions with <literal>OUT</literal> parameters are also supported.  For example:
+<programlisting>
+CREATE FUNCTION multiout_simple(OUT i integer, OUT j integer) AS $$
+return (1, 2)
+$$ LANGUAGE plpython3u;
+
+SELECT * FROM multiout_simple();
+</programlisting>
+   </para>
+
+   <para>
+    Output parameters of procedures are passed back the same way.  For example:
+<programlisting>
+CREATE PROCEDURE python_triple(INOUT a integer, INOUT b integer) AS $$
+return (a * 3, b * 3)
+$$ LANGUAGE plpython3u;
+
+CALL python_triple(5, 10);
+</programlisting>
+   </para>
+  </sect2>
+
+  <sect2>
+   <title>Set-Returning Functions</title>
+  <para>
+   A <application>PL/Python</application> function can also return sets of
+   scalar or composite types. There are several ways to achieve this because
+   the returned object is internally turned into an iterator. The following
+   examples assume we have composite type:
+
+<programlisting>
+CREATE TYPE greeting AS (
+  how text,
+  who text
+);
+</programlisting>
+
+   A set result can be returned from a:
+
+   <variablelist>
+    <varlistentry>
+     <term>Sequence type (tuple, list, set)</term>
+     <listitem>
+      <para>
+<programlisting>
+CREATE FUNCTION greet (how text)
+  RETURNS SETOF greeting
+AS $$
+  # return tuple containing lists as composite types
+  # all other combinations work also
+  return ( [ how, "World" ], [ how, "PostgreSQL" ], [ how, "PL/Python" ] )
+$$ LANGUAGE plpython3u;
+</programlisting>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>Iterator (any object providing <symbol>__iter__</symbol> and
+      <symbol>next</symbol> methods)</term>
+     <listitem>
+      <para>
+<programlisting>
+CREATE FUNCTION greet (how text)
+  RETURNS SETOF greeting
+AS $$
+  class producer:
+    def __init__ (self, how, who):
+      self.how = how
+      self.who = who
+      self.ndx = -1
+
+    def __iter__ (self):
+      return self
+
+    def next (self):
+      self.ndx += 1
+      if self.ndx == len(self.who):
+        raise StopIteration
+      return ( self.how, self.who[self.ndx] )
+
+  return producer(how, [ "World", "PostgreSQL", "PL/Python" ])
+$$ LANGUAGE plpython3u;
+</programlisting>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>Generator (<literal>yield</literal>)</term>
+     <listitem>
+      <para>
+<programlisting>
+CREATE FUNCTION greet (how text)
+  RETURNS SETOF greeting
+AS $$
+  for who in [ "World", "PostgreSQL", "PL/Python" ]:
+    yield ( how, who )
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+   <para>
+    Set-returning functions with <literal>OUT</literal> parameters
+    (using <literal>RETURNS SETOF record</literal>) are also
+    supported.  For example:
+<programlisting>
+CREATE FUNCTION multiout_simple_setof(n integer, OUT integer, OUT integer) RETURNS SETOF record AS $$
+return [(1, 2)] * n
+$$ LANGUAGE plpython3u;
+
+SELECT * FROM multiout_simple_setof(3);
+</programlisting>
+   </para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="plpython-sharing">
+  <title>Sharing Data</title>
+  <para>
+   The global dictionary <varname>SD</varname> is available to store
+   private data between repeated calls to the same function.
+   The global dictionary <varname>GD</varname> is public data,
+   that is available to all Python functions within a session;  use with
+   care.<indexterm><primary>global data</primary>
+   <secondary>in PL/Python</secondary></indexterm>
+  </para>
+
+  <para>
+   Each function gets its own execution environment in the
+   Python interpreter, so that global data and function arguments from
+   <function>myfunc</function> are not available to
+   <function>myfunc2</function>.  The exception is the data in the
+   <varname>GD</varname> dictionary, as mentioned above.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-do">
+  <title>Anonymous Code Blocks</title>
+
+  <para>
+   PL/Python also supports anonymous code blocks called with the
+   <xref linkend="sql-do"/> statement:
+
+<programlisting>
+DO $$
+    # PL/Python code
+$$ LANGUAGE plpython3u;
+</programlisting>
+
+   An anonymous code block receives no arguments, and whatever value it
+   might return is discarded.  Otherwise it behaves just like a function.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-trigger">
+  <title>Trigger Functions</title>
+
+  <indexterm zone="plpython-trigger">
+   <primary>trigger</primary>
+   <secondary>in PL/Python</secondary>
+  </indexterm>
+
+  <para>
+   When a function is used as a trigger, the dictionary
+   <literal>TD</literal> contains trigger-related values:
+   <variablelist>
+    <varlistentry>
+     <term><literal>TD["event"]</literal></term>
+     <listitem>
+      <para>
+       contains the event as a string:
+       <literal>INSERT</literal>, <literal>UPDATE</literal>,
+       <literal>DELETE</literal>, or <literal>TRUNCATE</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["when"]</literal></term>
+     <listitem>
+      <para>
+       contains one of <literal>BEFORE</literal>, <literal>AFTER</literal>, or
+       <literal>INSTEAD OF</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["level"]</literal></term>
+     <listitem>
+      <para>
+       contains <literal>ROW</literal> or <literal>STATEMENT</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["new"]</literal></term>
+     <term><literal>TD["old"]</literal></term>
+     <listitem>
+      <para>
+       For a row-level trigger, one or both of these fields contain
+       the respective trigger rows, depending on the trigger event.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["name"]</literal></term>
+     <listitem>
+      <para>
+       contains the trigger name.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["table_name"]</literal></term>
+     <listitem>
+      <para>
+       contains the name of the table on which the trigger occurred.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["table_schema"]</literal></term>
+     <listitem>
+      <para>
+       contains the schema of the table on which the trigger occurred.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["relid"]</literal></term>
+     <listitem>
+      <para>
+       contains the OID of the table on which the trigger occurred.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TD["args"]</literal></term>
+     <listitem>
+      <para>
+       If the <command>CREATE TRIGGER</command> command
+       included arguments, they are available in <literal>TD["args"][0]</literal> to
+       <literal>TD["args"][<replaceable>n</replaceable>-1]</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   If <literal>TD["when"]</literal> is <literal>BEFORE</literal> or
+   <literal>INSTEAD OF</literal> and
+   <literal>TD["level"]</literal> is <literal>ROW</literal>, you can
+   return <literal>None</literal> or <literal>"OK"</literal> from the
+   Python function to indicate the row is unmodified,
+   <literal>"SKIP"</literal> to abort the event, or if <literal>TD["event"]</literal>
+   is <command>INSERT</command> or <command>UPDATE</command> you can return
+   <literal>"MODIFY"</literal> to indicate you've modified the new row.
+   Otherwise the return value is ignored.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-database">
+  <title>Database Access</title>
+
+  <para>
+   The PL/Python language module automatically imports a Python module
+   called <literal>plpy</literal>.  The functions and constants in
+   this module are available to you in the Python code as
+   <literal>plpy.<replaceable>foo</replaceable></literal>.
+  </para>
+
+  <sect2>
+    <title>Database Access Functions</title>
+
+  <para>
+   The <literal>plpy</literal> module provides several functions to execute
+   database commands:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>plpy.<function>execute</function>(<replaceable>query</replaceable> [, <replaceable>max-rows</replaceable>])</literal></term>
+    <listitem>
+     <para>
+      Calling <function>plpy.execute</function> with a query string and an
+      optional row limit argument causes that query to be run and the result to
+      be returned in a result object.
+     </para>
+
+     <para>
+      The result object emulates a list or dictionary object.  The result
+      object can be accessed by row number and column name.  For example:
+<programlisting>
+rv = plpy.execute("SELECT * FROM my_table", 5)
+</programlisting>
+      returns up to 5 rows from <literal>my_table</literal>.  If
+      <literal>my_table</literal> has a column
+      <literal>my_column</literal>, it would be accessed as:
+<programlisting>
+foo = rv[i]["my_column"]
+</programlisting>
+      The number of rows returned can be obtained using the built-in
+      <function>len</function> function.
+     </para>
+
+     <para>
+      The result object has these additional methods:
+      <variablelist>
+       <varlistentry>
+        <term><literal><function>nrows</function>()</literal></term>
+        <listitem>
+         <para>
+          Returns the number of rows processed by the command.  Note that this
+          is not necessarily the same as the number of rows returned.  For
+          example, an <command>UPDATE</command> command will set this value but
+          won't return any rows (unless <literal>RETURNING</literal> is used).
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal><function>status</function>()</literal></term>
+        <listitem>
+         <para>
+          The <function>SPI_execute()</function> return value.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal><function>colnames</function>()</literal></term>
+        <term><literal><function>coltypes</function>()</literal></term>
+        <term><literal><function>coltypmods</function>()</literal></term>
+        <listitem>
+         <para>
+          Return a list of column names, list of column type OIDs, and list of
+          type-specific type modifiers for the columns, respectively.
+         </para>
+
+         <para>
+          These methods raise an exception when called on a result object from
+          a command that did not produce a result set, e.g.,
+          <command>UPDATE</command> without <literal>RETURNING</literal>, or
+          <command>DROP TABLE</command>.  But it is OK to use these methods on
+          a result set containing zero rows.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal><function>__str__</function>()</literal></term>
+        <listitem>
+         <para>
+          The standard <literal>__str__</literal> method is defined so that it
+          is possible for example to debug query execution results
+          using <literal>plpy.debug(rv)</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+     </para>
+
+     <para>
+      The result object can be modified.
+     </para>
+
+     <para>
+      Note that calling <literal>plpy.execute</literal> will cause the entire
+      result set to be read into memory.  Only use that function when you are
+      sure that the result set will be relatively small.  If you don't want to
+      risk excessive memory usage when fetching large results,
+      use <literal>plpy.cursor</literal> rather
+      than <literal>plpy.execute</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>plpy.<function>prepare</function>(<replaceable>query</replaceable> [, <replaceable>argtypes</replaceable>])</literal></term>
+    <term><literal>plpy.<function>execute</function>(<replaceable>plan</replaceable> [, <replaceable>arguments</replaceable> [, <replaceable>max-rows</replaceable>]])</literal></term>
+    <listitem>
+     <para>
+      <indexterm><primary>preparing a query</primary><secondary>in PL/Python</secondary></indexterm>
+      <function>plpy.prepare</function> prepares the execution plan for a
+      query.  It is called with a query string and a list of parameter types,
+      if you have parameter references in the query.  For example:
+<programlisting>
+plan = plpy.prepare("SELECT last_name FROM my_users WHERE first_name = $1", ["text"])
+</programlisting>
+      <literal>text</literal> is the type of the variable you will be passing
+      for <literal>$1</literal>.  The second argument is optional if you don't
+      want to pass any parameters to the query.
+     </para>
+     <para>
+      After preparing a statement, you use a variant of the
+      function <function>plpy.execute</function> to run it:
+<programlisting>
+rv = plpy.execute(plan, ["name"], 5)
+</programlisting>
+      Pass the plan as the first argument (instead of the query string), and a
+      list of values to substitute into the query as the second argument.  The
+      second argument is optional if the query does not expect any parameters.
+      The third argument is the optional row limit as before.
+     </para>
+
+     <para>
+      Alternatively, you can call the <function>execute</function> method on
+      the plan object:
+<programlisting>
+rv = plan.execute(["name"], 5)
+</programlisting>
+     </para>
+
+     <para>
+      Query parameters and result row fields are converted between PostgreSQL
+      and Python data types as described in <xref linkend="plpython-data"/>.
+     </para>
+
+     <para>
+      When you prepare a plan using the PL/Python module it is automatically
+      saved.  Read the SPI documentation (<xref linkend="spi"/>) for a
+      description of what this means.  In order to make effective use of this
+      across function calls one needs to use one of the persistent storage
+      dictionaries <literal>SD</literal> or <literal>GD</literal> (see
+      <xref linkend="plpython-sharing"/>). For example:
+<programlisting>
+CREATE FUNCTION usesavedplan() RETURNS trigger AS $$
+    if "plan" in SD:
+        plan = SD["plan"]
+    else:
+        plan = plpy.prepare("SELECT 1")
+        SD["plan"] = plan
+    # rest of function
+$$ LANGUAGE plpython3u;
+</programlisting>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>plpy.<function>cursor</function>(<replaceable>query</replaceable>)</literal></term>
+    <term><literal>plpy.<function>cursor</function>(<replaceable>plan</replaceable> [, <replaceable>arguments</replaceable>])</literal></term>
+    <listitem>
+     <para>
+      The <literal>plpy.cursor</literal> function accepts the same arguments
+      as <literal>plpy.execute</literal> (except for the row limit) and returns
+      a cursor object, which allows you to process large result sets in smaller
+      chunks.  As with <literal>plpy.execute</literal>, either a query string
+      or a plan object along with a list of arguments can be used, or
+      the <function>cursor</function> function can be called as a method of
+      the plan object.
+     </para>
+
+     <para>
+      The cursor object provides a <literal>fetch</literal> method that accepts
+      an integer parameter and returns a result object.  Each time you
+      call <literal>fetch</literal>, the returned object will contain the next
+      batch of rows, never larger than the parameter value.  Once all rows are
+      exhausted, <literal>fetch</literal> starts returning an empty result
+      object.  Cursor objects also provide an
+      <ulink url="https://docs.python.org/library/stdtypes.html#iterator-types">iterator
+      interface</ulink>, yielding one row at a time until all rows are
+      exhausted.  Data fetched that way is not returned as result objects, but
+      rather as dictionaries, each dictionary corresponding to a single result
+      row.
+     </para>
+
+     <para>
+      An example of two ways of processing data from a large table is:
+<programlisting>
+CREATE FUNCTION count_odd_iterator() RETURNS integer AS $$
+odd = 0
+for row in plpy.cursor("select num from largetable"):
+    if row['num'] % 2:
+         odd += 1
+return odd
+$$ LANGUAGE plpython3u;
+
+CREATE FUNCTION count_odd_fetch(batch_size integer) RETURNS integer AS $$
+odd = 0
+cursor = plpy.cursor("select num from largetable")
+while True:
+    rows = cursor.fetch(batch_size)
+    if not rows:
+        break
+    for row in rows:
+        if row['num'] % 2:
+            odd += 1
+return odd
+$$ LANGUAGE plpython3u;
+
+CREATE FUNCTION count_odd_prepared() RETURNS integer AS $$
+odd = 0
+plan = plpy.prepare("select num from largetable where num % $1 &lt;&gt; 0", ["integer"])
+rows = list(plpy.cursor(plan, [2]))  # or: = list(plan.cursor([2]))
+
+return len(rows)
+$$ LANGUAGE plpython3u;
+</programlisting>
+     </para>
+
+     <para>
+      Cursors are automatically disposed of.  But if you want to explicitly
+      release all resources held by a cursor, use the <literal>close</literal>
+      method.  Once closed, a cursor cannot be fetched from anymore.
+     </para>
+
+     <tip>
+      <para>
+        Do not confuse objects created by <literal>plpy.cursor</literal> with
+        DB-API cursors as defined by
+        the <ulink url="https://www.python.org/dev/peps/pep-0249/">Python
+        Database API specification</ulink>.  They don't have anything in common
+        except for the name.
+      </para>
+     </tip>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  </sect2>
+
+  <sect2 id="plpython-trapping">
+   <title>Trapping Errors</title>
+
+   <para>
+    Functions accessing the database might encounter errors, which
+    will cause them to abort and raise an exception.  Both
+    <function>plpy.execute</function> and
+    <function>plpy.prepare</function> can raise an instance of a subclass of
+    <literal>plpy.SPIError</literal>, which by default will terminate
+    the function.  This error can be handled just like any other
+    Python exception, by using the <literal>try/except</literal>
+    construct.  For example:
+<programlisting>
+CREATE FUNCTION try_adding_joe() RETURNS text AS $$
+    try:
+        plpy.execute("INSERT INTO users(username) VALUES ('joe')")
+    except plpy.SPIError:
+        return "something went wrong"
+    else:
+        return "Joe added"
+$$ LANGUAGE plpython3u;
+</programlisting>
+   </para>
+
+   <para>
+    The actual class of the exception being raised corresponds to the
+    specific condition that caused the error.  Refer
+    to <xref linkend="errcodes-table"/> for a list of possible
+    conditions.  The module
+    <literal>plpy.spiexceptions</literal> defines an exception class
+    for each <productname>PostgreSQL</productname> condition, deriving
+    their names from the condition name.  For
+    instance, <literal>division_by_zero</literal>
+    becomes <literal>DivisionByZero</literal>, <literal>unique_violation</literal>
+    becomes <literal>UniqueViolation</literal>, <literal>fdw_error</literal>
+    becomes <literal>FdwError</literal>, and so on.  Each of these
+    exception classes inherits from <literal>SPIError</literal>.  This
+    separation makes it easier to handle specific errors, for
+    instance:
+<programlisting>
+CREATE FUNCTION insert_fraction(numerator int, denominator int) RETURNS text AS $$
+from plpy import spiexceptions
+try:
+    plan = plpy.prepare("INSERT INTO fractions (frac) VALUES ($1 / $2)", ["int", "int"])
+    plpy.execute(plan, [numerator, denominator])
+except spiexceptions.DivisionByZero:
+    return "denominator cannot equal zero"
+except spiexceptions.UniqueViolation:
+    return "already have that fraction"
+except plpy.SPIError as e:
+    return "other error, SQLSTATE %s" % e.sqlstate
+else:
+    return "fraction inserted"
+$$ LANGUAGE plpython3u;
+</programlisting>
+    Note that because all exceptions from
+    the <literal>plpy.spiexceptions</literal> module inherit
+    from <literal>SPIError</literal>, an <literal>except</literal>
+    clause handling it will catch any database access error.
+   </para>
+
+   <para>
+    As an alternative way of handling different error conditions, you
+    can catch the <literal>SPIError</literal> exception and determine
+    the specific error condition inside the <literal>except</literal>
+    block by looking at the <literal>sqlstate</literal> attribute of
+    the exception object.  This attribute is a string value containing
+    the <quote>SQLSTATE</quote> error code.  This approach provides
+    approximately the same functionality
+   </para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="plpython-subtransaction">
+  <title>Explicit Subtransactions</title>
+
+  <para>
+   Recovering from errors caused by database access as described in
+   <xref linkend="plpython-trapping"/> can lead to an undesirable
+   situation where some operations succeed before one of them fails,
+   and after recovering from that error the data is left in an
+   inconsistent state.  PL/Python offers a solution to this problem in
+   the form of explicit subtransactions.
+  </para>
+
+  <sect2>
+   <title>Subtransaction Context Managers</title>
+
+   <para>
+    Consider a function that implements a transfer between two
+    accounts:
+<programlisting>
+CREATE FUNCTION transfer_funds() RETURNS void AS $$
+try:
+    plpy.execute("UPDATE accounts SET balance = balance - 100 WHERE account_name = 'joe'")
+    plpy.execute("UPDATE accounts SET balance = balance + 100 WHERE account_name = 'mary'")
+except plpy.SPIError as e:
+    result = "error transferring funds: %s" % e.args
+else:
+    result = "funds transferred correctly"
+plan = plpy.prepare("INSERT INTO operations (result) VALUES ($1)", ["text"])
+plpy.execute(plan, [result])
+$$ LANGUAGE plpython3u;
+</programlisting>
+    If the second <literal>UPDATE</literal> statement results in an
+    exception being raised, this function will report the error, but
+    the result of the first <literal>UPDATE</literal> will
+    nevertheless be committed.  In other words, the funds will be
+    withdrawn from Joe's account, but will not be transferred to
+    Mary's account.
+   </para>
+
+   <para>
+    To avoid such issues, you can wrap your
+    <literal>plpy.execute</literal> calls in an explicit
+    subtransaction.  The <literal>plpy</literal> module provides a
+    helper object to manage explicit subtransactions that gets created
+    with the <literal>plpy.subtransaction()</literal> function.
+    Objects created by this function implement the
+    <ulink url="https://docs.python.org/library/stdtypes.html#context-manager-types">
+    context manager interface</ulink>.  Using explicit subtransactions
+    we can rewrite our function as:
+<programlisting>
+CREATE FUNCTION transfer_funds2() RETURNS void AS $$
+try:
+    with plpy.subtransaction():
+        plpy.execute("UPDATE accounts SET balance = balance - 100 WHERE account_name = 'joe'")
+        plpy.execute("UPDATE accounts SET balance = balance + 100 WHERE account_name = 'mary'")
+except plpy.SPIError as e:
+    result = "error transferring funds: %s" % e.args
+else:
+    result = "funds transferred correctly"
+plan = plpy.prepare("INSERT INTO operations (result) VALUES ($1)", ["text"])
+plpy.execute(plan, [result])
+$$ LANGUAGE plpython3u;
+</programlisting>
+    Note that the use of <literal>try/catch</literal> is still
+    required.  Otherwise the exception would propagate to the top of
+    the Python stack and would cause the whole function to abort with
+    a <productname>PostgreSQL</productname> error, so that the
+    <literal>operations</literal> table would not have any row
+    inserted into it.  The subtransaction context manager does not
+    trap errors, it only assures that all database operations executed
+    inside its scope will be atomically committed or rolled back.  A
+    rollback of the subtransaction block occurs on any kind of
+    exception exit, not only ones caused by errors originating from
+    database access.  A regular Python exception raised inside an
+    explicit subtransaction block would also cause the subtransaction
+    to be rolled back.
+   </para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="plpython-transactions">
+  <title>Transaction Management</title>
+
+  <para>
+   In a procedure called from the top level or an anonymous code block
+   (<command>DO</command> command) called from the top level it is possible to
+   control transactions.  To commit the current transaction, call
+   <literal>plpy.commit()</literal>.  To roll back the current transaction,
+   call <literal>plpy.rollback()</literal>.  (Note that it is not possible to
+   run the SQL commands <command>COMMIT</command> or
+   <command>ROLLBACK</command> via <function>plpy.execute</function> or
+   similar.  It has to be done using these functions.)  After a transaction is
+   ended, a new transaction is automatically started, so there is no separate
+   function for that.
+  </para>
+
+  <para>
+   Here is an example:
+<programlisting>
+CREATE PROCEDURE transaction_test1()
+LANGUAGE plpython3u
+AS $$
+for i in range(0, 10):
+    plpy.execute("INSERT INTO test1 (a) VALUES (%d)" % i)
+    if i % 2 == 0:
+        plpy.commit()
+    else:
+        plpy.rollback()
+$$;
+
+CALL transaction_test1();
+</programlisting>
+  </para>
+
+  <para>
+   Transactions cannot be ended when an explicit subtransaction is active.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-util">
+  <title>Utility Functions</title>
+  <para>
+   The <literal>plpy</literal> module also provides the functions
+   <simplelist>
+    <member><literal>plpy.debug(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.log(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.info(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.notice(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.warning(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.error(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+    <member><literal>plpy.fatal(<replaceable>msg, **kwargs</replaceable>)</literal></member>
+   </simplelist>
+   <indexterm><primary>elog</primary><secondary>in PL/Python</secondary></indexterm>
+   <function>plpy.error</function> and <function>plpy.fatal</function>
+   actually raise a Python exception which, if uncaught, propagates out to
+   the calling query, causing the current transaction or subtransaction to
+   be aborted.  <literal>raise plpy.Error(<replaceable>msg</replaceable>)</literal> and
+   <literal>raise plpy.Fatal(<replaceable>msg</replaceable>)</literal> are
+   equivalent to calling <literal>plpy.error(<replaceable>msg</replaceable>)</literal> and
+   <literal>plpy.fatal(<replaceable>msg</replaceable>)</literal>, respectively but
+   the <literal>raise</literal> form does not allow passing keyword arguments.
+   The other functions only generate messages of different priority levels.
+   Whether messages of a particular priority are reported to the client,
+   written to the server log, or both is controlled by the
+   <xref linkend="guc-log-min-messages"/> and
+   <xref linkend="guc-client-min-messages"/> configuration
+   variables. See <xref linkend="runtime-config"/> for more information.
+  </para>
+
+  <para>
+   The <replaceable>msg</replaceable> argument is given as a positional argument.  For
+   backward compatibility, more than one positional argument can be given. In
+   that case, the string representation of the tuple of positional arguments
+   becomes the message reported to the client.
+  </para>
+
+  <para>
+   The following keyword-only arguments are accepted:
+   <simplelist>
+    <member><literal>detail</literal></member>
+    <member><literal>hint</literal></member>
+    <member><literal>sqlstate</literal></member>
+    <member><literal>schema_name</literal></member>
+    <member><literal>table_name</literal></member>
+    <member><literal>column_name</literal></member>
+    <member><literal>datatype_name</literal></member>
+    <member><literal>constraint_name</literal></member>
+   </simplelist>
+   The string representation of the objects passed as keyword-only arguments
+   is used to enrich the messages reported to the client. For example:
+
+<programlisting>
+CREATE FUNCTION raise_custom_exception() RETURNS void AS $$
+plpy.error("custom exception message",
+           detail="some info about exception",
+           hint="hint for users")
+$$ LANGUAGE plpython3u;
+
+=# SELECT raise_custom_exception();
+ERROR:  plpy.Error: custom exception message
+DETAIL:  some info about exception
+HINT:  hint for users
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "raise_custom_exception", line 4, in &lt;module&gt;
+    hint="hint for users")
+PL/Python function "raise_custom_exception"
+</programlisting>
+  </para>
+
+  <para>
+   Another set of utility functions are
+   <literal>plpy.quote_literal(<replaceable>string</replaceable>)</literal>,
+   <literal>plpy.quote_nullable(<replaceable>string</replaceable>)</literal>, and
+   <literal>plpy.quote_ident(<replaceable>string</replaceable>)</literal>.  They
+   are equivalent to the built-in quoting functions described in <xref
+   linkend="functions-string"/>.  They are useful when constructing
+   ad-hoc queries.  A PL/Python equivalent of dynamic SQL from <xref
+   linkend="plpgsql-quote-literal-example"/> would be:
+<programlisting>
+plpy.execute("UPDATE tbl SET %s = %s WHERE key = %s" % (
+    plpy.quote_ident(colname),
+    plpy.quote_nullable(newvalue),
+    plpy.quote_literal(keyvalue)))
+</programlisting>
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-python23">
+  <title>Python 2 vs. Python 3</title>
+
+  <para>
+   PL/Python supports only Python 3. Past versions of
+   <productname>PostgreSQL</productname> supported Python 2, using the
+   <literal>plpythonu</literal> and <literal>plpython2u</literal> language
+   names.
+  </para>
+ </sect1>
+
+ <sect1 id="plpython-envar">
+  <title>Environment Variables</title>
+
+  <para>
+   Some of the environment variables that are accepted by the Python
+   interpreter can also be used to affect PL/Python behavior.  They
+   would need to be set in the environment of the main PostgreSQL
+   server process, for example in a start script.  The available
+   environment variables depend on the version of Python; see the
+   Python documentation for details.  At the time of this writing, the
+   following environment variables have an affect on PL/Python,
+   assuming an adequate Python version:
+   <itemizedlist>
+    <listitem>
+     <para><envar>PYTHONHOME</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONPATH</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONY2K</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONOPTIMIZE</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONDEBUG</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONVERBOSE</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONCASEOK</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONDONTWRITEBYTECODE</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONIOENCODING</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONUSERBASE</envar></para>
+    </listitem>
+
+    <listitem>
+     <para><envar>PYTHONHASHSEED</envar></para>
+    </listitem>
+   </itemizedlist>
+
+   (It appears to be a Python implementation detail beyond the control
+   of PL/Python that some of the environment variables listed on
+   the <command>python</command> man page are only effective in a
+   command-line interpreter and not an embedded Python interpreter.)
+  </para>
+ </sect1>
+</chapter>

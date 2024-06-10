@@ -1,0 +1,23 @@
+{
+  "receiver" : "{{ yugabyte_alert_channel_name }}",
+  "status" : "{{ yugabyte_alert_status }}",
+  "alerts" : [ {
+    "status" : "{{ yugabyte_alert_status }}",
+    "labels" : {{ yugabyte_alert_labels_json }},
+    "annotations" : {
+      "message" : "{{ yugabyte_alert_message }}"
+    },
+    "startsAt" : "{{ yugabyte_alert_start_time }}",
+    "endsAt" : "{{ yugabyte_alert_end_time }}"
+  } ],
+  "groupLabels" : {
+    "configuration_uuid" : "{{ yugabyte_alert_policy_uuid }}",
+    "definition_name" : "{{ yugabyte_alert_policy_name }}"
+  },
+  "version" : "4",
+  "commonLabels" : {{ yugabyte_alert_labels_json }},
+  "commonAnnotations" : {
+    "message" : "{{ yugabyte_alert_message }}"
+  },
+  "groupKey" : "{}:{configuration_uuid:\\\"{{ yugabyte_alert_policy_uuid }}\\\", definition_name:\\\"{{ yugabyte_alert_policy_name }}\\\"}"
+}

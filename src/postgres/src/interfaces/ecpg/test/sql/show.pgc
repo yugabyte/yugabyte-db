@@ -1,0 +1,41 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+EXEC SQL INCLUDE ../regression;
+
+int main() {
+  EXEC SQL BEGIN DECLARE SECTION;
+    char var[25] = "public";
+  EXEC SQL END DECLARE SECTION;
+
+  ECPGdebug(1, stderr);
+  EXEC SQL CONNECT TO REGRESSDB1;
+
+  EXEC SQL WHENEVER SQLWARNING SQLPRINT;
+  EXEC SQL WHENEVER SQLERROR SQLPRINT;
+
+  EXEC SQL SET search_path TO :var;
+  EXEC SQL SHOW search_path INTO :var;
+  printf("Var: Search path: %s\n", var);
+
+  EXEC SQL SET search_path TO 'public';
+  EXEC SQL SHOW search_path INTO :var;
+  printf("Var: Search path: %s\n", var);
+
+  EXEC SQL SET standard_conforming_strings TO off;
+  EXEC SQL SHOW standard_conforming_strings INTO :var;
+  printf("Var: Standard conforming strings: %s\n", var);
+
+  EXEC SQL SET TIME ZONE PST8PDT;
+  EXEC SQL SHOW TIME ZONE INTO :var;
+  printf("Time Zone: %s\n", var);
+
+  EXEC SQL SET TRANSACTION ISOLATION LEVEL read committed;
+  EXEC SQL SHOW TRANSACTION ISOLATION LEVEL INTO :var;
+  printf("Transaction isolation level: %s\n", var);
+
+  EXEC SQL DISCONNECT ALL;
+
+  return 0;
+}

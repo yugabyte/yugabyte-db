@@ -1,0 +1,53 @@
+# Copyright 2020 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Confirm package_path exists
+  assert:
+    that:
+      - local_package_path is defined or remote_package_path is defined
+
+- name: Confirm cloud_type exists
+  assert:
+    that:
+      - cloud_type is defined
+
+- name: Set remote package path
+  set_fact:
+    package_path: "{{ remote_package_path if remote_package_path is defined and remote_package_path != '' else local_package_path }}"
+    is_remote: "{{ 'yes' if remote_package_path is defined and remote_package_path != '' else 'no' }}"
+
+- name: Check if {{ util.name }} already exists
+  become: yes
+  become_method: sudo
+  environment:
+    PATH: "{{ bin_path }}:{{ ansible_env.PATH }}"
+  shell: "which {{ util.name }}"
+  register: util_exists
+  failed_when: False
+
+- name: Get current version of {{ util.name }}
+  become: yes
+  become_method: sudo
+  environment:
+    PATH: "{{ bin_path }}:{{ ansible_env.PATH }}"
+  shell: "{{ util.name }} --version"
+  register: util_cur_version
+  when: util_exists.rc == 0
+
+- block:
+  - name: "Install {{ util.name }}"
+    include_tasks: "install-{{ util.name }}.yml"
+    args:
+      apply:
+        become: yes
+        become_method: sudo
+  rescue:
+    - name: Ignore errors for onprem provider
+      fail:
+        msg: "Backup util install is required for cloud providers"
+      when: cloud_type != "onprem"

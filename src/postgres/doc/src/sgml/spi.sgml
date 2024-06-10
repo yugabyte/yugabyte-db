@@ -1,0 +1,5373 @@
+<!-- doc/src/sgml/spi.sgml -->
+
+<chapter id="spi">
+ <title>Server Programming Interface</title>
+
+ <indexterm zone="spi">
+  <primary>SPI</primary>
+ </indexterm>
+
+ <para>
+  The <firstterm>Server Programming Interface</firstterm>
+  (<acronym>SPI</acronym>) gives writers of user-defined
+  <acronym>C</acronym> functions the ability to run
+  <acronym>SQL</acronym> commands inside their functions or procedures.
+  <acronym>SPI</acronym> is a set of
+  interface functions to simplify access to the parser, planner,
+  and executor. <acronym>SPI</acronym> also does some
+  memory management.
+ </para>
+
+ <note>
+  <para>
+   The available procedural languages provide various means to
+   execute SQL commands from functions.  Most of these facilities are
+   based on SPI, so this documentation might be of use for users
+   of those languages as well.
+  </para>
+ </note>
+
+ <para>
+  Note that if a command invoked via SPI fails, then control will not be
+  returned to your C function.  Rather, the
+  transaction or subtransaction in which your C function executes will be
+  rolled back.  (This might seem surprising given that the SPI functions mostly
+  have documented error-return conventions.  Those conventions only apply
+  for errors detected within the SPI functions themselves, however.)
+  It is possible to recover control after an error by establishing your own
+  subtransaction surrounding SPI calls that might fail.
+ </para>
+
+ <para>
+  <acronym>SPI</acronym> functions return a nonnegative result on
+  success (either via a returned integer value or in the global
+  variable <varname>SPI_result</varname>, as described below).  On
+  error, a negative result or <symbol>NULL</symbol> will be returned.
+ </para>
+
+ <para>
+  Source code files that use SPI must include the header file
+  <filename>executor/spi.h</filename>.
+ </para>
+
+
+<sect1 id="spi-interface">
+ <title>Interface Functions</title>
+
+ <refentry id="spi-spi-connect">
+  <indexterm><primary>SPI_connect</primary></indexterm>
+  <indexterm><primary>SPI_connect_ext</primary></indexterm>
+
+  <refmeta>
+   <refentrytitle>SPI_connect</refentrytitle>
+   <manvolnum>3</manvolnum>
+  </refmeta>
+
+  <refnamediv>
+   <refname>SPI_connect</refname>
+   <refname>SPI_connect_ext</refname>
+   <refpurpose>connect a C function to the SPI manager</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_connect(void)
+</synopsis>
+
+ <synopsis>
+int SPI_connect_ext(int <parameter>options</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_connect</function> opens a connection from a
+   C function invocation to the SPI manager.  You must call this
+   function if you want to execute commands through SPI.  Some utility
+   SPI functions can be called from unconnected C functions.
+  </para>
+
+  <para>
+   <function>SPI_connect_ext</function> does the same but has an argument that
+   allows passing option flags.  Currently, the following option values are
+   available:
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_OPT_NONATOMIC</symbol></term>
+     <listitem>
+      <para>
+       Sets the SPI connection to be <firstterm>nonatomic</firstterm>, which
+       means that transaction control calls (<function>SPI_commit</function>,
+       <function>SPI_rollback</function>) are allowed.  Otherwise,
+       calling those functions will result in an immediate error.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   <literal>SPI_connect()</literal> is equivalent to
+   <literal>SPI_connect_ext(0)</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><symbol>SPI_OK_CONNECT</symbol></term>
+    <listitem>
+     <para>
+      on success
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><symbol>SPI_ERROR_CONNECT</symbol></term>
+    <listitem>
+     <para>
+      on error
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-finish">
+ <indexterm><primary>SPI_finish</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_finish</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_finish</refname>
+  <refpurpose>disconnect a C function from the SPI manager</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_finish(void)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_finish</function> closes an existing connection to
+   the SPI manager.  You must call this function after completing the
+   SPI operations needed during your C function's current invocation.
+   You do not need to worry about making this happen, however, if you
+   abort the transaction via <literal>elog(ERROR)</literal>.  In that
+   case SPI will clean itself up automatically.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><symbol>SPI_OK_FINISH</symbol></term>
+    <listitem>
+     <para>
+      if properly disconnected
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+    <listitem>
+     <para>
+      if called from an unconnected C function
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute">
+ <indexterm><primary>SPI_execute</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute</refname>
+  <refpurpose>execute a command</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute(const char * <parameter>command</parameter>, bool <parameter>read_only</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute</function> executes the specified SQL command
+   for <parameter>count</parameter> rows.  If <parameter>read_only</parameter>
+   is <literal>true</literal>, the command must be read-only, and execution overhead
+   is somewhat reduced.
+  </para>
+
+  <para>
+   This function can only be called from a connected C function.
+  </para>
+
+  <para>
+   If <parameter>count</parameter> is zero then the command is executed
+   for all rows that it applies to.  If <parameter>count</parameter>
+   is greater than zero, then no more than <parameter>count</parameter> rows
+   will be retrieved; execution stops when the count is reached, much like
+   adding a <literal>LIMIT</literal> clause to the query. For example,
+<programlisting>
+SPI_execute("SELECT * FROM foo", true, 5);
+</programlisting>
+   will retrieve at most 5 rows from the table.  Note that such a limit
+   is only effective when the command actually returns rows.  For example,
+<programlisting>
+SPI_execute("INSERT INTO foo SELECT * FROM bar", false, 5);
+</programlisting>
+   inserts all rows from <structname>bar</structname>, ignoring the
+   <parameter>count</parameter> parameter.  However, with
+<programlisting>
+SPI_execute("INSERT INTO foo SELECT * FROM bar RETURNING *", false, 5);
+</programlisting>
+   at most 5 rows would be inserted, since execution would stop after the
+   fifth <literal>RETURNING</literal> result row is retrieved.
+  </para>
+
+  <para>
+   You can pass multiple commands in one string;
+   <function>SPI_execute</function> returns the
+   result for the command executed last.  The <parameter>count</parameter>
+   limit applies to each command separately (even though only the last
+   result will actually be returned).  The limit is not applied to any
+   hidden commands generated by rules.
+  </para>
+
+  <para>
+   When <parameter>read_only</parameter> is <literal>false</literal>,
+   <function>SPI_execute</function> increments the command
+   counter and computes a new <firstterm>snapshot</firstterm> before executing each
+   command in the string.  The snapshot does not actually change if the
+   current transaction isolation level is <literal>SERIALIZABLE</literal> or <literal>REPEATABLE READ</literal>, but in
+   <literal>READ COMMITTED</literal> mode the snapshot update allows each command to
+   see the results of newly committed transactions from other sessions.
+   This is essential for consistent behavior when the commands are modifying
+   the database.
+  </para>
+
+  <para>
+   When <parameter>read_only</parameter> is <literal>true</literal>,
+   <function>SPI_execute</function> does not update either the snapshot
+   or the command counter, and it allows only plain <command>SELECT</command>
+   commands to appear in the command string.  The commands are executed
+   using the snapshot previously established for the surrounding query.
+   This execution mode is somewhat faster than the read/write mode due
+   to eliminating per-command overhead.  It also allows genuinely
+   <firstterm>stable</firstterm> functions to be built: since successive executions
+   will all use the same snapshot, there will be no change in the results.
+  </para>
+
+  <para>
+   It is generally unwise to mix read-only and read-write commands within
+   a single function using SPI; that could result in very confusing behavior,
+   since the read-only queries would not see the results of any database
+   updates done by the read-write queries.
+  </para>
+
+  <para>
+   The actual number of rows for which the (last) command was executed
+   is returned in the global variable <varname>SPI_processed</varname>.
+   If the return value of the function is <symbol>SPI_OK_SELECT</symbol>,
+   <symbol>SPI_OK_INSERT_RETURNING</symbol>,
+   <symbol>SPI_OK_DELETE_RETURNING</symbol>, or
+   <symbol>SPI_OK_UPDATE_RETURNING</symbol>,
+   then you can use the
+   global pointer <literal>SPITupleTable *SPI_tuptable</literal> to
+   access the result rows.  Some utility commands (such as
+   <command>EXPLAIN</command>) also return row sets, and <literal>SPI_tuptable</literal>
+   will contain the result in these cases too. Some utility commands
+   (<command>COPY</command>, <command>CREATE TABLE AS</command>) don't return a row set, so
+   <literal>SPI_tuptable</literal> is NULL, but they still return the number of
+   rows processed in <varname>SPI_processed</varname>.
+  </para>
+
+  <para>
+   The structure <structname>SPITupleTable</structname> is defined
+   thus:
+<programlisting>
+typedef struct SPITupleTable
+{
+    /* Public members */
+    TupleDesc   tupdesc;        /* tuple descriptor */
+    HeapTuple  *vals;           /* array of tuples */
+    uint64      numvals;        /* number of valid tuples */
+
+    /* Private members, not intended for external callers */
+    uint64      alloced;        /* allocated length of vals array */
+    MemoryContext tuptabcxt;    /* memory context of result table */
+    slist_node  next;           /* link for internal bookkeeping */
+    SubTransactionId subid;     /* subxact in which tuptable was created */
+} SPITupleTable;
+</programlisting>
+   The fields <structfield>tupdesc</structfield>,
+   <structfield>vals</structfield>, and
+   <structfield>numvals</structfield>
+   can be used by SPI callers; the remaining fields are internal.
+   <structfield>vals</structfield> is an array of pointers to rows.
+   The number of rows is given by <structfield>numvals</structfield>
+   (for somewhat historical reasons, this count is also returned
+   in <varname>SPI_processed</varname>).
+   <structfield>tupdesc</structfield> is a row descriptor which you can pass to
+   SPI functions dealing with rows.
+  </para>
+
+  <para>
+   <function>SPI_finish</function> frees all
+   <structname>SPITupleTable</structname>s allocated during the current
+   C function.  You can free a particular result table earlier, if you
+   are done with it, by calling <function>SPI_freetuptable</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      string containing command to execute
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   If the execution of the command was successful then one of the
+   following (nonnegative) values will be returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_OK_SELECT</symbol></term>
+     <listitem>
+      <para>
+       if a <command>SELECT</command> (but not <command>SELECT
+       INTO</command>) was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_SELINTO</symbol></term>
+     <listitem>
+      <para>
+       if a <command>SELECT INTO</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_INSERT</symbol></term>
+     <listitem>
+      <para>
+       if an <command>INSERT</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_DELETE</symbol></term>
+     <listitem>
+      <para>
+       if a <command>DELETE</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_UPDATE</symbol></term>
+     <listitem>
+      <para>
+       if an <command>UPDATE</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_INSERT_RETURNING</symbol></term>
+     <listitem>
+      <para>
+       if an <command>INSERT RETURNING</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_DELETE_RETURNING</symbol></term>
+     <listitem>
+      <para>
+       if a <command>DELETE RETURNING</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_UPDATE_RETURNING</symbol></term>
+     <listitem>
+      <para>
+       if an <command>UPDATE RETURNING</command> was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_UTILITY</symbol></term>
+     <listitem>
+      <para>
+       if a utility command (e.g., <command>CREATE TABLE</command>)
+       was executed
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_OK_REWRITTEN</symbol></term>
+     <listitem>
+      <para>
+       if the command was rewritten into another kind of command (e.g.,
+       <command>UPDATE</command> became an <command>INSERT</command>) by a <link linkend="rules">rule</link>.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   On error, one of the following negative values is returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>command</parameter> is <symbol>NULL</symbol> or
+       <parameter>count</parameter> is less than 0
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_COPY</symbol></term>
+     <listitem>
+      <para>
+       if <command>COPY TO stdout</command> or <command>COPY FROM stdin</command>
+       was attempted
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_TRANSACTION</symbol></term>
+     <listitem>
+      <para>
+       if a transaction manipulation command was attempted
+       (<command>BEGIN</command>,
+       <command>COMMIT</command>,
+       <command>ROLLBACK</command>,
+       <command>SAVEPOINT</command>,
+       <command>PREPARE TRANSACTION</command>,
+       <command>COMMIT PREPARED</command>,
+       <command>ROLLBACK PREPARED</command>,
+       or any variant thereof)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_OPUNKNOWN</symbol></term>
+     <listitem>
+      <para>
+       if the command type is unknown (shouldn't happen)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if called from an unconnected C function
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   All SPI query-execution functions set both
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> (just the pointer, not the contents
+   of the structure).  Save these two global variables into local
+   C function variables if you need to access the result table of
+   <function>SPI_execute</function> or another query-execution function
+   across later calls.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-exec">
+ <indexterm><primary>SPI_exec</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_exec</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_exec</refname>
+  <refpurpose>execute a read/write command</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_exec(const char * <parameter>command</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_exec</function> is the same as
+   <function>SPI_execute</function>, with the latter's
+   <parameter>read_only</parameter> parameter always taken as
+   <literal>false</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      string containing command to execute
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   See <function>SPI_execute</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute-extended">
+ <indexterm><primary>SPI_execute_extended</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute_extended</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute_extended</refname>
+  <refpurpose>execute a command with out-of-line parameters</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute_extended(const char *<parameter>command</parameter>,
+                         const SPIExecuteOptions * <parameter>options</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute_extended</function> executes a command that might
+   include references to externally supplied parameters.  The command text
+   refers to a parameter as <literal>$<replaceable>n</replaceable></literal>,
+   and the <parameter>options-&gt;params</parameter> object (if supplied)
+   provides values and type information for each such symbol.
+   Various execution options can be specified
+   in the <parameter>options</parameter> struct, too.
+  </para>
+
+  <para>
+   The <parameter>options-&gt;params</parameter> object should normally
+   mark each parameter with the <literal>PARAM_FLAG_CONST</literal> flag,
+   since a one-shot plan is always used for the query.
+  </para>
+
+  <para>
+   If <parameter>options-&gt;dest</parameter> is not NULL, then result
+   tuples are passed to that object as they are generated by the executor,
+   instead of being accumulated in <varname>SPI_tuptable</varname>.  Using
+   a caller-supplied <literal>DestReceiver</literal> object is particularly
+   helpful for queries that might generate many tuples, since the data can
+   be processed on-the-fly instead of being accumulated in memory.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const SPIExecuteOptions * <parameter>options</parameter></literal></term>
+    <listitem>
+     <para>
+      struct containing optional arguments
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Callers should always zero out the entire <parameter>options</parameter>
+   struct, then fill whichever fields they want to set.  This ensures forward
+   compatibility of code, since any fields that are added to the struct in
+   future will be defined to behave backwards-compatibly if they are zero.
+   The currently available <parameter>options</parameter> fields are:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ParamListInfo <parameter>params</parameter></literal></term>
+    <listitem>
+     <para>
+      data structure containing query parameter types and values; NULL if none
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>allow_nonatomic</parameter></literal></term>
+    <listitem>
+     <para>
+      <literal>true</literal> allows non-atomic execution of CALL and DO
+      statements
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>must_return_tuples</parameter></literal></term>
+    <listitem>
+     <para>
+      if <literal>true</literal>, raise error if the query is not of a kind
+      that returns tuples (this does not forbid the case where it happens to
+      return zero tuples)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>uint64 <parameter>tcount</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DestReceiver * <parameter>dest</parameter></literal></term>
+    <listitem>
+     <para>
+      <literal>DestReceiver</literal> object that will receive any tuples
+      emitted by the query; if NULL, result tuples are accumulated into
+      a <varname>SPI_tuptable</varname> structure, as
+      in <function>SPI_execute</function>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ResourceOwner <parameter>owner</parameter></literal></term>
+    <listitem>
+     <para>
+      This field is present for consistency
+      with <function>SPI_execute_plan_extended</function>, but it is
+      ignored, since the plan used
+      by <function>SPI_execute_extended</function> is never saved.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The return value is the same as for <function>SPI_execute</function>.
+  </para>
+
+  <para>
+   When <parameter>options-&gt;dest</parameter> is NULL,
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function>.
+   When <parameter>options-&gt;dest</parameter> is not NULL,
+   <varname>SPI_processed</varname> is set to zero and
+   <varname>SPI_tuptable</varname> is set to NULL.  If a tuple count
+   is required, the caller's <literal>DestReceiver</literal> object must
+   calculate it.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute-with-args">
+ <indexterm><primary>SPI_execute_with_args</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute_with_args</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute_with_args</refname>
+  <refpurpose>execute a command with out-of-line parameters</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute_with_args(const char *<parameter>command</parameter>,
+                          int <parameter>nargs</parameter>, Oid *<parameter>argtypes</parameter>,
+                          Datum *<parameter>values</parameter>, const char *<parameter>nulls</parameter>,
+                          bool <parameter>read_only</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute_with_args</function> executes a command that might
+   include references to externally supplied parameters.  The command text
+   refers to a parameter as <literal>$<replaceable>n</replaceable></literal>, and
+   the call specifies data types and values for each such symbol.
+   <parameter>read_only</parameter> and <parameter>count</parameter> have
+   the same interpretation as in <function>SPI_execute</function>.
+  </para>
+
+  <para>
+   The main advantage of this routine compared to
+   <function>SPI_execute</function> is that data values can be inserted
+   into the command without tedious quoting/escaping, and thus with much
+   less risk of SQL-injection attacks.
+  </para>
+
+  <para>
+   Similar results can be achieved with <function>SPI_prepare</function> followed by
+   <function>SPI_execute_plan</function>; however, when using this function
+   the query plan is always customized to the specific parameter values
+   provided.
+   For one-time query execution, this function should be preferred.
+   If the same command is to be executed with many different parameters,
+   either method might be faster, depending on the cost of re-planning
+   versus the benefit of custom plans.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>nargs</parameter></literal></term>
+    <listitem>
+     <para>
+      number of input parameters (<literal>$1</literal>, <literal>$2</literal>, etc.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Oid * <parameter>argtypes</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, containing the
+      <acronym>OID</acronym>s of the data types of the parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, containing the actual
+      parameter values
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, describing which
+      parameters are null
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_execute_with_args</function> assumes that no parameters
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding parameter
+      value is non-null, or <literal>'n'</literal> if the corresponding parameter
+      value is null.  (In the latter case, the actual value in the
+      corresponding <parameter>values</parameter> entry doesn't matter.)  Note
+      that <parameter>nulls</parameter> is not a text string, just an array:
+      it does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The return value is the same as for <function>SPI_execute</function>.
+  </para>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function> if successful.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-prepare">
+ <indexterm><primary>SPI_prepare</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_prepare</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_prepare</refname>
+  <refpurpose>prepare a statement, without executing it yet</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SPIPlanPtr SPI_prepare(const char * <parameter>command</parameter>, int <parameter>nargs</parameter>, Oid * <parameter>argtypes</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_prepare</function> creates and returns a prepared
+   statement for the specified command, but doesn't execute the command.
+   The prepared statement can later be executed repeatedly using
+   <function>SPI_execute_plan</function>.
+  </para>
+
+  <para>
+   When the same or a similar command is to be executed repeatedly, it
+   is generally advantageous to perform parse analysis only once, and
+   might furthermore be advantageous to re-use an execution plan for the
+   command.
+   <function>SPI_prepare</function> converts a command string into a
+   prepared statement that encapsulates the results of parse analysis.
+   The prepared statement also provides a place for caching an execution plan
+   if it is found that generating a custom plan for each execution is not
+   helpful.
+  </para>
+
+  <para>
+   A prepared command can be generalized by writing parameters
+   (<literal>$1</literal>, <literal>$2</literal>, etc.) in place of what would be
+   constants in a normal command.  The actual values of the parameters
+   are then specified when <function>SPI_execute_plan</function> is called.
+   This allows the prepared command to be used over a wider range of
+   situations than would be possible without parameters.
+  </para>
+
+  <para>
+   The statement returned by <function>SPI_prepare</function> can be used
+   only in the current invocation of the C function, since
+   <function>SPI_finish</function> frees memory allocated for such a
+   statement.  But the statement can be saved for longer using the functions
+   <function>SPI_keepplan</function> or <function>SPI_saveplan</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>nargs</parameter></literal></term>
+    <listitem>
+     <para>
+      number of input parameters (<literal>$1</literal>, <literal>$2</literal>, etc.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Oid * <parameter>argtypes</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to an array containing the <acronym>OID</acronym>s of
+      the data types of the parameters
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <function>SPI_prepare</function> returns a non-null pointer to an
+   <type>SPIPlan</type>, which is an opaque struct representing a prepared
+   statement.  On error, <symbol>NULL</symbol> will be returned,
+   and <varname>SPI_result</varname> will be set to one of the same
+   error codes used by <function>SPI_execute</function>, except that
+   it is set to <symbol>SPI_ERROR_ARGUMENT</symbol> if
+   <parameter>command</parameter> is <symbol>NULL</symbol>, or if
+   <parameter>nargs</parameter> is less than 0, or if <parameter>nargs</parameter> is
+   greater than 0 and <parameter>argtypes</parameter> is <symbol>NULL</symbol>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   If no parameters are defined, a generic plan will be created at the
+   first use of <function>SPI_execute_plan</function>, and used for all
+   subsequent executions as well.  If there are parameters, the first few uses
+   of <function>SPI_execute_plan</function> will generate custom plans
+   that are specific to the supplied parameter values.  After enough uses
+   of the same prepared statement, <function>SPI_execute_plan</function> will
+   build a generic plan, and if that is not too much more expensive than the
+   custom plans, it will start using the generic plan instead of re-planning
+   each time.  If this default behavior is unsuitable, you can alter it by
+   passing the <literal>CURSOR_OPT_GENERIC_PLAN</literal> or
+   <literal>CURSOR_OPT_CUSTOM_PLAN</literal> flag to
+   <function>SPI_prepare_cursor</function>, to force use of generic or custom
+   plans respectively.
+  </para>
+
+  <para>
+   Although the main point of a prepared statement is to avoid repeated parse
+   analysis and planning of the statement, <productname>PostgreSQL</productname> will
+   force re-analysis and re-planning of the statement before using it
+   whenever database objects used in the statement have undergone
+   definitional (DDL) changes since the previous use of the prepared
+   statement.  Also, if the value of <xref linkend="guc-search-path"/> changes
+   from one use to the next, the statement will be re-parsed using the new
+   <varname>search_path</varname>.  (This latter behavior is new as of
+   <productname>PostgreSQL</productname> 9.3.)  See <xref
+   linkend="sql-prepare"/> for more information about the behavior of prepared
+   statements.
+  </para>
+
+  <para>
+   This function should only be called from a connected C function.
+  </para>
+
+  <para>
+   <type>SPIPlanPtr</type> is declared as a pointer to an opaque struct type in
+   <filename>spi.h</filename>.  It is unwise to try to access its contents
+   directly, as that makes your code much more likely to break in
+   future revisions of <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   The name <type>SPIPlanPtr</type> is somewhat historical, since the data
+   structure no longer necessarily contains an execution plan.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-prepare-cursor">
+ <indexterm><primary>SPI_prepare_cursor</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_prepare_cursor</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_prepare_cursor</refname>
+  <refpurpose>prepare a statement, without executing it yet</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SPIPlanPtr SPI_prepare_cursor(const char * <parameter>command</parameter>, int <parameter>nargs</parameter>,
+                              Oid * <parameter>argtypes</parameter>, int <parameter>cursorOptions</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_prepare_cursor</function> is identical to
+   <function>SPI_prepare</function>, except that it also allows specification
+   of the planner's <quote>cursor options</quote> parameter.  This is a bit mask
+   having the values shown in <filename>nodes/parsenodes.h</filename>
+   for the <structfield>options</structfield> field of <structname>DeclareCursorStmt</structname>.
+   <function>SPI_prepare</function> always takes the cursor options as zero.
+  </para>
+
+  <para>
+   This function is now deprecated in favor
+   of <function>SPI_prepare_extended</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>nargs</parameter></literal></term>
+    <listitem>
+     <para>
+      number of input parameters (<literal>$1</literal>, <literal>$2</literal>, etc.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Oid * <parameter>argtypes</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to an array containing the <acronym>OID</acronym>s of
+      the data types of the parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>cursorOptions</parameter></literal></term>
+    <listitem>
+     <para>
+      integer bit mask of cursor options; zero produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <function>SPI_prepare_cursor</function> has the same return conventions as
+   <function>SPI_prepare</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Useful bits to set in <parameter>cursorOptions</parameter> include
+   <symbol>CURSOR_OPT_SCROLL</symbol>,
+   <symbol>CURSOR_OPT_NO_SCROLL</symbol>,
+   <symbol>CURSOR_OPT_FAST_PLAN</symbol>,
+   <symbol>CURSOR_OPT_GENERIC_PLAN</symbol>, and
+   <symbol>CURSOR_OPT_CUSTOM_PLAN</symbol>.  Note in particular that
+   <symbol>CURSOR_OPT_HOLD</symbol> is ignored.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-prepare-extended">
+ <indexterm><primary>SPI_prepare_extended</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_prepare_extended</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_prepare_extended</refname>
+  <refpurpose>prepare a statement, without executing it yet</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SPIPlanPtr SPI_prepare_extended(const char * <parameter>command</parameter>,
+                                const SPIPrepareOptions * <parameter>options</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_prepare_extended</function> creates and returns a prepared
+   statement for the specified command, but doesn't execute the command.
+   This function is equivalent to <function>SPI_prepare</function>,
+   with the addition that the caller can specify options to control
+   the parsing of external parameter references, as well as other facets
+   of query parsing and planning.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const SPIPrepareOptions * <parameter>options</parameter></literal></term>
+    <listitem>
+     <para>
+      struct containing optional arguments
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Callers should always zero out the entire <parameter>options</parameter>
+   struct, then fill whichever fields they want to set.  This ensures forward
+   compatibility of code, since any fields that are added to the struct in
+   future will be defined to behave backwards-compatibly if they are zero.
+   The currently available <parameter>options</parameter> fields are:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ParserSetupHook <parameter>parserSetup</parameter></literal></term>
+    <listitem>
+     <para>
+      Parser hook setup function
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>void * <parameter>parserSetupArg</parameter></literal></term>
+    <listitem>
+     <para>
+      pass-through argument for <parameter>parserSetup</parameter>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RawParseMode <parameter>parseMode</parameter></literal></term>
+    <listitem>
+     <para>
+      mode for raw parsing; <literal>RAW_PARSE_DEFAULT</literal> (zero)
+      produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>cursorOptions</parameter></literal></term>
+    <listitem>
+     <para>
+      integer bit mask of cursor options; zero produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <function>SPI_prepare_extended</function> has the same return conventions as
+   <function>SPI_prepare</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-prepare-params">
+ <indexterm><primary>SPI_prepare_params</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_prepare_params</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_prepare_params</refname>
+  <refpurpose>prepare a statement, without executing it yet</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SPIPlanPtr SPI_prepare_params(const char * <parameter>command</parameter>,
+                              ParserSetupHook <parameter>parserSetup</parameter>,
+                              void * <parameter>parserSetupArg</parameter>,
+                              int <parameter>cursorOptions</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_prepare_params</function> creates and returns a prepared
+   statement for the specified command, but doesn't execute the command.
+   This function is equivalent to <function>SPI_prepare_cursor</function>,
+   with the addition that the caller can specify parser hook functions
+   to control the parsing of external parameter references.
+  </para>
+
+  <para>
+   This function is now deprecated in favor
+   of <function>SPI_prepare_extended</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ParserSetupHook <parameter>parserSetup</parameter></literal></term>
+    <listitem>
+     <para>
+      Parser hook setup function
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>void * <parameter>parserSetupArg</parameter></literal></term>
+    <listitem>
+     <para>
+      pass-through argument for <parameter>parserSetup</parameter>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>cursorOptions</parameter></literal></term>
+    <listitem>
+     <para>
+      integer bit mask of cursor options; zero produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <function>SPI_prepare_params</function> has the same return conventions as
+   <function>SPI_prepare</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-getargcount">
+ <indexterm><primary>SPI_getargcount</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getargcount</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getargcount</refname>
+  <refpurpose>return the number of arguments needed by a statement
+  prepared by <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_getargcount(SPIPlanPtr <parameter>plan</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getargcount</function> returns the number of arguments needed
+   to execute a statement prepared by <function>SPI_prepare</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+  <para>
+    The count of expected arguments for the <parameter>plan</parameter>.
+    If the <parameter>plan</parameter> is <symbol>NULL</symbol> or invalid,
+    <varname>SPI_result</varname> is set to <symbol>SPI_ERROR_ARGUMENT</symbol>
+    and -1 is returned.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-getargtypeid">
+ <indexterm><primary>SPI_getargtypeid</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getargtypeid</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getargtypeid</refname>
+  <refpurpose>return the data type OID for an argument of
+  a statement prepared by <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Oid SPI_getargtypeid(SPIPlanPtr <parameter>plan</parameter>, int <parameter>argIndex</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getargtypeid</function> returns the OID representing the type
+   for the <parameter>argIndex</parameter>'th argument of a statement prepared by
+   <function>SPI_prepare</function>. First argument is at index zero.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>argIndex</parameter></literal></term>
+    <listitem>
+     <para>
+      zero based index of the argument
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+  <para>
+    The type OID of the argument at the given index.
+    If the <parameter>plan</parameter> is <symbol>NULL</symbol> or invalid,
+    or <parameter>argIndex</parameter> is less than 0 or
+    not less than the number of arguments declared for the
+    <parameter>plan</parameter>,
+    <varname>SPI_result</varname> is set to <symbol>SPI_ERROR_ARGUMENT</symbol>
+    and <symbol>InvalidOid</symbol> is returned.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-is-cursor-plan">
+ <indexterm><primary>SPI_is_cursor_plan</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_is_cursor_plan</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_is_cursor_plan</refname>
+  <refpurpose>return <symbol>true</symbol> if a statement
+  prepared by <function>SPI_prepare</function> can be used with
+  <function>SPI_cursor_open</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+bool SPI_is_cursor_plan(SPIPlanPtr <parameter>plan</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_is_cursor_plan</function> returns <symbol>true</symbol>
+   if a statement prepared by <function>SPI_prepare</function> can be passed
+   as an argument to <function>SPI_cursor_open</function>, or
+   <symbol>false</symbol> if that is not the case. The criteria are that the
+   <parameter>plan</parameter> represents one single command and that this
+   command returns tuples to the caller; for example, <command>SELECT</command>
+   is allowed unless it contains an <literal>INTO</literal> clause, and
+   <command>UPDATE</command> is allowed only if it contains a <literal>RETURNING</literal>
+   clause.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+  <para>
+    <symbol>true</symbol> or <symbol>false</symbol> to indicate if the
+    <parameter>plan</parameter> can produce a cursor or not, with
+    <varname>SPI_result</varname> set to zero.
+    If it is not possible to determine the answer (for example,
+    if the <parameter>plan</parameter> is <symbol>NULL</symbol> or invalid,
+    or if called when not connected to SPI), then
+    <varname>SPI_result</varname> is set to a suitable error code
+    and <symbol>false</symbol> is returned.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute-plan">
+ <indexterm><primary>SPI_execute_plan</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute_plan</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute_plan</refname>
+  <refpurpose>execute a statement prepared by <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute_plan(SPIPlanPtr <parameter>plan</parameter>, Datum * <parameter>values</parameter>, const char * <parameter>nulls</parameter>,
+                     bool <parameter>read_only</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute_plan</function> executes a statement prepared by
+   <function>SPI_prepare</function> or one of its siblings.
+   <parameter>read_only</parameter> and
+   <parameter>count</parameter> have the same interpretation as in
+   <function>SPI_execute</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      An array of actual parameter values.  Must have same length as the
+      statement's number of arguments.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      An array describing which parameters are null.  Must have same length as
+      the statement's number of arguments.
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_execute_plan</function> assumes that no parameters
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding parameter
+      value is non-null, or <literal>'n'</literal> if the corresponding parameter
+      value is null.  (In the latter case, the actual value in the
+      corresponding <parameter>values</parameter> entry doesn't matter.)  Note
+      that <parameter>nulls</parameter> is not a text string, just an array:
+      it does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The return value is the same as for <function>SPI_execute</function>,
+   with the following additional possible error (negative) results:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>plan</parameter> is <symbol>NULL</symbol> or invalid,
+       or <parameter>count</parameter> is less than 0
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_PARAM</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>values</parameter> is <symbol>NULL</symbol> and
+       <parameter>plan</parameter> was prepared with some parameters
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function> if successful.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute-plan-extended">
+ <indexterm><primary>SPI_execute_plan_extended</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute_plan_extended</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute_plan_extended</refname>
+  <refpurpose>execute a statement prepared by <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute_plan_extended(SPIPlanPtr <parameter>plan</parameter>,
+                              const SPIExecuteOptions * <parameter>options</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute_plan_extended</function> executes a statement
+   prepared by <function>SPI_prepare</function> or one of its siblings.
+   This function is equivalent to <function>SPI_execute_plan</function>,
+   except that information about the parameter values to be passed to the
+   query is presented differently, and additional execution-controlling
+   options can be passed.
+  </para>
+
+  <para>
+   Query parameter values are represented by
+   a <literal>ParamListInfo</literal> struct, which is convenient for passing
+   down values that are already available in that format.  Dynamic parameter
+   sets can also be used, via hook functions specified
+   in <literal>ParamListInfo</literal>.
+  </para>
+
+  <para>
+   Also, instead of always accumulating the result tuples into a
+   <varname>SPI_tuptable</varname> structure, tuples can be passed to a
+   caller-supplied <literal>DestReceiver</literal> object as they are
+   generated by the executor.  This is particularly helpful for queries
+   that might generate many tuples, since the data can be processed
+   on-the-fly instead of being accumulated in memory.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const SPIExecuteOptions * <parameter>options</parameter></literal></term>
+    <listitem>
+     <para>
+      struct containing optional arguments
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Callers should always zero out the entire <parameter>options</parameter>
+   struct, then fill whichever fields they want to set.  This ensures forward
+   compatibility of code, since any fields that are added to the struct in
+   future will be defined to behave backwards-compatibly if they are zero.
+   The currently available <parameter>options</parameter> fields are:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ParamListInfo <parameter>params</parameter></literal></term>
+    <listitem>
+     <para>
+      data structure containing query parameter types and values; NULL if none
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>allow_nonatomic</parameter></literal></term>
+    <listitem>
+     <para>
+      <literal>true</literal> allows non-atomic execution of CALL and DO
+      statements
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>must_return_tuples</parameter></literal></term>
+    <listitem>
+     <para>
+      if <literal>true</literal>, raise error if the query is not of a kind
+      that returns tuples (this does not forbid the case where it happens to
+      return zero tuples)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>uint64 <parameter>tcount</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DestReceiver * <parameter>dest</parameter></literal></term>
+    <listitem>
+     <para>
+      <literal>DestReceiver</literal> object that will receive any tuples
+      emitted by the query; if NULL, result tuples are accumulated into
+      a <varname>SPI_tuptable</varname> structure, as
+      in <function>SPI_execute_plan</function>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ResourceOwner <parameter>owner</parameter></literal></term>
+    <listitem>
+     <para>
+      The resource owner that will hold a reference count on the plan while
+      it is executed.  If NULL, CurrentResourceOwner is used.  Ignored for
+      non-saved plans, as SPI does not acquire reference counts on those.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The return value is the same as for <function>SPI_execute_plan</function>.
+  </para>
+
+  <para>
+   When <parameter>options-&gt;dest</parameter> is NULL,
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute_plan</function>.
+   When <parameter>options-&gt;dest</parameter> is not NULL,
+   <varname>SPI_processed</varname> is set to zero and
+   <varname>SPI_tuptable</varname> is set to NULL.  If a tuple count
+   is required, the caller's <literal>DestReceiver</literal> object must
+   calculate it.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execute-plan-with-paramlist">
+ <indexterm><primary>SPI_execute_plan_with_paramlist</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execute_plan_with_paramlist</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execute_plan_with_paramlist</refname>
+  <refpurpose>execute a statement prepared by <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execute_plan_with_paramlist(SPIPlanPtr <parameter>plan</parameter>,
+                                    ParamListInfo <parameter>params</parameter>,
+                                    bool <parameter>read_only</parameter>,
+                                    long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execute_plan_with_paramlist</function> executes a statement
+   prepared by <function>SPI_prepare</function>.
+   This function is equivalent to <function>SPI_execute_plan</function>
+   except that information about the parameter values to be passed to the
+   query is presented differently.  The <literal>ParamListInfo</literal>
+   representation can be convenient for passing down values that are
+   already available in that format.  It also supports use of dynamic
+   parameter sets via hook functions specified in <literal>ParamListInfo</literal>.
+  </para>
+
+  <para>
+   This function is now deprecated in favor
+   of <function>SPI_execute_plan_extended</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ParamListInfo <parameter>params</parameter></literal></term>
+    <listitem>
+     <para>
+      data structure containing parameter types and values; NULL if none
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The return value is the same as for <function>SPI_execute_plan</function>.
+  </para>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute_plan</function> if successful.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-execp">
+ <indexterm><primary>SPI_execp</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_execp</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_execp</refname>
+  <refpurpose>execute a statement in read/write mode</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_execp(SPIPlanPtr <parameter>plan</parameter>, Datum * <parameter>values</parameter>, const char * <parameter>nulls</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_execp</function> is the same as
+   <function>SPI_execute_plan</function>, with the latter's
+   <parameter>read_only</parameter> parameter always taken as
+   <literal>false</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      An array of actual parameter values.  Must have same length as the
+      statement's number of arguments.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      An array describing which parameters are null.  Must have same length as
+      the statement's number of arguments.
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_execp</function> assumes that no parameters
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding parameter
+      value is non-null, or <literal>'n'</literal> if the corresponding parameter
+      value is null.  (In the latter case, the actual value in the
+      corresponding <parameter>values</parameter> entry doesn't matter.)  Note
+      that <parameter>nulls</parameter> is not a text string, just an array:
+      it does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to return,
+      or <literal>0</literal> for no limit
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   See <function>SPI_execute_plan</function>.
+  </para>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function> if successful.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-open">
+ <indexterm><primary>SPI_cursor_open</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_open</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_open</refname>
+  <refpurpose>set up a cursor using a statement created with <function>SPI_prepare</function></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Portal SPI_cursor_open(const char * <parameter>name</parameter>, SPIPlanPtr <parameter>plan</parameter>,
+                       Datum * <parameter>values</parameter>, const char * <parameter>nulls</parameter>,
+                       bool <parameter>read_only</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_open</function> sets up a cursor (internally,
+   a portal) that will execute a statement prepared by
+   <function>SPI_prepare</function>.  The parameters have the same
+   meanings as the corresponding parameters to
+   <function>SPI_execute_plan</function>.
+  </para>
+
+  <para>
+   Using a cursor instead of executing the statement directly has two
+   benefits.  First, the result rows can be retrieved a few at a time,
+   avoiding memory overrun for queries that return many rows.  Second,
+   a portal can outlive the current C function (it can, in fact, live
+   to the end of the current transaction).  Returning the portal name
+   to the C function's caller provides a way of returning a row set as
+   result.
+  </para>
+
+  <para>
+   The passed-in parameter data will be copied into the cursor's portal, so it
+   can be freed while the cursor still exists.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      name for portal, or <symbol>NULL</symbol> to let the system
+      select a name
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      An array of actual parameter values.  Must have same length as the
+      statement's number of arguments.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      An array describing which parameters are null.  Must have same length as
+      the statement's number of arguments.
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_cursor_open</function> assumes that no parameters
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding parameter
+      value is non-null, or <literal>'n'</literal> if the corresponding parameter
+      value is null.  (In the latter case, the actual value in the
+      corresponding <parameter>values</parameter> entry doesn't matter.)  Note
+      that <parameter>nulls</parameter> is not a text string, just an array:
+      it does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Pointer to portal containing the cursor.  Note there is no error
+   return convention; any error will be reported via <function>elog</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-open-with-args">
+ <indexterm><primary>SPI_cursor_open_with_args</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_open_with_args</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_open_with_args</refname>
+  <refpurpose>set up a cursor using a query and parameters</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Portal SPI_cursor_open_with_args(const char *<parameter>name</parameter>,
+                                 const char *<parameter>command</parameter>,
+                                 int <parameter>nargs</parameter>, Oid *<parameter>argtypes</parameter>,
+                                 Datum *<parameter>values</parameter>, const char *<parameter>nulls</parameter>,
+                                 bool <parameter>read_only</parameter>, int <parameter>cursorOptions</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_open_with_args</function> sets up a cursor
+   (internally, a portal) that will execute the specified query.
+   Most of the parameters have the same meanings as the corresponding
+   parameters to <function>SPI_prepare_cursor</function>
+   and <function>SPI_cursor_open</function>.
+  </para>
+
+  <para>
+   For one-time query execution, this function should be preferred
+   over <function>SPI_prepare_cursor</function> followed by
+   <function>SPI_cursor_open</function>.
+   If the same command is to be executed with many different parameters,
+   either method might be faster, depending on the cost of re-planning
+   versus the benefit of custom plans.
+  </para>
+
+  <para>
+   The passed-in parameter data will be copied into the cursor's portal, so it
+   can be freed while the cursor still exists.
+  </para>
+
+  <para>
+   This function is now deprecated in favor
+   of <function>SPI_cursor_parse_open</function>, which provides equivalent
+   functionality using a more modern API for handling query parameters.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      name for portal, or <symbol>NULL</symbol> to let the system
+      select a name
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>nargs</parameter></literal></term>
+    <listitem>
+     <para>
+      number of input parameters (<literal>$1</literal>, <literal>$2</literal>, etc.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Oid * <parameter>argtypes</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, containing the
+      <acronym>OID</acronym>s of the data types of the parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, containing the actual
+      parameter values
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>nargs</parameter>, describing which
+      parameters are null
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_cursor_open_with_args</function> assumes that no parameters
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding parameter
+      value is non-null, or <literal>'n'</literal> if the corresponding parameter
+      value is null.  (In the latter case, the actual value in the
+      corresponding <parameter>values</parameter> entry doesn't matter.)  Note
+      that <parameter>nulls</parameter> is not a text string, just an array:
+      it does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>cursorOptions</parameter></literal></term>
+    <listitem>
+     <para>
+      integer bit mask of cursor options; zero produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Pointer to portal containing the cursor.  Note there is no error
+   return convention; any error will be reported via <function>elog</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-open-with-paramlist">
+ <indexterm><primary>SPI_cursor_open_with_paramlist</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_open_with_paramlist</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_open_with_paramlist</refname>
+  <refpurpose>set up a cursor using parameters</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Portal SPI_cursor_open_with_paramlist(const char *<parameter>name</parameter>,
+                                      SPIPlanPtr <parameter>plan</parameter>,
+                                      ParamListInfo <parameter>params</parameter>,
+                                      bool <parameter>read_only</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_open_with_paramlist</function> sets up a cursor
+   (internally, a portal) that will execute a statement prepared by
+   <function>SPI_prepare</function>.
+   This function is equivalent to <function>SPI_cursor_open</function>
+   except that information about the parameter values to be passed to the
+   query is presented differently.  The <literal>ParamListInfo</literal>
+   representation can be convenient for passing down values that are
+   already available in that format.  It also supports use of dynamic
+   parameter sets via hook functions specified in <literal>ParamListInfo</literal>.
+  </para>
+
+  <para>
+   The passed-in parameter data will be copied into the cursor's portal, so it
+   can be freed while the cursor still exists.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      name for portal, or <symbol>NULL</symbol> to let the system
+      select a name
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      prepared statement (returned by <function>SPI_prepare</function>)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ParamListInfo <parameter>params</parameter></literal></term>
+    <listitem>
+     <para>
+      data structure containing parameter types and values; NULL if none
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Pointer to portal containing the cursor.  Note there is no error
+   return convention; any error will be reported via <function>elog</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-parse-open">
+ <indexterm><primary>SPI_cursor_parse_open</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_parse_open</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_parse_open</refname>
+  <refpurpose>set up a cursor using a query string and parameters</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Portal SPI_cursor_parse_open(const char *<parameter>name</parameter>,
+                             const char *<parameter>command</parameter>,
+                             const SPIParseOpenOptions * <parameter>options</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_parse_open</function> sets up a cursor
+   (internally, a portal) that will execute the specified query string.
+   This is comparable to <function>SPI_prepare_cursor</function> followed
+   by <function>SPI_cursor_open_with_paramlist</function>, except that
+   parameter references within the query string are handled entirely by
+   supplying a <literal>ParamListInfo</literal> object.
+  </para>
+
+  <para>
+   For one-time query execution, this function should be preferred
+   over <function>SPI_prepare_cursor</function> followed by
+   <function>SPI_cursor_open_with_paramlist</function>.
+   If the same command is to be executed with many different parameters,
+   either method might be faster, depending on the cost of re-planning
+   versus the benefit of custom plans.
+  </para>
+
+  <para>
+   The <parameter>options-&gt;params</parameter> object should normally
+   mark each parameter with the <literal>PARAM_FLAG_CONST</literal> flag,
+   since a one-shot plan is always used for the query.
+  </para>
+
+  <para>
+   The passed-in parameter data will be copied into the cursor's portal, so it
+   can be freed while the cursor still exists.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      name for portal, or <symbol>NULL</symbol> to let the system
+      select a name
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>command</parameter></literal></term>
+    <listitem>
+     <para>
+      command string
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const SPIParseOpenOptions * <parameter>options</parameter></literal></term>
+    <listitem>
+     <para>
+      struct containing optional arguments
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Callers should always zero out the entire <parameter>options</parameter>
+   struct, then fill whichever fields they want to set.  This ensures forward
+   compatibility of code, since any fields that are added to the struct in
+   future will be defined to behave backwards-compatibly if they are zero.
+   The currently available <parameter>options</parameter> fields are:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>ParamListInfo <parameter>params</parameter></literal></term>
+    <listitem>
+     <para>
+      data structure containing query parameter types and values; NULL if none
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>cursorOptions</parameter></literal></term>
+    <listitem>
+     <para>
+      integer bit mask of cursor options; zero produces default behavior
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>read_only</parameter></literal></term>
+    <listitem>
+     <para><literal>true</literal> for read-only execution</para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Pointer to portal containing the cursor.  Note there is no error
+   return convention; any error will be reported via <function>elog</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-find">
+ <indexterm><primary>SPI_cursor_find</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_find</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_find</refname>
+  <refpurpose>find an existing cursor by name</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Portal SPI_cursor_find(const char * <parameter>name</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_find</function> finds an existing portal by
+   name.  This is primarily useful to resolve a cursor name returned
+   as text by some other function.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      name of the portal
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   pointer to the portal with the specified name, or
+   <symbol>NULL</symbol> if none was found
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-fetch">
+ <indexterm><primary>SPI_cursor_fetch</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_fetch</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_fetch</refname>
+  <refpurpose>fetch some rows from a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_cursor_fetch(Portal <parameter>portal</parameter>, bool <parameter>forward</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_fetch</function> fetches some rows from a
+   cursor.  This is equivalent to a subset of the SQL command
+   <command>FETCH</command> (see <function>SPI_scroll_cursor_fetch</function>
+   for more functionality).
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Portal <parameter>portal</parameter></literal></term>
+    <listitem>
+     <para>
+      portal containing the cursor
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>forward</parameter></literal></term>
+    <listitem>
+     <para>
+      true for fetch forward, false for fetch backward
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to fetch
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function> if successful.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Fetching backward may fail if the cursor's plan was not created
+   with the <symbol>CURSOR_OPT_SCROLL</symbol> option.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-move">
+ <indexterm><primary>SPI_cursor_move</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_move</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_move</refname>
+  <refpurpose>move a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_cursor_move(Portal <parameter>portal</parameter>, bool <parameter>forward</parameter>, long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_move</function> skips over some number of rows
+   in a cursor.  This is equivalent to a subset of the SQL command
+   <command>MOVE</command> (see <function>SPI_scroll_cursor_move</function>
+   for more functionality).
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Portal <parameter>portal</parameter></literal></term>
+    <listitem>
+     <para>
+      portal containing the cursor
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool <parameter>forward</parameter></literal></term>
+    <listitem>
+     <para>
+      true for move forward, false for move backward
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      maximum number of rows to move
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Moving backward may fail if the cursor's plan was not created
+   with the <symbol>CURSOR_OPT_SCROLL</symbol> option.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-scroll-cursor-fetch">
+ <indexterm><primary>SPI_scroll_cursor_fetch</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_scroll_cursor_fetch</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_scroll_cursor_fetch</refname>
+  <refpurpose>fetch some rows from a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_scroll_cursor_fetch(Portal <parameter>portal</parameter>, FetchDirection <parameter>direction</parameter>,
+                             long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_scroll_cursor_fetch</function> fetches some rows from a
+   cursor.  This is equivalent to the SQL command <command>FETCH</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Portal <parameter>portal</parameter></literal></term>
+    <listitem>
+     <para>
+      portal containing the cursor
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FetchDirection <parameter>direction</parameter></literal></term>
+    <listitem>
+     <para>
+      one of <symbol>FETCH_FORWARD</symbol>,
+      <symbol>FETCH_BACKWARD</symbol>,
+      <symbol>FETCH_ABSOLUTE</symbol> or
+      <symbol>FETCH_RELATIVE</symbol>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      number of rows to fetch for
+      <symbol>FETCH_FORWARD</symbol> or
+      <symbol>FETCH_BACKWARD</symbol>; absolute row number to fetch for
+      <symbol>FETCH_ABSOLUTE</symbol>; or relative row number to fetch for
+      <symbol>FETCH_RELATIVE</symbol>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <varname>SPI_processed</varname> and
+   <varname>SPI_tuptable</varname> are set as in
+   <function>SPI_execute</function> if successful.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   See the SQL <xref linkend="sql-fetch"/> command
+   for details of the interpretation of the
+   <parameter>direction</parameter> and
+   <parameter>count</parameter> parameters.
+  </para>
+
+  <para>
+   Direction values other than <symbol>FETCH_FORWARD</symbol>
+   may fail if the cursor's plan was not created
+   with the <symbol>CURSOR_OPT_SCROLL</symbol> option.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-scroll-cursor-move">
+ <indexterm><primary>SPI_scroll_cursor_move</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_scroll_cursor_move</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_scroll_cursor_move</refname>
+  <refpurpose>move a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_scroll_cursor_move(Portal <parameter>portal</parameter>, FetchDirection <parameter>direction</parameter>,
+                            long <parameter>count</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_scroll_cursor_move</function> skips over some number of rows
+   in a cursor.  This is equivalent to the SQL command
+   <command>MOVE</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Portal <parameter>portal</parameter></literal></term>
+    <listitem>
+     <para>
+      portal containing the cursor
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FetchDirection <parameter>direction</parameter></literal></term>
+    <listitem>
+     <para>
+      one of <symbol>FETCH_FORWARD</symbol>,
+      <symbol>FETCH_BACKWARD</symbol>,
+      <symbol>FETCH_ABSOLUTE</symbol> or
+      <symbol>FETCH_RELATIVE</symbol>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>long <parameter>count</parameter></literal></term>
+    <listitem>
+     <para>
+      number of rows to move for
+      <symbol>FETCH_FORWARD</symbol> or
+      <symbol>FETCH_BACKWARD</symbol>; absolute row number to move to for
+      <symbol>FETCH_ABSOLUTE</symbol>; or relative row number to move to for
+      <symbol>FETCH_RELATIVE</symbol>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <varname>SPI_processed</varname> is set as in
+   <function>SPI_execute</function> if successful.
+   <varname>SPI_tuptable</varname> is set to <symbol>NULL</symbol>, since
+   no rows are returned by this function.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   See the SQL <xref linkend="sql-fetch"/> command
+   for details of the interpretation of the
+   <parameter>direction</parameter> and
+   <parameter>count</parameter> parameters.
+  </para>
+
+  <para>
+   Direction values other than <symbol>FETCH_FORWARD</symbol>
+   may fail if the cursor's plan was not created
+   with the <symbol>CURSOR_OPT_SCROLL</symbol> option.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-cursor-close">
+ <indexterm><primary>SPI_cursor_close</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_cursor_close</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_cursor_close</refname>
+  <refpurpose>close a cursor</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_cursor_close(Portal <parameter>portal</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_cursor_close</function> closes a previously created
+   cursor and releases its portal storage.
+  </para>
+
+  <para>
+   All open cursors are closed automatically at the end of a
+   transaction.  <function>SPI_cursor_close</function> need only be
+   invoked if it is desirable to release resources sooner.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Portal <parameter>portal</parameter></literal></term>
+    <listitem>
+     <para>
+      portal containing the cursor
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-keepplan">
+ <indexterm><primary>SPI_keepplan</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_keepplan</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_keepplan</refname>
+  <refpurpose>save a prepared statement</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_keepplan(SPIPlanPtr <parameter>plan</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_keepplan</function> saves a passed statement (prepared by
+   <function>SPI_prepare</function>) so that it will not be freed
+   by <function>SPI_finish</function> nor by the transaction manager.
+   This gives you the ability to reuse prepared statements in the subsequent
+   invocations of your C function in the current session.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      the prepared statement to be saved
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   0 on success;
+   <symbol>SPI_ERROR_ARGUMENT</symbol> if <parameter>plan</parameter>
+   is <symbol>NULL</symbol> or invalid
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The passed-in statement is relocated to permanent storage by means
+   of pointer adjustment (no data copying is required).  If you later
+   wish to delete it, use <function>SPI_freeplan</function> on it.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-saveplan">
+ <indexterm><primary>SPI_saveplan</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_saveplan</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_saveplan</refname>
+  <refpurpose>save a prepared statement</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SPIPlanPtr SPI_saveplan(SPIPlanPtr <parameter>plan</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_saveplan</function> copies a passed statement (prepared by
+   <function>SPI_prepare</function>) into memory that will not be freed
+   by <function>SPI_finish</function> nor by the transaction manager,
+   and returns a pointer to the copied statement.  This gives you the
+   ability to reuse prepared statements in the subsequent invocations of
+   your C function in the current session.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      the prepared statement to be saved
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Pointer to the copied statement; or <symbol>NULL</symbol> if unsuccessful.
+   On error, <varname>SPI_result</varname> is set thus:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>plan</parameter> is <symbol>NULL</symbol> or invalid
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if called from an unconnected C function
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The originally passed-in statement is not freed, so you might wish to do
+   <function>SPI_freeplan</function> on it to avoid leaking memory
+   until <function>SPI_finish</function>.
+  </para>
+
+  <para>
+   In most cases, <function>SPI_keepplan</function> is preferred to this
+   function, since it accomplishes largely the same result without needing
+   to physically copy the prepared statement's data structures.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-register-relation">
+ <indexterm><primary>SPI_register_relation</primary></indexterm>
+
+ <indexterm>
+  <primary>ephemeral named relation</primary>
+  <secondary>registering with SPI</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_register_relation</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_register_relation</refname>
+  <refpurpose>make an ephemeral named relation available by name in SPI queries</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_register_relation(EphemeralNamedRelation <parameter>enr</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_register_relation</function> makes an ephemeral named
+   relation, with associated information, available to queries planned and
+   executed through the current SPI connection.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>EphemeralNamedRelation <parameter>enr</parameter></literal></term>
+    <listitem>
+     <para>
+      the ephemeral named relation registry entry
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   If the execution of the command was successful then the following
+   (nonnegative) value will be returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_OK_REL_REGISTER</symbol></term>
+     <listitem>
+      <para>
+       if the relation has been successfully registered by name
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   On error, one of the following negative values is returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>enr</parameter> is <symbol>NULL</symbol> or its
+       <varname>name</varname> field is <symbol>NULL</symbol>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if called from an unconnected C function
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_REL_DUPLICATE</symbol></term>
+     <listitem>
+      <para>
+       if the name specified in the <varname>name</varname> field of
+       <parameter>enr</parameter> is already registered for this connection
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-unregister-relation">
+ <indexterm><primary>SPI_unregister_relation</primary></indexterm>
+
+ <indexterm>
+  <primary>ephemeral named relation</primary>
+  <secondary>unregistering from SPI</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_unregister_relation</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_unregister_relation</refname>
+  <refpurpose>remove an ephemeral named relation from the registry</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_unregister_relation(const char * <parameter>name</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_unregister_relation</function> removes an ephemeral named
+   relation from the registry for the current connection.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>const char * <parameter>name</parameter></literal></term>
+    <listitem>
+     <para>
+      the relation registry entry name
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   If the execution of the command was successful then the following
+   (nonnegative) value will be returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_OK_REL_UNREGISTER</symbol></term>
+     <listitem>
+      <para>
+       if the tuplestore has been successfully removed from the registry
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   On error, one of the following negative values is returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>name</parameter> is <symbol>NULL</symbol>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if called from an unconnected C function
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_REL_NOT_FOUND</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>name</parameter> is not found in the registry for the
+       current connection
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-register-trigger-data">
+ <indexterm><primary>SPI_register_trigger_data</primary></indexterm>
+
+ <indexterm>
+  <primary>ephemeral named relation</primary>
+  <secondary>registering with SPI</secondary>
+ </indexterm>
+
+ <indexterm>
+  <primary>transition tables</primary>
+  <secondary>implementation in PLs</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_register_trigger_data</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_register_trigger_data</refname>
+  <refpurpose>make ephemeral trigger data available in SPI queries</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_register_trigger_data(TriggerData *<parameter>tdata</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_register_trigger_data</function> makes any ephemeral
+   relations captured by a trigger available to queries planned and executed
+   through the current SPI connection.  Currently, this means the transition
+   tables captured by an <literal>AFTER</literal> trigger defined with a
+   <literal>REFERENCING OLD/NEW TABLE AS</literal> ... clause.  This function
+   should be called by a PL trigger handler function after connecting.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TriggerData *<parameter>tdata</parameter></literal></term>
+    <listitem>
+     <para>
+       the <structname>TriggerData</structname> object passed to a trigger
+       handler function as <literal>fcinfo->context</literal>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   If the execution of the command was successful then the following
+   (nonnegative) value will be returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_OK_TD_REGISTER</symbol></term>
+     <listitem>
+      <para>
+       if the captured trigger data (if any) has been successfully registered
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   On error, one of the following negative values is returned:
+
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>tdata</parameter> is <symbol>NULL</symbol>
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if called from an unconnected C function
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_REL_DUPLICATE</symbol></term>
+     <listitem>
+      <para>
+       if the name of any trigger data transient relation is already
+       registered for this connection
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+</sect1>
+
+<sect1 id="spi-interface-support">
+ <title>Interface Support Functions</title>
+
+ <para>
+  The functions described here provide an interface for extracting
+  information from result sets returned by <function>SPI_execute</function> and
+  other SPI functions.
+ </para>
+
+ <para>
+  All functions described in this section can be used by both
+  connected and unconnected C functions.
+ </para>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-fname">
+ <indexterm><primary>SPI_fname</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_fname</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_fname</refname>
+  <refpurpose>determine the column name for the specified column number</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+char * SPI_fname(TupleDesc <parameter>rowdesc</parameter>, int <parameter>colnumber</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_fname</function> returns a copy of the column name of the
+   specified column.  (You can use <function>pfree</function> to
+   release the copy of the name when you don't need it anymore.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>colnumber</parameter></literal></term>
+    <listitem>
+     <para>
+      column number (count starts at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The column name; <symbol>NULL</symbol> if
+   <parameter>colnumber</parameter> is out of range.
+   <varname>SPI_result</varname> set to
+   <symbol>SPI_ERROR_NOATTRIBUTE</symbol> on error.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-fnumber">
+ <indexterm><primary>SPI_fnumber</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_fnumber</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_fnumber</refname>
+  <refpurpose>determine the column number for the specified column name</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_fnumber(TupleDesc <parameter>rowdesc</parameter>, const char * <parameter>colname</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_fnumber</function> returns the column number for the
+   column with the specified name.
+  </para>
+
+  <para>
+   If <parameter>colname</parameter> refers to a system column (e.g.,
+   <literal>ctid</literal>) then the appropriate negative column number will
+   be returned.  The caller should be careful to test the return value
+   for exact equality to <symbol>SPI_ERROR_NOATTRIBUTE</symbol> to
+   detect an error; testing the result for less than or equal to 0 is
+   not correct unless system columns should be rejected.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>colname</parameter></literal></term>
+    <listitem>
+     <para>
+      column name
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Column number (count starts at 1 for user-defined columns), or
+   <symbol>SPI_ERROR_NOATTRIBUTE</symbol> if the named column was not
+   found.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-getvalue">
+ <indexterm><primary>SPI_getvalue</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getvalue</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getvalue</refname>
+  <refpurpose>return the string value of the specified column</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+char * SPI_getvalue(HeapTuple <parameter>row</parameter>, TupleDesc <parameter>rowdesc</parameter>, int <parameter>colnumber</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getvalue</function> returns the string representation
+   of the value of the specified column.
+  </para>
+
+  <para>
+   The result is returned in memory allocated using
+   <function>palloc</function>.  (You can use
+   <function>pfree</function> to release the memory when you don't
+   need it anymore.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      input row to be examined
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>colnumber</parameter></literal></term>
+    <listitem>
+     <para>
+      column number (count starts at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   Column value, or <symbol>NULL</symbol> if the column is null,
+   <parameter>colnumber</parameter> is out of range
+   (<varname>SPI_result</varname> is set to
+   <symbol>SPI_ERROR_NOATTRIBUTE</symbol>), or no output function is
+   available (<varname>SPI_result</varname> is set to
+   <symbol>SPI_ERROR_NOOUTFUNC</symbol>).
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-getbinval">
+ <indexterm><primary>SPI_getbinval</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getbinval</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getbinval</refname>
+  <refpurpose>return the binary value of the specified column</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Datum SPI_getbinval(HeapTuple <parameter>row</parameter>, TupleDesc <parameter>rowdesc</parameter>, int <parameter>colnumber</parameter>,
+                    bool * <parameter>isnull</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getbinval</function> returns the value of the
+   specified column in the internal form (as type <type>Datum</type>).
+  </para>
+
+  <para>
+   This function does not allocate new space for the datum.  In the
+   case of a pass-by-reference data type, the return value will be a
+   pointer into the passed row.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      input row to be examined
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>colnumber</parameter></literal></term>
+    <listitem>
+     <para>
+      column number (count starts at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>bool * <parameter>isnull</parameter></literal></term>
+    <listitem>
+     <para>
+      flag for a null value in the column
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The binary value of the column is returned.  The variable pointed
+   to by <parameter>isnull</parameter> is set to true if the column is
+   null, else to false.
+  </para>
+
+  <para>
+   <varname>SPI_result</varname> is set to
+   <symbol>SPI_ERROR_NOATTRIBUTE</symbol> on error.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-gettype">
+ <indexterm><primary>SPI_gettype</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_gettype</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_gettype</refname>
+  <refpurpose>return the data type name of the specified column</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+char * SPI_gettype(TupleDesc <parameter>rowdesc</parameter>, int <parameter>colnumber</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_gettype</function> returns a copy of the data type name of the
+   specified column.  (You can use <function>pfree</function> to
+   release the copy of the name when you don't need it anymore.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>colnumber</parameter></literal></term>
+    <listitem>
+     <para>
+      column number (count starts at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The data type name of the specified column, or
+   <symbol>NULL</symbol> on error.  <varname>SPI_result</varname> is
+   set to <symbol>SPI_ERROR_NOATTRIBUTE</symbol> on error.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-gettypeid">
+ <indexterm><primary>SPI_gettypeid</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_gettypeid</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_gettypeid</refname>
+  <refpurpose>return the data type <acronym>OID</acronym> of the specified column</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+Oid SPI_gettypeid(TupleDesc <parameter>rowdesc</parameter>, int <parameter>colnumber</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_gettypeid</function> returns the
+   <acronym>OID</acronym> of the data type of the specified column.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      input row description
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>colnumber</parameter></literal></term>
+    <listitem>
+     <para>
+      column number (count starts at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The <acronym>OID</acronym> of the data type of the specified column
+   or <symbol>InvalidOid</symbol> on error.  On error,
+   <varname>SPI_result</varname> is set to
+   <symbol>SPI_ERROR_NOATTRIBUTE</symbol>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-getrelname">
+ <indexterm><primary>SPI_getrelname</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getrelname</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getrelname</refname>
+  <refpurpose>return the name of the specified relation</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+char * SPI_getrelname(Relation <parameter>rel</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getrelname</function> returns a copy of the name of the
+   specified relation.  (You can use <function>pfree</function> to
+   release the copy of the name when you don't need it anymore.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Relation <parameter>rel</parameter></literal></term>
+    <listitem>
+     <para>
+      input relation
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The name of the specified relation.
+  </para>
+ </refsect1>
+</refentry>
+
+<refentry id="spi-spi-getnspname">
+ <indexterm><primary>SPI_getnspname</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_getnspname</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_getnspname</refname>
+  <refpurpose>return the namespace of the specified relation</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+char * SPI_getnspname(Relation <parameter>rel</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_getnspname</function> returns a copy of the name of
+   the namespace that the specified <structname>Relation</structname>
+   belongs to. This is equivalent to the relation's schema. You should
+   <function>pfree</function> the return value of this function when
+   you are finished with it.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Relation <parameter>rel</parameter></literal></term>
+    <listitem>
+     <para>
+      input relation
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   The name of the specified relation's namespace.
+  </para>
+ </refsect1>
+</refentry>
+
+<refentry id="spi-spi-result-code-string">
+ <indexterm><primary>SPI_result_code_string</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_result_code_string</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_result_code_string</refname>
+  <refpurpose>return error code as string</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+const char * SPI_result_code_string(int <parameter>code</parameter>);
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_result_code_string</function> returns a string representation
+   of the result code returned by various SPI functions or stored
+   in <varname>SPI_result</varname>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>int <parameter>code</parameter></literal></term>
+    <listitem>
+     <para>
+      result code
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   A string representation of the result code.
+  </para>
+ </refsect1>
+</refentry>
+
+ </sect1>
+
+ <sect1 id="spi-memory">
+  <title>Memory Management</title>
+
+  <para>
+    <indexterm>
+     <primary>memory context</primary>
+     <secondary>in SPI</secondary>
+    </indexterm>
+   <productname>PostgreSQL</productname> allocates memory within
+   <firstterm>memory contexts</firstterm>, which provide a convenient method of
+   managing allocations made in many different places that need to
+   live for differing amounts of time.  Destroying a context releases
+   all the memory that was allocated in it.  Thus, it is not necessary
+   to keep track of individual objects to avoid memory leaks; instead
+   only a relatively small number of contexts have to be managed.
+   <function>palloc</function> and related functions allocate memory
+   from the <quote>current</quote> context.
+  </para>
+
+  <para>
+   <function>SPI_connect</function> creates a new memory context and
+   makes it current.  <function>SPI_finish</function> restores the
+   previous current memory context and destroys the context created by
+   <function>SPI_connect</function>.  These actions ensure that
+   transient memory allocations made inside your C function are
+   reclaimed at C function exit, avoiding memory leakage.
+  </para>
+
+  <para>
+   However, if your C function needs to return an object in allocated
+   memory (such as a value of a pass-by-reference data type), you
+   cannot allocate that memory using <function>palloc</function>, at
+   least not while you are connected to SPI.  If you try, the object
+   will be deallocated by <function>SPI_finish</function>, and your
+   C function will not work reliably.  To solve this problem, use
+   <function>SPI_palloc</function> to allocate memory for your return
+   object.  <function>SPI_palloc</function> allocates memory in the
+   <quote>upper executor context</quote>, that is, the memory context
+   that was current when <function>SPI_connect</function> was called,
+   which is precisely the right context for a value returned from your
+   C function.  Several of the other utility functions described in
+   this section also return objects created in the upper executor context.
+  </para>
+
+  <para>
+   When <function>SPI_connect</function> is called, the private
+   context of the C function, which is created by
+   <function>SPI_connect</function>, is made the current context.  All
+   allocations made by <function>palloc</function>,
+   <function>repalloc</function>, or SPI utility functions (except as
+   described in this section) are made in this context.  When a
+   C function disconnects from the SPI manager (via
+   <function>SPI_finish</function>) the current context is restored to
+   the upper executor context, and all allocations made in the
+   C function memory context are freed and cannot be used any more.
+  </para>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-palloc">
+ <indexterm><primary>SPI_palloc</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_palloc</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_palloc</refname>
+  <refpurpose>allocate memory in the upper executor context</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void * SPI_palloc(Size <parameter>size</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_palloc</function> allocates memory in the upper
+   executor context.
+  </para>
+
+  <para>
+   This function can only be used while connected to SPI.
+   Otherwise, it throws an error.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Size <parameter>size</parameter></literal></term>
+    <listitem>
+     <para>
+      size in bytes of storage to allocate
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   pointer to new storage space of the specified size
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-realloc">
+ <indexterm><primary>SPI_repalloc</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_repalloc</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_repalloc</refname>
+  <refpurpose>reallocate memory in the upper executor context</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void * SPI_repalloc(void * <parameter>pointer</parameter>, Size <parameter>size</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_repalloc</function> changes the size of a memory
+   segment previously allocated using <function>SPI_palloc</function>.
+  </para>
+
+  <para>
+   This function is no longer different from plain
+   <function>repalloc</function>.  It's kept just for backward
+   compatibility of existing code.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>void * <parameter>pointer</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to existing storage to change
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Size <parameter>size</parameter></literal></term>
+    <listitem>
+     <para>
+      size in bytes of storage to allocate
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   pointer to new storage space of specified size with the contents
+   copied from the existing area
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-pfree">
+ <indexterm><primary>SPI_pfree</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_pfree</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_pfree</refname>
+  <refpurpose>free memory in the upper executor context</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_pfree(void * <parameter>pointer</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_pfree</function> frees memory previously allocated
+   using <function>SPI_palloc</function> or
+   <function>SPI_repalloc</function>.
+  </para>
+
+  <para>
+   This function is no longer different from plain
+   <function>pfree</function>.  It's kept just for backward
+   compatibility of existing code.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>void * <parameter>pointer</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to existing storage to free
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-copytuple">
+ <indexterm><primary>SPI_copytuple</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_copytuple</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_copytuple</refname>
+  <refpurpose>make a copy of a row in the upper executor context</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+HeapTuple SPI_copytuple(HeapTuple <parameter>row</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_copytuple</function> makes a copy of a row in the
+   upper executor context.  This is normally used to return a modified
+   row from a trigger.  In a function declared to return a composite
+   type, use <function>SPI_returntuple</function> instead.
+  </para>
+
+  <para>
+   This function can only be used while connected to SPI.
+   Otherwise, it returns NULL and sets <varname>SPI_result</varname> to
+   <symbol>SPI_ERROR_UNCONNECTED</symbol>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      row to be copied
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   the copied row, or <symbol>NULL</symbol> on error
+   (see <varname>SPI_result</varname> for an error indication)
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-returntuple">
+ <indexterm><primary>SPI_returntuple</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_returntuple</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_returntuple</refname>
+  <refpurpose>prepare to return a tuple as a Datum</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+HeapTupleHeader SPI_returntuple(HeapTuple <parameter>row</parameter>, TupleDesc <parameter>rowdesc</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_returntuple</function> makes a copy of a row in
+   the upper executor context, returning it in the form of a row type <type>Datum</type>.
+   The returned pointer need only be converted to <type>Datum</type> via <function>PointerGetDatum</function>
+   before returning.
+  </para>
+
+  <para>
+   This function can only be used while connected to SPI.
+   Otherwise, it returns NULL and sets <varname>SPI_result</varname> to
+   <symbol>SPI_ERROR_UNCONNECTED</symbol>.
+  </para>
+
+  <para>
+   Note that this should be used for functions that are declared to return
+   composite types.  It is not used for triggers; use
+   <function>SPI_copytuple</function> for returning a modified row in a trigger.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      row to be copied
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TupleDesc <parameter>rowdesc</parameter></literal></term>
+    <listitem>
+     <para>
+      descriptor for row (pass the same descriptor each time for most
+      effective caching)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   <type>HeapTupleHeader</type> pointing to copied row,
+   or <symbol>NULL</symbol> on error
+   (see <varname>SPI_result</varname> for an error indication)
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-modifytuple">
+ <indexterm><primary>SPI_modifytuple</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_modifytuple</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_modifytuple</refname>
+  <refpurpose>create a row by replacing selected fields of a given row</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+HeapTuple SPI_modifytuple(Relation <parameter>rel</parameter>, HeapTuple <parameter>row</parameter>, int <parameter>ncols</parameter>,
+                          int * <parameter>colnum</parameter>, Datum * <parameter>values</parameter>, const char * <parameter>nulls</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_modifytuple</function> creates a new row by
+   substituting new values for selected columns, copying the original
+   row's columns at other positions.  The input row is not modified.
+   The new row is returned in the upper executor context.
+  </para>
+
+  <para>
+   This function can only be used while connected to SPI.
+   Otherwise, it returns NULL and sets <varname>SPI_result</varname> to
+   <symbol>SPI_ERROR_UNCONNECTED</symbol>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>Relation <parameter>rel</parameter></literal></term>
+    <listitem>
+     <para>
+      Used only as the source of the row descriptor for the row.
+      (Passing a relation rather than a row descriptor is a
+      misfeature.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      row to be modified
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int <parameter>ncols</parameter></literal></term>
+    <listitem>
+     <para>
+      number of columns to be changed
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>int * <parameter>colnum</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>ncols</parameter>, containing the numbers
+      of the columns that are to be changed (column numbers start at 1)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>Datum * <parameter>values</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>ncols</parameter>, containing the
+      new values for the specified columns
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>const char * <parameter>nulls</parameter></literal></term>
+    <listitem>
+     <para>
+      an array of length <parameter>ncols</parameter>, describing which
+      new values are null
+     </para>
+
+     <para>
+      If <parameter>nulls</parameter> is <symbol>NULL</symbol> then
+      <function>SPI_modifytuple</function> assumes that no new values
+      are null.  Otherwise, each entry of the <parameter>nulls</parameter>
+      array should be <literal>'&nbsp;'</literal> if the corresponding new value is
+      non-null, or <literal>'n'</literal> if the corresponding new value is
+      null.  (In the latter case, the actual value in the corresponding
+      <parameter>values</parameter> entry doesn't matter.)  Note that
+      <parameter>nulls</parameter> is not a text string, just an array: it
+      does not need a <literal>'\0'</literal> terminator.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   new row with modifications, allocated in the upper executor
+   context, or <symbol>NULL</symbol> on error
+   (see <varname>SPI_result</varname> for an error indication)
+  </para>
+
+  <para>
+   On error, <varname>SPI_result</varname> is set as follows:
+   <variablelist>
+    <varlistentry>
+     <term><symbol>SPI_ERROR_ARGUMENT</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>rel</parameter> is <symbol>NULL</symbol>, or if
+       <parameter>row</parameter> is <symbol>NULL</symbol>, or if <parameter>ncols</parameter>
+       is less than or equal to 0, or if <parameter>colnum</parameter> is
+       <symbol>NULL</symbol>, or if <parameter>values</parameter> is <symbol>NULL</symbol>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_NOATTRIBUTE</symbol></term>
+     <listitem>
+      <para>
+       if <parameter>colnum</parameter> contains an invalid column number (less
+       than or equal to 0 or greater than the number of columns in
+       <parameter>row</parameter>)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SPI_ERROR_UNCONNECTED</symbol></term>
+     <listitem>
+      <para>
+       if SPI is not active
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-freetuple">
+ <indexterm><primary>SPI_freetuple</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_freetuple</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_freetuple</refname>
+  <refpurpose>free a row allocated in the upper executor context</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_freetuple(HeapTuple <parameter>row</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_freetuple</function> frees a row previously allocated
+   in the upper executor context.
+  </para>
+
+  <para>
+   This function is no longer different from plain
+   <function>heap_freetuple</function>.  It's kept just for backward
+   compatibility of existing code.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>HeapTuple <parameter>row</parameter></literal></term>
+    <listitem>
+     <para>
+      row to free
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-freetupletable">
+ <indexterm><primary>SPI_freetuptable</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_freetuptable</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_freetuptable</refname>
+  <refpurpose>free a row set created by <function>SPI_execute</function> or a similar
+  function</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_freetuptable(SPITupleTable * <parameter>tuptable</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_freetuptable</function> frees a row set created by a
+   prior SPI command execution function, such as
+   <function>SPI_execute</function>.  Therefore, this function is often called
+   with the global variable <varname>SPI_tuptable</varname> as
+   argument.
+  </para>
+
+  <para>
+   This function is useful if an SPI-using C function needs to execute
+   multiple commands and does not want to keep the results of earlier
+   commands around until it ends.  Note that any unfreed row sets will
+   be freed anyway at <function>SPI_finish</function>.
+   Also, if a subtransaction is started and then aborted within execution
+   of an SPI-using C function, SPI automatically frees any row sets created while
+   the subtransaction was running.
+  </para>
+
+  <para>
+   Beginning in <productname>PostgreSQL</productname> 9.3,
+   <function>SPI_freetuptable</function> contains guard logic to protect
+   against duplicate deletion requests for the same row set.  In previous
+   releases, duplicate deletions would lead to crashes.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPITupleTable * <parameter>tuptable</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to row set to free, or NULL to do nothing
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-freeplan">
+ <indexterm><primary>SPI_freeplan</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_freeplan</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_freeplan</refname>
+  <refpurpose>free a previously saved prepared statement</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+int SPI_freeplan(SPIPlanPtr <parameter>plan</parameter>)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_freeplan</function> releases a prepared statement
+   previously returned by <function>SPI_prepare</function> or saved by
+   <function>SPI_keepplan</function> or <function>SPI_saveplan</function>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Arguments</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>SPIPlanPtr <parameter>plan</parameter></literal></term>
+    <listitem>
+     <para>
+      pointer to statement to free
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Return Value</title>
+
+  <para>
+   0 on success;
+   <symbol>SPI_ERROR_ARGUMENT</symbol> if <parameter>plan</parameter>
+   is <symbol>NULL</symbol> or invalid
+  </para>
+ </refsect1>
+</refentry>
+
+ </sect1>
+
+ <sect1 id="spi-transaction">
+  <title>Transaction Management</title>
+
+  <para>
+   It is not possible to run transaction control commands such
+   as <command>COMMIT</command> and <command>ROLLBACK</command> through SPI
+   functions such as <function>SPI_execute</function>.  There are, however,
+   separate interface functions that allow transaction control through SPI.
+  </para>
+
+  <para>
+   It is not generally safe and sensible to start and end transactions in
+   arbitrary user-defined SQL-callable functions without taking into account
+   the context in which they are called.  For example, a transaction boundary
+   in the middle of a function that is part of a complex SQL expression that
+   is part of some SQL command will probably result in obscure internal errors
+   or crashes.  The interface functions presented here are primarily intended
+   to be used by procedural language implementations to support transaction
+   management in SQL-level procedures that are invoked by the <command>CALL</command>
+   command, taking the context of the <command>CALL</command> invocation into
+   account.  SPI-using procedures implemented in C can implement the same logic, but
+   the details of that are beyond the scope of this documentation.
+  </para>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-commit">
+ <indexterm><primary>SPI_commit</primary></indexterm>
+ <indexterm><primary>SPI_commit_and_chain</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_commit</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_commit</refname>
+  <refname>SPI_commit_and_chain</refname>
+  <refpurpose>commit the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_commit(void)
+</synopsis>
+
+<synopsis>
+void SPI_commit_and_chain(void)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_commit</function> commits the current transaction.  It is
+   approximately equivalent to running the SQL
+   command <command>COMMIT</command>.  After the transaction is committed, a
+   new transaction is automatically started using default transaction
+   characteristics, so that the caller can continue using SPI facilities.
+   If there is a failure during commit, the current transaction is instead
+   rolled back and a new transaction is started, after which the error is
+   thrown in the usual way.
+  </para>
+
+  <para>
+   <function>SPI_commit_and_chain</function> is the same, but the new
+   transaction is started with the same transaction
+   characteristics as the just finished one, like with the SQL command
+   <command>COMMIT AND CHAIN</command>.
+  </para>
+
+  <para>
+   These functions can only be executed if the SPI connection has been set as
+   nonatomic in the call to <function>SPI_connect_ext</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-rollback">
+ <indexterm><primary>SPI_rollback</primary></indexterm>
+ <indexterm><primary>SPI_rollback_and_chain</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_rollback</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_rollback</refname>
+  <refname>SPI_rollback_and_chain</refname>
+  <refpurpose>abort the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_rollback(void)
+</synopsis>
+
+<synopsis>
+void SPI_rollback_and_chain(void)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_rollback</function> rolls back the current transaction.  It
+   is approximately equivalent to running the SQL
+   command <command>ROLLBACK</command>.  After the transaction is rolled back,
+   a new transaction is automatically started using default transaction
+   characteristics, so that the caller can continue using SPI facilities.
+  </para>
+  <para>
+   <function>SPI_rollback_and_chain</function> is the same, but the new
+   transaction is started with the same transaction
+   characteristics as the just finished one, like with the SQL command
+   <command>ROLLBACK AND CHAIN</command>.
+  </para>
+
+  <para>
+   These functions can only be executed if the SPI connection has been set as
+   nonatomic in the call to <function>SPI_connect_ext</function>.
+  </para>
+ </refsect1>
+</refentry>
+
+<!-- *********************************************** -->
+
+<refentry id="spi-spi-start-transaction">
+ <indexterm><primary>SPI_start_transaction</primary></indexterm>
+
+ <refmeta>
+  <refentrytitle>SPI_start_transaction</refentrytitle>
+  <manvolnum>3</manvolnum>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SPI_start_transaction</refname>
+  <refpurpose>obsolete function</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+void SPI_start_transaction(void)
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <function>SPI_start_transaction</function> does nothing, and exists
+   only for code compatibility with
+   earlier <productname>PostgreSQL</productname> releases.  It used to
+   be required after calling <function>SPI_commit</function>
+   or <function>SPI_rollback</function>, but now those functions start
+   a new transaction automatically.
+  </para>
+ </refsect1>
+</refentry>
+
+ </sect1>
+
+ <sect1 id="spi-visibility">
+  <title>Visibility of Data Changes</title>
+
+  <para>
+   The following rules govern the visibility of data changes in
+   functions that use SPI (or any other C function):
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      During the execution of an SQL command, any data changes made by
+      the command are invisible to the command itself.  For
+      example, in:
+<programlisting>
+INSERT INTO a SELECT * FROM a;
+</programlisting>
+      the inserted rows are invisible to the <command>SELECT</command>
+      part.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Changes made by a command C are visible to all commands that are
+      started after C, no matter whether they are started inside C
+      (during the execution of C) or after C is done.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Commands executed via SPI inside a function called by an SQL command
+      (either an ordinary function or a trigger) follow one or the
+      other of the above rules depending on the read/write flag passed
+      to SPI.  Commands executed in read-only mode follow the first
+      rule: they cannot see changes of the calling command.  Commands executed
+      in read-write mode follow the second rule: they can see all changes made
+      so far.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      All standard procedural languages set the SPI read-write mode
+      depending on the volatility attribute of the function.  Commands of
+      <literal>STABLE</literal> and <literal>IMMUTABLE</literal> functions are done in
+      read-only mode, while commands of <literal>VOLATILE</literal> functions are
+      done in read-write mode.  While authors of C functions are able to
+      violate this convention, it's unlikely to be a good idea to do so.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   The next section contains an example that illustrates the
+   application of these rules.
+  </para>
+ </sect1>
+
+ <sect1 id="spi-examples">
+  <title>Examples</title>
+
+  <para>
+   This section contains a very simple example of SPI usage. The
+   C function <function>execq</function> takes an SQL command as its
+   first argument and a row count as its second, executes the command
+   using <function>SPI_exec</function> and returns the number of rows
+   that were processed by the command.  You can find more complex
+   examples for SPI in the source tree in
+   <filename>src/test/regress/regress.c</filename> and in the
+   <xref linkend="contrib-spi"/> module.
+  </para>
+
+<programlisting>
+#include "postgres.h"
+
+#include "executor/spi.h"
+#include "utils/builtins.h"
+
+PG_MODULE_MAGIC;
+
+PG_FUNCTION_INFO_V1(execq);
+
+Datum
+execq(PG_FUNCTION_ARGS)
+{
+    char *command;
+    int cnt;
+    int ret;
+    uint64 proc;
+
+    /* Convert given text object to a C string */
+    command = text_to_cstring(PG_GETARG_TEXT_PP(0));
+    cnt = PG_GETARG_INT32(1);
+
+    SPI_connect();
+
+    ret = SPI_exec(command, cnt);
+
+    proc = SPI_processed;
+
+    /*
+     * If some rows were fetched, print them via elog(INFO).
+     */
+    if (ret &gt; 0 &amp;&amp; SPI_tuptable != NULL)
+    {
+        SPITupleTable *tuptable = SPI_tuptable;
+        TupleDesc tupdesc = tuptable-&gt;tupdesc;
+        char buf[8192];
+        uint64 j;
+
+        for (j = 0; j &lt; tuptable-&gt;numvals; j++)
+        {
+            HeapTuple tuple = tuptable-&gt;vals[j];
+            int i;
+
+            for (i = 1, buf[0] = 0; i &lt;= tupdesc-&gt;natts; i++)
+                snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), " %s%s",
+                        SPI_getvalue(tuple, tupdesc, i),
+                        (i == tupdesc-&gt;natts) ? " " : " |");
+            elog(INFO, "EXECQ: %s", buf);
+        }
+    }
+
+    SPI_finish();
+    pfree(command);
+
+    PG_RETURN_INT64(proc);
+}
+</programlisting>
+
+  <para>
+   This is how you declare the function after having compiled it into
+   a shared library (details are in <xref linkend="dfunc"/>.):
+
+<programlisting>
+CREATE FUNCTION execq(text, integer) RETURNS int8
+    AS '<replaceable>filename</replaceable>'
+    LANGUAGE C STRICT;
+</programlisting>
+  </para>
+
+  <para>
+   Here is a sample session:
+
+<programlisting>
+=&gt; SELECT execq('CREATE TABLE a (x integer)', 0);
+ execq
+-------
+     0
+(1 row)
+
+=&gt; INSERT INTO a VALUES (execq('INSERT INTO a VALUES (0)', 0));
+INSERT 0 1
+=&gt; SELECT execq('SELECT * FROM a', 0);
+INFO:  EXECQ:  0    -- inserted by execq
+INFO:  EXECQ:  1    -- returned by execq and inserted by upper INSERT
+
+ execq
+-------
+     2
+(1 row)
+
+=&gt; SELECT execq('INSERT INTO a SELECT x + 2 FROM a', 1);
+ execq
+-------
+     1
+(1 row)
+
+=&gt; SELECT execq('SELECT * FROM a', 10);
+INFO:  EXECQ:  0
+INFO:  EXECQ:  1
+INFO:  EXECQ:  2    -- 0 + 2, only one row inserted - as specified
+
+ execq
+-------
+     3              -- 10 is the max value only, 3 is the real number of rows
+(1 row)
+
+=&gt; DELETE FROM a;
+DELETE 3
+=&gt; INSERT INTO a VALUES (execq('SELECT * FROM a', 0) + 1);
+INSERT 0 1
+=&gt; SELECT * FROM a;
+ x
+---
+ 1                  -- no rows in a (0) + 1
+(1 row)
+
+=&gt; INSERT INTO a VALUES (execq('SELECT * FROM a', 0) + 1);
+INFO:  EXECQ:  1
+INSERT 0 1
+=&gt; SELECT * FROM a;
+ x
+---
+ 1
+ 2                  -- there was one row in a + 1
+(2 rows)
+
+-- This demonstrates the data changes visibility rule:
+
+=&gt; INSERT INTO a SELECT execq('SELECT * FROM a', 0) * x FROM a;
+INFO:  EXECQ:  1
+INFO:  EXECQ:  2
+INFO:  EXECQ:  1
+INFO:  EXECQ:  2
+INFO:  EXECQ:  2
+INSERT 0 2
+=&gt; SELECT * FROM a;
+ x
+---
+ 1
+ 2
+ 2                  -- 2 rows * 1 (x in first row)
+ 6                  -- 3 rows (2 + 1 just inserted) * 2 (x in second row)
+(4 rows)               ^^^^^^
+                       rows visible to execq() in different invocations
+</programlisting>
+  </para>
+ </sect1>
+</chapter>

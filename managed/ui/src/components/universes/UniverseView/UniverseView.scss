@@ -1,0 +1,546 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
+
+.universe-action-bar {
+  display: flex;
+
+  .search-bar-container {
+    width: 100%;
+    .search-bar {
+      border-radius: 8px;
+    }
+    .autocomplete-wrapper {
+      background: colors.$YB_WHITE;
+      z-index: 700;
+      border: 1px solid colors.$YB_GRAY_BORDER;
+      position: relative;
+      width: 200px;
+
+      ul {
+        position: absolute;
+        padding: 0;
+        margin: 5px 0;
+        background-color: colors.$YB_WHITE;
+        box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+          0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+        li {
+          padding: 5px 15px;
+          cursor: pointer;
+        }
+        li.active,
+        li:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+      }
+    }
+  }
+  .universe-button {
+    width: auto;
+    font-size: 14px;
+
+    padding-top: 12px;
+    padding-bottom: 12px;
+    &.btn-orange {
+      margin-left: 15px;
+    }
+
+    .fa-mail-forward {
+      transform: rotate(90deg) translateX(3px);
+    }
+  }
+}
+
+.universes-stats-container {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: 100%;
+  height: 100px;
+  margin: 15px 0 15px 0;
+  padding: 0 50px 0 50px;
+  background-color: colors.$YB_WHITE;
+  border: 1px solid colors.$YB_GRAY_BORDER;
+  border-radius: 8px;
+  .yb-resource-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    .yb-resource-count-size {
+      display: flex;
+      font-size: x-large;
+      .yb-resource-count-size-prefix {
+        font-size: small;
+        line-height: normal;
+        margin: 2px 2px 0 0;
+      }
+    }
+    .yb-resource-separator-line {
+      height: 1px;
+      width: 50%;
+      margin: 5px 0 5px 0;
+      background-color: colors.$YB_DARK_GRAY;
+    }
+    .yb-resource-count-kind {
+      .fa {
+        margin-right: 5px;
+      }
+    }
+  }
+}
+
+.list-group {
+  margin-bottom: 0;
+  margin-top: 20px;
+}
+
+.universe-list-item {
+  background-color: white;
+  border-radius: 8px !important;
+  border: none;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  color: colors.$YB_TEXT_COLOR;
+  @include mixins.transition(0.125s);
+  .list-group-item {
+    border: none;
+  }
+}
+
+.universe-name-cell {
+  font-size: 18px;
+  font-weight: 500;
+  color: colors.$YB_VIOLET_TEXT !important;
+  padding: 17px 0 0 0;
+  @include mixins.transition(0.35s);
+}
+a:hover .universe-name-cell {
+  color: colors.$YB_ORANGE !important;
+  @include mixins.transition(0.125s);
+}
+
+.universe-list-item-detail {
+  border-top: 1px solid colors.$YB_GRAY_HOVER;
+  padding: 10px 15px;
+  margin: 0;
+}
+
+.universe-list-item {
+  margin: 0;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  padding: 0;
+  line-height: 1.3;
+}
+
+.universe-list-item:last-child {
+  margin-bottom: 0px;
+}
+
+.universe-list-item-name-status {
+  padding-left: 15px;
+  padding-right: 15px;
+  padding-bottom: 20px;
+  @media (min-width: 768px) {
+    height: 60px;
+    padding-bottom: 0px;
+  }
+}
+.universe-list-flex {
+  display: flex;
+  width: 100%;
+  flex-flow: row wrap;
+  justify-content: space-between;
+
+  & > *:first-child {
+    flex: 1 auto;
+  }
+  & > *:last-child {
+    flex: 0 0 300px;
+  }
+}
+
+.detail-item-cell {
+  border-right: 1px solid grey;
+  height: 70px;
+}
+
+.cell-num-nodes {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0;
+}
+.cell-num-regions {
+  padding: 0;
+}
+
+.cell-multi-az {
+  font-size: 14px;
+  padding-left: 4px;
+}
+
+.cell-provider-name {
+  font-size: 14px;
+}
+
+.chartjs-hidden-iframe {
+  overflow: visible !important;
+}
+
+.cell-cost {
+  text-align: right;
+}
+
+.cell-cost-value {
+  padding-top: 6px;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.cell-position-detail {
+  margin: 5px 0;
+  font-weight: 500;
+  > *:last-child {
+    margin: 0 -15px;
+  }
+}
+
+.list-universe-status-container {
+  .universe-status {
+    float: right;
+    line-height: 60px;
+    margin-left: 0;
+    display: flex;
+  }
+}
+
+.list-universe-status-container .pending {
+  float: none;
+
+  .progress {
+    width: 100%;
+  }
+}
+
+.status-success-container {
+  color: colors.$YB_SUCCESS_COLOR;
+  float: right;
+  padding-top: 6px;
+}
+
+.status-success-item {
+  width: 26px;
+  border-radius: 50%;
+  height: 26px;
+  padding: 0;
+  color: white;
+  background-color: colors.$YB_SUCCESS_COLOR;
+  display: inline-block;
+  margin-right: 6px;
+
+  i {
+    line-height: 26px;
+    margin-left: 3px;
+    font-size: 18px;
+  }
+}
+
+.status-success-label {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.status-failure-container {
+  float: right;
+  margin-top: 6px;
+}
+
+.status-failure-item {
+  display: inline-block;
+  color: colors.$YB_FAIL_COLOR;
+
+  i {
+    padding: 0;
+    width: 50%;
+    margin: 0 0 0 -2px;
+    font-weight: 500;
+    font-size: 18px;
+    line-height: 26px;
+  }
+}
+
+.status-failure-name {
+  display: inline-block;
+  color: colors.$YB_FAIL_COLOR;
+  font-size: 15px;
+  font-weight: 500;
+  padding-left: 6px;
+}
+
+.status-pending-display-container {
+  .fa-spin {
+    font-weight: 500;
+    font-size: 18px;
+  }
+}
+
+.status-pending-name {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 500;
+  padding-left: 6px;
+}
+
+.pending-action-progress {
+  display: block;
+}
+
+.status-pending-progress-container .progress-bar {
+  background-color: colors.$YB_ORANGE;
+}
+
+.status-pending {
+  float: right;
+}
+
+.cell-chart-container {
+  padding: 1px 0;
+  margin-left: -35px;
+}
+
+.cell-read-write {
+  padding-top: 4px;
+  max-width: 250px;
+  @media (min-width: 992px) {
+    margin-left: -35px;
+  }
+}
+.cell-read-write-row {
+  margin: 5px 0;
+  white-space: nowrap;
+}
+
+.cell-read-write-value {
+  position: relative;
+  float: right;
+  top: -2px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.legend-square {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+}
+
+.read-color {
+  background-color: #4477dd;
+}
+.write-color {
+  background-color: #cd6500;
+}
+
+.metric-label-type {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.label-type-identifier {
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.metric-value-label {
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.inline-flex {
+  display: inline-flex;
+}
+
+.mr-5 {
+  margin-right: 40px;
+}
+
+.universe-create-version-container,
+.universe-create-date-container {
+  font-weight: 300;
+  color: colors.$YB_TEXT_COLOR;
+  font-size: 12px;
+  padding-top: 14px;
+  div {
+    font-weight: 500;
+    font-size: 12px;
+    opacity: 0.5;
+    color: colors.$YB_DARK_GRAY;
+  }
+}
+
+.universe-view-toolbar-container {
+  display: flex;
+
+  margin-top: 15px;
+  .form-group {
+    .form-item-label {
+      margin-bottom: 0;
+    }
+    .yb-field-group {
+      margin-right: 15px;
+      padding-bottom: 0;
+      .form-control {
+        width: auto;
+      }
+    }
+  }
+  .universe-status-filter {
+    // Hidden for now due to a width styling issue with react-select and portal on chrome browser
+    // - Issue is not seen on portal with firefox, nor on localhost (firefox + chrome)
+    // - JIRA: https://yugabyte.atlassian.net/browse/PLAT-2269
+    display: none;
+
+    .YBMultiValue {
+      animation-duration: 0.3s;
+      animation-name: slidein;
+    }
+    @keyframes slidein {
+      from {
+        width: 0%;
+      }
+
+      to {
+        width: 100%;
+      }
+    }
+  }
+
+  .view-toggle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    .fa {
+      color: colors.$YB_DARK_GRAY_2;
+    }
+    padding: 12px;
+  }
+}
+
+.universe-view-data-container {
+  margin-top: 5px;
+  h5 {
+    text-align: center;
+  }
+  .list-group {
+    margin-top: 0px;
+  }
+  .list-pagination-control {
+    display: flex;
+    .form-control {
+      margin-top: 20px;
+      width: auto;
+    }
+    .universe-list-pagination {
+      margin-left: auto;
+    }
+  }
+}
+
+.universe-table {
+  position: relative;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  border: none;
+  background-color: #fff;
+  padding: 20px 25px 25px 25px;
+  border-radius: 8px;
+  &.body-transparent {
+    padding: 0;
+    background-color: transparent;
+    box-shadow: none;
+  }
+  margin: 0 0 0 auto;
+  .react-bs-table {
+    overflow: inherit !important;
+
+    table {
+      th {
+        padding-right: 32px;
+      }
+      td {
+        padding-right: 32px;
+        .universe-cost-cell {
+          display: flex;
+          justify-content: flex-end;
+          padding-right: 68px;
+        }
+        .universe-status-cell {
+          display: flex;
+          font-weight: 500;
+          align-items: flex-start;
+          justify-content: space-between;
+          overflow: unset;
+          .yb-loader-circle {
+            margin: 5px 5px 0 0;
+            width: 10px;
+            height: 10px;
+            position: relative;
+          }
+          .fa {
+            padding: 3px 3px 0 0;
+          }
+          &.good {
+            color: colors.$YB_SUCCESS_COLOR;
+          }
+          &.paused {
+            color: colors.$YB_WARNING_COLOR;
+          }
+          &.pending {
+            color: colors.$YB_PENDING_COLOR;
+          }
+          &.bad {
+            color: colors.$YB_FAIL_COLOR;
+          }
+          &.warning {
+            color: colors.$YB_WARNING_COLOR;
+          }
+          &.unknown {
+            color: colors.$YB_PENDING_COLOR;
+          }
+          & > div {
+            display: flex;
+          }
+        }
+      }
+      .universe-action-column {
+        overflow: inherit !important;
+        * {
+          overflow: inherit !important;
+        }
+        padding: 6px 0 6px 0 !important;
+
+        .btn {
+          border: none;
+          padding: 6px 12px 6px 12px;
+          background-color: transparent;
+        }
+        .btn:hover {
+          background-color: colors.$YB_GRAY_HOVER;
+        }
+      }
+    }
+    tbody {
+      a {
+        color: colors.$YB_VIOLET_TEXT;
+        @include mixins.transition(0.125s);
+      }
+      a:hover {
+        color: colors.$YB_ORANGE;
+        @include mixins.transition(0.125s);
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.consensus;
+
+option java_package = "org.yb.consensus";
+
+import "yb/common/wire_protocol.proto";
+
+enum ChangeConfigType {
+  UNKNOWN_CHANGE = 0;
+  ADD_SERVER = 1;
+  REMOVE_SERVER = 2;
+  CHANGE_ROLE = 3;
+}
+
+enum OpIdType {
+  UNKNOWN_OPID_TYPE = 0;
+  RECEIVED_OPID = 1;
+  COMMITTED_OPID = 2;
+}
+
+enum LeaderLeaseStatus {
+  HAS_LEASE = 0;
+  OLD_LEADER_MAY_HAVE_LEASE = 1;
+  NO_MAJORITY_REPLICATED_LEASE = 2;
+}
+
+// The types of operations that need a commit message, i.e. those that require
+// at least one round of the consensus algorithm.
+enum OperationType {
+  UNKNOWN_OP = 0;
+  NO_OP = 1;
+  WRITE_OP = 3;
+  CHANGE_METADATA_OP = 4;
+  CHANGE_CONFIG_OP = 5;
+  UPDATE_TRANSACTION_OP = 6;
+  SNAPSHOT_OP = 7;
+  TRUNCATE_OP = 8;
+  HISTORY_CUTOFF_OP = 9;
+  SPLIT_OP = 10;
+  CHANGE_AUTO_FLAGS_CONFIG_OP = 11;
+  CLONE_OP = 12;
+}
+
+// Consensus-specific errors use this protobuf
+message ConsensusErrorPB {
+  // The codes for consensus responses. These are set in the status when
+  // some consensus internal error occurs and require special handling
+  // by the caller. A generic error code is purposefully absent since
+  // generic errors should use tserver.TabletServerErrorPB.
+  enum Code {
+    UNKNOWN = 0;
+
+    // Invalid term.
+    // Sent by peers in response to leader RPCs whenever the term
+    // of one of the messages sent in a batch is lower than the
+    // the term the peer is expecting.
+    INVALID_TERM = 2;
+
+    // For leader election.
+    // The last OpId logged by the candidate is older than the last OpId logged
+    // by the local peer.
+    LAST_OPID_TOO_OLD = 3;
+
+    // For leader election.
+    // The local replica has already voted for another candidate in this term.
+    ALREADY_VOTED = 4;
+
+    // The replica does not recognize the caller's request as coming from a
+    // member of the configuration.
+    NOT_IN_QUORUM = 5;
+
+    // The responder's last entry didn't match the caller's preceding entry.
+    PRECEDING_ENTRY_DIDNT_MATCH = 6;
+
+    // The local replica is either a leader, or has heard from a valid leader
+    // more recently than the election timeout, so believes the leader to be alive.
+    LEADER_IS_ALIVE = 7;
+
+    // The local replica is in the middle of servicing either another vote
+    // or an update from a valid leader.
+    CONSENSUS_BUSY = 8;
+
+    // The local replica was unable to prepare a single transaction.
+    CANNOT_PREPARE = 9;
+
+    // Split operation has been added to this Raft group log.
+    TABLET_SPLIT = 10;
+  }
+
+  // The error code.
+  required Code code = 1;
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  required AppStatusPB status = 2;
+}

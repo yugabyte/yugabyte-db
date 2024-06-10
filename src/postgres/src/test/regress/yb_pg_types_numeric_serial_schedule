@@ -1,0 +1,18 @@
+# src/test/regress/yb_pg_type_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This suite includes all tests on numeric datatypes that are enabled for YugaByte.
+####################################################################################################
+# Dependency for yb_pg_int2, yb_pg_int4, yb_pg_int8, yb_pg_float8.
+test: yb_pg_test_setup
+
+test: yb_oid
+test: yb_pg_int2
+test: yb_pg_int4
+test: yb_pg_int8
+test: yb_pg_float4
+test: yb_pg_float8
+test: yb_pg_numeric
+test: yb_pg_numeric_big
+test: yb_pg_money

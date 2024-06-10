@@ -1,0 +1,158 @@
+.td-content {
+  p {
+    margin: 0 0 24px 0;
+
+    + div:has(iframe) {
+      margin: 20px 0;
+    }
+
+    + .admonition + p {
+      margin-top: 24px;
+    }
+  }
+
+  h1[id],
+  h2[id],
+  h3[id],
+  h4[id],
+  h5[id] {
+    &::before {
+      height: 7.5rem;
+      margin-top: -7.5rem;
+    }
+
+    > a[aria-hidden] {
+      &::after {
+        content: "";
+        background: url(/icons/heading-link.svg) center no-repeat;
+        height: 15px;
+        width: 15px;
+        display: inline-block;
+      }
+
+      svg {
+        display: none;
+      }
+    }
+  }
+
+  h1,
+  .h1,
+  h2,
+  .h2,
+  h3,
+  .h3,
+  h4,
+  .h4,
+  h5,
+  .h5,
+  h6,
+  .h6 {
+    color: $yb-font-dark;
+
+    a:not([aria-hidden],[class]) {
+      color: #507ce1;
+
+      &:hover {
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+    }
+
+    &:not(:first-child) {
+      margin: 64px 0 24px 0;
+      margin: 72px 0 16px 0;
+    }
+  }
+
+  h1,
+  .h1 {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 42px;
+    margin-bottom: 16px;
+    word-break: break-word;
+
+    & + p {
+      font-size: 20px;
+      font-weight: 400;
+      line-height: 28px;
+      color: $yb-font-darkgray;
+    }
+
+    & + {
+      .lead {
+        font-size: 20px;
+        font-weight: 400;
+        line-height: 28px;
+        color: $yb-font-gray;
+        margin-bottom: 0;
+      }
+    }
+  }
+
+  h2,
+  .h2 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 32px;
+    margin-bottom: 16px;
+    color: $yb-font-dark;
+
+    & + {
+      .lead {
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 24px;
+        color: $yb-font-gray;
+      }
+    }
+  }
+
+  .section-link {
+    .head {
+      .title {
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 32px;
+        margin-bottom: 16px;
+        color: $yb-font-dark;
+      }
+
+      & + {
+        .body {
+          font-size: 16px;
+          font-weight: 400;
+          line-height: 24px;
+          color: $yb-font-gray;
+        }
+      }
+    }
+  }
+
+  h3,
+  .h3 {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 28px;
+    color: $yb-font-6D7C88;
+
+    &:not(:first-child) {
+      margin: 2rem 0 1rem 0;
+    }
+  }
+
+  h4,
+  .h4,
+  h5,
+  .h5 {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 24px;
+    margin-bottom: 8px;
+
+    &:not(:first-child) {
+      margin: 2rem 0 1rem 0;
+    }
+  }
+}

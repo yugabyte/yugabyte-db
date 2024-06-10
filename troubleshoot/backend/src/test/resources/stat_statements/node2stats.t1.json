@@ -1,0 +1,17 @@
+[
+  {
+    "dbid": "13243",
+    "rows": 5,
+    "calls": 2,
+    "query": "query1",
+    "datname": "postgres",
+    "queryid": 10,
+    "timestamp": "2023-12-25T15:48:39.246982+00:00",
+    "total_time": 10.0,
+    "yb_latency_histogram": [
+      {
+        "[1.1,1.2)": 2
+      }
+    ]
+  }
+]

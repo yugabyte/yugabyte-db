@@ -1,0 +1,10 @@
+# src/test/regress/yb_matview_schedule
+#
+####################################################################################################
+# Tests for materialized views
+####################################################################################################
+# Dependencies for `yb_pg_matview`
+test: yb_pg_test_setup
+
+test: yb_pg_matview
+test: yb_matview

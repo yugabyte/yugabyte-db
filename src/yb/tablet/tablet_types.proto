@@ -1,0 +1,94 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.tablet;
+
+option java_package = "org.yb.tablet";
+
+// The enum of Raft group states.
+// Raft group states are sent in TabletReports and kept in TabletPeer.
+enum RaftGroupStatePB {
+  UNKNOWN = 999;
+
+  // Raft group has not yet started.
+  NOT_STARTED = 5;
+
+  // Indicates the Raft group is bootstrapping, i.e. that the Raft group is not available for RPC.
+  BOOTSTRAPPING = 0;
+
+  // Once the configuration phase is over Peers are in RUNNING state. In this state Peers are
+  // available for client RPCs.
+  RUNNING = 1;
+
+  // The Raft group failed to for some reason. TabletPeer::error() will return the reason for the
+  // failure.
+  FAILED = 2;
+
+  // The Raft group is shutting down, and will not accept further requests.
+  QUIESCING = 3;
+
+  // The Raft group has been stopped.
+  SHUTDOWN = 4;
+}
+
+// State flags indicating whether the tablet is in the middle of being copied
+// and is therefore not possible to bring up, whether it has been deleted, or
+// whether the data is in a usable state.
+enum TabletDataState {
+  TABLET_DATA_UNKNOWN = 999;
+
+  // The tablet is set to TABLET_DATA_COPYING state when in the middle of
+  // remote bootstrap while copying data files from a remote peer. If a tablet
+  // server crashes with a tablet in this state, the tablet must be deleted and
+  // the remote bootstrap process must be restarted for that tablet.
+  TABLET_DATA_COPYING = 0;
+
+  // Fresh empty tablets and successfully copied tablets are set to the
+  // TABLET_DATA_READY state.
+  TABLET_DATA_READY = 1;
+
+  // This tablet is in the process of being deleted.
+  // The tablet server should "roll forward" the deletion during boot,
+  // rather than trying to load the tablet.
+  TABLET_DATA_DELETED = 2;
+
+  // The tablet has been deleted, and now just consists of a "tombstone".
+  TABLET_DATA_TOMBSTONED = 3;
+
+  // This tablet split has been completed. In this state tablet could only be used as a remote
+  // bootstrap source for some time (follower_unavailable_considered_failed_sec) and then will be
+  // shutdown.
+  // TODO(tsplit): After https://github.com/yugabyte/yugabyte-db/issues/1461:
+  // - add integration test for remote bootstrap from source split tablet before/after
+  // follower_unavailable_considered_failed_sec.
+  TABLET_DATA_SPLIT_COMPLETED = 4;
+
+  // This tablet has been initialized as a subtablet of another tablet undergoing a split. Once this
+  // tablet is ready to assume responsibility for it's portion of the split keyspace, it will be
+  // moved to the TABLET_DATA_READY state.
+  TABLET_DATA_INIT_STARTED = 5;
+}
+
+// The enum of full compaction states.
+// Full compaction states are sent in TabletReports and recorded in-memory on the master.
+enum FullCompactionState {
+  // Indicates that no full compaction is undergoing nor queued.
+  IDLE = 0;
+
+  // Indicates that a full compaction is currently queued or ongoing.
+  COMPACTING = 1;
+
+  // Indicates that we are are waiting for the next heartbeat.
+  FULL_COMPACTION_STATE_UNKNOWN = 2;
+}

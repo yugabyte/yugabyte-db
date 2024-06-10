@@ -1,0 +1,118 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.yb</groupId>
+		<artifactId>yb-anywhere-modules</artifactId>
+		<version>${revision}</version>
+		<relativePath>../parent-module/pom.xml</relativePath>
+	</parent>
+
+	<name>Node Agent</name>
+	<description>YB Node Agent</description>
+
+	<groupId>org.yb</groupId>
+	<artifactId>node-agent</artifactId>
+	<packaging>jar</packaging>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.google.protobuf</groupId>
+			<artifactId>protobuf-java</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.grpc</groupId>
+			<artifactId>grpc-protobuf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.grpc</groupId>
+			<artifactId>grpc-stub</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>javax.annotation</groupId>
+			<artifactId>javax.annotation-api</artifactId>
+		</dependency>
+	</dependencies>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<artifactId>exec-maven-plugin</artifactId>
+				<groupId>org.codehaus.mojo</groupId>
+				<executions>
+					<execution>
+						<id>Clean Node Agent</id>
+						<phase>clean</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/build.sh</executable>
+							<arguments>
+								<argument>clean</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>Setup Env for Node Agent</id>
+						<phase>initialize</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/build.sh</executable>
+							<skip>${skipPrepare}</skip>
+							<arguments>
+								<argument>prepare</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>Release Node Agent Locally</id>
+						<phase>compile</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/yb_release</executable>
+							<skip>${skipLocalRelease}</skip>
+							<arguments>
+								<argument>--local</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>Test Node Agent</id>
+						<phase>test</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/build.sh</executable>
+							<skip>${skipTests}</skip>
+							<arguments>
+								<argument>test</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.xolstice.maven.plugins</groupId>
+				<artifactId>protobuf-maven-plugin</artifactId>
+				<configuration>
+					<pluginId>grpc-java</pluginId>
+					<checkStaleness>true</checkStaleness>
+					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+					<protocExecutable>${project.basedir}/third-party/bin/protoc</protocExecutable>
+					<protoSourceRoot>${project.basedir}/proto</protoSourceRoot>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

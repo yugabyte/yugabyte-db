@@ -1,0 +1,113 @@
+{{- $numnodes := int (default "3" (.Get "numnodes")) -}}
+{{- $dirnum := int (default "1" (.Get "dirnum")) -}}
+{{- $basedir := default "${HOME}/var/node" (.Get "basedir") }}
+{{- $fault := default "zone" (.Get "fault-domain") }}
+{{- $indent := int (default "0" (.Get "indent")) -}}
+{{- $alias := default "yes" (.Get "alias") }}
+{{- $instructions := default "yes" (.Get "instructions") }}
+{{- $rf := int (default "3" (.Get "rf")) -}}
+{{- $ips := split (replace (default "" (.Get "ips")) " " "") "," -}}
+{{- $destroy := default "yes" (.Get "destroy") }}
+{{- $dataplacement := default "yes" (.Get "dataplacement") }}
+{{- $status := default "yes" (.Get "status") }}
+{{- $locations := default "aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c" (.Get "locations") -}}
+{{- $locations = split (replace (replace $locations "\n" "") " " "") "," -}}
+
+{{- $offset := 2 -}}
+{{- if and (eq 1 (len $ips)) (eq 0 (len (index $ips 0)))  -}}
+    {{- $ipdata:= "" -}}
+    {{- range seq 1 $numnodes -}}
+    {{- $ipdata = print $ipdata "127.0.0." . "," -}}
+    {{- $ips = split $ipdata "," -}}
+    {{- end -}}
+{{- end -}}
+{{- $masterip := default (index $ips 0) (.Get "masterip") -}}
+{{- $numbers := slice "zero" "one" "two" "three" "four" "five" "six" "seven" "eight" "nine" -}}
+{{- $ordinals := slice "zeroth" "first" "second" "third" "fourth" "fifth" "sixth" "seventh" "eighth" "ninth" -}}
+{{- $data := "" -}}
+{{- if (eq $destroy "yes") -}}
+{{- $data = print $data "If a local universe is currently running, first [destroy it](/preview/reference/configuration/yugabyted/#destroy-a-local-cluster)." "\n" -}}
+{{end}}
+{{- $data = print $data "\n\n" -}}
+
+{{- if and (ne (index $ips 0) "127.0.0.1") (eq $alias "yes") -}}
+    {{- $data = print $data "On macOS, the nodes need loopback addresses configured, as follows:" "\n" -}}
+    {{- $data = print $data "```sh" "\n" -}}
+    {{- range seq 1 $numnodes -}}
+    {{- $data = print $data "sudo ifconfig lo0 alias " (index $ips (sub . 1) ) "\n" -}}
+    {{- end -}}
+    {{- $data = print $data "```" "\n" -}}
+{{- end -}}
+{{/* start a first node as a universe starter only if it is not the masterip*/}}
+{{- if eq $masterip (index $ips 0) -}}
+    {{- if (eq $instructions "yes") -}}
+        {{- $data = print $data "Start a local " (index $numbers $numnodes) "-node universe with an RF of `" $rf "` by first creating a single node, as follows:\n" }}
+        {{- $data = print $data "\n" -}}
+    {{- end -}}
+    {{- $data = print $data "```bash" "\n" -}}
+    {{- $data = print $data "./bin/yugabyted start \\\n" -}}
+    {{- $data = print $data "                --advertise_address=" (index $ips 0) " \\\n" -}}
+    {{- $data = print $data "                --base_dir=" $basedir $dirnum " \\\n" -}}
+    {{- $data = print $data "                --cloud_location=" (index $locations 0) "\n" -}}
+    {{- $data = print $data "```\n " -}}
+    {{- $dirnum = add $dirnum 1 -}}
+    {{- $data = print $data "\n" -}}
+    {{- $data = print $data "\n" -}}
+    {{- $offset = 2 -}}
+{{- else -}}
+    {{- $offset = 1 -}}
+{{- end -}}
+
+{{- if and (eq (index $ips 0) "127.0.0.1") (ge $numnodes 2) (eq $alias "yes") -}}
+    {{- $data = print $data "On macOS, the additional nodes need loopback addresses configured, as follows:" "\n" -}}
+    {{- $data = print $data "```sh" "\n" -}}
+    {{- range seq 2 $numnodes -}}
+    {{- $data = print $data "sudo ifconfig lo0 alias " (index $ips (sub . 1)) "\n" -}}
+    {{- end -}}
+    {{- $data = print $data "```" "\n" -}}
+{{- end -}}
+
+{{- if and (eq $masterip (index $ips 0)) (ge $numnodes 3) (eq $instructions "yes") -}}
+{{- $data = print $data "Next, join more nodes with the previous node as needed. `yugabyted` automatically applies a replication factor of `3` when a third node is added." "\n" -}}
+{{- $data = print $data "\n" -}}
+{{- end -}}
+
+{{- if le $offset $numnodes -}}
+{{- range seq $offset $numnodes -}}
+    {{- if (eq $instructions "yes") -}}
+        {{- $data = print $data "Start the " (index $ordinals .) " node as follows:\n" -}}
+    {{- end -}}
+    {{- $data = print $data "```sh" "\n" -}}
+    {{- $data = print $data "./bin/yugabyted start \\" "\n" -}}
+    {{- $data = print $data "                --advertise_address=" (index $ips (sub . 1)) " \\\n" -}}
+    {{- $data = print $data "                --base_dir=" $basedir $dirnum " \\\n" -}}
+    {{- $data = print $data "                --cloud_location=" (index $locations (sub . 1)) " \\\n" -}}
+    {{- $data = print $data "                --join=" $masterip "\n" -}}
+    {{- $data = print $data "```" "\n" -}}
+    {{- $dirnum = add $dirnum 1 -}}
+{{- end -}}
+{{- end -}}
+
+{{- if (eq $dataplacement "yes") -}}
+{{- $data = print $data "After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:" "\n" -}}
+{{- $data = print $data "```sh" "\n" -}}
+{{- if (gt $rf 3) -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=" $fault " --rf " $rf "\n" -}}
+{{- else -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=" $basedir "1 --fault_tolerance=" $fault "\n" -}}
+{{- end -}}
+{{- $data = print $data "```" "\n" -}}
+{{- end -}}
+
+{{- if (eq $status "yes") -}}
+{{- $data = print $data "" "\n" -}}
+{{- $data = print $data "This command can be executed on any node where you already started YugabyteDB." "\n" -}}
+{{- $data = print $data "" "\n" -}}
+{{- $data = print $data "To check the status of a running multi-node universe, run the following command:" "\n" -}}
+{{- $data = print $data "" "\n" -}}
+{{- $data = print $data "```sh" "\n" -}}
+{{- $data = print $data "./bin/yugabyted status --base_dir=" $basedir "1" "\n" -}}
+{{- $data = print $data "```" "\n" -}}
+{{- end -}}
+
+{{ markdownify $data }}

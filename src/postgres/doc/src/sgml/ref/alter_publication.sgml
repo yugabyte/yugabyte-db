@@ -1,0 +1,235 @@
+<!--
+doc/src/sgml/ref/alter_publication.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterpublication">
+ <indexterm zone="sql-alterpublication">
+  <primary>ALTER PUBLICATION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER PUBLICATION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER PUBLICATION</refname>
+  <refpurpose>change the definition of a publication</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> ADD <replaceable class="parameter">publication_object</replaceable> [, ...]
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET <replaceable class="parameter">publication_object</replaceable> [, ...]
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> DROP <replaceable class="parameter">publication_object</replaceable> [, ...]
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">publication_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+
+<phrase>where <replaceable class="parameter">publication_object</replaceable> is one of:</phrase>
+
+    TABLE [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ] [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] [ WHERE ( <replaceable class="parameter">expression</replaceable> ) ] [, ... ]
+    TABLES IN SCHEMA { <replaceable class="parameter">schema_name</replaceable> | CURRENT_SCHEMA } [, ... ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   The command <command>ALTER PUBLICATION</command> can change the attributes
+   of a publication.
+  </para>
+
+  <para>
+   The first three variants change which tables/schemas are part of the
+   publication.  The <literal>SET</literal> clause will replace the list of
+   tables/schemas in the publication with the specified list; the existing
+   tables/schemas that were present in the publication will be removed.  The
+   <literal>ADD</literal> and <literal>DROP</literal> clauses will add and
+   remove one or more tables/schemas from the publication.  Note that adding
+   tables/schemas to a publication that is already subscribed to will require an
+   <literal>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</literal> action on the
+   subscribing side in order to become effective. Note also that
+   <literal>DROP TABLES IN SCHEMA</literal> will not drop any schema tables
+   that were specified using <literal>FOR TABLE</literal>/
+   <literal>ADD TABLE</literal>, and the combination of <literal>DROP</literal>
+   with a <literal>WHERE</literal> clause is not allowed.
+  </para>
+
+  <para>
+   The fourth variant of this command listed in the synopsis can change
+   all of the publication properties specified in
+   <xref linkend="sql-createpublication"/>.  Properties not mentioned in the
+   command retain their previous settings.
+  </para>
+
+  <para>
+   The remaining variants change the owner and the name of the publication.
+  </para>
+
+  <para>
+   You must own the publication to use <command>ALTER PUBLICATION</command>.
+   Adding a table to a publication additionally requires owning that table.
+   The <literal>ADD TABLES IN SCHEMA</literal> and
+   <literal>SET TABLES IN SCHEMA</literal> to a publication requires the
+   invoking user to be a superuser.  To alter the owner, you must also be a
+   direct or indirect member of the new owning role. The new owner must have
+   <literal>CREATE</literal> privilege on the database.  Also, the new owner
+   of a <literal>FOR ALL TABLES</literal> or <literal>FOR TABLES IN SCHEMA</literal>
+   publication must be a superuser. However, a superuser can
+   change the ownership of a publication regardless of these restrictions.
+  </para>
+
+  <para>
+   Adding/Setting any schema when the publication also publishes a table with a
+   column list, and vice versa is not supported.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing publication whose definition is to be altered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      Name of an existing table.  If <literal>ONLY</literal> is specified before the
+      table name, only that table is affected.  If <literal>ONLY</literal> is not
+      specified, the table and all its descendant tables (if any) are
+      affected.  Optionally, <literal>*</literal> can be specified after the table
+      name to explicitly indicate that descendant tables are included.
+     </para>
+
+     <para>
+      Optionally, a column list can be specified.  See <xref
+      linkend="sql-createpublication"/> for details. Note that a subscription
+      having several publications in which the same table has been published
+      with different column lists is not supported. See
+      <xref linkend="logical-replication-col-list-combining"/> for details of
+      potential problems when altering column lists.
+     </para>
+
+     <para>
+      If the optional <literal>WHERE</literal> clause is specified, rows for
+      which the <replaceable class="parameter">expression</replaceable>
+      evaluates to false or null will not be published. Note that parentheses
+      are required around the expression. The
+      <replaceable class="parameter">expression</replaceable> is evaluated with
+      the role used for the replication connection.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">schema_name</replaceable></term>
+    <listitem>
+     <para>
+      Name of an existing schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">publication_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause alters publication parameters originally set by
+      <xref linkend="sql-createpublication"/>.  See there for more information.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the publication.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the publication.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the publication to publish only deletes and updates:
+<programlisting>
+ALTER PUBLICATION noinsert SET (publish = 'update, delete');
+</programlisting>
+  </para>
+
+  <para>
+   Add some tables to the publication:
+<programlisting>
+ALTER PUBLICATION mypublication ADD TABLE users (user_id, firstname), departments;
+</programlisting></para>
+
+  <para>
+   Change the set of columns published for a table:
+<programlisting>
+ALTER PUBLICATION mypublication SET TABLE users (user_id, firstname, lastname), TABLE departments;
+</programlisting></para>
+
+  <para>
+   Add schemas <structname>marketing</structname> and
+   <structname>sales</structname> to the publication
+   <structname>sales_publication</structname>:
+<programlisting>
+ALTER PUBLICATION sales_publication ADD TABLES IN SCHEMA marketing, sales;
+</programlisting>
+  </para>
+
+  <para>
+   Add tables <structname>users</structname>,
+   <structname>departments</structname> and schema
+   <structname>production</structname> to the publication
+   <structname>production_publication</structname>:
+<programlisting>
+ALTER PUBLICATION production_publication ADD TABLE users, departments, TABLES IN SCHEMA production;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER PUBLICATION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpublication"/></member>
+   <member><xref linkend="sql-droppublication"/></member>
+   <member><xref linkend="sql-createsubscription"/></member>
+   <member><xref linkend="sql-altersubscription"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

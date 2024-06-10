@@ -1,0 +1,202 @@
+<!-- doc/src/sgml/pgwalinspect.sgml -->
+
+<sect1 id="pgwalinspect" xreflabel="pg_walinspect">
+ <title>pg_walinspect</title>
+
+ <indexterm zone="pgwalinspect">
+  <primary>pg_walinspect</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_walinspect</filename> module provides SQL functions that
+  allow you to inspect the contents of write-ahead log of
+  a running <productname>PostgreSQL</productname> database cluster at a low
+  level, which is useful for debugging, analytical, reporting or
+  educational purposes. It is similar to <xref linkend="pgwaldump"/>, but
+  accessible through SQL rather than a separate utility.
+ </para>
+
+ <para>
+  All the functions of this module will provide the WAL information using the
+  current server's timeline ID.
+ </para>
+
+ <para>
+  All the functions of this module will try to find the first valid WAL record
+  that is at or after the given <replaceable>in_lsn</replaceable> or
+  <replaceable>start_lsn</replaceable> and will emit error if no such record
+  is available. Similarly, the <replaceable>end_lsn</replaceable> must be
+  available, and if it falls in the middle of a record, the entire record must
+  be available.
+ </para>
+
+ <note>
+  <para>
+   Some functions, such as <function><link
+   linkend="pg-logical-emit-message">pg_logical_emit_message</link></function>,
+   return the LSN <emphasis>after</emphasis> the record just
+   inserted. Therefore, if you pass that LSN as
+   <replaceable>in_lsn</replaceable> or <replaceable>start_lsn</replaceable>
+   to one of these functions, it will return the <emphasis>next</emphasis>
+   record.
+  </para>
+ </note>
+ <para>
+  By default, use of these functions is restricted to superusers and members of
+  the <literal>pg_read_server_files</literal> role. Access may be granted by
+  superusers to others using <command>GRANT</command>.
+ </para>
+
+ <sect2>
+  <title>General Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>pg_get_wal_record_info(in_lsn pg_lsn) returns record</function>
+    </term>
+
+    <listitem>
+     <para>
+      Gets WAL record information of a given LSN. If the given LSN isn't
+      at the start of a WAL record, it gives the information of the next
+      available valid WAL record; or an error if no such record is found.
+      For example, usage of the function is as
+      follows:
+<screen>
+postgres=# SELECT * FROM pg_get_wal_record_info('0/1E826E98');
+-[ RECORD 1 ]----+----------------------------------------------------
+start_lsn        | 0/1E826F20
+end_lsn          | 0/1E826F60
+prev_lsn         | 0/1E826C80
+xid              | 0
+resource_manager | Heap2
+record_type      | PRUNE
+record_length    | 58
+main_data_length | 8
+fpi_length       | 0
+description      | snapshotConflictHorizon 33748 nredirected 0 ndead 2
+block_ref        | blkref #0: rel 1663/5/60221 fork main blk 2
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <function>
+      pg_get_wal_records_info(start_lsn pg_lsn, end_lsn pg_lsn)
+      returns setof record
+     </function>
+    </term>
+
+    <listitem>
+     <para>
+      Gets information of all the valid WAL records between
+      <replaceable>start_lsn</replaceable> and <replaceable>end_lsn</replaceable>.
+      Returns one row per WAL record. If <replaceable>start_lsn</replaceable>
+      or <replaceable>end_lsn</replaceable> are not yet available, the
+      function will raise an error. For example:
+<screen>
+postgres=# SELECT * FROM pg_get_wal_records_info('0/1E913618', '0/1E913740') LIMIT 1;
+-[ RECORD 1 ]----+--------------------------------------------------------------
+start_lsn        | 0/1E913618
+end_lsn          | 0/1E913650
+prev_lsn         | 0/1E9135A0
+xid              | 0
+resource_manager | Standby
+record_type      | RUNNING_XACTS
+record_length    | 50
+main_data_length | 24
+fpi_length       | 0
+description      | nextXid 33775 latestCompletedXid 33774 oldestRunningXid 33775
+block_ref        |
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <function>
+      pg_get_wal_records_info_till_end_of_wal(start_lsn pg_lsn)
+      returns setof record
+     </function>
+    </term>
+
+    <listitem>
+     <para>
+      This function is the same as <function>pg_get_wal_records_info()</function>,
+      except that it gets information of all the valid WAL records from
+      <replaceable>start_lsn</replaceable> till the end of WAL.
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <function>
+      pg_get_wal_stats(start_lsn pg_lsn, end_lsn pg_lsn, per_record boolean DEFAULT false)
+      returns setof record
+     </function>
+    </term>
+
+    <listitem>
+     <para>
+      Gets statistics of all the valid WAL records between
+      <replaceable>start_lsn</replaceable> and
+      <replaceable>end_lsn</replaceable>. By default, it returns one row per
+      <replaceable>resource_manager</replaceable> type. When
+      <replaceable>per_record</replaceable> is set to <literal>true</literal>,
+      it returns one row per <replaceable>record_type</replaceable>.
+      If <replaceable>start_lsn</replaceable>
+      or <replaceable>end_lsn</replaceable> are not yet available, the
+      function will raise an error. For example:
+<screen>
+postgres=# SELECT * FROM pg_get_wal_stats('0/1E847D00', '0/1E84F500')
+             WHERE count > 0 LIMIT 1 AND
+                   "resource_manager/record_type" = 'Transaction';
+-[ RECORD 1 ]----------------+-------------------
+resource_manager/record_type | Transaction
+count                        | 2
+count_percentage             | 8
+record_size                  | 875
+record_size_percentage       | 41.23468426013195
+fpi_size                     | 0
+fpi_size_percentage          | 0
+combined_size                | 875
+combined_size_percentage     | 2.8634072910530795
+</screen>
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <function>
+      pg_get_wal_stats_till_end_of_wal(start_lsn pg_lsn, end_lsn pg_lsn, per_record boolean DEFAULT false)
+      returns setof record
+     </function>
+    </term>
+
+    <listitem>
+     <para>
+      This function is the same as <function>pg_get_wal_stats()</function>,
+      except that it gets statistics of all the valid WAL records from
+      <replaceable>start_lsn</replaceable> till end of WAL.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Bharath Rupireddy <email>bharath.rupireddyforpostgres@gmail.com</email>
+  </para>
+ </sect2>
+
+</sect1>

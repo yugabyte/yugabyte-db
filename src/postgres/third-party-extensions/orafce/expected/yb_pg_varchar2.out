@@ -1,0 +1,150 @@
+\set VERBOSITY terse
+SET client_encoding = utf8;
+SET search_path TO public, oracle;
+--
+-- test type modifier related rules
+--
+-- ERROR (typmod >= 1)
+CREATE TABLE foo (a VARCHAR2(0));
+ERROR:  length for type varchar must be at least 1 at character 21
+-- ERROR (number of typmods = 1)
+CREATE TABLE foo (a VARCHAR2(10, 1));
+ERROR:  invalid type modifier at character 21
+-- OK
+CREATE TABLE foo (a VARCHAR(5000));
+-- cleanup
+DROP TABLE foo;
+-- OK
+CREATE TABLE foo (a VARCHAR2(5));
+CREATE INDEX ON foo(a);
+ERROR:  INDEX on column of type 'user_defined_type' not yet supported
+--
+-- test that no value longer than maxlen is allowed
+--
+-- ERROR (length > 5)
+INSERT INTO foo VALUES ('abcdef');
+ERROR:  input value length is 6; too long for type varchar2(5)
+-- ERROR (length > 5);
+-- VARCHAR2 does not truncate blank spaces on implicit coercion
+INSERT INTO foo VALUES ('abcde  ');
+ERROR:  input value length is 7; too long for type varchar2(5)
+-- OK
+INSERT INTO foo VALUES ('abcde');
+-- OK
+INSERT INTO foo VALUES ('abcdef'::VARCHAR2(5));
+-- OK
+INSERT INTO foo VALUES ('abcde  '::VARCHAR2(5));
+--OK
+INSERT INTO foo VALUES ('abc'::VARCHAR2(5));
+--
+-- test whitespace semantics on comparison
+--
+-- equal
+SELECT 'abcde   '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
+ ?column?
+----------
+ t
+(1 row)
+
+-- not equal
+SELECT 'abcde  '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
+ ?column?
+----------
+ f
+(1 row)
+
+--
+-- test string functions created for varchar2
+--
+-- substrb(varchar2, int, int)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 6);
+ substrb
+---------
+ りが
+(1 row)
+
+-- returns 'f' (emtpy string is not NULL)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 0) IS NULL;
+ ?column?
+----------
+ f
+(1 row)
+
+-- If the starting position is zero or less, then return from the start
+-- of the string adjusting the length to be consistent with the "negative start"
+-- per SQL.
+SELECT substrb('ABCありがとう'::VARCHAR2, 0, 4);
+ substrb
+---------
+ ABC
+(1 row)
+
+-- substrb(varchar2, int)
+SELECT substrb('ABCありがとう', 5);
+ substrb
+----------
+ りがとう
+(1 row)
+
+-- strposb(varchar2, varchar2)
+SELECT strposb('ABCありがとう', 'りが');
+ strposb
+---------
+       7
+(1 row)
+
+-- returns 1 (start of the source string)
+SELECT strposb('ABCありがとう', '');
+ strposb
+---------
+       1
+(1 row)
+
+-- returns 0
+SELECT strposb('ABCありがとう', 'XX');
+ strposb
+---------
+       0
+(1 row)
+
+-- returns 't'
+SELECT strposb('ABCありがとう', NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+-- lengthb(varchar2)
+SELECT lengthb('ABCありがとう');
+ lengthb
+---------
+      18
+(1 row)
+
+-- returns 0
+SELECT lengthb('');
+ lengthb
+---------
+       0
+(1 row)
+
+-- returs 't'
+SELECT lengthb(NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+-- null safe concat (disabled by default)
+SELECT NULL || 'hello'::varchar2 || NULL;
+ ?column?
+----------
+
+(1 row)
+
+SET orafce.varchar2_null_safe_concat TO true;
+SELECT NULL || 'hello'::varchar2 || NULL;
+ ?column?
+----------
+ hello
+(1 row)

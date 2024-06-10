@@ -1,324 +1,131 @@
-[![postgresql-11-pgdg-package](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-11-pgdg-package.yml/badge.svg)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-11-pgdg-package.yml)  [![postgresql-12-pgdg-package](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-12-pgdg-package.yml/badge.svg)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-12-pgdg-package.yml)  [![postgresql-13-pgdg-package](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-13-pgdg-package.yml/badge.svg)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-13-pgdg-package.yml)  [![postgresql-14-pgdg-package](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-14-pgdg-package.yml/badge.svg)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-14-pgdg-package.yml)  [![postgresql-15-pgdg-package](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-15-pgdg-package.yml/badge.svg)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-15-pgdg-package.yml)
+<img src="https://cloud.yugabyte.com/logo-big.png" align="center" alt="YugabyteDB" width="50%"/>
 
-[![Code coverage](https://codecov.io/gh/percona/pg_stat_monitor/branch/main/graph/badge.svg)](https://codecov.io/gh/percona/pg_stat_monitor)
-# pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL
+---------------------------------------
 
-## Table of Contents
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
+[![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
+[![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://communityinviter.com/apps/yugabyte-db/register)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-- [pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL](#pg_stat_monitor-query-performance-monitoring-tool-for-postgresql)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-    - [Supported versions](#supported-versions)
-    - [Features](#features)
-    - [Documentation](#documentation)
-    - [Supported platforms](#supported-platforms)
-    - [Installation guidelines](#installation-guidelines)
-      - [Installing from Percona repositories](#installing-from-percona-repositories)
-      - [Installing from PostgreSQL `yum` repositories](#installing-from-postgresql-yum-repositories)
-      - [Installing from PGXN](#installing-from-pgxn)
-    - [Configuration](#configuration)
-    - [Setup](#setup)
-    - [Building from source](#building-from-source)
-    - [Uninstall `pg_stat_monitor`](#uninstall-pg_stat_monitor)
-    - [How we work](#how-we-work)
-    - [How to contribute](#how-to-contribute)
-    - [Report a bug](#report-a-bug)
-    - [Support, discussions and forums](#support-discussions-and-forums)
-    - [License](#license)
-    - [Copyright notice](#copyright-notice)
+# What is YugabyteDB? 
 
-## Overview
+**YugabyteDB** is a **high-performance, cloud-native, [distributed SQL](https://www.yugabyte.com/tech/distributed-sql/) database** that aims to support **all PostgreSQL features**. It is best suited for **cloud-native OLTP (i.e., real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
 
-**NOTE**: The latest stable releases can be found underneath [Releases](https://github.com/percona/pg_stat_monitor/releases). 
+* [Core Features](#core-features)
+* [Get Started](#get-started)
+* [Build Apps](#build-apps)
+* [What's being worked on?](#whats-being-worked-on)
+* [Architecture](#architecture)
+* [Need Help?](#need-help)
+* [Contribute](#contribute)
+* [License](#license)
+* [Read More](#read-more)
 
-The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://docs.percona.com/pg-stat-monitor/reference.html).
+# Core Features
 
-`pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
+* **Powerful RDBMS capabilities** Yugabyte SQL (*YSQL* for short) reuses the query layer of PostgreSQL (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc). Here is a detailed [list of features currently supported by YSQL](https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/).
 
-While `pg_stat_statements` provides ever-increasing metrics, `pg_stat_monitor` aggregates the collected data, saving user efforts for doing it themselves. `pg_stat_monitor`  stores statistics in configurable time-based units – buckets. This allows focusing on statistics generated for shorter time periods and makes query timing information such as max/min/mean time more accurate. 
+* **Distributed transactions** The transaction design is based on the Google Spanner architecture. Strong consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot*, *serializable* and *read committed* isolation levels are supported. Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read-replicas.
 
->**NOTE**: Because of these differences in data processing, memory blocks and WAL (Write Ahead Logs) related statistics data are displayed inconsistently when both `pg_stat_monitor` and `pg_stat_statements` are used together. 
+* **Continuous availability** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, node, zone, region, and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
 
-To learn about other features, available in `pg_stat_monitor`, see the [Features](#pg_stat_monitor-features) section and the [User Guide](https://docs.percona.com/pg-stat-monitor/user_guide.html).
+* **Horizontal scalability** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
 
-`pg_stat_monitor` supports PostgreSQL versions 11 and above. It is compatible with both PostgreSQL provided by PostgreSQL Global Development Group (PGDG) and [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution).
+* **Geo-distributed, multi-cloud** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations that can be leveraged in two-region deployments. To serve (stale) data with low latencies, read replicas are also a supported feature.
 
-The `RPM` (for RHEL and CentOS) and the `DEB` (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/), [14](https://www.percona.com/downloads/postgresql-distribution-14/LATEST/) and [15](https://www.percona.com/downloads/postgresql-distribution-15/LATEST/).
+* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/preview/api/ysql/)**, a fully relational API that re-uses query layer of PostgreSQL, and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/preview/api/ycql/)**, a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
-The RPM packages are also available in the official PostgreSQL (PGDG) yum repositories.
+* **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data-at-rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
-### Supported versions
+Read more about YugabyteDB in our [FAQ](https://docs.yugabyte.com/preview/faq/general/).
 
-The `pg_stat_monitor` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL, but is only tested with these versions:
+# Get Started
 
-| **Distribution** | **Version**     | **Provider** |
-| ---------------- | --------------- | ------------ |
-|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/), [14](https://www.percona.com/downloads/postgresql-distribution-14/LATEST/) and [15](https://www.percona.com/downloads/postgresql-distribution-15/LATEST/)| Percona|
-| PostgreSQL       | 11, 12, 13, 14 and 15 | PostgreSQL Global Development Group (PGDG) |
+* [Quick Start](https://docs.yugabyte.com/preview/quick-start/)
+* Try running a real-world demo application:
+  * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
+  * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/preview/develop/realworld-apps/iot-spark-kafka-ksql/)
 
+Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register) or [Forum](https://forum.yugabyte.com).
 
-### Features
+# Build Apps
 
-`pg_stat_monitor` simplifies query observability by providing a more holistic view of query from performance, application and analysis perspectives. This is achieved by grouping data in configurable time buckets that allow capturing of load and performance information for smaller time windows. So performance issues and patterns can be identified based on time and workload.
+YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/preview/drivers-orms/).
 
+# What's being worked on?
 
-* **Time Interval Grouping:** Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals - time buckets. This allows for much better data accuracy, especially in the case of high resolution or unreliable networks.
-* **Multi-Dimensional Grouping:** While `pg_stat_statements` groups counters by userid, dbid, queryid,  `pg_stat_monitor` uses a more detailed group for higher precision. This allows a user to drill down into the performance of queries.
-* **Capture Actual Parameters in the Queries:** `pg_stat_monitor` allows you to choose if you want to see queries with placeholders for parameters or actual parameter data. This simplifies debugging and analysis processes by enabling users to execute the same query.
-* **Query Plan:** Each SQL is now accompanied by its actual plan that was constructed for its execution. That’s a huge advantage if you want to understand why a particular query is slower than expected.
-* **Tables Access Statistics for a Statement:** This allows us to easily identify all queries that accessed a given table. This set is at par with the information provided by the `pg_stat_statements`.
-* **Histogram:** Visual representation is very helpful as it can help identify issues. With the help of the histogram function, one can now view a timing/calling data histogram in response to an SQL query. And yes, it even works in psql.
+> This section was last updated in **May, 2023**.
 
+## Current roadmap
 
-### Documentation
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB [**v2.17 preview release**](https://www.yugabyte.com/blog/yugabytedb-217-updates/) has been released in **Jan, 2023**, and the [**v2.16 stable release**](https://www.yugabyte.com/blog/yugabytedb-216/) was released in **Jan 2023**).
 
-The following are useful links in [`pg_stat_monitor` documentation](https://docs.percona.com/pg-stat-monitor/index.html):
+| Feature                                         | Status    | Release Target | Progress        |  Comments     |
+| ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
+| [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.18 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |Enables changing the number of tablets (which are splits of data) at runtime.|
+|[Upgrade to PostgreSQL v15](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.21 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
+|Database live migration using YugabyteDB Voyager| PROGRESS| | [Track](https://github.com/yugabyte/yb-voyager/issues/50)|Database live migration using YugabyteDB Voyager| 
+| Support wait-on-conflict concurrency control | PROGRESS  | v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) | Support wait-on-conflict concurrency control |
+| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PROGRESS  |  v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/10976) | Apply transactions atomically on target cluster. |
+| YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
+| [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
+| Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Support for GiST (Generalized Search Tree) based index|
+| Connection Management | PROGRESS  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/17599) |Server side connection management|
 
-1. [User guide](https://docs.percona.com/pg-stat-monitor/user_guide.html)
-2. [Comparing `pg_stat_monitor` and `pg_stat_statements`](https://docs.percona.com/pg-stat-monitor/comparison.html)
-3. [pg_stat_monitor view reference](https://docs.percona.com/pg-stat-monitor/reference.html)
-4. [Release notes](https://github.com/percona/pg_stat_monitor/blob/master/docs/RELEASE_NOTES.md)
-5. [Contributing guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
+## Recently released features
 
+| Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
+| ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
+|[Faster Bulk-Data Loading in YugabyteDB](https://github.com/yugabyte/yugabyte-db/issues/11765)|  ✅ *DONE*| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/11765)| Faster Bulk-Data Loading in YugabyteDB|
+|[Change Data Capture](https://github.com/yugabyte/yugabyte-db/issues/9019)|  ✅ *DONE*| v2.13 ||Change data capture (CDC) allows multiple downstream apps and services to consume the continuous and never-ending stream(s) of changes to Yugabyte databases|
+|[Support for materalized views](https://github.com/yugabyte/yugabyte-db/issues/10102) |  ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/preview/explore/ysql-language-features/advanced-features/views/#materialized-views)|A materialized view is a pre-computed data set derived from a query specification and stored for later use|
+|[Geo-partitioning support](https://github.com/yugabyte/yugabyte-db/issues/9980) for the transaction status table | ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/preview/explore/multi-region-deployments/row-level-geo-partitioning/)|Instead of central remote transaction execution metatda, it is now optimized for access from different regions. Since the transaction metadata is also geo partitioned, it eliminates the need for round-trip to remote regions to update transaction statuses.|
+| Transparently restart transactions |  ✅ *DONE*| v2.13 | |Decrease the incidence of transaction restart errors seen in various scenarios |
+| [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) |  ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/preview/explore/multi-region-deployments/row-level-geo-partitioning/)|Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level.|
+| [YSQL-Support `GIN` indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-gin-indexes.md) |  ✅ *DONE*  | v2.11 | [Docs](https://docs.yugabyte.com/preview/explore/ysql-language-features/gin/) | Support for generalized inverted indexes for container data types like jsonb, tsvector, and array |
+| [YSQL-Collation Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-collation-support.md)  | ✅ *DONE*  | v2.11           |[Docs](https://docs.yugabyte.com/preview/explore/ysql-language-features/collations/) |Allows specifying the sort order and character classification behavior of data per-column, or even per-operation according to language and country-specific rules           |
+[YSQL-Savepoint Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/savepoints.md)  |  ✅ *DONE*  | v2.11     |[Docs](https://docs.yugabyte.com/preview/explore/ysql-language-features/savepoints/) | Useful for implementing complex error recovery in multi-statement transaction|
+| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md) | ✅ *DONE* | v2.11           |   [Docs](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/)     |   
+| [Spring Data YugabyteDB module](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/spring-data-yugabytedb.md) | ✅ *DONE*  | v2.9 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7956) | Bridges the gap for learning the distributed SQL concepts with familiarity and ease of Spring Data APIs |
+| Support Liquibase, Flyway, ORM schema migrations | ✅ *DONE* | v2.9           |           [Docs](https://blog.yugabyte.com/schema-versioning-in-yugabytedb-using-flyway/)      | 
+| [Support `ALTER TABLE` add primary key](https://github.com/yugabyte/yugabyte-db/issues/1124) | ✅ *DONE* | v2.9 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
+| [YCQL-LDAP Support](https://github.com/yugabyte/yugabyte-db/issues/4421) |  ✅ *DONE*  | v2.8           |[Docs](https://docs.yugabyte.com/preview/secure/authentication/ldap-authentication-ycql/#root)  | support LDAP authentication in YCQL API |             
+| [Platform Alerting and Notification](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/) | ✅ *DONE* | v2.8  |  [Docs](https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/alert/) |  To get notified in real time about database alerts, user defined alert policies notify you when a performance metric rises above or falls below a threshold you set.|      
+| [Platform API](https://blog.yugabyte.com/yugabytedb-2-8-api-automated-operations/) | ✅ *DONE* | v2.8           |   [Docs](https://api-docs.yugabyte.com/docs/yugabyte-platform/ZG9jOjIwMDY0MTA4-platform-api-overview)              |   Securely Deploy YugabyteDB Clusters Using Infrastructure-as-Code|            
 
-### Supported platforms
+# Architecture
 
-The PostgreSQL YUM repository supports `pg_stat_monitor` for all [supported versions](#supported-versions) for the following platforms:
+<img src="https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="YugabyteDB Architecture"/>
 
-* Red Hat Enterprise/Rocky/CentOS/Oracle Linux 7 and 8
-* Fedora 33 and 34
+Review detailed architecture in our [Docs](https://docs.yugabyte.com/preview/architecture/).
 
-Find the list of supported platforms for `pg_stat_monitor` within [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) on the [Percona Release Lifecycle Overview](https://www.percona.com/services/policies/percona-software-support-lifecycle#pgsql) page.
+# Need Help?
 
+* You can ask questions, find answers, and help others on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte)
 
-### Installation guidelines
+* Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features.
 
-You can install `pg_stat_monitor` from the following sources:
+* To Troubleshoot YugabyteDB, cluser/node level issues, Please refer to [Troubleshooting documentation](https://docs.yugabyte.com/preview/troubleshoot/)
 
-* [Percona repositories](#installing-from-percona-repositories),
-* [PostgreSQL PGDG yum repositories](#installing-from-postgresql-yum-repositories),
-* [PGXN](#installing-from-pgxn) and
-* [source code](#building-from-source).
+# Contribute
 
+As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com).
 
-#### Installing from Percona repositories
+# License
 
-To install `pg_stat_monitor` from Percona repositories, you need to use the `percona-release` repository management tool.
+Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
 
-1. [Install percona-release](https://www.percona.com/doc/percona-repo-config/installing.html) following the instructions relevant to your operating system
-2. Enable Percona repository:
+The build produces two sets of binaries:
 
-``` sh
-percona-release setup ppgXX
-```
+* The entire database with all its features (including the enterprise ones) are licensed under the Apache License 2.0
+* The  binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
 
-Replace XX with the desired PostgreSQL version. For example, to install `pg_stat_monitor ` for PostgreSQL 15, specify `ppg15`.
+> By default, the build options generate only the Apache License 2.0 binaries.
 
-3.  Install `pg_stat_monitor` package
-    * For Debian and Ubuntu:
-      ``` sh
-      apt-get install percona-pg-stat-monitor15
-      ```
-    * For RHEL and CentOS:
-      ``` sh
-      yum install percona-pg-stat-monitor15
-      ```
+# Read More
 
-#### Installing from PostgreSQL `yum` repositories
-
-Install the PostgreSQL repositories following the instructions in the [Linux downloads (Red Hat family)](https://www.postgresql.org/download/linux/redhat/) chapter in PostgreSQL documentation.
-
-Install `pg_stat_monitor`:
-
-```
-dnf install -y pg_stat_monitor_<VERSION>
-```
-
-Replace the `VERSION` variable with the PostgreSQL version you are using (e.g. specify `pg_stat_monitor_15` for PostgreSQL 15)
-
-
-#### Installing from PGXN
-
-You can install `pg_stat_monitor` from PGXN (PostgreSQL Extensions Network) using the [PGXN client](https://pgxn.github.io/pgxnclient/).
-
-Use the following command:
-
-```
-pgxn install pg_stat_monitor
-```
-
-### Configuration
-
-You can find the configuration parameters of the `pg_stat_monitor` extension in the `pg_stat_monitor_settings` view. To change the default configuration, specify new values for the desired parameters using the GUC (Grant Unified Configuration) system. To learn more, refer to the [Configuration parameters](https://docs.percona.com/pg-stat-monitor/configuration.html) section of the documentation.
-
-
-### Setup
-
-You can enable `pg_stat_monitor` when your `postgresql` instance is not running.
-
-`pg_stat_monitor` needs to be loaded at the start time. The extension requires additional shared memory; therefore,  add the `pg_stat_monitor` value for the `shared_preload_libraries` parameter and restart the `postgresql` instance.
-
-Use the [ALTER SYSTEM](https://www.postgresql.org/docs/current/sql-altersystem.html)command from `psql` terminal to modify the `shared_preload_libraries` parameter.
-
-```sql
-ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
-```
-
-> **NOTE**: If you’ve added other modules to the `shared_preload_libraries` parameter (for example, `pg_stat_statements`), list all of them separated by commas for the `ALTER SYSTEM` command. 
->
->:warning: For PostgreSQL 13 and earlier versions,`pg_stat_monitor` **must** follow `pg_stat_statements`. For example, `ALTER SYSTEM SET shared_preload_libraries = 'foo, pg_stat_statements, pg_stat_monitor'`.
->
->In PostgreSQL 14, you can specify `pg_stat_statements` and `pg_stat_monitor` in any order. However, due to the extensions' architecture, if both `pg_stat_statements` and `pg_stat_monitor` are loaded, only the last listed extension captures utility queries, CREATE TABLE, Analyze, etc. The first listed extension captures  most common queries like SELECT, UPDATE, INSERT, but does not capture utility queries.
->
->Thus, to collect the whole statistics with pg_stat_monitor, we recommend to specify the extensions as follows: ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements, pg_stat_monitor'.
-
-
-Start or restart the `postgresql` instance to apply the changes.
-
-* On Debian and Ubuntu:
-
-```sh
-sudo systemctl restart postgresql.service
-```
-
-* On Red Hat Enterprise Linux and CentOS:
-
-
-```sh
-sudo systemctl restart postgresql-15
-```
-
-Create the extension using the [CREATE EXTENSION](https://www.postgresql.org/docs/current/sql-createextension.html) command. Using this command requires the privileges of a superuser or a database owner. Connect to `psql` as a superuser for a database and run the following command:
-
-
-```sql
-CREATE EXTENSION pg_stat_monitor;
-```
-
-
-This allows you to see the stats collected by `pg_stat_monitor`.
-
-By default, `pg_stat_monitor` is created for the `postgres` database. To access the statistics from other databases, you need to create the extension for every database.
-
-```
--- Select some of the query information, like client_ip, username and application_name etc.
-
-postgres=# SELECT application_name, userid AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip
-           FROM pg_stat_monitor;
- application_name | user_name | database_name |                       query                       | calls | client_ip
-------------------+-----------+---------------+---------------------------------------------------+-------+-----------
- psql             | vagrant   | postgres      | SELECT application_name, userid::regrole AS user_ |     1 | 127.0.0.1
- psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     3 | 127.0.0.1
- psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     1 | 127.0.0.1
- psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     8 | 127.0.0.1
- psql             | vagrant   | postgres      | SELECT bucket, substr(query,$1, $2) AS query, cmd |     1 | 127.0.0.1
-(5 rows)
-```
-
-To learn more about `pg_stat_monitor` features and usage, see the [User Guide](https://docs.percona.com/pg-stat-monitor/user_guide.html). To view all other data elements provided by `pg_stat_monitor`, please see the [reference](https://docs.percona.com/pg-stat-monitor/reference.html).
-
-
-### Building from source
-
-To build `pg_stat_monitor` from source code, you require the following:
-
-* git
-* make
-* gcc
-* postgresql-devel | postgresql-server-dev-all
-
-
-You can download the source code of the latest release of `pg_stat_monitor` from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
-
-
-```
-git clone git://github.com/Percona/pg_stat_monitor.git
-```
-
-Compile and install the extension
-
-```
-cd pg_stat_monitor
-make USE_PGXS=1
-make USE_PGXS=1 install
-```
-
-### Uninstall `pg_stat_monitor`
-
-To uninstall `pg_stat_monitor`, do the following:
-
-1. Disable statistics collection. From the `psql` terminal, run the following command:
-
-    ```sql
-    ALTER SYSTEM SET pg_stat_monitor.pgsm_enable = 0;
-    ```
-
-2. Drop `pg_stat_monitor` extension:
-
-    ```sql
-    DROP EXTENSION pg_stat_monitor;
-    ```
-
-3. Remove `pg_stat_monitor` from the `shared_preload_libraries` configuration parameter:
-
-    ```sql 
-    ALTER SYSTEM SET shared_preload_libraries = '';
-    ```
-
-    **Important**: If the `shared_preload_libraries` parameter includes other modules, specify them all for the `ALTER SYSTEM SET` command to keep using them.
-
-4. Restart the `postgresql` instance to apply the changes. The following command restarts PostgreSQL 15. Replace the version value with the one you are using. 
-
-    * On Debian and Ubuntu:
-
-    ```sh
-    sudo systemctl restart postgresql.service
-    ```
-
-    * On Red Hat Enterprise Linux and CentOS:
-
-
-    ```sh
-    sudo systemctl restart postgresql-15
-    ```
-
-### How we work
-
-We follow the [OneFlow git branching scheme](https://www.endoflineblog.com/oneflow-a-git-branching-model-and-workflow) to maintain the ongoing development and stable releases. 
-
-The concept of the OneFlow model is, that we do have a single long-lived [branch](https://github.com/percona/pg_stat_monitor/tree/main) which simplifies the versioning scheme and day-to-day operations that we have to perform. 
-
-What branches do exist?
-
-* Feature branch ```$ git checkout -b feature/my-feature main```
-* Release branch ```$ git checkout -b release/1.1.0 8330ecd```
-* Hotfix branch ```$ git checkout -b hotfix/1.0.2 1.0.1```
-
-### How to contribute
-
-We welcome and strongly encourage community participation and contributions, and are always looking for new members that are as dedicated to serving the community as we are.
-
-The [Contributing Guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md) contains the guidelines on how you can contribute.
-
-### Report a bug
-
-If you would like to suggest a new feature / an improvement or you found a bug in `pg_stat_monitor`, please submit the report to the [Percona Jira issue tracker](https://jira.percona.com/projects/PG). 
-
-Refer to the [Submit a bug report or a feature request](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md#submit-a-bug-report-or-a-feature-request) section for bug reporting guidelines.
-
-
-### Support, discussions and forums
-
-We welcome your feedback on your experience with `pg_stat_monitor`. Join our [technical forum](https://forums.percona.com/c/postgresql/pg-stat-monitor/69) for help with `pg_stat_monitor`.
-
-
-### License
-
-This project is licensed under the same open liberal terms and conditions as the PostgreSQL project itself. Please refer to the [LICENSE](https://github.com/percona/pg_stat_monitor/blob/master/LICENSE) file for more details.
-
-
-### Copyright notice
-
-* Portions Copyright © 2018-2023, Percona LLC and/or its affiliates
-* Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
-* Portions Copyright (c) 1994, The Regents of the University of California
+* To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
+* For an in-depth design and the YugabyteDB architecture, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
+* Tech Talks and [Videos](https://www.youtube.com/c/YugaByte).
+* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/preview/faq/comparisons/).

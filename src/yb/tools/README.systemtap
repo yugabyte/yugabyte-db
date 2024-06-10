@@ -1,0 +1,66 @@
+
+#
+# Copyright (c) YugaByte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+SystemTap
+---------
+
+SystemTap is a robust system for tracing kernel and user events.
+
+
+Requirements
+------------
+On Ubuntu systems (written against 14.04):
+1. Install the 'systemtap' package.
+2. Optionally install the 'systemtap-doc' package for some useful manpages
+   (like 'stapprobes' and 'stapfuncs').
+3. Run stap-prep. It'll probably tell you to do the following:
+   a. Install the debug symbols for your kernel. Follow the instructions at
+      https://wiki.ubuntu.com/DebuggingProgramCrash#Debug_Symbol_Packages to
+      install the right package. It should be named something like
+      linux-image-3.13.0-36-generic-dbgsym.
+   b. Add yourself to both the 'stapusr' and 'stapdev' groups. This isn't
+      strictly required; you can run SystemTap scripts as root.
+
+On RHEL systems (written against CentOS 6.4):
+1. Install the 'systemtap' package.
+2. Install the debug symbols for your kernel. Follow the instructions at
+   http://fendertech.blogspot.com/2013/04/centos-install-kernel-debuginfo.html
+   to add the appropriate repo, then install the right package. It should be
+   named something like kernel-debuginfo-2.6.32-358.23.2.el6.x86_64.
+3. Add yourself to both the 'stapusr' and 'stapdev' groups. This isn't
+   strictly required; you can run SystemTap scripts as root.
+
+Running
+-------
+Some SystemTap scripts have a hashbang so that they can be run directly.
+Others need to be run with the 'stap' binary.
+
+Useful options include:
+ -o FILE: send standard output to the given file.
+ -c CMD: run the command, set the probe target to the command's PID, and exit
+         when it finishes. Relevant for scripts that filter on target().
+ -x PID: set the probe target to PID. Relevant for scripts that filter on
+         target().

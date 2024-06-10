@@ -1,0 +1,326 @@
+-- Perform tests on the Memoize node.
+-- The cache hits/misses/evictions from the Memoize node can vary between
+-- machines.  Let's just replace the number with an 'N'.  In order to allow us
+-- to perform validation when the measure was zero, we replace a zero value
+-- with "Zero".  All other numbers are replaced with 'N'.
+create function explain_memoize(query text, hide_hitmiss bool) returns setof text
+language plpgsql as
+$$
+declare
+    ln text;
+begin
+    for ln in
+        execute format('explain (analyze, costs off, summary off, timing off) %s',
+            query)
+    loop
+        if hide_hitmiss = true then
+                ln := regexp_replace(ln, 'Hits: 0', 'Hits: Zero');
+                ln := regexp_replace(ln, 'Hits: \d+', 'Hits: N');
+                ln := regexp_replace(ln, 'Misses: 0', 'Misses: Zero');
+                ln := regexp_replace(ln, 'Misses: \d+', 'Misses: N');
+        end if;
+        ln := regexp_replace(ln, 'Evictions: 0', 'Evictions: Zero');
+        ln := regexp_replace(ln, 'Evictions: \d+', 'Evictions: N');
+        ln := regexp_replace(ln, 'Memory Usage: \d+', 'Memory Usage: N');
+	ln := regexp_replace(ln, 'Heap Fetches: \d+', 'Heap Fetches: N');
+	ln := regexp_replace(ln, 'loops=\d+', 'loops=N');
+        return next ln;
+    end loop;
+end;
+$$;
+-- Ensure we get a memoize node on the inner side of the nested loop
+SET enable_hashjoin TO off;
+SET enable_bitmapscan TO off;
+SELECT explain_memoize('
+SELECT COUNT(*),AVG(t1.unique1) FROM tenk1 t1
+INNER JOIN tenk1 t2 ON t1.unique1 = t2.twenty
+WHERE t2.unique1 < 1000;', false);
+                                      explain_memoize                                      
+-------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=N)
+   ->  Nested Loop (actual rows=1000 loops=N)
+         ->  Seq Scan on tenk1 t2 (actual rows=1000 loops=N)
+               Filter: (unique1 < 1000)
+               Rows Removed by Filter: 9000
+         ->  Memoize (actual rows=1 loops=N)
+               Cache Key: t2.twenty
+               Cache Mode: logical
+               Hits: 980  Misses: 20  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+               ->  Index Only Scan using tenk1_unique1 on tenk1 t1 (actual rows=1 loops=N)
+                     Index Cond: (unique1 = t2.twenty)
+                     Heap Fetches: N
+(12 rows)
+
+-- And check we get the expected results.
+SELECT COUNT(*),AVG(t1.unique1) FROM tenk1 t1
+INNER JOIN tenk1 t2 ON t1.unique1 = t2.twenty
+WHERE t2.unique1 < 1000;
+ count |        avg         
+-------+--------------------
+  1000 | 9.5000000000000000
+(1 row)
+
+-- Try with LATERAL joins
+SELECT explain_memoize('
+SELECT COUNT(*),AVG(t2.unique1) FROM tenk1 t1,
+LATERAL (SELECT t2.unique1 FROM tenk1 t2
+         WHERE t1.twenty = t2.unique1 OFFSET 0) t2
+WHERE t1.unique1 < 1000;', false);
+                                      explain_memoize                                      
+-------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=N)
+   ->  Nested Loop (actual rows=1000 loops=N)
+         ->  Seq Scan on tenk1 t1 (actual rows=1000 loops=N)
+               Filter: (unique1 < 1000)
+               Rows Removed by Filter: 9000
+         ->  Memoize (actual rows=1 loops=N)
+               Cache Key: t1.twenty
+               Cache Mode: binary
+               Hits: 980  Misses: 20  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+               ->  Index Only Scan using tenk1_unique1 on tenk1 t2 (actual rows=1 loops=N)
+                     Index Cond: (unique1 = t1.twenty)
+                     Heap Fetches: N
+(12 rows)
+
+-- And check we get the expected results.
+SELECT COUNT(*),AVG(t2.unique1) FROM tenk1 t1,
+LATERAL (SELECT t2.unique1 FROM tenk1 t2
+         WHERE t1.twenty = t2.unique1 OFFSET 0) t2
+WHERE t1.unique1 < 1000;
+ count |        avg         
+-------+--------------------
+  1000 | 9.5000000000000000
+(1 row)
+
+-- Reduce work_mem and hash_mem_multiplier so that we see some cache evictions
+SET work_mem TO '64kB';
+SET hash_mem_multiplier TO 1.0;
+SET enable_mergejoin TO off;
+-- Ensure we get some evictions.  We're unable to validate the hits and misses
+-- here as the number of entries that fit in the cache at once will vary
+-- between different machines.
+SELECT explain_memoize('
+SELECT COUNT(*),AVG(t1.unique1) FROM tenk1 t1
+INNER JOIN tenk1 t2 ON t1.unique1 = t2.thousand
+WHERE t2.unique1 < 1200;', true);
+                                      explain_memoize                                      
+-------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=N)
+   ->  Nested Loop (actual rows=1200 loops=N)
+         ->  Seq Scan on tenk1 t2 (actual rows=1200 loops=N)
+               Filter: (unique1 < 1200)
+               Rows Removed by Filter: 8800
+         ->  Memoize (actual rows=1 loops=N)
+               Cache Key: t2.thousand
+               Cache Mode: logical
+               Hits: N  Misses: N  Evictions: N  Overflows: 0  Memory Usage: NkB
+               ->  Index Only Scan using tenk1_unique1 on tenk1 t1 (actual rows=1 loops=N)
+                     Index Cond: (unique1 = t2.thousand)
+                     Heap Fetches: N
+(12 rows)
+
+CREATE TABLE flt (f float);
+CREATE INDEX flt_f_idx ON flt (f);
+INSERT INTO flt VALUES('-0.0'::float),('+0.0'::float);
+ANALYZE flt;
+SET enable_seqscan TO off;
+-- Ensure memoize operates in logical mode
+SELECT explain_memoize('
+SELECT * FROM flt f1 INNER JOIN flt f2 ON f1.f = f2.f;', false);
+                                explain_memoize                                
+-------------------------------------------------------------------------------
+ Nested Loop (actual rows=4 loops=N)
+   ->  Index Only Scan using flt_f_idx on flt f1 (actual rows=2 loops=N)
+         Heap Fetches: N
+   ->  Memoize (actual rows=2 loops=N)
+         Cache Key: f1.f
+         Cache Mode: logical
+         Hits: 1  Misses: 1  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+         ->  Index Only Scan using flt_f_idx on flt f2 (actual rows=2 loops=N)
+               Index Cond: (f = f1.f)
+               Heap Fetches: N
+(10 rows)
+
+-- Ensure memoize operates in binary mode
+SELECT explain_memoize('
+SELECT * FROM flt f1 INNER JOIN flt f2 ON f1.f >= f2.f;', false);
+                                explain_memoize                                
+-------------------------------------------------------------------------------
+ Nested Loop (actual rows=4 loops=N)
+   ->  Index Only Scan using flt_f_idx on flt f1 (actual rows=2 loops=N)
+         Heap Fetches: N
+   ->  Memoize (actual rows=2 loops=N)
+         Cache Key: f1.f
+         Cache Mode: binary
+         Hits: 0  Misses: 2  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+         ->  Index Only Scan using flt_f_idx on flt f2 (actual rows=2 loops=N)
+               Index Cond: (f <= f1.f)
+               Heap Fetches: N
+(10 rows)
+
+DROP TABLE flt;
+-- Exercise Memoize in binary mode with a large fixed width type and a
+-- varlena type.
+CREATE TABLE strtest (n name, t text);
+CREATE INDEX strtest_n_idx ON strtest (n);
+CREATE INDEX strtest_t_idx ON strtest (t);
+INSERT INTO strtest VALUES('one','one'),('two','two'),('three',repeat(md5('three'),100));
+-- duplicate rows so we get some cache hits
+INSERT INTO strtest SELECT * FROM strtest;
+ANALYZE strtest;
+-- Ensure we get 3 hits and 3 misses
+SELECT explain_memoize('
+SELECT * FROM strtest s1 INNER JOIN strtest s2 ON s1.n >= s2.n;', false);
+                                 explain_memoize                                  
+----------------------------------------------------------------------------------
+ Nested Loop (actual rows=24 loops=N)
+   ->  Seq Scan on strtest s1 (actual rows=6 loops=N)
+   ->  Memoize (actual rows=4 loops=N)
+         Cache Key: s1.n
+         Cache Mode: binary
+         Hits: 3  Misses: 3  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+         ->  Index Scan using strtest_n_idx on strtest s2 (actual rows=4 loops=N)
+               Index Cond: (n <= s1.n)
+(8 rows)
+
+-- Ensure we get 3 hits and 3 misses
+SELECT explain_memoize('
+SELECT * FROM strtest s1 INNER JOIN strtest s2 ON s1.t >= s2.t;', false);
+                                 explain_memoize                                  
+----------------------------------------------------------------------------------
+ Nested Loop (actual rows=24 loops=N)
+   ->  Seq Scan on strtest s1 (actual rows=6 loops=N)
+   ->  Memoize (actual rows=4 loops=N)
+         Cache Key: s1.t
+         Cache Mode: binary
+         Hits: 3  Misses: 3  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+         ->  Index Scan using strtest_t_idx on strtest s2 (actual rows=4 loops=N)
+               Index Cond: (t <= s1.t)
+(8 rows)
+
+DROP TABLE strtest;
+-- Ensure memoize works with partitionwise join
+SET enable_partitionwise_join TO on;
+CREATE TABLE prt (a int) PARTITION BY RANGE(a);
+CREATE TABLE prt_p1 PARTITION OF prt FOR VALUES FROM (0) TO (10);
+CREATE TABLE prt_p2 PARTITION OF prt FOR VALUES FROM (10) TO (20);
+INSERT INTO prt VALUES (0), (0), (0), (0);
+INSERT INTO prt VALUES (10), (10), (10), (10);
+CREATE INDEX iprt_p1_a ON prt_p1 (a);
+CREATE INDEX iprt_p2_a ON prt_p2 (a);
+ANALYZE prt;
+SELECT explain_memoize('
+SELECT * FROM prt t1 INNER JOIN prt t2 ON t1.a = t2.a;', false);
+                                     explain_memoize                                      
+------------------------------------------------------------------------------------------
+ Append (actual rows=32 loops=N)
+   ->  Nested Loop (actual rows=16 loops=N)
+         ->  Index Only Scan using iprt_p1_a on prt_p1 t1_1 (actual rows=4 loops=N)
+               Heap Fetches: N
+         ->  Memoize (actual rows=4 loops=N)
+               Cache Key: t1_1.a
+               Cache Mode: logical
+               Hits: 3  Misses: 1  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+               ->  Index Only Scan using iprt_p1_a on prt_p1 t2_1 (actual rows=4 loops=N)
+                     Index Cond: (a = t1_1.a)
+                     Heap Fetches: N
+   ->  Nested Loop (actual rows=16 loops=N)
+         ->  Index Only Scan using iprt_p2_a on prt_p2 t1_2 (actual rows=4 loops=N)
+               Heap Fetches: N
+         ->  Memoize (actual rows=4 loops=N)
+               Cache Key: t1_2.a
+               Cache Mode: logical
+               Hits: 3  Misses: 1  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+               ->  Index Only Scan using iprt_p2_a on prt_p2 t2_2 (actual rows=4 loops=N)
+                     Index Cond: (a = t1_2.a)
+                     Heap Fetches: N
+(21 rows)
+
+DROP TABLE prt;
+RESET enable_partitionwise_join;
+-- Exercise Memoize code that flushes the cache when a parameter changes which
+-- is not part of the cache key.
+-- Ensure we get a Memoize plan
+EXPLAIN (COSTS OFF)
+SELECT unique1 FROM tenk1 t0
+WHERE unique1 < 3
+  AND EXISTS (
+	SELECT 1 FROM tenk1 t1
+	INNER JOIN tenk1 t2 ON t1.unique1 = t2.hundred
+	WHERE t0.ten = t1.twenty AND t0.two <> t2.four OFFSET 0);
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Scan using tenk1_unique1 on tenk1 t0
+   Index Cond: (unique1 < 3)
+   Filter: (SubPlan 1)
+   SubPlan 1
+     ->  Nested Loop
+           ->  Index Scan using tenk1_hundred on tenk1 t2
+                 Filter: (t0.two <> four)
+           ->  Memoize
+                 Cache Key: t2.hundred
+                 Cache Mode: logical
+                 ->  Index Scan using tenk1_unique1 on tenk1 t1
+                       Index Cond: (unique1 = t2.hundred)
+                       Filter: (t0.ten = twenty)
+(13 rows)
+
+-- Ensure the above query returns the correct result
+SELECT unique1 FROM tenk1 t0
+WHERE unique1 < 3
+  AND EXISTS (
+	SELECT 1 FROM tenk1 t1
+	INNER JOIN tenk1 t2 ON t1.unique1 = t2.hundred
+	WHERE t0.ten = t1.twenty AND t0.two <> t2.four OFFSET 0);
+ unique1 
+---------
+       2
+(1 row)
+
+RESET enable_seqscan;
+RESET enable_mergejoin;
+RESET work_mem;
+RESET hash_mem_multiplier;
+RESET enable_bitmapscan;
+RESET enable_hashjoin;
+-- Test parallel plans with Memoize
+SET min_parallel_table_scan_size TO 0;
+SET parallel_setup_cost TO 0;
+SET parallel_tuple_cost TO 0;
+SET max_parallel_workers_per_gather TO 2;
+-- Ensure we get a parallel plan.
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*),AVG(t2.unique1) FROM tenk1 t1,
+LATERAL (SELECT t2.unique1 FROM tenk1 t2 WHERE t1.twenty = t2.unique1) t2
+WHERE t1.unique1 < 1000;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Nested Loop
+                     ->  Parallel Bitmap Heap Scan on tenk1 t1
+                           Recheck Cond: (unique1 < 1000)
+                           ->  Bitmap Index Scan on tenk1_unique1
+                                 Index Cond: (unique1 < 1000)
+                     ->  Memoize
+                           Cache Key: t1.twenty
+                           Cache Mode: logical
+                           ->  Index Only Scan using tenk1_unique1 on tenk1 t2
+                                 Index Cond: (unique1 = t1.twenty)
+(14 rows)
+
+-- And ensure the parallel plan gives us the correct results.
+SELECT COUNT(*),AVG(t2.unique1) FROM tenk1 t1,
+LATERAL (SELECT t2.unique1 FROM tenk1 t2 WHERE t1.twenty = t2.unique1) t2
+WHERE t1.unique1 < 1000;
+ count |        avg         
+-------+--------------------
+  1000 | 9.5000000000000000
+(1 row)
+
+RESET max_parallel_workers_per_gather;
+RESET parallel_tuple_cost;
+RESET parallel_setup_cost;
+RESET min_parallel_table_scan_size;
