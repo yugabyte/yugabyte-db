@@ -19,10 +19,13 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
@@ -57,10 +60,26 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()) {
-      createCheckNodesAreSafeToTakeDownTask(
-          nodesToBeRestarted.mastersList,
-          nodesToBeRestarted.tserversList,
-          getTargetSoftwareVersion());
+      Optional<NodeDetails> nonLive =
+          nodesToBeRestarted.getAllNodes().stream()
+              .filter(n -> n.state != NodeDetails.NodeState.Live)
+              .findFirst();
+      if (nonLive.isEmpty()) {
+        List<MastersAndTservers> split = new ArrayList<>();
+        nodesToBeRestarted.mastersList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.singletonList(n), Collections.emptyList())));
+        nodesToBeRestarted.tserversList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.emptyList(), Collections.singletonList(n))));
+        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
+      }
     }
   }
 
