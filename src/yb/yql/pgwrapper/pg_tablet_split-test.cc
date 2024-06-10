@@ -243,6 +243,48 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// The below test asserts that the intent iterator created during conflict resolution rightly checks
+// conflicts for the empty doc key and that it doesn't get initialized with the tablet's key bounds.
+//
+// Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
+#ifndef NDEBUG
+TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1,10000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  const auto& parent_peer = peers[0];
+
+  ASSERT_OK(WaitForAnySstFiles(parent_peer));
+  const auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
+  const auto doc_key_hash = ASSERT_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  // Find a key belonging to the second child which has key bounds [encoded_split_key, )
+  auto key = ASSERT_RESULT(conn.FetchValue<int32_t>(
+      Format("SELECT k FROM t WHERE yb_hash_code(k) > $0 LIMIT 1", doc_key_hash)));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchValue<int64>("SELECT COUNT(*) FROM t WHERE v=1")));
+
+  // Try processing a concurrent fast path/single shard update. Since the test doesn't have wait
+  // on conflict enabled, the higher priority transaction aborts all conflicting lower priority
+  // transactions. And since single shard txns have the highest priority, the below update would
+  // abort the above serializable transaction.
+  auto update_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(update_conn.ExecuteFormat("UPDATE t SET v=v+1 WHERE k=$0", key));
+
+  ASSERT_NOK(conn.FetchValue<int64>("SELECT COUNT(*) FROM t WHERE v=1"));
+  ASSERT_OK(conn.RollbackTransaction());
+}
+#endif // NDEBUG
+
 // Make sure parent tablet shutdown does not crash during long scans and does not abort them.
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongScan)) {
   constexpr auto kScanAfterSplitDuration = 65s;
