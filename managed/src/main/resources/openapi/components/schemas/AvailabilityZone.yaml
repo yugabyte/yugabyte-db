@@ -34,4 +34,4 @@ properties:
     type: string
     example: subnet id
   details:
-    $ref: "./AvailabilityZoneDetails.yaml"
+    $ref: ./AvailabilityZoneDetails.yaml

@@ -32,6 +32,11 @@ public class XClusterConfigEditFormData {
   public Set<String> tables;
 
   @ApiModelProperty(
+      value = "Source universe database IDs",
+      example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
+  public Set<String> databases;
+
+  @ApiModelProperty(
       value =
           "Whether or not YBA should also include all index tables from any provided main tables.")
   public boolean autoIncludeIndexTables = true;

@@ -515,6 +515,15 @@ public class XClusterConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
+  static XClusterConfigTaskParams getSetDatabasesTaskParams(
+      YBClientService ybService, XClusterConfig xClusterConfig, Set<String> databaseIds) {
+
+    XClusterConfigEditFormData editForm = new XClusterConfigEditFormData();
+    editForm.databases = databaseIds;
+
+    return new XClusterConfigTaskParams(xClusterConfig, editForm);
+  }
+
   static XClusterConfigTaskParams getSetTablesTaskParams(
       YBClientService ybService,
       XClusterConfig xClusterConfig,

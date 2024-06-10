@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CreateOutboundReplicationGroup;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterAddNamespaceToOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
@@ -1882,6 +1884,54 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     xClusterConfigParams.xClusterConfig = xClusterConfig;
 
     XClusterDbReplicationSetup task = createTask(XClusterDbReplicationSetup.class);
+    task.initialize(xClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Checkpoints the databases to be added on the source universe and verifies the checkpointing is
+   * completed.
+   *
+   * @param xClusterConfig config used
+   * @param dbIds db ids on the source universe that are being added to checkpoint.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterAddNamespaceToOutboundReplicationGroupTask(
+      XClusterConfig xClusterConfig, Set<String> dbIds) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("XClusterAddNamespaceToOutboundReplicationGroup");
+    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
+    xClusterConfigParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
+    xClusterConfigParams.xClusterConfig = xClusterConfig;
+    log.info("***** The databse is {}******", dbIds);
+    xClusterConfigParams.dbs = dbIds;
+
+    XClusterAddNamespaceToOutboundReplicationGroup task =
+        createTask(XClusterAddNamespaceToOutboundReplicationGroup.class);
+    task.initialize(xClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Add the databases to the replication.
+   *
+   * @param xClusterConfig config used
+   * @param dbIds db ids on the source universe that are being added to the replication.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createAddNamespaceToXClusterReplicationTask(
+      XClusterConfig xClusterConfig, Set<String> dbIds) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AddNamespaceToXClusterReplication");
+    XClusterConfigTaskParams xClusterConfigParams = new XClusterConfigTaskParams();
+    xClusterConfigParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
+    xClusterConfigParams.xClusterConfig = xClusterConfig;
+    xClusterConfigParams.dbs = dbIds;
+
+    AddNamespaceToXClusterReplication task = createTask(AddNamespaceToXClusterReplication.class);
     task.initialize(xClusterConfigParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

@@ -147,6 +147,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 false /* keepEntry */,
                 databaseNamesToBeDropped);
           }
+        } else if (editFormData.databases != null) {
+          addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, editFormData.databases);
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -355,6 +357,21 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
       }
+    }
+  }
+
+  protected void addSubtasksToAddDatabasesToXClusterConfig(
+      XClusterConfig xClusterConfig, Set<String> databases) {
+    createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, databases);
+    createAddNamespaceToXClusterReplicationTask(xClusterConfig, databases);
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
 }
