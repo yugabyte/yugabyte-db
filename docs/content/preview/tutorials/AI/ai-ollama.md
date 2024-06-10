@@ -1,6 +1,6 @@
 ---
 title: How to Develop AI Apps Locally with Ollama and YugabyteDB
-headerTitle: Build an application with a locally-hosted embedding model using Ollama and YugabyteDB.
+headerTitle: Build applications with locally-hosted embedding models using Ollama and YugabyteDB
 linkTitle: Ollama
 description: Learn to build LLM applications using Ollama.
 image: /images/tutorials/ai/icons/ollama-icon.svg
@@ -80,7 +80,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 ## Get started with Ollama
 
-Running [Ollama](https://ollama.com/) on your machine, or a commodity machine, is made easy with installers across a variety of platforms. The [Ollama models library](https://ollama.com/library) provides numerous models for a variety of use cases. For this sample application, we'll use `nomic-embed-text` to generate text embeddings. Unlike some models, such as Llama3, which need to be run using the Ollama CLI, embeddings can be generated simply be supplying the desired embedding model in a rest endpoint.
+Ollama provides installers for a variety of platforms, and the [Ollama models library](https://ollama.com/library) provides numerous models for a variety of use cases. This sample application uses `nomic-embed-text` to generate text embeddings. Unlike some models, such as Llama3, which need to be run using the Ollama CLI, embeddings can be generated be supplying the desired embedding model in a REST endpoint.
 
 1. Pull the model using the Ollama CLI.
 
