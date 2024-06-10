@@ -1,5 +1,6 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -30,6 +31,12 @@ public class XClusterConfigEditFormData {
       value = "Source universe table IDs",
       example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
   public Set<String> tables;
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Source universe database IDs",
+      example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Set<String> databases;
 
   @ApiModelProperty(
       value =

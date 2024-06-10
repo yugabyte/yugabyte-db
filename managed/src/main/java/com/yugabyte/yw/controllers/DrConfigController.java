@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSafetimeResp;
 import com.yugabyte.yw.forms.DrConfigSafetimeResp.NamespaceSafetime;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
@@ -48,6 +49,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.XClusterTableConfig.Status;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -1085,6 +1087,80 @@ public class DrConfigController extends AuthenticatedController {
     return PlatformResults.withData(safetimeResp);
   }
 
+  /**
+   * API that adds/removes databases to a disaster recovery configuration.
+   *
+   * @return An instance of YBPTask including the dr config uuid
+   */
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "setDatabasesDrConfig",
+      value = "Set databases in disaster recovery config",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "disaster_recovery_set_databases_form_data",
+          value = "Disaster Recovery Set Databases Form Data",
+          dataType = "com.yugabyte.yw.forms.DrConfigSetDatabasesForm",
+          paramType = "body",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result setDatabases(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
+    log.info("Received set databases drConfig request");
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+    DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
+    Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
+    Set<String> newDatabaseIds = setDatabasesForm.databases;
+    Set<String> databaseIdsToAdd = new HashSet<>(newDatabaseIds);
+    databaseIdsToAdd.removeAll(existingDatabaseIds);
+    if (databaseIdsToAdd.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "The list of new databases to add is empty.");
+    }
+    xClusterConfig.addNamespaces(databaseIdsToAdd);
+
+    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
+
+    XClusterConfigTaskParams taskParams =
+        XClusterConfigController.getSetDatabasesTaskParams(xClusterConfig, databaseIdsToAdd);
+
+    UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
+    CustomerTask.create(
+        customer,
+        sourceUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Edit,
+        drConfig.getName());
+    log.info("Submitted set databases DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfig.getUuid().toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(setDatabasesForm),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
+  }
+
   private DrConfigCreateForm parseCreateForm(UUID customerUUID, Http.Request request) {
     log.debug("Request body to create an DR config is {}", request.body().asJson());
     DrConfigCreateForm formData =
@@ -1134,6 +1210,15 @@ public class DrConfigController extends AuthenticatedController {
       validateBackupRequestParamsForBootstrapping(
           formData.bootstrapParams.backupRequestParams, customerUUID);
     }
+    return formData;
+  }
+
+  private DrConfigSetDatabasesForm parseSetDatabasesForm(UUID customerUUID, Http.Request request) {
+    log.debug("Request body to set database a DR config is {}", request.body().asJson());
+    DrConfigSetDatabasesForm formData =
+        formFactory.getFormDataOrBadRequest(
+            request.body().asJson(), DrConfigSetDatabasesForm.class);
+    formData.databases = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.databases);
     return formData;
   }
 
