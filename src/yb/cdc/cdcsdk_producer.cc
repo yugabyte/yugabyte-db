@@ -49,6 +49,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -2298,6 +2299,9 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
     const CoarseTimePoint deadline) {
+  // Delete the memory context if it was created for decoding the QLValuePB.
+  auto scope_exit = ScopeExit([&] { docdb::DeleteMemoryContextForCDCWrapper(); });
+
   OpId op_id{from_op_id.term(), from_op_id.index()};
   VLOG(1) << "GetChanges request has from_op_id: " << from_op_id.DebugString()
           << ", safe_hybrid_time: " << safe_hybrid_time_req
