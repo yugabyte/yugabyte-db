@@ -3,7 +3,9 @@ title: Distributed Data modeling
 linkTitle: Data modeling
 description: Learn to develop YugabyteDB applications
 image: fa-sharp fa-light fa-objects-column
-
+aliases:
+- /preview/develop/learn/data-modeling-ysql
+- /preview/develop/data-modeling-ysql
 menu:
   preview:
     identifier: data-modeling
@@ -32,4 +34,40 @@ To design your tables and indexes for fast retrieval and storage in YugabyteDB, 
 
 ## Primary keys
 
-In YugabyteDB, the sharding and ordering of data in the tables and indexes is governed by the primary key of the table and index respectively.
+Primary key is the unique identifier for each row in the table. The disribution and ordering of table data is depdendent on the primary key.
+
+{{<lead link="./primary-keys">}}
+To design optimal primary keys for your tables, see [Primary keys](./primary-keys)
+{{</lead>}}
+
+## Secondary indexes
+
+Indexes provide alternate access patterns for queries not involving the primary key of the table. With the help of an index, you can improve the access operations of your queries.
+
+{{<lead link="./secondary-indexes">}}
+To design optimal indexes for faster lookup, see [Secondary indexes](./secondary-indexes)
+{{</lead>}}
+
+## Hot shards
+
+In distributed systems, the hot-spot or hot-shard problem refers to the situation where one node gets overloaded with queries due to dispropotionate traffic compared to other nodes in the cluster.
+
+{{<lead link="./hot-shards">}}
+To understand the hot-shard problem and the solutions to overcome the issue, see [Hot shards](./hot-shards)
+{{</lead>}}
+
+## Table partitioning
+
+When the data in tables keep growing, it is better to partition them for better performance and enahnced data management. It will be easy to drop older data just by dropping partitions. In YugabyteDB, you can use partitioning along with Tablespaces to improve latency in multi-region scenario and adhere to compliance laws like GDPR.
+
+{{<lead link="./partitioning">}}
+To understand how partitioning can be useful, see [Table partitioning](./partitioning)
+{{</lead>}}
+
+## Data modeling in YCQL
+
+YCQL is YugabyteDB's Cassandra like interface. Tables are organized into Keyspaces similar to namespaces in SQL.
+
+{{<lead link="./data-modeling-ycql">}}
+To understand how model your data for YCQL, see [YCQL - Data modeling](./data-modeling-ycql)
+{{</lead>}}
