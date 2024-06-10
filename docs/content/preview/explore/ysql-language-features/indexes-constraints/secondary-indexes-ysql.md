@@ -21,6 +21,20 @@ Using indexes enhances database performance by enabling the database server to f
 In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
 {{</note>}}
 
+Indexes are created in the following format:
+
+```sql{.nocopy}
+CREATE INDEX idx_name ON table_name
+   ((columns),     columns)    INCLUDE (columns)
+--  [SHARDING]    [CLUSTERING]         [COVERING]
+```
+
+The columns that are specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds:
+
+- **Sharding** - These columns determine how the index data is distributed.
+- **Clustering** - These optional columns determine how the index rows matching the same sharding key are ordered.
+- **Covering** - These are optional additional columns that are stored in the index to avoid a trip to the table.
+
 ## Create indexes
 
 You can create indexes in YSQL using the `CREATE INDEX` statement using the following syntax:
