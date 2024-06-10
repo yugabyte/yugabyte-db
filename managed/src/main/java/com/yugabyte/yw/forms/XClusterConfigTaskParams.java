@@ -110,13 +110,6 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     //  to make it consistent with the DR config api.
   }
 
-  public XClusterConfigTaskParams(
-      XClusterConfig xClusterConfig, XClusterConfigEditFormData editFormData) {
-    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    this.xClusterConfig = xClusterConfig;
-    this.editFormData = editFormData;
-  }
-
   /** It is used in the restart method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,

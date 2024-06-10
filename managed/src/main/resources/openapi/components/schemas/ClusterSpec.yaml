@@ -40,13 +40,13 @@ properties:
     type: string
     example: c5.xlarge
   storage_spec:
-    $ref: ./ClusterStorageSpec.yaml
+    $ref: "./ClusterStorageSpec.yaml"
   networking_spec:
-    $ref: ./ClusterNetworkingSpec.yaml
+    $ref: "./ClusterNetworkingSpec.yaml"
   provider_spec:
-    $ref: ./ClusterProviderSpec.yaml
+    $ref: "./ClusterProviderSpec.yaml"
   placement_spec:
-    $ref: ./ClusterPlacementSpec.yaml
+    $ref: "./ClusterPlacementSpec.yaml"
   use_spot_instance:
     description: Whether to use spot instances for nodes in aws/gcp. Used in dev/test environments.
     type: boolean
@@ -58,8 +58,8 @@ properties:
     additionalProperties:
       type: string
   audit_log_config:
-    $ref: ./AuditLogConfig.yaml
+    $ref: "./AuditLogConfig.yaml"
   gflags:
     description: 'The set of user defined gflags for tserver and master processes running on nodes. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/gflags.'
-    $ref: ./ClusterGFlags.yaml
+    $ref: "./ClusterGFlags.yaml"
     nullable: true
