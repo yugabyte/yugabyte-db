@@ -1,5 +1,5 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, MenuItem, Typography, makeStyles } from "@material-ui/core";
+import { Box, Divider, Grid, Link, MenuItem, Typography, makeStyles } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
@@ -9,6 +9,11 @@ import { MigrationsGetStarted } from "./MigrationGetStarted";
 import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
 import clsx from "clsx";
+import { MigrationListSourceDBSidePanel, SourceDBProps } from "./MigrationListSourceDBSidePanel";
+import {
+  MigrationListVoyagerSidePanel,
+  VoyagerInstanceProps,
+} from "./MigrationListVoyagerSidePanel";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -63,6 +68,9 @@ const useStyles = makeStyles((theme) => ({
   fullWidth: {
     width: "100%",
   },
+  linkBox: {
+    cursor: "pointer",
+  },
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
@@ -102,6 +110,9 @@ export const MigrationList: FC<MigrationListProps> = ({
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const [sourceDBSelection, setSourceDBSelection] = React.useState<SourceDBProps>();
+  const [voyagerSelection, setVoyagerSelection] = React.useState<VoyagerInstanceProps>();
 
   // const migrationData = migrationDataProp ?? [];
 
@@ -195,8 +206,10 @@ export const MigrationList: FC<MigrationListProps> = ({
       options: {
         customBodyRender: (sourceDB: (typeof migrationNewData)[number]["sourceDB"]) => {
           return (
-            <Box>
-              <Typography variant="body2">{sourceDB.hostname}</Typography>
+            <Box onClick={() => setSourceDBSelection(sourceDB)} className={classes.linkBox}>
+              <Typography variant="body2">
+                <Link>{sourceDB.hostname}</Link>
+              </Typography>
               <Typography variant="body2">{sourceDB.engine}</Typography>
             </Box>
           );
@@ -211,8 +224,10 @@ export const MigrationList: FC<MigrationListProps> = ({
       options: {
         customBodyRender: (voyager: (typeof migrationNewData)[number]["voyager"]) => {
           return (
-            <Box>
-              <Typography variant="body2">{voyager.machineIP}</Typography>
+            <Box onClick={() => setVoyagerSelection(voyager)} className={classes.linkBox}>
+              <Typography variant="body2">
+                <Link>{voyager.machineIP}</Link>
+              </Typography>
             </Box>
           );
         },
@@ -273,7 +288,7 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRender: (activeIdle: (typeof migrationNewData)[number]["activeIdle"]) => (
           <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
             {activeIdle}
-            <ArrowRightIcon />
+            <ArrowRightIcon className={classes.linkBox} />
           </Box>
         ),
         setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
@@ -444,6 +459,30 @@ export const MigrationList: FC<MigrationListProps> = ({
               cellBorder
               noCellBottomBorder
               withBorder
+            />
+
+            <MigrationListSourceDBSidePanel
+              open={!!sourceDBSelection}
+              onClose={() => setSourceDBSelection(undefined)}
+              hostname={sourceDBSelection?.hostname ?? "N/A"}
+              ip={sourceDBSelection?.ip ?? "N/A"}
+              port={sourceDBSelection?.port ?? "N/A"}
+              engine={sourceDBSelection?.engine ?? "N/A"}
+              version={sourceDBSelection?.version ?? "N/A"}
+              auth={sourceDBSelection?.auth ?? "N/A"}
+              database={sourceDBSelection?.database ?? "N/A"}
+              schema={sourceDBSelection?.schema ?? "N/A"}
+            />
+
+            <MigrationListVoyagerSidePanel
+              open={!!voyagerSelection}
+              onClose={() => setVoyagerSelection(undefined)}
+              machineIP={voyagerSelection?.machineIP ?? "N/A"}
+              os={voyagerSelection?.os ?? "N/A"}
+              totalDisk={voyagerSelection?.totalDisk ?? "N/A"}
+              usedDisk={voyagerSelection?.usedDisk ?? "N/A"}
+              exportDir={voyagerSelection?.exportDir ?? "N/A"}
+              exportedSchemaLocation={voyagerSelection?.exportedSchemaLocation ?? "N/A"}
             />
           </Box>
         )}
