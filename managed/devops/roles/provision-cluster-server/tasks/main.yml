@@ -121,6 +121,14 @@
     name: setup-cgroup
   when: not systemd_option
 
+- name: Grant traverse permission on yb_home directory
+  file:
+    path: "{{ yb_home_dir }}"
+    mode: '0711'
+  become: yes
+  become_method: sudo
+  when: install_node_exporter is defined and install_node_exporter|bool
+
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
   lineinfile:
