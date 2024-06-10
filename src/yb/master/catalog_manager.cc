@@ -10902,104 +10902,92 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     HideOnly hide_only;
   };
 
+  TEST_SYNC_POINT("CatalogManager::DeleteTabletListAndSendRequests::Start");
+
   std::vector<TabletInfoPtr> marked_as_hidden;
+  std::vector<TabletData> tablets_data;
+  tablets_data.reserve(tablets.size());
+  std::vector<TabletInfo*> tablet_infos;
+  tablet_infos.reserve(tablets_data.size());
+
+  // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
+  for (const auto& tablet : tablets) {
+    tablets_data.push_back(TabletData{
+        .tablet = tablet,
+        .lock = tablet->LockForWrite(),
+        // Hide tablet if it is retained by snapshot schedule.
+        .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
+    });
+    tablet_infos.emplace_back(tablet.get());
+  }
   {
-    std::vector<TabletData> tablets_data;
-    tablets_data.reserve(tablets.size());
-    std::vector<TabletInfo*> tablet_infos;
-    tablet_infos.reserve(tablets_data.size());
+    // Also hide tablet if it is part of a cdc stream.
 
-    // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
-    {
-      SharedLock read_lock(mutex_);
-      for (const auto& tablet : tablets) {
-        tablets_data.push_back(TabletData {
-          .tablet = tablet,
-          .lock = tablet->LockForWrite(),
-          // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
-          .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
-        });
+    // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
+    // active stream is during tablet splitting, where we need to keep the parent tablet
+    // around until we have replicated its SPLIT_OP record.
 
-        if (!tablets_data.back().hide_only &&
-            (IsTableXClusterProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
-          // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
-          // active stream is during tablet splitting, where we need to keep the parent tablet
-          // around until we have replicated its SPLIT_OP record.
-
-          // There are a few cases to handle here:
-          // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
-          //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
-          //    it stays hidden.
-          // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
-          //    this tablet hidden.
-          // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
-          //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
-          //    that all streams for this tablet have replicated the split record. We can now delete
-          //    it as long as it isn't being kept by a snapshot schedule.
-          if (!tablets_data.back().lock->ListedAsHidden() ||
-              retained_by_xcluster_.contains(tablet->id()) ||
-              retained_by_cdcsdk_.contains(tablet->id())) {
-            tablets_data.back().hide_only = HideOnly(true);
-          }
-        }
-
-        tablet_infos.emplace_back(tablet.get());
-      }
-    }
-
-    // Use the same hybrid time for all hidden tablets.
-    HybridTime hide_hybrid_time = master_->clock()->Now();
-
-    // Mark the tablets as deleted.
+    // There are a few cases to handle here:
+    // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
+    //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
+    //    it stays hidden.
+    // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
+    //    this tablet hidden.
+    // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
+    //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
+    //    that all streams for this tablet have replicated the split record. We can now delete
+    //    it as long as it isn't being kept by a snapshot schedule.
+    SharedLock read_lock(mutex_);
     for (auto& tablet_data : tablets_data) {
-      auto& tablet = tablet_data.tablet;
-      auto& tablet_lock = tablet_data.lock;
-
-      bool was_hidden = tablet_lock->ListedAsHidden();
-      // Inactive tablet now, so remove it from partitions_.
-      // After all the tablets have been deleted from the tservers, we remove it from tablets_.
-      tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
-
       if (tablet_data.hide_only) {
-        LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
-        tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
-        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-            retained_by_snapshot_schedules;
-      } else {
-        LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
-        if (!transaction_status_tablets) {
-          tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+        continue;
+      }
+      if (IsTableXClusterProducer(*tablet_data.tablet->table()) ||
+          IsTablePartOfCDCSDK(*tablet_data.tablet->table())) {
+        if (!tablet_data.lock->ListedAsHidden() ||
+            retained_by_xcluster_.contains(tablet_data.tablet->id()) ||
+            retained_by_cdcsdk_.contains(tablet_data.tablet->id())) {
+          tablet_data.hide_only = HideOnly(true);
         }
-      }
-      if (tablet_lock->ListedAsHidden() && !was_hidden) {
-        marked_as_hidden.push_back(tablet);
-      }
-    }
-
-    // Update all the tablet states in raft in bulk.
-    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
-
-    // Commit the change.
-    for (auto& tablet_data : tablets_data) {
-      auto& tablet = tablet_data.tablet;
-      auto& tablet_lock = tablet_data.lock;
-
-      tablet_lock.Commit();
-
-      LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
-
-      if (transaction_status_tablets) {
-        auto leader = VERIFY_RESULT(tablet->GetLeader());
-        RETURN_NOT_OK(SendPrepareDeleteTransactionTabletRequest(
-            tablet, leader->permanent_uuid(), deletion_msg, tablet_data.hide_only, epoch));
-      } else {
-        DeleteTabletReplicas(
-            tablet.get(), deletion_msg, tablet_data.hide_only, KeepData::kFalse, epoch);
       }
     }
   }
 
+  // Use the same hybrid time for all hidden tablets.
+  HybridTime hide_hybrid_time = master_->clock()->Now();
+
+  // Mark the tablets as deleted.
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    auto& tablet_lock = tablet_data.lock;
+
+    bool was_hidden = tablet_lock->ListedAsHidden();
+    // Inactive tablet now, so remove it from partitions_.
+    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+
+    if (tablet_data.hide_only) {
+      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+          retained_by_snapshot_schedules;
+    } else {
+      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
+      if (!transaction_status_tablets) {
+        tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      }
+    }
+    if (tablet_lock->ListedAsHidden() && !was_hidden) {
+      marked_as_hidden.push_back(tablet);
+    }
+  }
+
+  // Update all the tablet states in raft in bulk.
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
+
+  // Record any hidden tablets before releasing tablet locks.
   if (!marked_as_hidden.empty()) {
+    TEST_SYNC_POINT("CatalogManager::DeleteTabletListAndSendRequests::AddToMaps");
     LockGuard lock(mutex_);
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
@@ -11013,13 +11001,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
           // We are hiding this tablet for PITR and not for xCluster.
           continue;
         }
-        HiddenReplicationParentTabletInfo info {
-          .table_id_ = tablet->table()->id(),
-          .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
-                             ? tablet_lock->pb.split_parent_tablet_id()
-                             : "",
-          .split_tablets_ = {children.Get(0), children.Get(1)}
-        };
+        HiddenReplicationParentTabletInfo info{
+            .table_id_ = tablet->table()->id(),
+            .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
+                                     ? tablet_lock->pb.split_parent_tablet_id()
+                                     : "",
+            .split_tablets_ = {children.Get(0), children.Get(1)}};
         if (is_table_cdc_producer) {
           retained_by_xcluster_.emplace(tablet->id(), info);
         }
@@ -11027,6 +11014,25 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
           retained_by_cdcsdk_.emplace(tablet->id(), info);
         }
       }
+    }
+  }
+
+  // Commit the change.
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    auto& tablet_lock = tablet_data.lock;
+
+    tablet_lock.Commit();
+
+    LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
+
+    if (transaction_status_tablets) {
+      auto leader = VERIFY_RESULT(tablet->GetLeader());
+      RETURN_NOT_OK(SendPrepareDeleteTransactionTabletRequest(
+          tablet, leader->permanent_uuid(), deletion_msg, tablet_data.hide_only, epoch));
+    } else {
+      DeleteTabletReplicas(
+          tablet.get(), deletion_msg, tablet_data.hide_only, KeepData::kFalse, epoch);
     }
   }
 
