@@ -5,6 +5,11 @@ linkTitle: Key concepts
 description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 image: fa-sharp fa-thin fa-arrows-to-circle
+aliases:
+  - /stable/architecture/concepts/
+  - /stable/architecture/concepts/universe
+  - /stable/architecture/concepts/single-node/
+  - /stable/key-concepts/
 menu:
   stable:
     identifier: architecture-concepts-universe

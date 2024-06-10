@@ -5,6 +5,8 @@ linkTitle: YB-TServer
 description: Learn how the YB-TServer service stores and serves application data using tablets (also known as shards).
 headcontent: Serve application data and manage tablets
 image: fa-sharp fa-thin fa-grid-horizontal
+aliases:
+  - /stable/architecture/concepts/yb-tserver/
 menu:
   stable:
     identifier: architecture-concepts-yb-tserver

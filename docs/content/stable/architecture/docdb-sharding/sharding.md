@@ -3,6 +3,8 @@ title: Hash and range sharding
 headerTitle: Hash and range sharding
 linkTitle: Hash and range sharding
 description: Learn how YugabyteDB uses hash and range sharding for horizontal scaling.
+aliases:
+  - /stable/explore/linear-scalability/sharding-data/
 menu:
   stable:
     identifier: docdb-sharding

@@ -3,6 +3,8 @@ title: DocDB performance enhancements to RocksDB
 headerTitle: Performance
 linkTitle: Performance
 description: Learn how DocDB enhances RocksDB for scale and performance.
+aliases:
+  - /stable/architecture/concepts/docdb/performance/
 menu:
   stable:
     identifier: docdb-performance
