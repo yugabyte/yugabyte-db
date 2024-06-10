@@ -16,7 +16,7 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
 ## Before you begin
 
 - Review the [prerequisites](../../prepare/).
-- YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
+- YBA Installer can perform the migration in place. Make sure you have enough disk space on your current machine for both the Replicated and YBA Installer installations.
 - If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../upgrade/upgrade-yp-replicated/) to v2.20.1.3 or later.
 - If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="stable" format="long">}} installed, use the following commands:
 
@@ -30,7 +30,9 @@ If you have high availability configured, you need to migrate your instances in 
 
 ## Migrate a Replicated installation
 
-To migrate your installation from Replicated, do the following:
+You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). This method migrates both your Replicated configuration and the YBA metadata (universes, providers etc) to the YBA Installer format. Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm]. In this alternate method, Replicated configuration is not migrated seamlessly but YBA metadata (universes, providers etc) are migrated to the new VM.
+
+### Migrate from Replicated to YBA Installer in place
 
 1. Optionally, configure the migration as follows:
 
@@ -68,7 +70,7 @@ To migrate your installation from Replicated, do the following:
 
     This uninstalls Replicated and makes the new YBA instance permanent.
 
-## Migration and high availability
+### Migration and high availability
 
 If you have YBA [high availability](../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
@@ -90,3 +92,17 @@ If Replicated is using HTTP, you need to remove the standbys and delete the HA c
 1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
 
 [Failovers](../../administer-yugabyte-platform/high-availability/#failover) are possible again after the completion of this step.
+
+### Migrate from Replicated to YBA Installer on a different VM
+
+1. [Install YBA Installer](../install-software/installer/) on a new VM and [configure YBA Installer](../install-software/installer/#configuration-options) appropriately. Note that [Replicated configuration](../install-replicated/#set-up-https-optional) will not be migrated in this method.
+2. Disable any YBA [high availability](../../administer-yugabyte-platform/high-availability/) (HA) configured on the Replicated YBA.
+3. Perform a full backup on the Replicated installation. This backup includes prometheus and all existing releases. If the backup is too large, consider cleaning up unused releases through the YBA UI and/or reducing the prometheus retention interval in Replicated settings.
+4. Stop YBA on the Replicated VM [through the Replicated UI or command line](../..//administer-yugabyte-platform/shutdown/#replicated). This is a critical step, otherwise you could end up with two YBA instances managing the same set of universes, which can lead to severe consequences.
+5. Transfer the full backup from Step 3 to the YBA Installer VM.
+6. Restore the backup on the YBA Installer VM using the command line `sudo yba-ctl restoreBackup --migration <path to backup.tar.gz>`
+7. Verify the resulting YBA Installer installation contains all the YBA metadata such as universes, providers, backups etc from the original Replicated installation.
+8. [Completely delete the Replicated installation](https://support.yugabyte.com/hc/en-us/articles/11095326804877-Uninstall-Replicated-based-Yugabyte-Anywhere-aka-Yugabyte-Platform-from-the-Linux-host) or re-image the Replicated VM.
+9. If you had YBA [high availability](../../administer-yugabyte-platform/high-availability/) (HA) configured earlier, set up a new YBA Installer VM to be the standby and configure HA from scratch. Do not attempt to continue to use the existing Replicated standby VM.
+
+
