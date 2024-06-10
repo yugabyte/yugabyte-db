@@ -1901,6 +1901,7 @@ YBUpdateActiveSubTransaction(TransactionState s) {
 static void
 YBStartTransaction(TransactionState s)
 {
+	elog(DEBUG2, "YBStartTransaction");
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
 	s->ybDataSent             = false;
 	s->ybDataSentForCurrQuery = false;
@@ -3036,6 +3037,7 @@ StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 void
 StartTransactionCommand(void)
 {
+	elog(DEBUG2, "StartTransactionCommand");
 	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
 }
 
@@ -3066,6 +3068,7 @@ IsCurrentTxnWithPGRel(void)
 void
 CommitTransactionCommand(void)
 {
+	elog(DEBUG2, "CommitTransactionCommand");
 	TransactionState s = CurrentTransactionState;
 	TBlockState prevState = s->blockState;
 
@@ -3774,6 +3777,7 @@ CallSubXactCallbacks(SubXactEvent event,
 void
 BeginTransactionBlock(void)
 {
+	elog(DEBUG2, "BeginTransactionBlock");
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -4737,6 +4741,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 void
 AbortOutOfAnyTransaction(void)
 {
+	elog(DEBUG2, "AbortOutOfAnyTransaction");
 	TransactionState s = CurrentTransactionState;
 
 	/* Ensure we're not running in a doomed memory context */
@@ -5280,6 +5285,8 @@ CleanupSubTransaction(void)
 static void
 PushTransaction(void)
 {
+	elog(DEBUG2, "PushTransaction increment sub-txn id from %d -> %d",
+			 currentSubTransactionId, currentSubTransactionId+1);
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
 
@@ -5342,6 +5349,7 @@ PushTransaction(void)
 static void
 PopTransaction(void)
 {
+	elog(DEBUG2, "PopTransaction sub-txn id %d", currentSubTransactionId);
 	TransactionState s = CurrentTransactionState;
 
 	if (s->state != TRANS_DEFAULT)

@@ -901,7 +901,9 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
   pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
-  return pg_client_.RollbackToSubTransaction(id, &options);
+  auto status = pg_client_.RollbackToSubTransaction(id, &options);
+  VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
+  return status;
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {

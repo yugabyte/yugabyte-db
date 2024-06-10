@@ -366,6 +366,7 @@ bool PgTxnManager::IsRestartReadPointRequested() {
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
+  VLOG_WITH_FUNC(4) << "id: " << id << ", old id: " << active_sub_transaction_id_;
   active_sub_transaction_id_ = id;
 }
 
@@ -554,6 +555,7 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
+  VLOG_WITH_FUNC(4) << "old txn_serial_no_: " << txn_serial_no_;
   ++txn_serial_no_;
   active_sub_transaction_id_ = 0;
   ++read_time_serial_no_;
