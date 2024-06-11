@@ -4,9 +4,6 @@ headerTitle: Scaling writes
 linkTitle: Scaling writes
 description: Writes scale horizontally in YugabyteDB as you add more nodes
 headcontent: Write performance when scaling horizontally
-aliases:
-  - /stable/architecture/core-functions/read-path
-  - /stable/architecture/core-functions/
 menu:
   stable:
     identifier: scaling-writes

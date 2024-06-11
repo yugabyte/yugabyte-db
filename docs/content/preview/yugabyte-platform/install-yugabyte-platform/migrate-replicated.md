@@ -3,8 +3,6 @@ title: Migrate from Replicated
 headerTitle: Migrate from Replicated
 linkTitle: Migrate from Replicated
 description: Migrate from Replicated.
-aliases:
-  - /preview/yugabyte-platform/install-yugabyte-platofrm/migrate-replicated/
 menu:
   preview_yugabyte-platform:
     identifier: migrate-replicated

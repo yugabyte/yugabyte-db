@@ -5,8 +5,6 @@ linkTitle: Transactions
 description: DocDB transactions layer
 image: fa-sharp fa-thin fa-money-bill-transfer
 headcontent: Understand how distributed transactions work
-aliases:
-  - /architecture/transactions/
 menu:
   stable:
     identifier: architecture-acid-transactions

@@ -4,9 +4,6 @@ headerTitle: DocDB storage layer
 linkTitle: DocDB - Storage layer
 description: Learn about the persistent storage layer of DocDB.
 image: fa-thin fa-database
-aliases:
-  - /architecture/concepts/docdb/
-  - /stable/docdb/persistence/
 headcontent: The document store responsible for transactions, sharding, replication, and persistence
 menu:
   stable:
