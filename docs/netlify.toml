@@ -1334,7 +1334,9 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
-            https://c.6sc.co/ # 6sense connect domain
+            https://c.6sc.co/
+            https://ipv6.6sc.co/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
