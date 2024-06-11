@@ -140,7 +140,7 @@ public class UniverseCRUDHandler {
 
   @Inject CertificateHelper certificateHelper;
 
-  @Inject GFlagsValidation gflagsValidation;
+  @Inject GFlagsValidation gFlagsValidation;
 
   public enum OpType {
     CONFIGURE,
@@ -654,8 +654,8 @@ public class UniverseCRUDHandler {
         }
         // check gflag groups
         c.userIntent.specificGFlags =
-            GFlagsUtil.checkGFlagGroups(
-                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gflagsValidation);
+            GFlagsUtil.processGFlagGroups(
+                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gFlagsValidation);
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
@@ -1476,6 +1476,10 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<GroupName> primaryGflagGroups = new ArrayList<>();
+    if (primaryCluster.userIntent.specificGFlags != null) {
+      primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
+    }
     taskParams.clusters.add(primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
@@ -1494,16 +1498,25 @@ public class UniverseCRUDHandler {
           readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
               primaryGFlags.getPerProcessFlags());
           readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+          readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
         }
       }
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
+      readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
+      readOnlyCluster.userIntent.specificGFlags =
+          GFlagsUtil.processGFlagGroups(
+              readOnlyCluster.userIntent.specificGFlags,
+              readOnlyCluster.userIntent.ybSoftwareVersion,
+              gFlagsValidation);
       readOnlyCluster.userIntent.masterGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
       readOnlyCluster.userIntent.tserverGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clusters);
     } else {
+      // nothing needed here since we don't have specific gflags
       readOnlyCluster.userIntent.specificGFlags = SpecificGFlags.constructInherited();
+      readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
       readOnlyCluster.userIntent.masterGFlags = primaryCluster.userIntent.masterGFlags;
       readOnlyCluster.userIntent.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     }
