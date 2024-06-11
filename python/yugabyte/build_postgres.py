@@ -784,6 +784,7 @@ class PostgresBuilder(YbBuildToolBase):
                                        'third-party-extensions/orafce',
                                        'third-party-extensions/pg_cron',
                                        'third-party-extensions/pg_hint_plan',
+                                       'third-party-extensions/pg_stat_monitor',
                                        'third-party-extensions/pgaudit',
                                        'third-party-extensions/pgvector',
                                        'third-party-extensions/postgresql-hll',

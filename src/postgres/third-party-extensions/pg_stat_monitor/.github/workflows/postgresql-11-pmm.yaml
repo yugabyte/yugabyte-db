@@ -1,0 +1,41 @@
+name: postgresql-11-pmm-integration
+on: [push]
+
+jobs:
+  build:
+    name: pg-11-pgsm-pmm-integration-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Clone QA Integration repository
+        uses: actions/checkout@v3
+        with:
+          repository: 'Percona-Lab/qa-integration'
+          ref: 'main'
+
+      # print branch and Repo name
+      - name: Get branch and Repo Name
+        run: echo 'The branch and Repo Name is' ${{ github.head_ref }} ${{ github.actor }}/pg_stat_monitor
+
+      - name: "Set TARGET_BRANCH variable for a PR run"
+        if: github.event_name == 'pull_request'
+        run: echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
+      - name: "Set TARGET_BRANCH variable for a PUSH run"
+        if: github.event_name == 'push'
+        run: echo "TARGET_BRANCH=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      
+      - name: Run PMM & PGSM Setup, E2E Tests
+        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=11 --pgstat-monitor-branch=${{ env.TARGET_BRANCH }}
+
+      - name: Get PMM-Agent Logs from the Container
+        if: success() || failure()    # run this step even if previous step failed
+        run: docker exec pgsql_pgsm_11 cat pmm-agent.log > ./pmm-ui-tests/tests/output/pmm-agent.log
+
+      - name: Upload Tests Artifacts
+        uses: actions/upload-artifact@v3
+        if: success() || failure()    # run this step even if previous step failed
+        with:
+          name: tests-artifact
+          path: ./pmm-ui-tests/tests/output/
+          if-no-files-found: ignore # 'warn' or 'ignore' are also available, defaults to `warn`

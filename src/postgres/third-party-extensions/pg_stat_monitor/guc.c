@@ -18,9 +18,29 @@
 
 #include "pg_stat_monitor.h"
 
-GucVariable conf[MAX_SETTINGS];
-static void DefineIntGUC(GucVariable *conf);
-static void DefineBoolGUC(GucVariable *conf);
+/* GUC variables */
+int			pgsm_max;
+int			pgsm_query_max_len;
+int			pgsm_bucket_time;
+int			pgsm_max_buckets;
+int			pgsm_histogram_buckets;
+double		pgsm_histogram_min;
+double		pgsm_histogram_max;
+int			pgsm_query_shared_buffer;
+bool		pgsm_track_planning;
+bool		pgsm_extract_comments;
+bool		pgsm_enable_query_plan;
+bool		pgsm_enable_overflow;
+bool		pgsm_normalized_query;
+bool		pgsm_track_utility;
+bool		pgsm_enable_pgsm_query_id;
+int			pgsm_track;
+static int	pgsm_overflow_target;	/* Not used since 2.0 */
+
+/* Check hooks to ensure histogram_min < histogram_max */
+static bool check_histogram_min(double *newval, void **extra, GucSource source);
+static bool check_histogram_max(double *newval, void **extra, GucSource source);
+static bool check_overflow_targer(int *newval, void **extra, GucSource source);
 
 /*
  * Define (or redefine) custom GUC variables.
@@ -28,213 +48,257 @@ static void DefineBoolGUC(GucVariable *conf);
 void
 init_guc(void)
 {
-	int i = 0;
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_max",
-		.guc_desc = "Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.",
-		.guc_default = 100,
-		.guc_min = 1,
-		.guc_max = 1000,
-		.guc_restart = true,
-		.guc_unit = GUC_UNIT_MB,
-		.guc_value = &PGSM_MAX
-		};
-	DefineIntGUC(&conf[i++]);
+    pgsm_track = PGSM_TRACK_TOP;
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_query_max_len",
-		.guc_desc = "Sets the maximum length of query.",
-		.guc_default = 1024,
-		.guc_min = 1024,
-		.guc_max = INT_MAX,
-		.guc_unit = 0,
-		.guc_restart = true,
-		.guc_value = &PGSM_QUERY_MAX_LEN
-	};
-	DefineIntGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_max", /* name */
+							"Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.", /* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_max,	/* value address */
+							256,	/* boot value */
+							10, /* min value */
+							10240,	/* max value */
+							PGC_POSTMASTER, /* context */
+							GUC_UNIT_MB,	/* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_enable",
-		.guc_desc = "Enable/Disable statistics collector.",
-		.guc_default = 1,
-		.guc_min = 0,
-		.guc_max = 0,
-		.guc_restart = false,
-		.guc_unit = 0,
-		.guc_value = &PGSM_ENABLED
-	};
-	DefineBoolGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_max_len",	/* name */
+							"Sets the maximum length of query.",	/* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_query_max_len,	/* value address */
+							2048,	/* boot value */
+							1024,	/* min value */
+							INT_MAX,	/* max value */
+							PGC_POSTMASTER, /* context */
+							0,	/* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_track_utility",
-		.guc_desc = "Selects whether utility commands are tracked.",
-		.guc_default = 1,
-		.guc_min = 0,
-		.guc_max = 0,
-		.guc_restart = false,
-		.guc_unit = 0,
-		.guc_value = &PGSM_TRACK_UTILITY
-	};
-	DefineBoolGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_max_buckets", /* name */
+							"Sets the maximum number of buckets.",	/* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_max_buckets,	/* value address */
+							10, /* boot value */
+							1,	/* min value */
+							20000,	/* max value */
+							PGC_POSTMASTER, /* context */
+							0,	/* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_normalized_query",
-		.guc_desc = "Selects whether save query in normalized format.",
-		.guc_default = 1,
-		.guc_min = 0,
-		.guc_max = 0,
-		.guc_restart = false,
-		.guc_unit = 0,
-		.guc_value = &PGSM_NORMALIZED_QUERY
-	};
-	DefineBoolGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_bucket_time", /* name */
+							"Sets the time in seconds per bucket.", /* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_bucket_time,	/* value address */
+							60, /* boot value */
+							1,	/* min value */
+							INT_MAX,	/* max value */
+							PGC_POSTMASTER, /* context */
+							GUC_UNIT_S, /* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_max_buckets",
-		.guc_desc = "Sets the maximum number of buckets.",
-		.guc_default = 10,
-		.guc_min = 1,
-		.guc_max = 10,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_MAX_BUCKETS
-	};
-	DefineIntGUC(&conf[i++]);
+	DefineCustomRealVariable("pg_stat_monitor.pgsm_histogram_min",	/* name */
+							 "Sets the time in millisecond.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_histogram_min,	/* value address */
+							 1, /* boot value */
+							 0, /* min value */
+							 HISTOGRAM_MAX_TIME,	/* max value */
+							 PGC_POSTMASTER,	/* context */
+							 GUC_UNIT_MS,	/* flags */
+							 check_histogram_min,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_bucket_time",
-		.guc_desc = "Sets the time in seconds per bucket.",
-		.guc_default = 300,
-		.guc_min = 1,
-		.guc_max = INT_MAX,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_BUCKET_TIME
-	};
-	DefineIntGUC(&conf[i++]);
+	DefineCustomRealVariable("pg_stat_monitor.pgsm_histogram_max",	/* name */
+							 "Sets the time in millisecond.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_histogram_max,	/* value address */
+							 100000.0,	/* boot value */
+							 10.0,	/* min value */
+							 HISTOGRAM_MAX_TIME,	/* max value */
+							 PGC_POSTMASTER,	/* context */
+							 GUC_UNIT_MS,	/* flags */
+							 check_histogram_max,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_histogram_min",
-		.guc_desc = "Sets the time in millisecond.",
-		.guc_default = 0,
-		.guc_min = 0,
-		.guc_max = INT_MAX,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_HISTOGRAM_MIN
-	};
-	DefineIntGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_histogram_buckets",	/* name */
+							"Sets the maximum number of histogram buckets.",	/* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_histogram_buckets,	/* value address */
+							20, /* boot value */
+							2,	/* min value */
+							MAX_RESPONSE_BUCKET,	/* max value */
+							PGC_POSTMASTER, /* context */
+							0,	/* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_histogram_max",
-		.guc_desc = "Sets the time in millisecond.",
-		.guc_default = 100000,
-		.guc_min = 10,
-		.guc_max = INT_MAX,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_HISTOGRAM_MAX
-	};
-	DefineIntGUC(&conf[i++]);
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_query_shared_buffer", /* name */
+							"Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.",	/* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_query_shared_buffer,	/* value address */
+							20, /* boot value */
+							1,	/* min value */
+							10000,	/* max value */
+							PGC_POSTMASTER, /* context */
+							GUC_UNIT_MB,	/* flags */
+							NULL,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_histogram_buckets",
-		.guc_desc = "Sets the maximum number of histogram buckets",
-		.guc_default = 10,
-		.guc_min = 2,
-		.guc_max = INT_MAX,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_HISTOGRAM_BUCKETS
-	};
-	DefineIntGUC(&conf[i++]);
-
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_query_shared_buffer",
-		.guc_desc = "Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.",
-		.guc_default = 20,
-		.guc_min = 1,
-		.guc_max = 10000,
-		.guc_restart = true,
-		.guc_unit = GUC_UNIT_MB,
-		.guc_value = &PGSM_QUERY_SHARED_BUFFER
-	};
-	DefineIntGUC(&conf[i++]);
-
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_overflow_target",
-		.guc_desc = "Sets the overflow target for pg_stat_monitor",
-		.guc_default = 1,
-		.guc_min = 0,
-		.guc_max = 1,
-		.guc_restart = true,
-		.guc_unit = 0,
-		.guc_value = &PGSM_OVERFLOW_TARGET
-	};
-	DefineIntGUC(&conf[i++]);
-
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_enable_query_plan",
-		.guc_desc = "Enable/Disable query plan monitoring",
-		.guc_default = 0,
-		.guc_min = 0,
-		.guc_max = 0,
-		.guc_restart = false,
-		.guc_unit = 0,
-		.guc_value = &PGSM_QUERY_PLAN
-	};
-	DefineBoolGUC(&conf[i++]);
+	/* deprecated in V 2.0 */
+	DefineCustomIntVariable("pg_stat_monitor.pgsm_overflow_target", /* name */
+							"Sets the overflow target for pg_stat_monitor. (Deprecated, use pgsm_enable_overflow)", /* short_desc */
+							NULL,	/* long_desc */
+							&pgsm_overflow_target,	/* value address */
+							1,	/* boot value */
+							0,	/* min value */
+							1,	/* max value */
+							PGC_POSTMASTER, /* context */
+							0,	/* flags */
+							check_overflow_targer,	/* check_hook */
+							NULL,	/* assign_hook */
+							NULL	/* show_hook */
+		);
 
 
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_track_utility",	/* name */
+							 "Selects whether utility commands are tracked.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_track_utility,	/* value address */
+							 true,	/* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_enable_pgsm_query_id",	/* name */
+							 "Enable/disable PGSM specific query id calculation which is very useful in comparing same query across databases and clusters..",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_enable_pgsm_query_id,	/* value address */
+							 true,	/* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_normalized_query",	/* name */
+							 "Selects whether save query in normalized format.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_normalized_query,	/* value address */
+							 false, /* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_enable_overflow",	/* name */
+							 "Enable/Disable pg_stat_monitor to grow beyond shared memory into swap space.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_enable_overflow, /* value address */
+							 true,	/* boot value */
+							 PGC_POSTMASTER,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_enable_query_plan",	/* name */
+							 "Enable/Disable query plan monitoring.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_enable_query_plan,	/* value address */
+							 false, /* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_extract_comments",	/* name */
+							 "Enable/Disable extracting comments from queries.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_extract_comments,	/* value address */
+							 false, /* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
+
+	DefineCustomEnumVariable("pg_stat_monitor.pgsm_track",	/* name */
+							 "Selects which statements are tracked by pg_stat_monitor.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_track,	/* value address */
+							 PGSM_TRACK_TOP,	/* boot value */
+							 track_options, /* enum options */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
 #if PG_VERSION_NUM >= 130000
-	conf[i] = (GucVariable) {
-		.guc_name = "pg_stat_monitor.pgsm_track_planning",
-		.guc_desc = "Selects whether planning statistics are tracked.",
-		.guc_default = 1,
-		.guc_min = 0,
-		.guc_max = 0,
-		.guc_restart = false,
-		.guc_unit = 0,
-		.guc_value = &PGSM_TRACK_PLANNING
-	};
-	DefineBoolGUC(&conf[i++]);
+	DefineCustomBoolVariable("pg_stat_monitor.pgsm_track_planning", /* name */
+							 "Selects whether planning statistics are tracked.",	/* short_desc */
+							 NULL,	/* long_desc */
+							 &pgsm_track_planning,	/* value address */
+							 false, /* boot value */
+							 PGC_USERSET,	/* context */
+							 0, /* flags */
+							 NULL,	/* check_hook */
+							 NULL,	/* assign_hook */
+							 NULL	/* show_hook */
+		);
 #endif
+
 }
 
-static void
-DefineIntGUC(GucVariable *conf)
+/* Maximum value must be greater or equal to minimum + 1.0 */
+static bool
+check_histogram_min(double *newval, void **extra, GucSource source)
 {
-	DefineCustomIntVariable(conf->guc_name,
-							conf->guc_desc,
-							NULL,
-							conf->guc_value,
-							conf->guc_default,
-							conf->guc_min,
-							conf->guc_max,
-							conf->guc_restart ? PGC_POSTMASTER : PGC_USERSET,
-							conf->guc_unit,
-							NULL,
-							NULL,
-							NULL);
-}
-static void
-DefineBoolGUC(GucVariable *conf)
-{
-	DefineCustomBoolVariable(conf->guc_name,
-							conf->guc_desc,
-							NULL,
-							(bool*)conf->guc_value,
-							conf->guc_default,
-							conf->guc_restart ? PGC_POSTMASTER : PGC_USERSET,
-							 0,
-							 NULL,
-							 NULL,
-							 NULL);
+	/*
+	 * During module initialization PGSM_HISTOGRAM_MIN is initialized before
+	 * PGSM_HISTOGRAM_MAX, in this case PGSM_HISTOGRAM_MAX will be zero.
+	 */
+	return (pgsm_histogram_max == 0 || (*newval + 1.0) <= pgsm_histogram_max);
 }
 
-GucVariable*
-get_conf(int i)
+static bool
+check_histogram_max(double *newval, void **extra, GucSource source)
 {
-	return  &conf[i];
+	return (*newval >= (pgsm_histogram_min + 1.0));
 }
 
+static bool
+check_overflow_targer(int *newval, void **extra, GucSource source)
+{
+	if (source != PGC_S_DEFAULT)
+		elog(WARNING, "pg_stat_monitor.pgsm_overflow_target is deprecated, use pgsm_enable_overflow");
+	return true;
+}

@@ -1,0 +1,94 @@
+name: postgresql-15-ppg-package
+on: [push]
+
+jobs:
+  build:
+    name: pg-15-ppg-package-test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone pg_stat_monitor repository
+        uses: actions/checkout@v2
+        with:
+          path: 'src/pg_stat_monitor'
+
+      - name: Delete old postgresql files
+        run: |
+          sudo apt-get update
+          sudo apt purge postgresql-client-common postgresql-common \
+            postgresql postgresql*
+          sudo apt-get install -y libreadline6-dev systemtap-sdt-dev \
+            zlib1g-dev libssl-dev libpam0g-dev python3-dev bison flex \
+            libipc-run-perl wget 
+          sudo rm -rf /var/lib/postgresql /var/log/postgresql /etc/postgresql \
+            /usr/lib/postgresql /usr/include/postgresql /usr/share/postgresql \
+            /etc/postgresql
+          sudo rm -f /usr/bin/pg_config
+          sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
+          sudo /usr/bin/perl -MCPAN -e 'install Text::Trim'
+
+      - name: Install percona-release script
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y upgrade
+          sudo apt-get install -y wget gnupg2 curl lsb-release
+          sudo wget \
+            https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+          sudo dpkg -i percona-release_latest.generic_all.deb
+
+      - name: Install Percona Distribution Postgresql 15
+        run: |
+          sudo percona-release setup ppg-15
+          sudo apt-get update -y
+          sudo apt-get install -y percona-postgresql-15 \
+            percona-postgresql-contrib percona-postgresql-server-dev-all
+
+      - name: Change src owner to postgres
+        run: |
+          sudo chmod o+rx ~
+          sudo chown -R postgres:postgres src
+
+      - name: Build pg_stat_monitor
+        run: |
+          sudo -u postgres bash -c 'make USE_PGXS=1'
+          sudo make USE_PGXS=1 install
+        working-directory: src/pg_stat_monitor
+
+      - name: Start pg_stat_monitor_tests
+        run: |
+          sudo service postgresql stop
+          echo "shared_preload_libraries = 'pg_stat_monitor'" | 
+            sudo tee -a /etc/postgresql/15/main/postgresql.conf
+          sudo service postgresql start
+          sudo psql -V
+          export PG_TEST_PORT_DIR=${GITHUB_WORKSPACE}/src/pg_stat_monitor
+          echo $PG_TEST_PORT_DIR
+          sudo -E -u postgres bash -c 'make installcheck USE_PGXS=1'
+        working-directory: src/pg_stat_monitor
+
+      - name: Change dir permissions on fail
+        if: ${{ failure() }}
+        run: |
+          sudo chmod -R ugo+rwx t
+          sudo chmod -R ugo+rwx tmp_check
+          exit 2 # regenerate error so that we can upload files in next step
+        working-directory: src/pg_stat_monitor
+
+      - name: Upload logs on fail
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: Regressions diff and postgresql log
+          path: |
+            src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/regression.out
+            src/pg_stat_monitor/logfile
+            src/pg_stat_monitor/t/results/
+            src/pg_stat_monitor/tmp_check/log/
+            !src/pg_stat_monitor/tmp_check/**/archives/*
+            !src/pg_stat_monitor/tmp_check/**/backup/*
+            !src/pg_stat_monitor/tmp_check/**/pgdata/*
+            !src/pg_stat_monitor/tmp_check/**/archives/
+            !src/pg_stat_monitor/tmp_check/**/backup/
+            !src/pg_stat_monitor/tmp_check/**/pgdata/
+          if-no-files-found: warn
+          retention-days: 3

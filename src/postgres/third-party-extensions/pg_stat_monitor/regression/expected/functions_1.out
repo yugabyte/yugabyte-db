@@ -1,0 +1,42 @@
+DROP ROLE IF EXISTS su;
+NOTICE:  role "su" does not exist, skipping
+CREATE USER su WITH SUPERUSER;
+SET ROLE su;
+CREATE EXTENSION pg_stat_monitor;
+CREATE USER u1;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT routine_schema, routine_name, routine_type, data_type FROM information_schema.routines WHERE routine_schema = 'public' ORDER BY routine_name COLLATE "C";
+ routine_schema |       routine_name       | routine_type | data_type 
+----------------+--------------------------+--------------+-----------
+ public         | decode_error_level       | FUNCTION     | text
+ public         | get_cmd_type             | FUNCTION     | text
+ public         | get_histogram_timings    | FUNCTION     | text
+ public         | histogram                | FUNCTION     | record
+ public         | pg_stat_monitor_internal | FUNCTION     | record
+ public         | pg_stat_monitor_reset    | FUNCTION     | void
+ public         | pg_stat_monitor_version  | FUNCTION     | text
+ public         | pgsm_create_11_view      | FUNCTION     | integer
+ public         | pgsm_create_13_view      | FUNCTION     | integer
+ public         | pgsm_create_14_view      | FUNCTION     | integer
+ public         | pgsm_create_15_view      | FUNCTION     | integer
+ public         | pgsm_create_view         | FUNCTION     | integer
+ public         | range                    | FUNCTION     | ARRAY
+(13 rows)
+
+SET ROLE u1;
+SELECT routine_schema, routine_name, routine_type, data_type FROM information_schema.routines WHERE routine_schema = 'public' ORDER BY routine_name COLLATE "C";
+ routine_schema |      routine_name       | routine_type | data_type 
+----------------+-------------------------+--------------+-----------
+ public         | histogram               | FUNCTION     | record
+ public         | pg_stat_monitor_reset   | FUNCTION     | void
+ public         | pg_stat_monitor_version | FUNCTION     | text
+(3 rows)
+
+SET ROLE su;
+DROP USER u1;
+DROP EXTENSION pg_stat_monitor;
