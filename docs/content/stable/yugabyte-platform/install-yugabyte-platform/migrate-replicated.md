@@ -30,9 +30,13 @@ If you have high availability configured, you need to migrate your instances in 
 
 ## Migrate a Replicated installation
 
-You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). This method migrates both your Replicated configuration and the YBA metadata (universes, providers etc) to the YBA Installer format. Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm]. In this alternate method, Replicated configuration is not migrated seamlessly but YBA metadata (universes, providers etc) are migrated to the new VM.
+You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). When migrating in place, both your Replicated configuration and the YBA metadata (universes, providers, and so on) are migrated to the YBA Installer format.
+
+Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm). Only the YBA metadata (universes, providers, and so on) is migrated to the new VM; the Replication configuration is not.
 
 ### Migrate from Replicated to YBA Installer in place
+
+To migrate in place, do the following:
 
 1. Optionally, configure the migration as follows:
 
