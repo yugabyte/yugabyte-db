@@ -219,7 +219,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     return new String(source, offset, length);
   }
 
-  private List<String> receiveTestDecodingMessages(PGReplicationStream stream, int count)
+  private List<String> receiveStringMessages(PGReplicationStream stream, int count)
       throws Exception {
     List<String> result = new ArrayList<String>(count);
     for (int index = 0; index < count; index++) {
@@ -2172,7 +2172,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .start();
 
     List<String> result = new ArrayList<String>();
-    result.addAll(receiveTestDecodingMessages(stream, 36));
+    result.addAll(receiveStringMessages(stream, 36));
 
     List<String> expectedResult = new ArrayList<String>() {
       {
@@ -2511,5 +2511,130 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
    };
    assertEquals(expectedResult, result);
    stream.close();
+  }
+
+  @Test
+  public void testWithWal2JsonPlugin() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+      stmt.execute("DROP TABLE IF EXISTS t3");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text, c bool)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text, c bool)");
+
+      // CHANGE is the default but we do it explicitly so that the tests do not need changing if we
+      // change the default.
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE");
+      stmt.execute("ALTER TABLE t2 REPLICA IDENTITY FULL");
+      stmt.execute("ALTER TABLE t3 REPLICA IDENTITY DEFAULT");
+    }
+
+    String slotName = "test_with_wal2json";
+    Connection conn =
+      getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, "wal2json");
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd', true)");
+      stmt.execute("INSERT INTO t1 VALUES(2, 'defg', true)");
+      stmt.execute("INSERT INTO t1 VALUES(3, 'hijk', false)");
+      stmt.execute("UPDATE t1 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("UPDATE t1 SET b = NULL, c = false WHERE a = 2");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
+
+      stmt.execute("INSERT INTO t2 VALUES(1, 'abcd', true)");
+      stmt.execute("UPDATE t2 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("DELETE FROM t2 WHERE a = 1");
+
+      stmt.execute("INSERT INTO t3 VALUES(1, 'abcd', true)");
+      stmt.execute("UPDATE t3 SET b = 'updated_abcd' WHERE a = 1");
+      stmt.execute("DELETE FROM t3 WHERE a = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("include-xids", true)
+      .start();
+
+    List<String> result = new ArrayList<String>();
+    result.addAll(receiveStringMessages(stream, 12));
+
+    List<String> expectedResult = new ArrayList<String>() {
+      {
+        add(
+          "{\"xid\":2,\"change\":[{\"kind\":\"insert\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[1,\"abcd\",true]}]}"
+          );
+        add(
+          "{\"xid\":3,\"change\":[{\"kind\":\"insert\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[2,\"defg\",true]}]}"
+        );
+        add(
+          "{\"xid\":4,\"change\":[{\"kind\":\"insert\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[3,\"hijk\",false]}]}"
+        );
+        add(
+          "{\"xid\":5,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"columnnames\":[\"a\",\"b\"],\"columntypes\":[\"integer\",\"text\"],"
+          +"\"columnvalues\":[1,\"updated_abcd\"],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
+          +"\"keyvalues\":[]}}]}"
+        );
+        add(
+          "{\"xid\":6,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[2,null,false],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
+          +"\"keyvalues\":[]}}]}"
+        );
+        add(
+          "{\"xid\":7,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t1\","
+          +"\"oldkeys\":{\"keynames\":[\"a\"],\"keytypes\":[\"integer\"],\"keyvalues\":[2]}}]}"
+        );
+        add(
+          "{\"xid\":8,\"change\":[{\"kind\":\"insert\",\"schema\":\"public\",\"table\":\"t2\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[1,\"abcd\",true]}]}"
+        );
+        add(
+          "{\"xid\":9,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t2\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[1,\"updated_abcd\",true],"
+          +"\"oldkeys\":{\"keynames\":[\"a\",\"b\",\"c\"],"
+          +"\"keytypes\":[\"integer\",\"text\",\"boolean\"],\"keyvalues\":[1,\"abcd\",true]}}]}"
+        );
+        add(
+          "{\"xid\":10,\"change\":[{\"kind\":\"delete\","
+          +"\"schema\":\"public\",\"table\":\"t2\","
+          +"\"oldkeys\":{\"keynames\":[\"a\",\"b\",\"c\"],"
+          +"\"keytypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"keyvalues\":[1,\"updated_abcd\",true]}}]}"
+        );
+        add(
+          "{\"xid\":11,\"change\":[{\"kind\":\"insert\",\"schema\":\"public\",\"table\":\"t3\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[1,\"abcd\",true]}]}"
+        );
+        add(
+          "{\"xid\":12,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t3\","
+          +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
+          +"\"columnvalues\":[1,\"updated_abcd\",true],"
+          +"\"oldkeys\":{\"keynames\":[],\"keytypes\":[],\"keyvalues\":[]}}]}"
+        );
+        add(
+          "{\"xid\":13,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t3\","
+          +"\"oldkeys\":{\"keynames\":[\"a\"],\"keytypes\":[\"integer\"],\"keyvalues\":[1]}}]}"
+        );
+      }
+    };
+
+    assertEquals(expectedResult, result);
+
+    stream.close();
   }
 }
