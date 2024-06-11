@@ -64,7 +64,7 @@ To migrate in place, do the following:
 
     After the new YBA comes up successfully, do not attempt to roll back to the original Replicated install of YBA. Rollback is only intended for scenarios where the migration fails. Any changes made with a new YBA (either using the UI or the API) are not reflected after a rollback.
 
-    In particular, do not configure HA until running the `finish` command (next step) on all instances.
+    In particular, do not configure high availability until running the `finish` command (next step) on all instances.
 
 1. If the new YBA installation is correct, finish the migration as follows:
 
@@ -76,24 +76,24 @@ To migrate in place, do the following:
 
 #### Migration and high availability
 
-If you have YBA [high availability](../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
 If Replicated is using HTTPS, migrate as follows:
 
-1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.3 or later.
+1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and high availability standby instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.3 or later.
 1. [Migrate and finish](#migrate-a-replicated-installation) the active instance.
 1. Migrate and finish the standby instances.
 
 Failovers are only possible after you finish the migration on both the primary and standby.
 
-If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
+If Replicated is using HTTP, you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
 1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.3 or later.
 1. [Migrate and finish](#migrate-a-replicated-installation) the active instance.
 1. Migrate and finish the standby instances.
-1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
+1. [Configure high availability on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
 
 [Failovers](../../administer-yugabyte-platform/high-availability/#failover) are possible again after the completion of this step.
 
@@ -104,7 +104,7 @@ Note that [Replicated configuration](../install-replicated/#set-up-https-optiona
 To migrate to a different VM, do the following:
 
 1. [Install and configure YBA Installer](../install-software/installer/#configuration-options) on a new VM.
-1. Disable any YBA [high availability](../../administer-yugabyte-platform/high-availability/) (HA) configured on the Replicated installation.
+1. Disable [high availability](../../administer-yugabyte-platform/high-availability/) (if configured) on the Replicated installation.
 1. Perform a full [backup of YBA](../../administer-yugabyte-platform/back-up-restore-yp/) on the Replicated installation.
 
     This backup includes Prometheus data and all [imported releases](../../manage-deployments/ybdb-releases/).
@@ -126,5 +126,5 @@ To migrate to a different VM, do the following:
 1. [Completely delete the Replicated installation](https://support.yugabyte.com/hc/en-us/articles/11095326804877-Uninstall-Replicated-based-Yugabyte-Anywhere-aka-Yugabyte-Platform-from-the-Linux-host) or re-image the Replicated VM.
 
 {{< warning title="High availability" >}}
-If you had [HA](../../administer-yugabyte-platform/high-availability/) configured for your Replicated installation, set up a new YBA Installer VM to be the standby and configure HA from scratch. _Do not attempt to continue to use the existing Replicated standby VM_.
+If you had [high availability](../../administer-yugabyte-platform/high-availability/) configured for your Replicated installation, set up a new YBA Installer VM to be the standby and configure high availability from scratch. _Do not attempt to continue to use the existing Replicated standby VM_.
 {{</warning>}}
