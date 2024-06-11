@@ -3,20 +3,17 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,11 +38,8 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   }
 
   public static class Params extends ServerSubTaskParams {
-    public Collection<NodeDetails> masters;
-    public Collection<NodeDetails> tservers;
-    // whether we need to check nodes one-by-one or all the nodes simultaneously
-    public boolean isRolling = true;
     public String targetSoftwareVersion;
+    public Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck;
   }
 
   @Override
@@ -70,17 +64,12 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
       return;
     }
 
-    Set<NodeDetails> allNodes = new HashSet<>(taskParams().masters);
-    allNodes.addAll(taskParams().tservers);
-    for (NodeDetails node : allNodes) {
-      NodeDetails nodeInUniverse = universe.getNode(node.nodeName);
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getCluster(nodeInUniverse.placementUuid);
-      if (!isApiSupported(cluster.userIntent.ybSoftwareVersion)) {
-        log.debug(
-            "API is not supported for current version {}", cluster.userIntent.ybSoftwareVersion);
-        return;
-      }
+    if (!isApiSupported(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      log.debug(
+          "API is not supported for current version {}",
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+      return;
     }
 
     // Max threshold for follower lag.
@@ -104,7 +93,6 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     try (YBClient ybClient = getClient()) {
       AtomicInteger errorCnt = new AtomicInteger();
       List<String> lastErrors = new ArrayList<>();
-      List<Pair<Collection<String>, Collection<String>>> ipsList = splitIps(universe, cloudEnabled);
       boolean result =
           doWithExponentialTimeout(
               INITIAL_DELAY_MS,
@@ -113,20 +101,23 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
               () -> {
                 try {
                   lastErrors.clear();
-                  for (Pair<Collection<String>, Collection<String>> ips : ipsList) {
+                  for (UpgradeTaskBase.MastersAndTservers ips : taskParams().nodesToCheck) {
+                    Set<String> masterIps = extractIps(universe, ips.mastersList, cloudEnabled);
+                    Set<String> tserverIps = extractIps(universe, ips.tserversList, cloudEnabled);
                     String currentNodes = "";
-                    if (!ips.getFirst().isEmpty()) {
-                      currentNodes += "MASTERS: " + ips.getFirst();
+                    if (!masterIps.isEmpty()) {
+                      currentNodes += "MASTERS: " + masterIps;
                     }
-                    if (!ips.getSecond().isEmpty()) {
-                      currentNodes += "TSERVERS: " + ips.getSecond();
+                    if (!tserverIps.isEmpty()) {
+                      if (!currentNodes.isEmpty()) {
+                        currentNodes += ",";
+                      }
+                      currentNodes += "TSERVERS: " + tserverIps;
                     }
                     try {
                       AreNodesSafeToTakeDownResponse resp =
                           ybClient.areNodesSafeToTakeDown(
-                              new HashSet<>(ips.getFirst()),
-                              new HashSet<>(ips.getSecond()),
-                              maxAcceptableFollowerLagMs);
+                              masterIps, tserverIps, maxAcceptableFollowerLagMs);
 
                       if (!resp.isSucessful()) {
                         lastErrors.add(currentNodes + " have a problem: " + resp.getErrorMessage());
@@ -150,6 +141,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
                   return false;
                 }
               });
+
       if (!result) {
         String runtimeConfigInfo =
             "If temporary unavailability is acceptable, you can briefly "
@@ -157,52 +149,32 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
                 + UniverseConfKeys.useNodesAreSafeToTakeDown.getKey()
                 + " and retry this operation.";
         if (!lastErrors.isEmpty()) {
-          throw new RuntimeException(
+          fail(
               "Aborting because this operation can potentially take down"
                   + " a majority of copies of some tablets (CheckNodesAreSafeToTakeDown). "
                   + runtimeConfigInfo
                   + " Error details: "
-                  + lastErrors.stream().collect(Collectors.joining(",")));
+                  + String.join(",", lastErrors));
         } else {
-          throw new RuntimeException(
+          fail(
               "Failed to execute availability check (CheckNodesAreSafeToTakeDown). "
                   + runtimeConfigInfo);
         }
       }
-
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
   }
 
-  private List<Pair<Collection<String>, Collection<String>>> splitIps(
-      Universe universe, boolean cloudEnabled) {
-    List<Pair<Collection<String>, Collection<String>>> result = new ArrayList<>();
-    if (!taskParams().isRolling) {
-      result.add(
-          new Pair<>(
-              extractIps(universe, taskParams().masters, cloudEnabled),
-              extractIps(universe, taskParams().tservers, cloudEnabled)));
-    } else {
-      for (NodeDetails master : taskParams().masters) {
-        result.add(
-            new Pair<>(
-                Collections.singletonList(getIp(universe, master, cloudEnabled)),
-                Collections.emptyList()));
-      }
-      for (NodeDetails tserver : taskParams().tservers) {
-        result.add(
-            new Pair<>(
-                Collections.emptyList(),
-                Collections.singletonList(getIp(universe, tserver, cloudEnabled))));
-      }
-    }
-    return result;
+  private void fail(String message) {
+    message +=
+        ". This check could be disabled by 'yb.checks.nodes_safe_to_take_down.enabled' config";
+    throw new RuntimeException(message);
   }
 
-  private Collection<String> extractIps(
+  private Set<String> extractIps(
       Universe universe, Collection<NodeDetails> nodes, boolean cloudEnabled) {
-    return nodes.stream().map(n -> getIp(universe, n, cloudEnabled)).collect(Collectors.toList());
+    return nodes.stream().map(n -> getIp(universe, n, cloudEnabled)).collect(Collectors.toSet());
   }
 
   private String getIp(Universe universe, NodeDetails nodeDetails, boolean cloudEnabled) {

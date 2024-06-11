@@ -727,7 +727,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public void setUnderReplicatedTabletsMock() {
     ObjectNode underReplicatedTabletsJson = Json.newObject();
     underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
+    lenient()
+        .when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
         .thenReturn(underReplicatedTabletsJson);
   }
 

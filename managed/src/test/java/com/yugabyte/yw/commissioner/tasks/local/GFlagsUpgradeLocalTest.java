@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
@@ -10,6 +11,7 @@ import static org.junit.Assert.assertNull;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.LocalNodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -17,6 +19,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
@@ -132,6 +135,51 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     compareGFlags(universe);
     verifyYSQL(universe);
     verifyPayload();
+  }
+
+  @Test
+  public void testStopMultipleNodesInAZ() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+
+    taskParams.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).numNodesInAZ = 4;
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+
+    assertEquals(6, taskParams.getPrimaryCluster().userIntent.numNodes);
+    assertEquals(
+        4,
+        PlacementInfoUtil.getAzUuidToNumNodes(taskParams.nodeDetailsSet)
+            .get(az1.getUuid())
+            .intValue());
+
+    taskParams.expectedUniverseVersion = -1;
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo = waitForTask(universeResp.taskUUID);
+    Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
+    verifyUniverseTaskSuccess(taskInfo);
+
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.stopMultipleNodesInAZEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.simultaneousStopsInUpgradePercent.getKey(), "55");
+
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+
+    taskInfo =
+        doGflagsUpgrade(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+    assertEquals(1l, 2l);
   }
 
   // @Test

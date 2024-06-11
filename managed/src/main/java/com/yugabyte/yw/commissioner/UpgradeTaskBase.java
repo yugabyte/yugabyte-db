@@ -14,6 +14,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -43,6 +45,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -83,6 +86,23 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     public MastersAndTservers(List<NodeDetails> mastersList, List<NodeDetails> tserversList) {
       this.mastersList = mastersList == null ? Collections.emptyList() : mastersList;
       this.tserversList = tserversList == null ? Collections.emptyList() : tserversList;
+    }
+
+    public static MastersAndTservers from(NodeDetails node, Set<ServerType> processTypes) {
+      return from(Collections.singletonList(node), processTypes);
+    }
+
+    public static MastersAndTservers from(
+        Collection<NodeDetails> nodes, Set<ServerType> processTypes) {
+      List<NodeDetails> masters = new ArrayList<>();
+      List<NodeDetails> tservers = new ArrayList<>();
+      if (processTypes.contains(ServerType.MASTER)) {
+        masters.addAll(nodes);
+      }
+      if (processTypes.contains(ServerType.TSERVER)) {
+        tservers.addAll(nodes);
+      }
+      return new MastersAndTservers(masters, tservers);
     }
 
     public Pair<List<NodeDetails>, List<NodeDetails>> asPair() {
@@ -138,10 +158,20 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        createCheckNodesAreSafeToTakeDownTask(
-            nodesToBeRestarted.mastersList,
-            nodesToBeRestarted.tserversList,
-            getTargetSoftwareVersion());
+        List<MastersAndTservers> split = new ArrayList<>();
+        nodesToBeRestarted.mastersList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.singletonList(n), Collections.emptyList())));
+        nodesToBeRestarted.tserversList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.emptyList(), Collections.singletonList(n))));
+        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
       }
     }
   }
@@ -327,6 +357,174 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         isYbcPresent);
   }
 
+  /**
+   * Split nodes to chunks that are safe to take down simultaneously. Also we group by serverType,
+   * so that each portion will have the same set of server types. Each chunk cannot contain more
+   * than one master. Default behavior (if the feature is turned off) is single-node chunks. Nodes
+   * are expected to be sorted by az.
+   *
+   * @param universe Current universe state.
+   * @param nodes Nodes to split (sorted by az).
+   * @param activeRole False means that we are processing disabled masters.
+   * @param serverTypeFunction Function to determine which server types to use for particular node.
+   * @return
+   */
+  private List<List<NodeDetails>> splitNodes(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      boolean activeRole,
+      Function<NodeDetails, Set<ServerType>> serverTypeFunction) {
+    return splitNodes(confGetter, universe, nodes, activeRole, serverTypeFunction);
+  }
+
+  /**
+   * Split nodes to chunks that are safe to take down simultaneously. Also we group by serverType,
+   * so that each portion will have the same set of server types. Each chunk cannot contain more
+   * than one master. Default behavior (if the feature is turned off) is single-node chunks. Nodes
+   * are expected to be sorted by az.
+   *
+   * @param confGetter Getter.
+   * @param universe Current universe state.
+   * @param nodes Nodes to split (sorted by az).
+   * @param activeRole False means that we are processing disabled masters.
+   * @param serverTypeFunction Function to determine which server types to use for particular node.
+   * @return
+   */
+  static List<List<NodeDetails>> splitNodes(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      boolean activeRole,
+      Function<NodeDetails, Set<ServerType>> serverTypeFunction) {
+    if (!activeRole
+        || !confGetter.getConfForScope(universe, UniverseConfKeys.stopMultipleNodesInAZEnabled)) {
+      return splitNodes(nodes, serverTypeFunction, (x, y) -> 1);
+    }
+    Map<UUID, Map<UUID, Integer>> azUuidToNumNodesByCluster = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      Map<UUID, Integer> azUuidToNumNodes =
+          azUuidToNumNodesByCluster.computeIfAbsent(node.placementUuid, (x) -> new HashMap<>());
+      azUuidToNumNodes.merge(node.azUuid, 1, Integer::sum);
+    }
+    int percent =
+        confGetter.getConfForScope(universe, UniverseConfKeys.simultaneousStopsInUpgradePercent);
+    int maxAbs =
+        confGetter.getConfForScope(universe, UniverseConfKeys.maxSimultaneousStopsInUpgrade);
+
+    return splitNodes(
+        nodes,
+        serverTypeFunction,
+        (clusterUUID, azUUID) -> {
+          Integer nodesInAZ = azUuidToNumNodesByCluster.get(clusterUUID).get(azUUID);
+          int maxSizePerAZ = Math.max(1, (int) Math.round((double) nodesInAZ * percent / 100));
+          if (maxSizePerAZ > maxAbs) {
+            maxSizePerAZ = maxAbs;
+          }
+          return getMaxAllowedToStop(universe, clusterUUID, azUUID, maxSizePerAZ);
+        });
+  }
+
+  /**
+   * Method to split list of nodes into the list of chunks. Nodes in chunk are having the same set
+   * of server types and the same az. Also each chunk cannot contain more than one master. Max chunk
+   * length is determined by {@code maxNodesPerAZFunc}.
+   *
+   * @param nodes
+   * @param serverTypeFunction
+   * @param maxNodesPerAZFunc
+   * @return
+   */
+  private static List<List<NodeDetails>> splitNodes(
+      Collection<NodeDetails> nodes,
+      Function<NodeDetails, Set<ServerType>> serverTypeFunction,
+      BiFunction<UUID, UUID, Integer> maxNodesPerAZFunc) {
+    List<List<NodeDetails>> result = new ArrayList<>();
+    UUID lastAZUUID = null;
+    UUID lastClusterUUID = null;
+    Set<ServerType> lastServerTypes = null;
+    List<NodeDetails> currentChunk = new ArrayList<>();
+    for (NodeDetails node : nodes) {
+      if (lastAZUUID != null
+          && (!lastAZUUID.equals(node.azUuid)
+              || !Objects.equals(lastServerTypes, serverTypeFunction.apply(node))
+              || !Objects.equals(lastClusterUUID, node.placementUuid))) {
+        result.add(new ArrayList<>(currentChunk));
+        currentChunk.clear();
+      }
+      lastAZUUID = node.azUuid;
+      lastClusterUUID = node.placementUuid;
+      lastServerTypes = serverTypeFunction.apply(node);
+      currentChunk.add(node);
+      int nodesToStop = maxNodesPerAZFunc.apply(lastClusterUUID, lastAZUUID);
+      if (currentChunk.size() >= nodesToStop || lastServerTypes.contains(ServerType.MASTER)) {
+        result.add(new ArrayList<>(currentChunk));
+        currentChunk.clear();
+        lastAZUUID = null;
+        lastClusterUUID = null;
+      }
+    }
+    if (currentChunk.size() > 0) {
+      result.add(new ArrayList<>(currentChunk));
+    }
+    return result;
+  }
+
+  /**
+   * Calculate maximum number of nodes allowed to stop without breaking fault tolerance. If the
+   * total sum of minNumReplicas is less than RF (some replicas are placed randomly) we consider
+   * worst case scenario (all the random replicas are placed in the current zone). The result is
+   * capped by {@code requestedToStop}.
+   *
+   * @param universe
+   * @param clusterUUID
+   * @param azUUID
+   * @param requestedToStop Desired number of nodes to stop in az
+   * @return
+   */
+  static int getMaxAllowedToStop(
+      Universe universe, UUID clusterUUID, UUID azUUID, Integer requestedToStop) {
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(clusterUUID);
+    int maxReplicasSafeToStop = cluster.userIntent.replicationFactor / 2;
+    // This is not likely to happen but still possible in our code
+    // (we don't have restrictions to have only odd RF)
+    if (cluster.userIntent.replicationFactor % 2 == 0) {
+      maxReplicasSafeToStop--;
+    }
+    maxReplicasSafeToStop = Math.max(1, maxReplicasSafeToStop);
+    int sumOfReplicas = cluster.placementInfo.azStream().mapToInt(az -> az.replicationFactor).sum();
+    PlacementAZ placementAZ =
+        cluster
+            .placementInfo
+            .azStream()
+            .filter(az -> az.uuid.equals(azUUID))
+            .findFirst()
+            .orElse(null);
+    if (placementAZ == null) {
+      log.error(
+          "Placement {} not found in cluster {}, returning {}",
+          azUUID,
+          clusterUUID,
+          maxReplicasSafeToStop);
+      return maxReplicasSafeToStop;
+    }
+    int replicasInZone = placementAZ.replicationFactor;
+    if (sumOfReplicas != cluster.userIntent.replicationFactor) {
+      // If there is some unpredictability in replicas placement,
+      // we use worst-case scenario (all excessive replicas reside in the current zone).
+      replicasInZone += cluster.userIntent.replicationFactor - sumOfReplicas;
+      log.debug(
+          "Replicas are spread unpredictably (sum of replicas {} rf {}),"
+              + " setting replicas in zone to {} ",
+          sumOfReplicas,
+          cluster.userIntent.replicationFactor,
+          replicasInZone);
+    }
+    if (replicasInZone <= maxReplicasSafeToStop) {
+      return requestedToStop;
+    }
+    return Math.min(maxReplicasSafeToStop, requestedToStop);
+  }
+
   private void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
       Collection<NodeDetails> nodes,
@@ -347,10 +545,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       typesByNode.put(node, serverTypes);
     }
 
-    log.debug("types {} activeRole {}", typesByNode, activeRole);
-
     NodeState nodeState = getNodeState();
-
     if (hasTServer) {
       if (!isBlacklistLeaders()) {
         // Need load balancer on to perform leader blacklist.
@@ -365,45 +560,61 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
     }
 
-    for (NodeDetails node : nodes) {
-      Set<ServerType> processTypes = typesByNode.get(node);
-      List<NodeDetails> singletonNodeList = Collections.singletonList(node);
-      createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
+    List<List<NodeDetails>> split =
+        splitNodes(getUniverse(), nodes, activeRole, processTypesFunction);
 
-      createNodePrecheckTasks(
-          node, processTypes, subGroupType, !activeRole, context.targetSoftwareVersion);
+    for (List<NodeDetails> nodeList : split) {
+      // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
+      Set<ServerType> processTypes = processTypesFunction.apply(nodeList.get(0));
+
+      if (nodeList.size() > 1) {
+        log.debug("Stopping {} nodes simultaneously, processes {}", nodeList.size(), processTypes);
+      }
+      createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
+
+      for (NodeDetails node : nodeList) {
+        createNodePrecheckTasks(
+            node, processTypes, subGroupType, true, context.targetSoftwareVersion);
+      }
+      if (activeRole) {
+        createCheckNodesAreSafeToTakeDownTask(
+            Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
+            getTargetSoftwareVersion());
+      }
 
       // Run pre node upgrade hooks
-      createHookTriggerTasks(singletonNodeList, true, true);
+      createHookTriggerTasks(nodeList, true, true);
       if (context.runBeforeStopping) {
-        rollingUpgradeLambda.run(singletonNodeList, processTypes);
+        rollingUpgradeLambda.run(nodeList, processTypes);
       }
 
       if (isYbcPresent) {
-        createServerControlTask(node, ServerType.CONTROLLER, "stop")
+        createServerControlTasks(nodeList, ServerType.CONTROLLER, "stop")
             .setSubTaskGroupType(subGroupType);
       }
-      stopProcessesOnNode(
-          node,
+
+      stopProcessesOnNodes(
+          nodeList,
           processTypes,
           context.reconfigureMaster && activeRole /* remove master from quorum */,
           false /* deconfigure */,
           subGroupType);
 
       if (!context.runBeforeStopping) {
-        rollingUpgradeLambda.run(singletonNodeList, processTypes);
+        rollingUpgradeLambda.run(nodeList, processTypes);
       }
-
+      // Starting processes
       if (activeRole) {
         for (ServerType processType : processTypes) {
           if (!context.skipStartingProcesses) {
-            createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+            createServerControlTasks(nodeList, processType, "start")
+                .setSubTaskGroupType(subGroupType);
           }
-          createWaitForServersTasks(singletonNodeList, processType)
-              .setSubTaskGroupType(subGroupType);
-          if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
+          createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
+
+          if (processType.equals(ServerType.TSERVER) && nodeList.iterator().next().isYsqlServer) {
             createWaitForServersTasks(
-                    singletonNodeList,
+                    nodeList,
                     ServerType.YSQLSERVER,
                     context.getUserIntent(),
                     context.getCommunicationPorts())
@@ -412,46 +623,56 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
-            createChangeConfigTasks(node, true /* isAdd */, subGroupType);
+            for (NodeDetails node : nodeList) {
+              createChangeConfigTasks(node, true /* isAdd */, subGroupType);
+            }
           }
-          createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
+          for (NodeDetails node : nodeList) {
+            createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
+          }
+
           // If there are no universe keys on the universe, it will have no effect.
           if (processType == ServerType.MASTER
               && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
             createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
           }
         }
-        createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+
+        createWaitForKeyInMemoryTasks(nodeList).setSubTaskGroupType(subGroupType);
+
         // remove leader blacklist
         if (processTypes.contains(ServerType.TSERVER)) {
-          removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
+          removeFromLeaderBlackListIfAvailable(nodeList, subGroupType);
         }
+
         if (isFollowerLagCheckEnabled()) {
           for (ServerType processType : processTypes) {
-            createCheckFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+            createCheckFollowerLagTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
           }
         }
+
         if (isYbcPresent) {
           if (!context.skipStartingProcesses) {
-            createServerControlTask(node, ServerType.CONTROLLER, "start")
+            createServerControlTasks(nodeList, ServerType.CONTROLLER, "start")
                 .setSubTaskGroupType(subGroupType);
           }
-          createWaitForYbcServerTask(new HashSet<>(singletonNodeList))
-              .setSubTaskGroupType(subGroupType);
+          createWaitForYbcServerTask(nodeList).setSubTaskGroupType(subGroupType);
         }
       }
 
       if (context.postAction != null) {
-        context.postAction.accept(node);
+        nodeList.forEach(context.postAction);
       }
       // Run post node upgrade hooks
-      createHookTriggerTasks(singletonNodeList, false, true);
-      createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
+      createHookTriggerTasks(nodeList, false, true);
+      createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
 
-      createSleepAfterStartupTask(
-          taskParams().getUniverseUUID(),
-          processTypes,
-          SetNodeState.getStartKey(node.getNodeName(), nodeState));
+      for (NodeDetails node : nodeList) {
+        createSleepAfterStartupTask(
+            taskParams().getUniverseUUID(),
+            processTypes,
+            SetNodeState.getStartKey(node.getNodeName(), nodeState));
+      }
     }
 
     if (!isLoadBalancerOn) {

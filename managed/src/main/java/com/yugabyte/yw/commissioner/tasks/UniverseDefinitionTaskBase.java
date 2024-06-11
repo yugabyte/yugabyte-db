@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -76,7 +77,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -2707,17 +2707,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           .setSubTaskGroupType(subGroupType);
     }
     if (!skipCheckNodesAreSafeToTakeDown) {
-      List<NodeDetails> masters = new ArrayList<>();
-      List<NodeDetails> tservers = new ArrayList<>();
-      for (ServerType processType : processTypes) {
-        if (processType == ServerType.TSERVER) {
-          tservers.add(node);
-        }
-        if (processType == ServerType.MASTER) {
-          masters.add(node);
-        }
-      }
-      createCheckNodesAreSafeToTakeDownTask(masters, tservers, targetSoftwareVersion);
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, processTypes)),
+          targetSoftwareVersion);
     }
   }
 
@@ -2864,8 +2856,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createCheckNodesAreSafeToTakeDownTask(
-      List<NodeDetails> masters, List<NodeDetails> tservers, String targetSoftwareVersion) {
-    if (CollectionUtils.isEmpty(masters) && CollectionUtils.isEmpty(tservers)) {
+      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers, String targetSoftwareVersion) {
+    if (CollectionUtils.isEmpty(mastersAndTservers)) {
       return;
     }
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.useNodesAreSafeToTakeDown)) {
@@ -2873,9 +2865,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       CheckNodesAreSafeToTakeDown.Params params = new CheckNodesAreSafeToTakeDown.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.masters = new ArrayList<>(masters);
-      params.tservers = new ArrayList<>(tservers);
       params.targetSoftwareVersion = targetSoftwareVersion;
+      params.nodesToCheck = mastersAndTservers;
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);

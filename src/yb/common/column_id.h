@@ -89,13 +89,13 @@ static const ColumnId kInvalidColumnId = ColumnId(std::numeric_limits<ColumnIdRe
 // In a new schema, we typically would start assigning column IDs at 0. However, this
 // makes it likely that in many test cases, the column IDs and the column indexes are
 // equal to each other, and it's easy to accidentally pass an index where we meant to pass
-// an ID, without having any issues. So, in DEBUG builds, we start assigning columns at ID
+// an ID, without having any issues. So, in ASAN/TSAN builds, we start assigning columns at ID
 // 10, ensuring that if we accidentally mix up IDs and indexes, we're likely to fire an
 // assertion or bad memory access.
-#ifdef NDEBUG
-constexpr ColumnIdRep kFirstColumnIdRep = 0;
-#else
+#if defined ADDRESS_SANITIZER || defined THREAD_SANITIZER
 constexpr ColumnIdRep kFirstColumnIdRep = 10;
+#else
+constexpr ColumnIdRep kFirstColumnIdRep = 0;
 #endif
 const ColumnId kFirstColumnId(kFirstColumnIdRep);
 
