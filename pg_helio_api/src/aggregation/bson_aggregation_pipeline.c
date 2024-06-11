@@ -12,6 +12,7 @@
 #include <float.h>
 #include <fmgr.h>
 #include <miscadmin.h>
+#include <optimizer/optimizer.h>
 
 #include <access/table.h>
 #include <access/reloptions.h>
@@ -2094,11 +2095,13 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	filterContext.simplifyOperators = true;
 	filterContext.coerceOperatorExprIfApplicable = true;
 	filterContext.requiredFilterPathNameHashSet = context->requiredFilterPathNameHashSet;
-	filterContext.query = query;
 
 	bson_iter_t queryDocIterator;
 	BsonValueInitIterator(existingValue, &queryDocIterator);
 	List *quals = CreateQualsFromQueryDocIterator(&queryDocIterator, &filterContext);
+
+	UpdateQueryOperatorContextSortList(query, filterContext.sortClauses,
+									   filterContext.targetEntries);
 
 	quals = AddShardKeyAndIdFilters(existingValue, query, context, entry, quals);
 	if (query->jointree->quals != NULL)
@@ -2460,6 +2463,14 @@ HandleDistinct(const StringView *distinctKey, Query *query,
 {
 	FuncExpr *resultExpr;
 
+	/* If there are existing sort clauses in the query, can happen with $near / $nearSphere query operators
+	 * push the query down as a subquery.
+	 */
+	if (query->sortClause != NULL)
+	{
+		query = MigrateQueryToSubQuery(query, context);
+	}
+
 	/* The first projector is the document */
 	TargetEntry *firstEntry = linitial(query->targetList);
 	Expr *currentProjection = firstEntry->expr;
@@ -2479,8 +2490,8 @@ HandleDistinct(const StringView *distinctKey, Query *query,
 	SortGroupClause *distinctSortGroup = makeNode(SortGroupClause);
 	distinctSortGroup->eqop = BsonEqualOperatorId();
 	distinctSortGroup->sortop = BsonLessThanOperatorId();
-	distinctSortGroup->tleSortGroupRef = firstEntry->resno;
-	firstEntry->ressortgroupref = 1;
+	distinctSortGroup->tleSortGroupRef = assignSortGroupRef(firstEntry,
+															query->targetList);
 	query->distinctClause = list_make1(distinctSortGroup);
 
 	/* Add the bson_distinct_agg function */
@@ -2575,9 +2586,15 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 		}
 	}
 
-	List *quals = CreateExprForGeonearAndNearSphere(geoNearQueryDoc, query,
-													(Expr *) docExpr, request);
+	TargetEntry *sortTargetEntry;
+	SortGroupClause *sortGroupClause;
+	List *quals = CreateExprForGeonearAndNearSphere(geoNearQueryDoc, (Expr *) docExpr,
+													request, &sortTargetEntry,
+													&sortGroupClause);
 
+	/* Update the resno and sortgroup ref based on the query */
+	UpdateQueryOperatorContextSortList(query, list_make1(sortGroupClause),
+									   list_make1(sortTargetEntry));
 
 	if (query->jointree->quals != NULL)
 	{
@@ -4776,23 +4793,37 @@ ValidateQueryTreeForMatchStage(const Query *query)
 		return;
 	}
 
-	bool isGeonear = TargetListContainsGeonearOp(query->targetList);
+
+	bool isGeoNear = false;
+	ListCell *cell;
+	foreach(cell, query->sortClause)
+	{
+		SortGroupClause *sortClause = (SortGroupClause *) lfirst(cell);
+		TargetEntry *tle = get_sortgroupclause_tle(sortClause, query->targetList);
+		if (tle->resjunk && IsA(tle->expr, OpExpr) &&
+			((OpExpr *) tle->expr)->opno == BsonGeonearDistanceOperatorId())
+		{
+			if (isGeoNear)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg("Too many geoNear expressions")));
+			}
+			isGeoNear = true;
+		}
+	}
+
+	if (!isGeoNear)
+	{
+		return;
+	}
 
 	TargetEntry *targetEntry = linitial(query->targetList);
 	Node *node = (Node *) targetEntry->expr;
-	bool isProjectFromGeoNear = false;
 
-	if (IsA(node, FuncExpr))
+	if (!(IsA(node, FuncExpr) && CheckFuncExprBsonDollarProjectGeonear(
+			  (FuncExpr *) node)))
 	{
-		isProjectFromGeoNear = CheckFuncExprBsonDollarProjectGeonear((FuncExpr *) node);
-	}
-
-	if (isGeonear &&
-		!isProjectFromGeoNear)
-	{
-		ereport(ERROR, (errcode(MongoLocation5626500),
-						errmsg(
-							"$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.")));
+		ThrowGeoNearNotAllowedInContextError();
 	}
 }
 

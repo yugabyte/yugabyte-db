@@ -48,6 +48,7 @@
 #include "utils/mongo_errors.h"
 #include "commands/parse_error.h"
 #include "geospatial/bson_geospatial_common.h"
+#include "geospatial/bson_geospatial_geonear.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
 #include "planner/mongo_query_operator.h"
@@ -3342,6 +3343,12 @@ ParseIndexDefPartFilterDocument(const bson_iter_t *indexDefDocIter)
 	context.coerceOperatorExprIfApplicable = true;
 	List *partialFilterQuals = CreateQualsFromQueryDocIterator(&partFilterExprIter,
 															   &context);
+
+	if (TargetListContainsGeonearOp(context.targetEntries))
+	{
+		ThrowGeoNearNotAllowedInContextError();
+	}
+
 	Expr *partialFilterExpr = make_ands_explicit(partialFilterQuals);
 
 	if (!EnableExtendedIndexFilters)

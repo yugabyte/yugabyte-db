@@ -80,8 +80,21 @@ typedef struct BsonQueryOperatorContext
 	 */
 	HTAB *requiredFilterPathNameHashSet;
 
-	/* The postgres query being built. */
-	Query *query;
+	/* List of sort clauses, if any query operator adds them
+	 * e.g. $near, $nearSphere etc, will be NULL for most of
+	 * the query operators.
+	 *
+	 * Please note that the `ressortgroupref` is needed to be updated
+	 * based on the overall query structure later
+	 */
+	List *sortClauses;
+
+	/* List of Target entries for these sort clauses
+	 *
+	 * Please note that the `resno` is needed to be updated
+	 * based on the overall query structure later
+	 */
+	List *targetEntries;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);
@@ -127,5 +140,7 @@ bool ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby);
 
 /* Checks the validity of value for $in and $nin ops */
 bool IsValidBsonDocumentForDollarInOrNinOp(const bson_value_t *value);
+void UpdateQueryOperatorContextSortList(Query *query, List *sortClauses,
+										List *targetEntries);
 
 #endif

@@ -19,6 +19,7 @@
 #include <optimizer/optimizer.h>
 #include <optimizer/pathnode.h>
 #include <catalog/pg_operator.h>
+#include <parser/parse_clause.h>
 #include <parser/parse_node.h>
 
 #include "geospatial/bson_geospatial_common.h"
@@ -737,10 +738,21 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 /*
  * Common function to create quals and append sort clause for $geoNear aggregation stage
  * and $near & $nearSphere query operators.
+ *
+ * Out variables
+ * targetEntry: The target entry for the distance field in the target list
+ * sortClause: The sort clause for the distance field
+ *
+ * Note:
+ * since we don't know overall targetlist structure of query, `resno`, `ressortgroupreg`
+ * of targetEntry and sortclause should be updated by caller, these are defaulted to 0 in
+ * this function.
  */
 List *
-CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Query *query, Expr *docExpr,
-								  const GeonearRequest *request)
+CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
+								  const GeonearRequest *request,
+								  TargetEntry **targetEntry,
+								  SortGroupClause **sortClause)
 {
 	List *quals = NIL;
 	Const *keyConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
@@ -801,16 +813,15 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Query *query, Expr *do
 								 (Expr *) queryConst,
 								 InvalidOid, InvalidOid);
 
-	TargetEntry *tle = makeTargetEntry(opExpr, list_length(query->targetList) + 1,
-									   "distance", true);
-	tle->ressortgroupref = 1;
-	query->targetList = lappend(query->targetList, tle);
+	/* Update the resno later */
+	TargetEntry *tle = makeTargetEntry(opExpr, 0, "distance", true);
+	*targetEntry = tle;
 
 	SortGroupClause *sortGroupClause = makeNode(SortGroupClause);
 	sortGroupClause->eqop = Float8LessOperator;
 	sortGroupClause->sortop = Float8LessOperator;
-	sortGroupClause->tleSortGroupRef = tle->ressortgroupref;
-	query->sortClause = lappend(query->sortClause, sortGroupClause);
+	sortGroupClause->tleSortGroupRef = 0; /* Update tleSortGroupRef later in caller */
+	*sortClause = sortGroupClause;
 
 	return quals;
 }

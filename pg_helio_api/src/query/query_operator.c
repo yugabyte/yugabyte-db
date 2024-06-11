@@ -25,6 +25,7 @@
 #include <utils/array.h>
 #include <parser/parse_coerce.h>
 #include <parser/parsetree.h>
+#include <parser/parse_clause.h>
 #include <catalog/pg_type.h>
 #include <funcapi.h>
 #include <lib/stringinfo.h>
@@ -68,6 +69,22 @@ typedef struct ReplaceBsonQueryOperatorsContext
 
 	/* parameter values of the current execution */
 	ParamListInfo boundParams;
+
+	/* List of sort clauses, if any query operator adds them
+	 * e.g. $near, $nearSphere etc, will be NULL for most of
+	 * the query operators.
+	 *
+	 * Please note that the `ressortgroupref` is needed to be updated
+	 * based on the overall query structure later
+	 */
+	List *sortClauses;
+
+	/* List of Target entries for these sort clauses
+	 *
+	 * Please note that the `resno` is needed to be updated
+	 * based on the overall query structure later
+	 */
+	List *targetEntries;
 } ReplaceBsonQueryOperatorsContext;
 
 /* Context passed as an argument to CreateIdFilterForQuery */
@@ -87,7 +104,8 @@ static Const * MakeBsonConst(pgbson *pgbson);
 static Node * ReplaceBsonQueryOperatorsMutator(Node *node,
 											   ReplaceBsonQueryOperatorsContext *context);
 static Expr * ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
-									  Query *currentQuery, ParamListInfo boundParams);
+									  Query *currentQuery, ParamListInfo boundParams,
+									  List **targetEntries, List **sortClauses);
 static Expr * CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 												  BsonQueryOperatorContext *c,
 												  const char *traversedPath);
@@ -236,8 +254,7 @@ bson_query_match(PG_FUNCTION_ARGS)
 
 	/* expand the @@ operator into regular BSON operators */
 	ReplaceBsonQueryOperatorsContext context;
-	context.currentQuery = NULL;
-	context.boundParams = NULL;
+	memset(&context, 0, sizeof(context));
 
 	Node *quals = ReplaceBsonQueryOperatorsMutator((Node *) queryExpr, &context);
 
@@ -316,6 +333,9 @@ query_match_support(PG_FUNCTION_ARGS)
 
 			/* convert the Mongo query to a list of Postgres quals */
 			List *quals = CreateQualsFromQueryDocIterator(&queryDocIter, &context);
+			UpdateQueryOperatorContextSortList(req->root->parse,
+											   context.targetEntries,
+											   context.sortClauses);
 
 			if (quals != NIL)
 			{
@@ -376,6 +396,7 @@ Node *
 ReplaceBsonQueryOperators(Query *node, ParamListInfo boundParams)
 {
 	ReplaceBsonQueryOperatorsContext context;
+	memset(&context, 0, sizeof(context));
 	context.currentQuery = node;
 	context.boundParams = boundParams;
 
@@ -696,7 +717,10 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 					(Node *) ExpandBsonQueryOperator(opExpr,
 													 queryNode,
 													 context->currentQuery,
-													 context->boundParams);
+													 context->boundParams,
+													 &(context->targetEntries),
+													 &(context->sortClauses));
+
 				return expandedExpr;
 			}
 		}
@@ -706,7 +730,11 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 	else if (IsA(node, Query))
 	{
 		Query *prevQuery = context->currentQuery;
+		List *prevSortClauses = context->sortClauses;
+		List *prevTargetEntries = context->targetEntries;
 		Query *currentQuery = (Query *) node;
+		context->sortClauses = NIL;
+		context->targetEntries = NIL;
 
 		/* descending into (sub)query */
 		context->currentQuery = currentQuery;
@@ -714,6 +742,9 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 		/* also descend into subqueries */
 		Query *result = query_tree_mutator(currentQuery, ReplaceBsonQueryOperatorsMutator,
 										   context, 0);
+
+		UpdateQueryOperatorContextSortList(result, context->sortClauses,
+										   context->targetEntries);
 
 		ListCell *rteCell = NULL;
 		int varno = 0;
@@ -757,6 +788,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
 
 		/* back to parent query */
 		context->currentQuery = prevQuery;
+		context->sortClauses = prevSortClauses;
+		context->targetEntries = prevTargetEntries;
 
 		return (Node *) result;
 	}
@@ -773,7 +806,8 @@ ReplaceBsonQueryOperatorsMutator(Node *node, ReplaceBsonQueryOperatorsContext *c
  */
 static Expr *
 ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
-						Query *currentQuery, ParamListInfo boundParams)
+						Query *currentQuery, ParamListInfo boundParams,
+						List **targetEntries, List **sortClauses)
 {
 	BsonQueryOperatorContext context = { 0 };
 	context.documentExpr = linitial(queryOpExpr->args);
@@ -781,7 +815,6 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = true;
 	context.requiredFilterPathNameHashSet = NULL;
-	context.query = currentQuery;
 
 	Node *queryExpr = queryNode;
 
@@ -808,6 +841,15 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 
 	/* convert the Mongo query to a list of Postgres quals */
 	List *quals = CreateQualsFromQueryDocIterator(&queryDocIter, &context);
+
+	if (context.targetEntries != NULL)
+	{
+		*targetEntries = context.targetEntries;
+	}
+	if (context.sortClauses != NULL)
+	{
+		*sortClauses = context.sortClauses;
+	}
 
 	/* extract the collection via the document Var */
 	if (quals != NIL)
@@ -1230,8 +1272,8 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 
 	/* Fail if geoNear op was found under $or or $nor along with other filters. */
 	if ((operatorType == QUERY_OPERATOR_OR || operatorType == QUERY_OPERATOR_NOR) &&
-		context->query != NULL &&
-		TargetListContainsGeonearOp(context->query->targetList))
+		context->targetEntries != NULL &&
+		TargetListContainsGeonearOp(context->targetEntries))
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
 							"geo $near must be top-level expr")));
@@ -4408,9 +4450,9 @@ ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
 														mongoOperatorName);
 
 	/* Check if this is not the 1st $near or $nearSphere occurrence in same query. */
-	if (context->query != NULL && context->query->sortClause)
+	if (context->targetEntries)
 	{
-		bool isGeonear = TargetListContainsGeonearOp(context->query->targetList);
+		bool isGeonear = TargetListContainsGeonearOp(context->targetEntries);
 
 		if (isGeonear)
 		{
@@ -4424,18 +4466,65 @@ ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
 	 * but we are throwing a generalized single error
 	 * that is thrown by mongo in a majority of contexts.
 	 */
-	if (!context->query)
+	if (context->inputType == MongoQueryOperatorInputType_BsonValue)
 	{
 		ereport(ERROR,
 				(errcode(MongoLocation5626500),
 				 errmsg(
-					 "$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.")));
+					 "$geoNear, $near, and $nearSphere are not allowed in this context, "
+					 "as these operators require sorting geospatial data. If you do not need sort, "
+					 "consider using $geoWithin instead.")));
 	}
 
 	GeonearRequest *request = ParseGeonearRequest(queryDoc);
 	Expr *docExpr = context->documentExpr;
 
-	List *quals = CreateExprForGeonearAndNearSphere(queryDoc, context->query, docExpr,
-													request);
+	TargetEntry *sortTargetEntry;
+	SortGroupClause *sortGroupClause;
+	List *quals = CreateExprForGeonearAndNearSphere(queryDoc, docExpr,
+													request, &sortTargetEntry,
+													&sortGroupClause);
+
+	context->targetEntries = lappend(context->targetEntries, sortTargetEntry);
+	context->sortClauses = lappend(context->sortClauses, sortGroupClause);
+
 	return make_ands_explicit(quals);
+}
+
+
+/*
+ * Updates the missing `resno` and `sortgroupref` fields for sortclause
+ * based on the existing `query` structure
+ */
+void
+UpdateQueryOperatorContextSortList(Query *query, List *sortClauses,
+								   List *targetEntries)
+{
+	if (!sortClauses || !targetEntries)
+	{
+		return;
+	}
+
+	Assert(list_length(sortClauses) == list_length(targetEntries));
+
+	ParseState *pstate = make_parsestate(NULL);
+	pstate->p_next_resno = list_length(query->targetList) + 1;
+	pstate->p_expr_kind = EXPR_KIND_ORDER_BY;
+
+	ListCell *targetCell = NULL;
+	ListCell *sortCell = NULL;
+	forboth(targetCell, targetEntries, sortCell, sortClauses)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(targetCell);
+		SortGroupClause *sortClause = (SortGroupClause *) lfirst(sortCell);
+
+		/* update tle resno and ressortgroupref */
+		tle->resno = pstate->p_next_resno++;
+		sortClause->tleSortGroupRef = assignSortGroupRef(tle, query->targetList);
+
+		query->sortClause = lappend(query->sortClause, sortClause);
+		query->targetList = lappend(query->targetList, tle);
+	}
+
+	free_parsestate(pstate);
 }

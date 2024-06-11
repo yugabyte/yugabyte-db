@@ -108,8 +108,10 @@ float8 GeonearDistanceFromDocument(const GeonearDistanceState *state, const
 bool ValidateQueryOperatorsForGeoNear(Node *node, void *state);
 pgbson * ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 									const char *mongoOperatorName);
-List * CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Query *query,
-										 Expr *docExpr, const GeonearRequest *request);
+List * CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
+										 const GeonearRequest *request,
+										 TargetEntry **targetEntry,
+										 SortGroupClause **sortClause);
 
 
 inline static bool
@@ -150,7 +152,7 @@ TargetListContainsGeonearOp(const List *targetList)
 	{
 		tle = (TargetEntry *) lfirst(cell);
 
-		if (tle->ressortgroupref == 1)
+		if (tle->resjunk)
 		{
 			if (IsA(tle->expr, OpExpr))
 			{
@@ -166,5 +168,15 @@ TargetListContainsGeonearOp(const List *targetList)
 	return false;
 }
 
+
+static inline void
+pg_attribute_noreturn()
+ThrowGeoNearNotAllowedInContextError()
+{
+	ereport(ERROR, (
+				errcode(MongoLocation5626500),
+				errmsg(
+					"$geoNear, $near, and $nearSphere are not allowed in this context")));
+}
 
 #endif
