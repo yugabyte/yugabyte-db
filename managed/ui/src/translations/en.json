@@ -515,6 +515,36 @@
             "InfraIssue": "INFRASTRUCTURE ISSUE",
             "SQLIssue ": "SQL ISSUE"
           }
+        },
+        "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
+        "registrationSuccess": "Registered to Troubleshooting Platform service successfully",
+        "registrationFailed": "Failed to register to Troubleshooting Platform service",
+        "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
+        "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
+        "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "registerButton": "Register",
+        "urlPlaceholder": "http(s)://<ip>:<port>",
+        "universeDetailsErrorMessage": "Failed to fetch universe details",
+        "tpConfigErrorMessage": "Failed to fetch troubleshooting platform configuration",
+        "configTabTitle": "Configuration",
+        "universesTabTitle": "Universes",
+        "urlRequired": "Platform Url required",
+        "editDialog": {
+          "title": "Update Troubleshooting Platform Configuration",
+          "updateButton": "Update",
+          "forceUpdateCheckBoxLabel": "Force Update",
+          "updateMetadataSuccess": "Successfully updated the Troubleshooting Platform configuration",
+          "updateMetadataFailed": "Failed to update the Troubleshooting Platform configuration",
+          "tooltipMessage": "The current troubleshooting platform service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
+        },
+        "deleteDialog": {
+          "title": "Unregister Troubleshooting Platform Configuration",
+          "unregistrationSuccess": "Successfully unregistered from the Troubleshooting Platform service",
+          "unregistrationFailed": "Failed to unregister from the Troubleshooting Platform service",
+          "tooltipMessage": "Please unregister existing universes being monitored by the troubleshooting Platform service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
+          "forceUnregisterCheckBoxLabel": "Force Unregister",
+          "unregisterButton": "Unregister",
+          "unregisterMessage": "Are you sure you want to unregister the Troubleshooting Platform service with URL: {{url}} ?"
         }
       },
       "performance": {

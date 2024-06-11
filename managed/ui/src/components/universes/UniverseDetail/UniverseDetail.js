@@ -62,7 +62,7 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
-import { TroubleshootUniverse } from '../TroubleshootUniverse/TroubleshootUniverse';
+import { TroubleshootRegistrationDetails } from '../TroubleshootUniverse/TroubleshootRegistrationDetails';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
@@ -536,7 +536,7 @@ class UniverseDetail extends Component {
                 'universes.details.troubleshooting'
               )}
             >
-              <TroubleshootUniverse
+              <TroubleshootRegistrationDetails
                 universeUuid={currentUniverse.data.universeUUID}
                 appName={AppName.YBA}
                 timezone={currentUser.data.timezone}
