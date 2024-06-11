@@ -93,7 +93,6 @@
         apt:
           name: python-minimal
           state: present
-          lock_timeout: 600
         when: ansible_distribution_major_version == "18"
       when: ansible_distribution == "Ubuntu"
       tags: yb-prebuilt-ami

@@ -97,7 +97,6 @@
     become_method: sudo
     apt:
       update_cache: yes
-      lock_timeout: 600
     when: ansible_pkg_mgr == "apt"
 
   - block:
@@ -144,7 +143,6 @@
     package:
       name: "{{ item }}"
       state: latest
-      lock_timeout: 600
     with_items:
       - "{{ linux_packages }}"
     register: result
@@ -177,7 +175,6 @@
     package:
       name: "{{ item }}"
       state: latest
-      lock_timeout: 600
     with_items:
       - "{{ linux_packages + debian_aarch64_packages }}"
     register: result
