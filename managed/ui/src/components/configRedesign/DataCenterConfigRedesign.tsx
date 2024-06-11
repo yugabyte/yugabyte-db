@@ -35,13 +35,19 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
+import { TroubleshootingDetails } from '../../redesign/features/Troubleshooting/TroubleshootingDetails';
 
 interface ReactRouterProps {
   location: LocationShape;
   params: { tab?: string; section?: string; uuid?: string };
+  isTroubleshootingEnabled: boolean;
 }
 
-export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps) => {
+export const DataCenterConfigRedesign = ({
+  location,
+  params,
+  isTroubleshootingEnabled
+}: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   showOrRedirect(currentCustomer.data.features, 'menu.config');
@@ -80,10 +86,8 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   const activeSection = params.section ?? 's3';
   return (
     <div>
-      <h2 className="content-title">Provider Configuration</h2>
-      <RbacValidator
-        accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}
-      >
+      <h2 className="content-title">Provider Configurations</h2>
+      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}>
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
           activeTab={activeTab}
@@ -211,10 +215,23 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
           )}
           {(featureFlags.test['enableMultiRegionConfig'] ||
             featureFlags.released['enableMultiRegionConfig']) && (
-              <Tab eventKey={ConfigTabKey.BACKUP_NEW} title="New Backup Config" key="new-backup-config">
-                <NewStorageConfiguration activeTab={params.section} />
-              </Tab>
-            )}
+            <Tab
+              eventKey={ConfigTabKey.BACKUP_NEW}
+              title="New Backup Config"
+              key="new-backup-config"
+            >
+              <NewStorageConfiguration activeTab={params.section} />
+            </Tab>
+          )}
+          {isTroubleshootingEnabled && (
+            <Tab
+              eventKey={ConfigTabKey.TROUBLESHOOT}
+              title="Troubleshoot"
+              key="troubleshoot-config"
+            >
+              <TroubleshootingDetails activeTab={params.section} />
+            </Tab>
+          )}
         </YBTabsWithLinksPanel>
       </RbacValidator>
     </div>
