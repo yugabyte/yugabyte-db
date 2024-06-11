@@ -10,8 +10,6 @@ menu:
 type: docs
 ---
 
-{{<api-tabs>}}
-
 The Primary key is a column or a set of columns that uniquely identifies a row, such as a user ID or order number. The primary key should chosen based on the most common access pattern. Columns of data type [string](../../../explore/ysql-language-features/data-types/#strings), [number](../../../explore/ysql-language-features/data-types/#numeric-types), [serial](../../../explore/ysql-language-features/data-types/#serial-pseudotype), or [UUID](../../../api/ysql/datatypes/type_uuid/) make good choices for primary keys.
 
 ## Automatically generating the primary key
