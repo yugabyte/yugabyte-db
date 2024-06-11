@@ -14,6 +14,8 @@ import {
   MigrationListVoyagerSidePanel,
   VoyagerInstanceProps,
 } from "./MigrationListVoyagerSidePanel";
+import { MigrationListColumns } from "./MigrationListColumns";
+import EditIcon from "@app/assets/edit.svg";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -179,6 +181,11 @@ export const MigrationList: FC<MigrationListProps> = ({
     },
   ];
 
+  const [openColSettings, setOpenColSettings] = React.useState(false);
+  const [migrationColSettings, setMigrationColSettings] = React.useState<Record<string, boolean>>(
+    {}
+  );
+
   const migrationColumns = [
     {
       name: "migration_name",
@@ -190,9 +197,11 @@ export const MigrationList: FC<MigrationListProps> = ({
               <Typography variant="body1">
                 {filteredMigrations[dataIndex].migration_name}
               </Typography>
-              <Typography variant="body2">
-                {filteredMigrations[dataIndex].migration_type}
-              </Typography>
+              {migrationColSettings.migration_type && (
+                <Typography variant="body2">
+                  {filteredMigrations[dataIndex].migration_type}
+                </Typography>
+              )}
             </Box>
           );
         },
@@ -202,15 +211,32 @@ export const MigrationList: FC<MigrationListProps> = ({
     },
     {
       name: "sourceDB",
-      label: t("clusterDetail.voyager.sourceDatabaseHostAndEngine"),
+      label: t("clusterDetail.voyager.sourceDatabase"),
       options: {
         customBodyRender: (sourceDB: (typeof migrationNewData)[number]["sourceDB"]) => {
           return (
             <Box onClick={() => setSourceDBSelection(sourceDB)} className={classes.linkBox}>
-              <Typography variant="body2">
-                <Link>{sourceDB.hostname}</Link>
-              </Typography>
-              <Typography variant="body2">{sourceDB.engine}</Typography>
+              {migrationColSettings.host_ip && (
+                <Typography variant="body2">
+                  <Link>
+                    {sourceDB.ip}/{sourceDB.port}
+                  </Link>
+                </Typography>
+              )}
+              {migrationColSettings.hostname && (
+                <Typography variant="body2">{sourceDB.hostname}</Typography>
+              )}
+              {migrationColSettings.engineVersion && (
+                <Typography variant="body2">
+                  {sourceDB.engine} {sourceDB.version}
+                </Typography>
+              )}
+              {migrationColSettings.database && (
+                <Typography variant="body2">{sourceDB.database}</Typography>
+              )}
+              {migrationColSettings.schema && (
+                <Typography variant="body2">{sourceDB.schema}</Typography>
+              )}
             </Box>
           );
         },
@@ -225,9 +251,21 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRender: (voyager: (typeof migrationNewData)[number]["voyager"]) => {
           return (
             <Box onClick={() => setVoyagerSelection(voyager)} className={classes.linkBox}>
-              <Typography variant="body2">
-                <Link>{voyager.machineIP}</Link>
-              </Typography>
+              {migrationColSettings.machineIP && (
+                <Typography variant="body2">
+                  <Link>{voyager.machineIP}</Link>
+                </Typography>
+              )}
+              {migrationColSettings.os && <Typography variant="body2">{voyager.os}</Typography>}
+              {migrationColSettings.availableDiskSpace && (
+                <Typography variant="body2">
+                  {(parseFloat(voyager.totalDisk) - parseFloat(voyager.usedDisk)).toFixed(2)} GB
+                  available
+                </Typography>
+              )}
+              {migrationColSettings.exportDir && (
+                <Typography variant="body2">{voyager.exportDir}</Typography>
+              )}
             </Box>
           );
         },
@@ -242,8 +280,12 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRender: (targetCluster: (typeof migrationNewData)[number]["targetCluster"]) => {
           return (
             <Box>
-              <Typography variant="body2">{targetCluster.uuid}</Typography>
-              <Typography variant="body2">{targetCluster.platform}</Typography>
+              {migrationColSettings.clusterUUID && (
+                <Typography variant="body2">{targetCluster.uuid}</Typography>
+              )}
+              {migrationColSettings.ybaYbm && (
+                <Typography variant="body2">{targetCluster.platform}</Typography>
+              )}
             </Box>
           );
         },
@@ -251,15 +293,19 @@ export const MigrationList: FC<MigrationListProps> = ({
         setCellProps: () => ({ style: { padding: "16px 16px" } }),
       },
     },
-    {
-      name: "complexity",
-      label: t("clusterDetail.voyager.complexity"),
-      options: {
-        customBodyRender: ComplexityComponent(classes),
-        setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
-        setCellProps: () => ({ style: { padding: "16px 16px" } }),
-      },
-    },
+    ...(migrationColSettings.complexity
+      ? [
+          {
+            name: "complexity",
+            label: t("clusterDetail.voyager.complexity"),
+            options: {
+              customBodyRender: ComplexityComponent(classes),
+              setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
+              setCellProps: () => ({ style: { padding: "16px 16px" } }),
+            },
+          },
+        ]
+      : []),
     {
       name: "progress",
       label: t("clusterDetail.voyager.progress"),
@@ -400,52 +446,61 @@ export const MigrationList: FC<MigrationListProps> = ({
           <GenericFailure />
         ) : (
           <Box>
-            <Box display="flex" alignItems="center" gridGap={10} my={2} maxWidth={1024}>
-              <Box flex={3}>
-                <Typography variant="body1" className={classes.label}>
-                  {t("clusterDetail.voyager.search")}
-                </Typography>
-                <YBInput
-                  className={classes.fullWidth}
-                  placeholder={t("clusterDetail.voyager.searchPlaceholder")}
-                  InputProps={{
-                    startAdornment: <SearchIcon />,
-                  }}
-                  onChange={(ev) => setSearch(ev.target.value)}
-                  value={search}
-                />
+            <Box display="flex" justifyContent="space-between" my={2} alignItems="end" gridGap={10}>
+              <Box display="flex" alignItems="center" gridGap={10} maxWidth={1024} flex={1}>
+                <Box flex={3}>
+                  <Typography variant="body1" className={classes.label}>
+                    {t("clusterDetail.voyager.search")}
+                  </Typography>
+                  <YBInput
+                    className={classes.fullWidth}
+                    placeholder={t("clusterDetail.voyager.searchPlaceholder")}
+                    InputProps={{
+                      startAdornment: <SearchIcon />,
+                    }}
+                    onChange={(ev) => setSearch(ev.target.value)}
+                    value={search}
+                  />
+                </Box>
+                <Box flex={1}>
+                  <Typography variant="body1" className={classes.label}>
+                    {t("clusterDetail.voyager.migrationType")}
+                  </Typography>
+                  <YBSelect
+                    className={classes.fullWidth}
+                    value={migrationType}
+                    onChange={(e) => setMigrationType(e.target.value)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <Divider className={classes.divider} />
+                    <MenuItem value="Live">Live</MenuItem>
+                    <MenuItem value="Offline">Offline</MenuItem>
+                  </YBSelect>
+                </Box>
+                <Box flex={1}>
+                  <Typography variant="body1" className={classes.label}>
+                    {t("clusterDetail.voyager.sourceEngine")}
+                  </Typography>
+                  <YBSelect
+                    className={classes.fullWidth}
+                    value={sourceEngine}
+                    onChange={(e) => setSourceEngine(e.target.value)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <Divider className={classes.divider} />
+                    <MenuItem value="PostgreSQL">PostgreSQL</MenuItem>
+                    <MenuItem value="MySQL">MySQL</MenuItem>
+                    <MenuItem value="Oracle">Oracle</MenuItem>
+                  </YBSelect>
+                </Box>
               </Box>
-              <Box flex={1}>
-                <Typography variant="body1" className={classes.label}>
-                  {t("clusterDetail.voyager.migrationType")}
-                </Typography>
-                <YBSelect
-                  className={classes.fullWidth}
-                  value={migrationType}
-                  onChange={(e) => setMigrationType(e.target.value)}
-                >
-                  <MenuItem value="">All</MenuItem>
-                  <Divider className={classes.divider} />
-                  <MenuItem value="Live">Live</MenuItem>
-                  <MenuItem value="Offline">Offline</MenuItem>
-                </YBSelect>
-              </Box>
-              <Box flex={1}>
-                <Typography variant="body1" className={classes.label}>
-                  {t("clusterDetail.voyager.sourceEngine")}
-                </Typography>
-                <YBSelect
-                  className={classes.fullWidth}
-                  value={sourceEngine}
-                  onChange={(e) => setSourceEngine(e.target.value)}
-                >
-                  <MenuItem value="">All</MenuItem>
-                  <Divider className={classes.divider} />
-                  <MenuItem value="PostgreSQL">PostgreSQL</MenuItem>
-                  <MenuItem value="MySQL">MySQL</MenuItem>
-                  <MenuItem value="Oracle">Oracle</MenuItem>
-                </YBSelect>
-              </Box>
+              <YBButton
+                variant="ghost"
+                startIcon={<EditIcon />}
+                onClick={() => setOpenColSettings(true)}
+              >
+                {t("clusterDetail.nodes.editColumns")}
+              </YBButton>
             </Box>
 
             <YBTable
@@ -483,6 +538,12 @@ export const MigrationList: FC<MigrationListProps> = ({
               usedDisk={voyagerSelection?.usedDisk ?? "N/A"}
               exportDir={voyagerSelection?.exportDir ?? "N/A"}
               exportedSchemaLocation={voyagerSelection?.exportedSchemaLocation ?? "N/A"}
+            />
+
+            <MigrationListColumns
+              open={openColSettings}
+              onClose={() => setOpenColSettings(false)}
+              onUpdateColumns={(cols) => setMigrationColSettings(cols)}
             />
           </Box>
         )}
