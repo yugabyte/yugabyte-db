@@ -917,13 +917,14 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.88-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.89-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
+  "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
