@@ -54,7 +54,8 @@ SUBDIRS = \
 		vacuumlo    \
 		yb_pg_metrics \
 		yb_test_extension \
-		yb_ycql_utils
+		yb_ycql_utils \
+		wal2json
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo
