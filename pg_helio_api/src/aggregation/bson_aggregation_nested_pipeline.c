@@ -1405,6 +1405,10 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 				canProcessForeignFieldAsDocumentId = false;
 			}
 		}
+		else
+		{
+			canProcessForeignFieldAsDocumentId = false;
+		}
 
 		CommonTableExpr *rightTableExpr = makeNode(CommonTableExpr);
 		rightTableExpr->ctename = "lookup_right_query";
