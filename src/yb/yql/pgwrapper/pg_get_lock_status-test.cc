@@ -745,6 +745,37 @@ TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
   ASSERT_OK(status_future.get());
 }
 
+// While populating the lock status request at a tablet, we make two passes at the intentsdb.
+// Since intents could get added/tombstoned amidst passes, ensure that we don't run into errors.
+TEST_F(PgGetLockStatusTest, TestPgLocksWhileDMLsInProgress) {
+  constexpr int kNumConnections = 10;
+  constexpr int kNumItersPerConn = 5;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    TestThreadHolder thread_holder;
+    for (int i = 0; i < kNumConnections; i++) {
+      thread_holder.AddThreadFunctor([&, i] {
+        for (int j = 0; j < kNumItersPerConn; j++) {
+          auto conn = ASSERT_RESULT(Connect());
+          ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+          ASSERT_OK(conn.ExecuteFormat("UPDATE foo SET v=v+1 WHERE k=$0", i));
+          ASSERT_OK(conn.CommitTransaction());
+        }
+      });
+    }
+    thread_holder.WaitAndStop(15s * kTimeMultiplier);
+    return Status::OK();
+  });
+
+  while (status_future.wait_for(0ms) != std::future_status::ready) {
+    ASSERT_OK(setup_conn.Fetch("SELECT * FROM pg_locks"));
+  }
+  ASSERT_OK(status_future.get());
+}
+
 TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) {
   constexpr int kMinTxnAgeMs = 1;
   constexpr auto waiter_refresh_secs = 2;
@@ -994,6 +1025,54 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchValue<int64>(kPgLocksQuery)), 0);
 }
+
+// While fetching locks as part of pg_locks query, at every tablet, we make 2 passes on intentsdb.
+// In the first pass, we scan through the reverse index section and store the values of records
+// corresponding to the specified transactions in the lock status request. In the second pass, we
+// seek to the stored values in the first step (which would be the provisional records), and parse
+// the record to add an entry in the lock status response.
+// The below test asserts that we don't run into errors if any provisional records get added/
+// tombstoned amidst the two passes.
+#ifndef NDEBUG
+TEST_F(PgGetLockStatusTest, FetchLocksAmidstTransactionCommit) {
+  const auto kPgLocksQuery = "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks";
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn1.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM foo WHERE k=2 FOR UPDATE"));
+
+  SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"Tablet::GetLockStatus:1", "FetchLocksAmidstTransactionCommit:1"},
+    {"Tablet::RemoveIntentsImpl", "Tablet::GetLockStatus:2"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto result_future = std::async(std::launch::async, [&]() -> Result<int64> {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.FetchValue<int64>(kPgLocksQuery);
+  });
+
+  // Wait for the lock status request to scan the transaction reverse index section and store
+  // provisional records of interest (value part of the txn-reverse index record).
+  DEBUG_ONLY_TEST_SYNC_POINT("FetchLocksAmidstTransactionCommit:1");
+  ASSERT_OK(conn1.CommitTransaction());
+  // Wait for removal of the intents corresponding to the committed txn.
+  DEBUG_ONLY_TEST_SYNC_POINT("FetchLocksAmidstTransactionCommit:2");
+  // Though the lock status request intially would have found 4 rever index values of interest,
+  // the final lock status respose should only have locks corresponding to the active transaction.
+  ASSERT_EQ(ASSERT_RESULT(result_future.get()), 1);
+  ASSERT_OK(conn2.CommitTransaction());
+}
+#endif // NDEBUG
 
 } // namespace pgwrapper
 } // namespace yb
