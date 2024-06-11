@@ -9,7 +9,7 @@ menu:
     identifier: migrate-live
     parent: migration-types
     weight: 103
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 

@@ -3,7 +3,7 @@ title: ANALYZE statement [YSQL]
 headerTitle: ANALYZE
 linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 menu:
   preview:
     identifier: cmd_analyze

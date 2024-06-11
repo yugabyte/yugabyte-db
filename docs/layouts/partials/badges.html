@@ -1,3 +1,21 @@
+{{- $badges := replace .Params.badges " " "," -}}
+{{- $badges := split (replaceRE ",+" "," $badges) "," -}}
+{{- /* map of baddge to links + display */ -}}
+{{- $linkmap := dict  "ysql" (slice "/preview/api/ysql" "YSQL")
+                      "ycql" (slice "/preview/api/yscql" "YCQL")
+                      "tp" (slice "/preview/releases/versioning/#feature-maturity" "TECH PREVIEW")
+                      "ea" (slice "" "EARLY ACCESS")
+-}}
+{{-
+  $classmap := dict  "tp" "tech-preview"
+-}}
+{{- range $k, $v := $badges -}}
+{{if $v }}
+{{- $info := index $linkmap $v -}}
+ <a class="yb-badge {{index $classmap $v}}" href="{{ index $info 0 }}">{{ index $info 1 }}</a>
+ {{- end -}}
+{{- end -}}
+
 {{- if .Params.techPreview -}}
   <a class="yb-badge tech-preview" href="{{ .Params.techPreview }}">TECH PREVIEW</a>
 {{- else if .Params.earlyAccess -}}

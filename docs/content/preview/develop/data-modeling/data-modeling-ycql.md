@@ -5,6 +5,7 @@ linkTitle: YCQL - Data modeling
 description: Learn data modeling in YCQL and how to identify the patterns used to access data and the types of queries to be performed.
 aliases:
   - /develop/learn/data-modeling/
+badges: ycql
 menu:
   preview:
     identifier: data-modeling-ycql

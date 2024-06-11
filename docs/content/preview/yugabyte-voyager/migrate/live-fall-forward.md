@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 

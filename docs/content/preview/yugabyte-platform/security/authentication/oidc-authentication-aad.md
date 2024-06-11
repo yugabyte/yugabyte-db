@@ -4,7 +4,7 @@ headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
-earlyAccess: /preview/releases/versioning/#feature-maturity
+badges: ea
 menu:
   preview_yugabyte-platform:
     identifier: oidc-authentication-platform
