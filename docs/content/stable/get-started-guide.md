@@ -81,7 +81,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Product Lab**: [Create Global Applications](../yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
-**Documentation**: [Quick Start](../quick-start-yugabytedb-managed/)
+**Documentation**: [Quick Start](/preview/quick-start-yugabytedb-managed/)
 : Try it out for free, in the cloud or on your laptop.
 
 **Documentation**: [Start a multi-node cluster with Yugabyted](../reference/configuration/yugabyted/#create-a-local-multi-node-cluster)
@@ -126,11 +126,11 @@ Find resources for getting started, migrating existing databases, using your dat
 
 ## Develop
 
-**Documentation**: [Hello world](../tutorials/build-apps/)
+**Documentation**: [Hello world](/preview/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 **Video**: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)<br>
-**Documentation**: [Build and learn the essential capabilities of YugabyteDB](../tutorials/build-and-learn/)
+**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/tutorials/build-and-learn/)
 : Build a scalable and fault-tolerant movie recommendation service.
 
 **Documentation**: [Best practices](../drivers-orms/)

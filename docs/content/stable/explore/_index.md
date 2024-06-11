@@ -36,7 +36,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
-- [Installed](../quick-start/linux/) YugabyteDB.
+- [Installed](/preview/quick-start/linux/) YugabyteDB.
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
@@ -97,7 +97,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
 
@@ -237,7 +237,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
-To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../tutorials/build-apps/cloud-add-ip/).
+To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 To start the application against a running YugabyteDB Managed cluster, use the following command:
 

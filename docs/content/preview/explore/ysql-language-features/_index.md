@@ -5,6 +5,8 @@ linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
 image: /images/section_icons/api/ysql.png
+aliases:
+  - /preview/explore/ysql-language-features/schema/
 menu:
   preview:
     identifier: explore-ysql-language-features
