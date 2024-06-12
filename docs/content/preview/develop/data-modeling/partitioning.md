@@ -12,7 +12,7 @@ type: docs
 ---
 
 
-[Data partitioning](../../../explore/ysql-language-features/advanced-features/partitions) refers to the process of dividing a large table or dataset into smaller physical partitions based on certain criteria or rules. This technique offers several benefits, including improved performance, easier data management, and better use of storage resources. Each partition is internally a table. This scheme is useful for managing large volumes of data and especially useful for dropping older data.
+[Data partitioning](../../../explore/ysql-language-features/advanced-features/partitions) refers to the process of dividing a large table or dataset into smaller physical partitions based on certain criteria or rules. This technique offers several benefits, including improved performance, easier data management, and better use of storage resources. Each partition is internally a table. This scheme is useful for managing large volumes of data and particularly for dropping older data.
 
 ### Manage large datasets
 

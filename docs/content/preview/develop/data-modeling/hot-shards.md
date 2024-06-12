@@ -19,7 +19,7 @@ This typically happens because of mismatches between query pattern and data dist
 The hot shard issue can occur both for tables and indexes.
 {{</warning>}}
 
-Let us understand the problem and the solution to this via some exmaples.
+Let us understand the problem and the solution to this via some examples.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere" active="local" repeatedTabs="true"/>}}
@@ -72,7 +72,7 @@ INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
 
 ## Ordering of columns
 
-Consider a scenario where you want to look up people with a specific name, say `Michael`, in `94085`. For this, a good index would be the following:
+Consider a scenario where you want to look up people with a specific name, say `Michael` in `94085`. For this, a good index would be the following:
 
 ```sql
 create index idx_zip3 on census(zipcode ASC, name ASC) include(id);
@@ -100,7 +100,7 @@ drop index if exists idx_zip3;
 create index idx_zip3 on census(name ASC, zipcode ASC) include(id);
 ```
 
-Notice that we have swapped the order of columns in the index. This results in the index being distributed/ordered on name first and then ordered on zip code. Now when many queries have the same zip code, the queries will be handled by different tablets as the names being looked up will be different and will be located on different tablets.
+This swaps the order of columns in the index. The result is the index being distributed/ordered on name first, and then ordered on zip code. Now when many queries have the same zip code, the queries are handled by different tablets. This is because the names being looked up will be different and will be located on different tablets.
 
 {{<tip title="Remember">}}
 Consider swapping the order of columns to avoid hot shards.
@@ -108,20 +108,22 @@ Consider swapping the order of columns to avoid hot shards.
 
 ## Distribution on more columns
 
-Let us say you choose to distribute your index based on hash sharding so that all citizens in the same zipcode will be located in the same tablet. In that case your index might look like,
+Suppose you choose to distribute your index based on hash sharding so that all citizens in the same zip code are located in the same tablet. Your index might look like the following:
 
 ```sql{.nocopy}
 create index idx_zip4 on census(zipcode HASH, name ASC) include(id);
 ```
 
-Now when you look up a specific person in a certain zipcode (say, `zipcode=94085 AND name='Michael'`), it will go to just one node. But this node could become hot if there are too many lookups for that zipcode. For this, you need to add name into the sharding part of the index as,
+Now when you look up a specific person in a certain zip code (say, `zipcode=94085 AND name='Michael'`), the lookup is made on just one node. But this node could become hot if there are too many lookups for that zip code.
+
+To fix this, add `name` into the sharding part of the index as follows:
 
 ```sql
 create index idx_zip4 on census((zipcode,name) HASH) include(id);
 ```
 
-Now the index data for the same zipcode would be distributed across multiple tablets as the `name` columns is also part of the sharding scheme.
+Now the index data for the same zip code would be distributed across multiple tablets, as the `name` columns is also part of the sharding scheme.
 
 {{<tip title="Remember">}}
-In the case of hash sharding consider adding more columns to the sharding part to avoid hot shards.
+In the case of hash sharding, consider adding more columns to the sharding part to avoid hot shards.
 {{</tip>}}

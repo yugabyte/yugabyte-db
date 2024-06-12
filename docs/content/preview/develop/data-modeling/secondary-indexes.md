@@ -77,7 +77,7 @@ Suppose you also need to look up the data based on the zip codes of the people i
 select id from census where zipcode=94085;
 ```
 
-You will quickly notice that this required a sequential scan of all the rows in the table. This is because the primary key of the table is `id`, and looking up by zip code requires a full scan. To avoid the full scan, you need to create an index on `zipcode` so that the executor can quickly fetch the matching rows by looking at the index.
+This required a sequential scan of all the rows in the table. This is because the primary key of the table is `id`, and looking up by zip code requires a full scan. To avoid the full scan, you need to create an index on `zipcode` so that the executor can quickly fetch the matching rows by looking at the index.
 
 ```sql
 create index idx_zip on census(zipcode ASC);
@@ -104,7 +104,7 @@ You will see an output like the following:
 ...
 ```
 
-You will quickly notice that the same 23 rows were fetched from the table , but much faster. This is because, the planner uses the index to execute the query.
+The same 23 rows were fetched from the table, but much faster. This is because the planner uses the index to execute the query.
 
 ## Covering index
 
@@ -135,10 +135,10 @@ You will see an output like the following:
 
 This has become an index-only scan, which means that all the data required by the query has been fetched from the index. This is also why there was no entry for Table Read Requests.
 
-As a special case, if the index contains all the columns of the table, then it is referred as Duplicate index. Duplicate indexes can be very useful especially in multi-region deployemnts to reduce read latencies.
+As a special case, if the index contains all the columns of the table, then it is referred as Duplicate index. Duplicate indexes can be very useful especially in multi-region deployments to reduce read latencies.
 
 {{<lead link="../../../develop/build-global-apps/duplicate-indexes/">}}
-See [Duplicate indexes](../../../develop/build-global-apps/duplicate-indexes/) for more details
+See [Duplicate indexes](../../../develop/build-global-apps/duplicate-indexes/) for more details.
 {{</lead>}}
 
 ## Listing indexes
@@ -147,15 +147,15 @@ You can list the indexes associated with a table using the following methods.
 
 ### \d+ meta command
 
-The `\d+ <table>` meta command will list the indexes associated with a table along with the schema details.
+The `\d+ <table>` meta command lists the indexes associated with a table along with the schema details.
 
-The command
+The command:
 
 ```sql
 \d+ census
 ```
 
-will give an output where the indexes are listed at the end of the output as below.
+gives an output where the indexes are listed at the end of the output as follows:
 
 ```yaml{.nocopy}
   Column  |          Type          | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -178,7 +178,7 @@ You can also fetch more information about indexes using the [pg_indexes](../../.
 SELECT * FROM pg_indexes WHERE tablename = 'census' ;
 ```
 
-This would give an output similar to,
+This gives an output similar to the following:
 
 ```yaml{.nocopy}
  schemaname | tablename |  indexname  | tablespace |                              indexdef
@@ -189,13 +189,13 @@ This would give an output similar to,
 
 ## Index usage
 
-It is a good idea to keep track of how well indexes are used by your applications. This will be very helpful to improve your existing indexes and drop indexes that are not useful. To get the usage statistics of the indexes of a table, you can execute the following command.
+It's a good idea to keep track of how well indexes are used by your applications so that you can evaluate and improve your existing indexes, and drop indexes that are not used. To get the usage statistics of the indexes of a table, you can execute the following command:
 
 ```sql
 SELECT * FROM pg_stat_user_indexes WHERE relname = 'census';
 ```
 
-This should give an output similar to,
+This should give an output similar to the following:
 
 ```yaml{.nocopy}
  relid | indexrelid | schemaname | relname | indexrelname | idx_scan | idx_tup_read | idx_tup_fetch
@@ -208,7 +208,7 @@ You can get an idea of how many times the index was scanned and how many tuples 
 
 ## Conclusion
 
-While primary keys are essential for ensuring data uniqueness and facilitating efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. By strategically employing secondary indexes, applications can achieve a significant boost in performance, providing users with a robust and scalable solution for managing large-scale, distributed datasets
+While primary keys are essential for ensuring data uniqueness and facilitating efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. By strategically employing secondary indexes, applications can achieve a significant boost in performance, providing users with a robust and scalable solution for managing large-scale, distributed datasets.
 
 ## Learn more
 
