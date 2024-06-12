@@ -1343,10 +1343,12 @@ static bool YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 }
 
 static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
-							 int key_length, ScanKey keys[])
+							 int key_length, ScanKey keys[],
+							 AttrNumber bind_key_attnums[])
 {
 	/* Move past header key. */
 	++keys;
+	++bind_key_attnums;
 	--key_length;
 
 	Oid tupType =
@@ -1371,7 +1373,7 @@ static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 	for (int i = 0; i < key_length; i++) {
 		Datum val = datum_values[i];
 		Oid val_type = ybc_get_atttypid(val_tupdesc, i + 1);
-		Oid column_type = ybc_get_atttypid(bind_desc, keys[i]->sk_attno);
+		Oid column_type = ybc_get_atttypid(bind_desc, bind_key_attnums[i]);
 
 		if (!YbShouldRecheckEquality(column_type, val_type))
 			continue;
@@ -1737,7 +1739,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				!YbIsTupleInRange(elem_values[j],
 			 					  scan_plan->bind_desc,
 			 					  length_of_key,
-								  &ybScan->keys[i]))
+								  &ybScan->keys[i],
+								  &scan_plan->bind_key_attnums[i]))
 				continue;
 		}
 
