@@ -17,10 +17,10 @@ export const migrationPhases = Object.keys(MigrationPhase)
  * Migration Steps (Cards shown in the UI)
  */
 export enum MigrationStep {
-  "Plan and Assess" = 0,
-  "Migrate Schema" = 1,
-  "Migrate Data" = 2,
-  "Verify" = 3,
+  "Assessment" = 0,
+  "Schema Migration" = 1,
+  "Data Migration" = 2,
+  "Verification" = 3,
 }
 export const migrationSteps = Object.keys(MigrationStep)
   .map((key) => MigrationStep[key as any])
