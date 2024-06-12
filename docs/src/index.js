@@ -506,6 +506,90 @@ $(document).ready(() => {
     }
   });
 
+  /**
+   Sort option in table.
+   */
+  (() => {
+    const tables = document.querySelectorAll('.td-content .table-responsive table');
+    tables.forEach(table => {
+      const headersEmpty = table.querySelectorAll('th:empty');
+      headersEmpty.forEach((innerDiv) => {
+        innerDiv.classList.add('empty-th');
+      });
+
+      const headers = table.querySelectorAll('th');
+      const tbody = table.tBodies[0];
+      const totalRows = tbody.querySelectorAll('tr');
+
+      let sortOrder = 1;
+      if (totalRows.length > 1) {
+        headers.forEach((header, index) => {
+          const sortSpan = document.createElement('span');
+          const tdsEmpty = table.querySelectorAll(`td:nth-child(${index + 1})`);
+
+          let emptyCellsCount = 0;
+          tdsEmpty.forEach((emptyCell) => {
+            if (emptyCell.textContent.trim() !== '') {
+              emptyCellsCount += 1;
+            }
+          });
+
+          if (emptyCellsCount === 0) {
+            table.querySelector(`thead th:nth-child(${index + 1})`).classList.add('empty-th');
+          }
+
+          sortSpan.textContent = 'Sort';
+          sortSpan.classList.add('sort-btn');
+          header.appendChild(sortSpan);
+          sortSpan.addEventListener('click', (ev) => {
+            ev.target.classList.toggle('sorted');
+            sortTableByColumn(table, index, sortOrder);
+            sortOrder *= -1;
+          });
+        });
+      }
+    });
+
+    function sortTableByColumn(table, columnIndex, sortOrder) {
+      const tbody = table.tBodies[0];
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const sortedRows = rows.sort((a, b) => {
+        let aText = '';
+        let bText = '';
+        let returnVal = '';
+
+        if (a.cells[columnIndex] && a.cells[columnIndex].textContent) {
+          aText = a.cells[columnIndex].textContent.replace(/[,\-(]/g, '').trim();
+        }
+
+        if (b.cells[columnIndex] && b.cells[columnIndex].textContent) {
+          bText = b.cells[columnIndex].textContent.replace(/[,\-(]/g, '').trim();
+        }
+
+        if (aText === '' && bText === '') {
+          returnVal = 0;
+        } else if (aText === '') {
+          returnVal = 1;
+        } else if (bText === '') {
+          returnVal = -1;
+        } else {
+          returnVal = sortOrder * aText.localeCompare(bText, 'en', {
+            numeric: true,
+            sensitivity: 'base'
+          });
+        }
+
+        return returnVal;
+      });
+
+      while (tbody.firstChild) {
+        tbody.removeChild(tbody.firstChild);
+      }
+
+      tbody.append(...sortedRows);
+    }
+  })();
+
   if ($('.component-box').length > 0) {
     $('.component-box li p a').each(function () {
       $(this).parents('li').addClass('linked-box');
