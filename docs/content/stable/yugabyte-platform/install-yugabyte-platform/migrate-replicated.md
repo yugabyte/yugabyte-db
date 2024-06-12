@@ -26,8 +26,6 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
     $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
     ```
 
-If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
-
 ## Migrate a Replicated installation
 
 You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). When migrating in place, both your Replicated configuration and the YBA metadata (universes, providers, and so on) are migrated to the YBA Installer format.
@@ -35,6 +33,8 @@ You can migrate your existing Replicated installation to YBA Installer in place 
 Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm). Only the YBA metadata (universes, providers, and so on) is migrated to the new VM; the Replicated configuration is not.
 
 ### Migrate from Replicated to YBA Installer in place
+
+If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
 
 To migrate in place, do the following:
 
@@ -74,7 +74,7 @@ To migrate in place, do the following:
 
     This uninstalls Replicated and makes the new YBA instance permanent.
 
-#### Migration and high availability
+#### In-place migration and high availability
 
 If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
