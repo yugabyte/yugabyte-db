@@ -77,7 +77,7 @@ Suppose you also need to look up the data based on the zip codes of the people i
 select id from census where zipcode=94085;
 ```
 
-This required a sequential scan of all the rows in the table. This is because the primary key of the table is `id`, and looking up by zip code requires a full scan. To avoid the full scan, you need to create an index on `zipcode` so that the executor can quickly fetch the matching rows by looking at the index.
+This required a sequential scan of all the rows in the table. This is because the primary key of the table is `id`, and looking up by zip code requires a full scan. To avoid the full scan, create an index on `zipcode` so that the executor can quickly fetch the matching rows by looking at the index.
 
 ```sql
 create index idx_zip on census(zipcode ASC);
@@ -108,7 +108,7 @@ The same 23 rows were fetched from the table, but much faster. This is because t
 
 ## Covering index
 
-In the prior example, to retrieve 23 rows the index was first looked up and then more columns were fetched for the same rows from the table. This additional round trip to the table is needed because the columns are not present in the index. To avoid this, you can store the column along with the index as follows:
+In the prior example, to retrieve 23 rows the index was first looked up, and then more columns were fetched for the same rows from the table. This additional round trip to the table is needed because the columns are not present in the index. To avoid this, you can store the column along with the index as follows:
 
 ```sql
 create index idx_zip2 on census(zipcode ASC) include(id);
@@ -133,9 +133,9 @@ You will see an output like the following:
 ...
 ```
 
-This has become an index-only scan, which means that all the data required by the query has been fetched from the index. This is also why there was no entry for Table Read Requests.
+This is an index-only scan, which means that all the data required by the query has been fetched from the index. This is also why there was no entry for Table Read Requests.
 
-As a special case, if the index contains all the columns of the table, then it is referred as Duplicate index. Duplicate indexes can be very useful especially in multi-region deployments to reduce read latencies.
+When an index contains all the columns of the table, it is referred to as a Duplicate index. Duplicate indexes can be used in multi-region deployments to reduce read latencies.
 
 {{<lead link="../../../develop/build-global-apps/duplicate-indexes/">}}
 See [Duplicate indexes](../../../develop/build-global-apps/duplicate-indexes/) for more details.
@@ -189,7 +189,7 @@ This gives an output similar to the following:
 
 ## Index usage
 
-It's a good idea to keep track of how well indexes are used by your applications so that you can evaluate and improve your existing indexes, and drop indexes that are not used. To get the usage statistics of the indexes of a table, you can execute the following command:
+It's a good idea to keep track of how well indexes are used by your applications so that you can evaluate and improve your indexes, and drop indexes that are not used. To get the usage statistics of the indexes of a table, you can execute the following command:
 
 ```sql
 SELECT * FROM pg_stat_user_indexes WHERE relname = 'census';
@@ -208,7 +208,7 @@ You can get an idea of how many times the index was scanned and how many tuples 
 
 ## Conclusion
 
-While primary keys are essential for ensuring data uniqueness and facilitating efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. By strategically employing secondary indexes, applications can achieve a significant boost in performance, providing users with a robust and scalable solution for managing large-scale, distributed datasets.
+While primary keys are essential for ensuring data uniqueness and facilitating efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. Using secondary indexes, applications can boost performance and provide a robust and scalable solution for managing large-scale, distributed datasets.
 
 ## Learn more
 

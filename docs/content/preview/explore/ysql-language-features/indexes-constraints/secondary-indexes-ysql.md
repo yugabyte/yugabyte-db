@@ -32,7 +32,7 @@ CREATE INDEX idx_name ON table_name
 The columns that are specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds:
 
 - **Sharding** - These columns determine how the index data is distributed.
-- **Clustering** - These optional columns determine how the index rows matching the same sharding key are ordered.
+- **Clustering** - These optional columns determine how index rows that match the same sharding key are ordered.
 - **Covering** - These are optional additional columns that are stored in the index to avoid a trip to the table.
 
 ## Create indexes
@@ -160,7 +160,7 @@ To add a multi-column index to an existing table, you can use the following synt
 CREATE INDEX index_name ON table_name(col2,col3,col4);
 ```
 
-The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntaxes, you can perform search using the following column combinations:
+The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntax, you can perform search using the following column combinations:
 
 ```sql
 (col2)
