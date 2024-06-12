@@ -3,6 +3,280 @@
 \getenv dlsuffix PG_DLSUFFIX
 \set regresslib :libdir '/regress' :dlsuffix
 --
+-- num_nulls()
+--
+SELECT num_nonnulls(NULL);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls('1');
+ num_nonnulls 
+--------------
+            1
+(1 row)
+
+SELECT num_nonnulls(NULL::text);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls(NULL::text, NULL::int);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls(1, 2, NULL::text, NULL::point, '', int8 '9', 1.0 / NULL);
+ num_nonnulls 
+--------------
+            4
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{1,2,NULL,3}'::int[]);
+ num_nonnulls 
+--------------
+            3
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{"1","2","3","4"}'::text[]);
+ num_nonnulls 
+--------------
+            4
+(1 row)
+
+SELECT num_nonnulls(VARIADIC ARRAY(SELECT CASE WHEN i <> 40 THEN i END FROM generate_series(1, 100) i));
+ num_nonnulls 
+--------------
+           99
+(1 row)
+
+SELECT num_nulls(NULL);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls('1');
+ num_nulls 
+-----------
+         0
+(1 row)
+
+SELECT num_nulls(NULL::text);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls(NULL::text, NULL::int);
+ num_nulls 
+-----------
+         2
+(1 row)
+
+SELECT num_nulls(1, 2, NULL::text, NULL::point, '', int8 '9', 1.0 / NULL);
+ num_nulls 
+-----------
+         3
+(1 row)
+
+SELECT num_nulls(VARIADIC '{1,2,NULL,3}'::int[]);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls(VARIADIC '{"1","2","3","4"}'::text[]);
+ num_nulls 
+-----------
+         0
+(1 row)
+
+SELECT num_nulls(VARIADIC ARRAY(SELECT CASE WHEN i <> 40 THEN i END FROM generate_series(1, 100) i));
+ num_nulls 
+-----------
+         1
+(1 row)
+
+-- special cases
+SELECT num_nonnulls(VARIADIC NULL::text[]);
+ num_nonnulls 
+--------------
+             
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{}'::int[]);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nulls(VARIADIC NULL::text[]);
+ num_nulls 
+-----------
+          
+(1 row)
+
+SELECT num_nulls(VARIADIC '{}'::int[]);
+ num_nulls 
+-----------
+         0
+(1 row)
+
+-- should fail, one or more arguments is required
+SELECT num_nonnulls();
+ERROR:  function num_nonnulls() does not exist
+LINE 1: SELECT num_nonnulls();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT num_nulls();
+ERROR:  function num_nulls() does not exist
+LINE 1: SELECT num_nulls();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+--
+-- canonicalize_path()
+--
+CREATE FUNCTION test_canonicalize_path(text)
+   RETURNS text
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+SELECT test_canonicalize_path('/');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/./abc/def/');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/./../abc/def');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/./../../abc/def/');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/abc/.././def/ghi');
+ test_canonicalize_path 
+------------------------
+ /def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('/abc/./../def/ghi//');
+ test_canonicalize_path 
+------------------------
+ /def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../..');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../../..');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../../../../ghi/jkl');
+ test_canonicalize_path 
+------------------------
+ /ghi/jkl
+(1 row)
+
+SELECT test_canonicalize_path('.');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('./');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('./abc/..');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('abc/../');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('abc/../def');
+ test_canonicalize_path 
+------------------------
+ def
+(1 row)
+
+SELECT test_canonicalize_path('..');
+ test_canonicalize_path 
+------------------------
+ ..
+(1 row)
+
+SELECT test_canonicalize_path('../abc/def');
+ test_canonicalize_path 
+------------------------
+ ../abc/def
+(1 row)
+
+SELECT test_canonicalize_path('../abc/..');
+ test_canonicalize_path 
+------------------------
+ ..
+(1 row)
+
+SELECT test_canonicalize_path('../abc/../def');
+ test_canonicalize_path 
+------------------------
+ ../def
+(1 row)
+
+SELECT test_canonicalize_path('../abc/../../def/ghi');
+ test_canonicalize_path 
+------------------------
+ ../../def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('./abc/./def/.');
+ test_canonicalize_path 
+------------------------
+ abc/def
+(1 row)
+
+SELECT test_canonicalize_path('./abc/././def/.');
+ test_canonicalize_path 
+------------------------
+ abc/def
+(1 row)
+
+SELECT test_canonicalize_path('./abc/./def/.././ghi/../../../jkl/mno');
+ test_canonicalize_path 
+------------------------
+ ../jkl/mno
+(1 row)
+
+--
 -- pg_log_backend_memory_contexts()
 --
 -- Memory contexts are logged and they are not returned to the function.
@@ -16,7 +290,244 @@ SELECT pg_log_backend_memory_contexts(pg_backend_pid());
  t
 (1 row)
 
+SELECT pg_log_backend_memory_contexts(pid) FROM pg_stat_activity
+  WHERE backend_type = 'checkpointer';
+ pg_log_backend_memory_contexts 
+--------------------------------
+ t
+(1 row)
+
+CREATE ROLE regress_log_memory;
+SELECT has_function_privilege('regress_log_memory',
+  'pg_log_backend_memory_contexts(integer)', 'EXECUTE'); -- no
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+GRANT EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer)
+  TO regress_log_memory;
+SELECT has_function_privilege('regress_log_memory',
+  'pg_log_backend_memory_contexts(integer)', 'EXECUTE'); -- yes
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SET ROLE regress_log_memory;
+SELECT pg_log_backend_memory_contexts(pg_backend_pid());
+ pg_log_backend_memory_contexts 
+--------------------------------
+ t
+(1 row)
+
+RESET ROLE;
+REVOKE EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer)
+  FROM regress_log_memory;
+DROP ROLE regress_log_memory;
+--
+-- Test some built-in SRFs
+--
+-- The outputs of these are variable, so we can't just print their results
+-- directly, but we can at least verify that the code doesn't fail.
+--
+select setting as segsize
+from pg_settings where name = 'wal_segment_size'
+\gset
+select count(*) > 0 as ok from pg_ls_waldir();
+ ok 
+----
+ t
+(1 row)
+
+-- Test ProjectSet as well as FunctionScan
+select count(*) > 0 as ok from (select pg_ls_waldir()) ss;
+ ok 
+----
+ t
+(1 row)
+
+-- Test not-run-to-completion cases.
+select * from pg_ls_waldir() limit 0;
+ name | size | modification 
+------+------+--------------
+(0 rows)
+
+select count(*) > 0 as ok from (select * from pg_ls_waldir() limit 1) ss;
+ ok 
+----
+ t
+(1 row)
+
+select (w).size = :segsize as ok
+from (select pg_ls_waldir() w) ss where length((w).name) = 24 limit 1;
+ ok 
+----
+ t
+(1 row)
+
+select count(*) >= 0 as ok from pg_ls_archive_statusdir();
+ ok 
+----
+ t
+(1 row)
+
+select * from (select pg_ls_dir('.') a) a where a = 'base' limit 1;
+  a   
+------
+ base
+(1 row)
+
+-- Test missing_ok (second argument)
+select pg_ls_dir('does not exist', false, false); -- error
+ERROR:  could not open directory "does not exist": No such file or directory
+select pg_ls_dir('does not exist', true, false); -- ok
+ pg_ls_dir 
+-----------
+(0 rows)
+
+-- Test include_dot_dirs (third argument)
+select count(*) = 1 as dot_found
+  from pg_ls_dir('.', false, true) as ls where ls = '.';
+ dot_found 
+-----------
+ t
+(1 row)
+
+select count(*) = 1 as dot_found
+  from pg_ls_dir('.', false, false) as ls where ls = '.';
+ dot_found 
+-----------
+ f
+(1 row)
+
+select * from (select (pg_timezone_names()).name) ptn where name='UTC' limit 1;
+ name 
+------
+ UTC
+(1 row)
+
+select count(*) > 0 from
+  (select pg_tablespace_databases(oid) as pts from pg_tablespace
+   where spcname = 'pg_default') pts
+  join pg_database db on pts.pts = db.oid;
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- Test replication slot directory functions
+--
+CREATE ROLE regress_slot_dir_funcs;
+-- Not available by default.
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalsnapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalmapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_replslotdir(text)', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+GRANT pg_monitor TO regress_slot_dir_funcs;
+-- Role is now part of pg_monitor, so these are available.
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalsnapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalmapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_replslotdir(text)', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+DROP ROLE regress_slot_dir_funcs;
+--
+-- Test adding a support function to a subject function
+--
+CREATE FUNCTION my_int_eq(int, int) RETURNS bool
+  LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
+  AS $$int4eq$$;
+-- By default, planner does not think that's selective
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
+WHERE my_int_eq(a.unique2, 42); -- YB: output's a and b are flipped
+               QUERY PLAN
+----------------------------------------
+ Hash Join
+   Hash Cond: (a.unique1 = b.unique1)
+   ->  Seq Scan on tenk1 a
+         Filter: my_int_eq(unique2, 42)
+   ->  Hash
+         ->  Seq Scan on tenk1 b
+(6 rows)
+
+-- With support function that knows it's int4eq, we get a different plan
 CREATE FUNCTION test_support_func(internal)
     RETURNS internal
     AS :'regresslib', 'test_support_func'
     LANGUAGE C STRICT;
+ALTER FUNCTION my_int_eq(int, int) SUPPORT test_support_func;
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
+WHERE my_int_eq(a.unique2, 42); -- YB: TODO: investigate why NestLoop is still higher cost
+               QUERY PLAN
+----------------------------------------
+ Hash Join
+   Hash Cond: (a.unique1 = b.unique1)
+   ->  Seq Scan on tenk1 a
+         Filter: my_int_eq(unique2, 42)
+   ->  Hash
+         ->  Seq Scan on tenk1 b
+(6 rows)
+
+-- Also test non-default rowcount estimate
+CREATE FUNCTION my_gen_series(int, int) RETURNS SETOF integer
+  LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
+  AS $$generate_series_int4$$
+  SUPPORT test_support_func;
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;
+               QUERY PLAN               
+----------------------------------------
+ Hash Join
+   Hash Cond: (g.g = a.unique1)
+   ->  Function Scan on my_gen_series g
+   ->  Hash
+         ->  Seq Scan on tenk1 a
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (a.unique1 = g.g)
+   ->  Function Scan on my_gen_series g
+   ->  Index Scan using tenk1_unique1 on tenk1 a
+         Index Cond: (unique1 = ANY (ARRAY[g.g, $1, $2, ..., $1023]))
+(5 rows)
