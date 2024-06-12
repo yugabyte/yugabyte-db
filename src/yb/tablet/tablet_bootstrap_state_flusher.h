@@ -18,6 +18,8 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+
 namespace yb {
 namespace tablet {
 
@@ -27,42 +29,45 @@ namespace tablet {
 // do flush work in thread pool: SUMITTED -> FLUSHING
 // do flush work synchronously: IDLE -> FLUSHING
 // flush is done: FLUSHING -> IDLE
-// read retryable requests: IDLE -> READING
+// read bootstrap state: IDLE -> READING
 // read is done: READING -> IDLE
 // shutdown: IDLE -> SHUTDOWN
-YB_DEFINE_ENUM(RetryableRequestsFlushState,
+YB_DEFINE_ENUM(TabletBootstrapFlushState,
                (kFlushIdle)(kFlushSubmitted)(kFlushing)(kReading)(kShutdown));
 
-class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRequestsFlusher> {
+class TabletBootstrapStateFlusher :
+    public std::enable_shared_from_this<TabletBootstrapStateFlusher> {
  public:
-  RetryableRequestsFlusher(
+  TabletBootstrapStateFlusher(
       const std::string& tablet_id,
       std::shared_ptr<consensus::RaftConsensus> raft_consensus,
-      std::unique_ptr<ThreadPoolToken> flush_retryable_requests_pool_token)
+      std::shared_ptr<TabletBootstrapStateManager> bootstrap_state_manager,
+      std::unique_ptr<ThreadPoolToken> flush_bootstrap_state_pool_token)
       : tablet_id_(tablet_id),
         raft_consensus_(raft_consensus),
-        flush_retryable_requests_pool_token_(std::move(flush_retryable_requests_pool_token)) {}
+        bootstrap_state_manager_(bootstrap_state_manager),
+        flush_bootstrap_state_pool_token_(std::move(flush_bootstrap_state_pool_token)) {}
 
-  Status FlushRetryableRequests(
-      RetryableRequestsFlushState expected = RetryableRequestsFlushState::kFlushIdle);
-  Status SubmitFlushRetryableRequestsTask();
-  Result<OpId> CopyRetryableRequestsTo(const std::string& dest_path);
+  Status FlushBootstrapState(
+      TabletBootstrapFlushState expected = TabletBootstrapFlushState::kFlushIdle);
+  Status SubmitFlushBootstrapStateTask();
+  Result<OpId> CopyBootstrapStateTo(const std::string& dest_path);
   OpId GetMaxReplicatedOpId();
 
   void Shutdown();
 
-  bool TEST_HasRetryableRequestsOnDisk();
+  bool TEST_HasBootstrapStateOnDisk();
 
-  RetryableRequestsFlushState flush_state() const {
+  TabletBootstrapFlushState flush_state() const {
     return flush_state_.load(std::memory_order_acquire);
   }
 
  private:
-  bool TransferState(RetryableRequestsFlushState* old_state, RetryableRequestsFlushState new_state);
-  bool SetFlushing(bool expect_idle, RetryableRequestsFlushState* old_state);
-  bool SetSubmitted(RetryableRequestsFlushState* old_state);
+  bool TransferState(TabletBootstrapFlushState* old_state, TabletBootstrapFlushState new_state);
+  bool SetFlushing(bool expect_idle, TabletBootstrapFlushState* old_state);
+  bool SetSubmitted(TabletBootstrapFlushState* old_state);
   void SetIdle();
-  bool SetReading(RetryableRequestsFlushState* old_state);
+  bool SetReading(TabletBootstrapFlushState* old_state);
   bool SetShutdown();
   void WaitForFlushIdleOrShutdown() const;
   void SetIdleAndNotifyAll();
@@ -70,10 +75,11 @@ class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRe
   // Used to notify waiters when each flush is done.
   mutable std::mutex flush_mutex_;
   mutable std::condition_variable flush_cond_;
-  std::atomic<RetryableRequestsFlushState> flush_state_{RetryableRequestsFlushState::kFlushIdle};
+  std::atomic<TabletBootstrapFlushState> flush_state_{TabletBootstrapFlushState::kFlushIdle};
   TabletId tablet_id_;
   std::shared_ptr<consensus::RaftConsensus> raft_consensus_;
-  std::unique_ptr<ThreadPoolToken> flush_retryable_requests_pool_token_;
+  std::shared_ptr<TabletBootstrapStateManager> bootstrap_state_manager_;
+  std::unique_ptr<ThreadPoolToken> flush_bootstrap_state_pool_token_;
 };
 
 } // namespace tablet
