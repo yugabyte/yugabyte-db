@@ -962,7 +962,14 @@
                   "dr": "Select the tables to enable disaster recovery for",
                   "xCluster": "Select the tables to enable xCluster replication for"
                 },
-                "nextButton": "Next: Confirm Full Copy"
+                "submitButton": {
+                  "skipBootstrapping": "Skip Creating Full Copy",
+                  "validateSelection": "Validate Table Selection",
+                  "configureBootstrap": {
+                    "dr": "Next: Confirm Full Copy",
+                    "xCluster": "Next: Configure Full Copy"
+                  }
+                }
               },
               "configureBootstrap": {
                 "infoText": {
@@ -976,10 +983,6 @@
                   "backupStorageConfigRequired": "Required."
                 }
               }
-            },
-            "submitButton": {
-              "validate": "Validate Selection",
-              "applyChanges": "Apply Changes"
             },
             "error": {
               "requestFailureLabel": "Edit tables request failed",
@@ -1053,11 +1056,11 @@
                 "ysql": "Select the databases to enable xCluster replication for",
                 "ycql": "Select the tables to enable xCluster replication for"
               },
-              "validateButton": "Validate Table Selection",
               "submitButton": {
-                "validateSelection": "Validate Selection",
+                "validateSelection": "Validate Table Selection",
                 "configureBootstrap": "Next: Configure Full Copy",
-                "confirmAlert": "Next: Confirm Alert Threshold"
+                "confirmAlert": "Next: Confirm Alert Threshold",
+                "skipBootstrapping": "Skip Creating Full Copy"
               }
             },
             "configureBootstrap": {

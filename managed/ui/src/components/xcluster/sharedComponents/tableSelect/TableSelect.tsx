@@ -13,12 +13,7 @@ import {
   fetchTablesInUniverse,
   fetchXClusterConfig
 } from '../../../../actions/xClusterReplication';
-import {
-  api,
-  runtimeConfigQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
-} from '../../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
@@ -41,7 +36,6 @@ import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { XClusterTableEligibility } from '../../constants';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
-import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
 import { getTableUuid } from '../../../../utils/tableUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
@@ -216,10 +210,6 @@ export const TableSelect = (props: TableSelectProps) => {
     // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   ) as UseQueryResult<XClusterConfig>[];
 
-  const globalRuntimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
-    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)
-  );
-
   if (
     sourceUniverseNamespaceQuery.isLoading ||
     sourceUniverseNamespaceQuery.isIdle ||
@@ -230,9 +220,7 @@ export const TableSelect = (props: TableSelectProps) => {
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle ||
-    globalRuntimeConfigQuery.isLoading ||
-    globalRuntimeConfigQuery.isIdle
+    targetUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -252,9 +240,6 @@ export const TableSelect = (props: TableSelectProps) => {
     return (
       <YBErrorIndicator customErrorMessage={`Error fetching ${targetUniverseLabel} information.`} />
     );
-  }
-  if (globalRuntimeConfigQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching runtime configurations." />;
   }
 
   const toggleTableGroup = (

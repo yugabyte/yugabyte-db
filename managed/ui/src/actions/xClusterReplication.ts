@@ -37,28 +37,42 @@ export function fetchTablesInUniverse(
   }
   return Promise.reject('Querying universe tables failed: No universe UUID provided.');
 }
+export interface CreateXClusterConfigRequest {
+  name: string;
+  sourceUniverseUUID: string;
+  targetUniverseUUID: string;
+  configType: XClusterConfigType;
+  tables: string[];
 
-export function createXClusterReplication(
-  targetUniverseUUID: string,
-  sourceUniverseUUID: string,
-  name: string,
-  configType: XClusterConfigType,
-  tables: string[],
-  bootstrapParams: {
+  bootstrapParams?: {
     tables: string[];
-    backupRequestParams: any;
-  } | null
-) {
+    allowBootstrapping: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export interface EditXClusterConfigTablesRequest {
+  tables: string[];
+
+  autoIncludeIndexTables?: boolean;
+  bootstrapParams?: {
+    tables: string[];
+    allowBootstrapping: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export function createXClusterConfig(createxClusterConfigRequest: CreateXClusterConfigRequest) {
   const customerId = localStorage.getItem('customerId');
   return axios
-    .post<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs`, {
-      sourceUniverseUUID,
-      targetUniverseUUID,
-      name,
-      configType,
-      tables,
-      ...(bootstrapParams && { bootstrapParams })
-    })
+    .post<YBPTask>(
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs`,
+      createxClusterConfigRequest
+    )
     .then((response) => response.data);
 }
 
@@ -133,15 +147,6 @@ export function editXclusterName(replication: XClusterConfig) {
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     name: replication.name
   });
-}
-
-interface EditXClusterConfigTablesRequest {
-  tables: string[];
-  autoIncludeIndexTables?: boolean;
-  bootstrapParams?: {
-    tables: string[];
-    backupRequestParams: any;
-  };
 }
 
 export function editXClusterConfigTables(
