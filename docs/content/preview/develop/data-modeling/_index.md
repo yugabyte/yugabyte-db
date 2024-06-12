@@ -14,7 +14,7 @@ menu:
 type: indexpage
 ---
 
-Data modeling is the process of defining the structure, organization, and relationships of data within a database. In a distributed SQL database, this process becomes even more crucial due to the complexities introduced by data distribution, replication, and consistency. To fully leverage the benefits offered by YugabyteDB, you need to approach data modeling with a distributed mindset. This guide will you understand that data modeling for distributed SQL databases requires a careful balance of theoretical principles and practical considerations.
+Data modeling is the process of defining the structure, organization, and relationships of data in a database. In a distributed SQL database, this process becomes even more crucial due to the complexities introduced by data distribution, replication, and consistency. To fully leverage the benefits offered by YugabyteDB, you need to approach data modeling with a distributed mindset. Data modeling for distributed SQL databases requires a careful balance of theoretical principles and practical considerations.
 
 ## Organization
 
@@ -34,7 +34,7 @@ To design your tables and indexes for fast retrieval and storage in YugabyteDB, 
 
 ## Primary keys
 
-Primary key is the unique identifier for each row in the table. The disribution and ordering of table data is depdendent on the primary key.
+The primary key is the unique identifier for each row in the table. The distribution and ordering of table data depdends on the primary key.
 
 {{<lead link="./primary-keys">}}
 To design optimal primary keys for your tables, see [Primary keys](./primary-keys)

@@ -2,9 +2,9 @@
 {{- $badges := split (replaceRE ",+" "," $badges) "," -}}
 {{- /* map of baddge to links + display */ -}}
 {{- $linkmap := dict  "ysql" (slice "/preview/api/ysql" "YSQL")
-                      "ycql" (slice "/preview/api/yscql" "YCQL")
+                      "ycql" (slice "/preview/api/ycql" "YCQL")
                       "tp" (slice "/preview/releases/versioning/#feature-maturity" "TECH PREVIEW")
-                      "ea" (slice "" "EARLY ACCESS")
+                      "ea" (slice "/preview/releases/versioning/#feature-maturity" "EARLY ACCESS")
 -}}
 {{-
   $classmap := dict  "tp" "tech-preview"
