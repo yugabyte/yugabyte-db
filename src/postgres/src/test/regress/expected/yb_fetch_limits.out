@@ -485,3 +485,26 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_smal
    Storage Index Read Requests: 1
    Storage Index Rows Scanned: 5000
 (5 rows)
+
+--
+-- #22648: Avoid duplicate rows for index-scans where the table request does not fit into 1 response
+--
+create table test_correct(a int, b int, c text);
+insert into test_correct select i, i, repeat('1234567890', 100) from generate_series(1, 20) i;
+create index on test_correct(a asc);
+set yb_fetch_size_limit = '1kB';
+explain (analyze, costs off, timing off, summary off) select * from test_correct where a < 20 and b % 5 = 0;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Index Scan using test_correct_a_idx on test_correct (actual rows=3 loops=1)
+   Index Cond: (a < 20)
+   Remote Filter: ((b % 5) = 0)
+(3 rows)
+
+select a, b, substring(c, 0, 10) from test_correct where a < 20 and b % 5 = 0 order by a;
+ a  | b  | substring
+----+----+-----------
+  5 |  5 | 123456789
+ 10 | 10 | 123456789
+ 15 | 15 | 123456789
+(3 rows)
