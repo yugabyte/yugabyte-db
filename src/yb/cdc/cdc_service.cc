@@ -217,6 +217,32 @@ METRIC_DEFINE_entity(cdcsdk);
       xrepl::StreamId::FromString(stream_id_str), resp->mutable_error(), \
       CDCErrorPB::INVALID_REQUEST, context)
 
+// TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
+#define YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
+  do { \
+    if (VLOG_IS_ON(verbose_level)) { \
+      switch (verbose_level) { \
+        case 1: \
+          VLOG(1) << (oss).str(); \
+          break; \
+        case 2: \
+          VLOG(2) << (oss).str(); \
+          break; \
+        case 3: \
+          VLOG(3) << (oss).str(); \
+          break; \
+        case 4: \
+          VLOG(4) << (oss).str(); \
+          break; \
+        default: \
+          LOG(INFO) << (oss).str(); \
+          break; \
+      } \
+    } else { \
+      YB_LOG_EVERY_N_SECS(INFO, n_secs) << (oss).str(); \
+    } \
+  } while (0)
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -4473,7 +4499,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     return;
   }
 
-  LOG(INFO) << "Received InitVirtualWALForCDC request: " << req->DebugString();
+  LOG(INFO) << "Received InitVirtualWALForCDC request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4517,8 +4543,10 @@ void CDCServiceImpl::InitVirtualWALForCDC(
       session_virtual_wal_.erase(session_id);
     }
 
-    std::string error_msg = Format("VirtualWAL initialisation failed for stream_id: $0", stream_id);
-    LOG(WARNING) << s.CloneAndPrepend(error_msg);
+    std::string error_msg = Format(
+        "VirtualWAL initialisation failed for stream_id: $0 & session_id: $1", stream_id,
+        session_id);
+    LOG(ERROR) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;
@@ -4536,7 +4564,9 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
+  std::ostringstream oss;
+  oss << "Received GetConsistentChanges request: " << req->ShortDebugString();
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4567,7 +4597,11 @@ void CDCServiceImpl::GetConsistentChanges(
   if (!s.ok()) {
     std::string msg =
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
-    LOG(WARNING) << msg;
+    if (!s.IsTryAgain()) {
+      LOG(WARNING) << msg;
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
+    }
   }
 
   context.RespondSuccess();
@@ -4580,7 +4614,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
     return;
   }
 
-  LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALForCDC request: " << req->ShortDebugString();
 
   if (FLAGS_TEST_cdc_force_destroy_virtual_wal_failure) {
     LOG(WARNING)
@@ -4615,7 +4649,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
     session_virtual_wal_.erase(session_id);
   }
 
-  LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
+  LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
   context.RespondSuccess();
 }
 
@@ -4625,6 +4659,8 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
   if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || session_ids.empty()) {
     return;
   }
+
+  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
 
   auto it = session_ids.begin();
   {
@@ -4649,7 +4685,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
 
     for (; it != session_ids.end(); ++it) {
       if (session_virtual_wal_.erase(*it)) {
-        LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
+        LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }
     }
   }
@@ -4662,7 +4698,9 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  VLOG(1) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+  std::ostringstream oss;
+  oss << "Received UpdateAndPersistLSN request: " << req->ShortDebugString();
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4711,9 +4749,11 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  VLOG(1) << "Succesfully persisted LSN values for stream_id: " << stream_id
-          << ", confirmed_flush_lsn = " << confirmed_flush_lsn
-          << ", restart_lsn = " << *res;
+  oss.clear();
+  oss << "Succesfully persisted LSN values for stream_id: " << stream_id
+      << ", confirmed_flush_lsn = " << confirmed_flush_lsn << ", restart_lsn = " << *res;
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+
   context.RespondSuccess();
 }
 
@@ -4724,7 +4764,7 @@ void CDCServiceImpl::UpdatePublicationTableList(
     return;
   }
 
-  VLOG(4) << "Received UpdatePublicationTableList request: " << req->DebugString();
+  LOG(INFO) << "Received UpdatePublicationTableList request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
