@@ -83,7 +83,7 @@ On this page:
 **New Features**
 
 - [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
-- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Sumo Logic.
+- Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to Sumo Logic.
 
 **Database**
 
@@ -106,7 +106,7 @@ On this page:
 **New Features**
 
 - Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
-- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana Cloud.
+- Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to Grafana Cloud.
 
 ### September 22, 2023
 
@@ -126,7 +126,7 @@ On this page:
 **New Features**
 
 - Support for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key and rotating keys on encrypted clusters. Clusters must be using YugabyteDB v2.16.7 or later.
-- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Datadog.
+- Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to Datadog.
 
 **Database**
 

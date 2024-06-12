@@ -47,7 +47,7 @@ Note that if another [locking cluster operation](../#locking-operations) is alre
 
 To set the maintenance window for a cluster:
 
-1. On the **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.
+1. On the cluster **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.
 1. Choose a day of the week.
 1. Set the start time.
 1. Click **Save**.
@@ -56,7 +56,7 @@ To set the maintenance window for a cluster:
 
 To set the maintenance exclusion period for a cluster:
 
-1. On the **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.
+1. On the cluster **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.
 1. Set a start date and end date. The exclusion period includes the day of the start date, and every day up to, but not including, the end date.
 1. Click **Save**.
 
