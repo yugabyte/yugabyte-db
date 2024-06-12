@@ -80,7 +80,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Assessment"]]) {
-      return ""; // Tooltip for plan and assess
+      return ""; // Tooltip for assessment
     } else if (step === migrationSteps[MigrationStep["Schema Migration"]]) {
       return ""; // Tooltip for migrate schema
     } else if (step === migrationSteps[MigrationStep["Data Migration"]]) {
