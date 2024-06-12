@@ -1141,4 +1141,6 @@ static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
 	return db_oid == kYBCPgSequencesDataDatabaseOid;
 }
 
+extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
+
 #endif /* PG_YB_UTILS_H */

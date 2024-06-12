@@ -1866,7 +1866,22 @@ YbDdlModeOptional YbGetDdlMode(
 			 */
 			if (IsYsqlUpgrade &&
 				YbIsSystemNamespaceByName(stmt->relation->schemaname))
+			{
+				/* Adding a shared relation is considered as having global
+				 * impact. However when upgrading an old release, the function
+				 * pg_catalog.yb_increment_all_db_catalog_versions may not
+				 * exist yet, in this case YbSetIsGlobalDDL is not applicable.
+				 */
+				if (stmt->tablespacename &&
+					strcmp(stmt->tablespacename, "pg_global") == 0 &&
+					YBIsDBCatalogVersionMode())
+				{
+					Oid func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();
+					if (OidIsValid(func_oid))
+						YbSetIsGlobalDDL();
+				}
 				break;
+			}
 
 			is_version_increment = false;
 			break;
