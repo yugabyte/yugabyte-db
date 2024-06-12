@@ -18,7 +18,6 @@ import {
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBTabsPanel } from '../../panels';
-import { ReplicationContainer } from '../../tables';
 import {
   XClusterConfigAction,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
@@ -60,6 +59,7 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
+import { XClusterMetrics } from '../sharedComponents/XClusterMetrics/XClusterMetrics';
 
 import { XClusterConfig } from '../dtos';
 import { MetricsQueryParams } from '../../../redesign/helpers/dtos';
@@ -620,11 +620,7 @@ export function ReplicationDetails({
                   />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
-                  <ReplicationContainer
-                    sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
-                    hideHeader={true}
-                    replicationUUID={xClusterConfigUuid}
-                  />
+                  <XClusterMetrics xClusterConfig={xClusterConfig} isDrInterface={false} />
                 </Tab>
               </YBTabsPanel>
             </Col>
