@@ -505,5 +505,103 @@ TEST_F(XClusterOutboundReplicationGroupTest, RepairWithYbAdmin) {
   ASSERT_EQ(resp.table_infos_size(), 2);
 }
 
+// Validate the GetXClusterOutboundReplicationGroupInfo, and
+// GetXClusterOutboundReplicationGroups RPCs.
+TEST_F(XClusterOutboundReplicationGroupTest, TestListAPIs) {
+  // Create two DBs with different table counts.
+  ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
+
+  const NamespaceId namespace_name_2 = "db2";
+  const auto namespace_id_2 = ASSERT_RESULT(CreateYsqlNamespace(namespace_name_2));
+  ASSERT_OK(CreateYsqlTable(namespace_name_2, kTableName1));
+  ASSERT_OK(CreateYsqlTable(namespace_name_2, "table_2"));
+
+  // Replication group 1 with two namespaces.
+  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(
+      kReplicationGroupId, {namespace_id_, namespace_id_2}));
+  // Wait for checkpointing to complete.
+  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
+  {
+    auto group_info = ASSERT_RESULT(
+        XClusterClient().GetXClusterOutboundReplicationGroupInfo(kReplicationGroupId));
+    ASSERT_EQ(group_info.size(), 2);
+    ASSERT_TRUE(group_info.contains(namespace_id_));
+    ASSERT_TRUE(group_info.contains(namespace_id_2));
+    ASSERT_EQ(group_info[namespace_id_].size(), 1);
+    ASSERT_EQ(group_info[namespace_id_2].size(), 2);
+  }
+
+  // Replication group 2 with one namespace.
+  const xcluster::ReplicationGroupId replication_group2("rg2");
+  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(replication_group2, {namespace_id_}));
+  ASSERT_OK(GetXClusterStreams(replication_group2, namespace_id_));
+  // Wait for checkpointing to complete.
+  {
+    auto group_info =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroupInfo(replication_group2));
+    ASSERT_EQ(group_info.size(), 1);
+    ASSERT_TRUE(group_info.contains(namespace_id_));
+    ASSERT_EQ(group_info[namespace_id_].size(), 1);
+  }
+
+  // List groups for a namespace without any replication groups.
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups("NA"));
+    ASSERT_EQ(replication_groups.size(), 0);
+  }
+
+  // List all Outbound groups.
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups());
+    ASSERT_EQ(replication_groups.size(), 2);
+    std::unordered_set<xcluster::ReplicationGroupId> replication_groups_set(
+        replication_groups.begin(), replication_groups.end());
+    ASSERT_TRUE(replication_groups_set.contains(kReplicationGroupId));
+    ASSERT_TRUE(replication_groups_set.contains(replication_group2));
+  }
+
+  // List outbound Group per Namespace.
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id_));
+    ASSERT_EQ(replication_groups.size(), 2);
+    std::unordered_set<xcluster::ReplicationGroupId> replication_groups_set(
+        replication_groups.begin(), replication_groups.end());
+    ASSERT_TRUE(replication_groups_set.contains(kReplicationGroupId));
+    ASSERT_TRUE(replication_groups_set.contains(replication_group2));
+  }
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id_2));
+    ASSERT_EQ(replication_groups.size(), 1);
+    ASSERT_EQ(replication_groups[0], kReplicationGroupId);
+  }
+
+  // Delete the first replication group.
+  ASSERT_OK(XClusterClient().DeleteOutboundReplicationGroup(
+      kReplicationGroupId, /*target_master_addresses=*/""));
+
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups());
+    ASSERT_EQ(replication_groups.size(), 1);
+    ASSERT_EQ(replication_groups[0], replication_group2);
+  }
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id_));
+    ASSERT_EQ(replication_groups.size(), 1);
+    ASSERT_EQ(replication_groups[0], replication_group2);
+  }
+  {
+    auto replication_groups =
+        ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id_2));
+    ASSERT_EQ(replication_groups.size(), 0);
+  }
+}
+
 }  // namespace master
 }  // namespace yb

@@ -24,7 +24,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressFeature extends BasePgSQLTest {
+public class TestPgRegressFeature extends BasePgRegressTest {
 
   private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =

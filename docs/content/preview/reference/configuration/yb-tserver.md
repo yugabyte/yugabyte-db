@@ -209,6 +209,118 @@ Stop attempting to log to disk if the disk is full.
 
 Default: `false`
 
+##### --callhome_enabled
+
+Disable callhome diagnostics.
+
+Default: `true`
+
+
+## Memory division flags
+
+These flags are used to determine how the RAM of a node is split between
+the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including Postgres and a [master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+
+{{< warning title="Warning" >}}
+
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and master if present leaves enough memory on the node for Postgres, and any required other processes like monitoring agents plus the memory needed by the kernel.
+
+{{< /warning >}}
+
+
+### Flags controlling the defaults for the other memory division flags
+
+The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and master.
+
+##### --use_memory_defaults_optimized_for_ysql
+
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+
+Default: `false`
+
+If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
+
+If these defaults are used for both TServer and master, then a node's available memory is partitioned as follows:
+
+| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
+| :--- | ---: | ---: | ---: | ---: |
+| TServer %  | 45% | 48% | 57% | 60% |
+| master %   | 20% | 15% | 10% | 10% |
+| Postgres % | 25% | 27% | 28% | 27% |
+| other %    | 10% | 10% |  5% |  3% |
+
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Managed](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
+
+The defaults for the master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+
+| flag | default |
+| :--- | :--- |
+| --db_block_cache_size_percentage | 32 |
+| --tablet_overhead_size_percentage | 10 |
+
+The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+
+Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
+
+| total node GiB | max number of tablet replicas | max number of Postgres connections |
+| ---: | ---: | ---: |
+|   4 |    240 |  30 |
+|   8 |    530 |  65 |
+|  16 |  1,250 | 130 |
+|  32 |  2,700 | 225 |
+|  64 |  5,500 | 370 |
+| 128 | 11,000 | 550 |
+| 256 | 22,100 | 730 |
+
+These values are approximate because different kernels use different amounts of memory, leaving different amounts of memory for the TServer and thus the per-tablet overhead TServer component.
+
+Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
+
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
+
+
+### Flags controlling the split of memory among processes
+
+Note that in general these flags will have different values for TServer and master processes.
+
+##### --memory_limit_hard_bytes
+
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+
+Default: `0`
+
+##### --default_memory_limit_to_ram_ratio
+
+The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+Default: `0.85` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+
+
+### Flags controlling the split of memory within a TServer
+
+##### --db_block_cache_size_bytes
+
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+
+Default: `-1`
+
+##### --db_block_cache_size_percentage
+
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+
+Default: `50` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+
+##### --tablet_overhead_size_percentage
+
+Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
+
+Each tablet replica generally requires 700 MiB of this memory.
+
+Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+
+
 ## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
@@ -1165,12 +1277,6 @@ The time period, in milliseconds, after which the intents will be cleaned up if 
 
 Default: `14400000` (4 hours)
 
-##### --enable_update_local_peer_min_index
-
-Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
-
-Default: `false`
-
 ##### --cdcsdk_table_processing_limit_per_run
 
 Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
@@ -1291,6 +1397,12 @@ If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
 
 Default: `true`
+
+##### ysql_minimal_catalog_caches_preload
+
+Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
+
+Default: `false`
 
 ##### ysql_use_relcache_file
 

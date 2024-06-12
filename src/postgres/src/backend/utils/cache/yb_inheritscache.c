@@ -227,7 +227,6 @@ void
 YbPreloadPgInheritsCache()
 {
 	Assert(YbPgInheritsCache);
-	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 	Relation relation = table_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
@@ -254,13 +253,13 @@ YbPreloadPgInheritsCache()
 			entry->refcount = 1;
 			entry->parentOid = parentOid;
 		}
-
+		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		HeapTuple copy_inheritsTuple = heap_copytuple(inheritsTuple);
 		entry->childTuples = lappend(entry->childTuples, copy_inheritsTuple);
+		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
-	MemoryContextSwitchTo(oldcxt);
 }
 
 YbPgInheritsCacheEntry

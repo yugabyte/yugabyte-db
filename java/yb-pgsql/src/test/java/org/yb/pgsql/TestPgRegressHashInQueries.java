@@ -28,7 +28,7 @@ import java.util.Set;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressHashInQueries extends BasePgSQLTest {
+public class TestPgRegressHashInQueries extends BasePgRegressTest {
 
   @Override
   protected Integer getYsqlRequestLimit() {

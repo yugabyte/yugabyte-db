@@ -25,8 +25,6 @@ TAG_FLAG(enforce_tablet_replica_limits, advanced);
 
 namespace yb::master {
 
-using tserver::AggregatedClusterInfo;
-
 namespace {
 
 // Use:
@@ -85,7 +83,7 @@ Status CanCreateTabletReplicas(
   if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
     return Status::OK();
   }
-  auto limits = tserver::GetTabletReplicaPerResourceLimits();
+  auto limits = GetTabletReplicaPerResourceLimits();
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }

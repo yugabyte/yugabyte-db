@@ -430,9 +430,6 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       VERIFY_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
   LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
 
-  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream.
-  SleepFor(MonoDelta::FromSeconds(1));
-
   // Fetch the stream_id of the replication slot.
   auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",

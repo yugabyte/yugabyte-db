@@ -194,6 +194,17 @@ const (
 	ReadReplicaClusterType = "ASYNC"
 )
 
+const (
+	// PgSqlTableType
+	PgSqlTableType = "PGSQL_TABLE_TYPE"
+
+	// YqlTableType
+	YqlTableType = "YQL_TABLE_TYPE"
+
+	// RedisTableType
+	RedisTableType = "REDIS_TABLE_TYPE"
+)
+
 // CompletedStates returns set of states that mark the task as completed
 func CompletedStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

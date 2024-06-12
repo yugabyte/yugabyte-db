@@ -41,21 +41,11 @@ public class TestPgForeignKey extends BasePgSQLTest {
     return flagMap;
   }
 
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
   @After
   public void cleanUpAfter() throws Exception {
     // For this test tear down entire cluster between tests.
     tearDownAfter();
     pgInitialized = false;
-  }
-
-  @Test
-  public void testPgRegress() throws Exception {
-    runPgRegressTest("yb_foreign_key_serial_schedule");
   }
 
   private void checkRows(Statement statement,

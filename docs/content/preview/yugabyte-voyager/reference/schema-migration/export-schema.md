@@ -25,6 +25,8 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
+| --assessment-report-path | Path to the generated assessment report file (JSON format) to be used for applying recommendation to exported schema. |
+| --skip-recommendations | Disable applying recommendations in the exported schema suggested by the migration assessment report. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --comments&#8209;on&#8209;objects | Enable export of comments associated with database objects. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for schema. |

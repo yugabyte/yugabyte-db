@@ -1792,6 +1792,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   }
 
   // Should we update the method instead?
+  ASH_ENABLE_CONCURRENT_UPDATES();
   if (is_read) {
     SET_WAIT_STATUS(YCQL_Read);
   } else {
@@ -1870,8 +1871,7 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
   // there is no more outstanding async call.
   if (AddFetch(&num_async_calls_, -1, std::memory_order_acq_rel) == 0) {
     TRACE_FUNC();
-    SET_WAIT_STATUS(OnCpu_Passive);
-    SCOPED_WAIT_STATUS(OnCpu_Active);
+    SET_WAIT_STATUS(OnCpu_Active);
     ResetAsyncCalls reset_async_calls(&num_async_calls_);
     ProcessAsyncResults(/* rescheduled */ false, &reset_async_calls);
   } else {

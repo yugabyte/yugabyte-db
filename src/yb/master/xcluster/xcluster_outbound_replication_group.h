@@ -128,6 +128,8 @@ class XClusterOutboundReplicationGroup
 
   Status RepairRemoveTable(const TableId& table_id, const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  Result<std::vector<NamespaceId>> GetNamespaces() const EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
   friend class AddTableToXClusterSourceTask;

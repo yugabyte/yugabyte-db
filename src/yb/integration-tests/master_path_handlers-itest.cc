@@ -710,7 +710,7 @@ TEST_F_EX(
   auto schedule_id = ASSERT_RESULT(snapshot_util->CreateSchedule(
       nullptr, YQL_DATABASE_CQL, table->name().namespace_name(),
       client::WaitSnapshot::kFalse, kInterval, kRetention));
-  ASSERT_OK(snapshot_util->WaitScheduleSnapshot(schedule_id, 1, HybridTime::kMin, 10s));
+  ASSERT_OK(snapshot_util->WaitScheduleSnapshot(schedule_id));
   auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
   ASSERT_EQ(schedules.size(), 1);
 

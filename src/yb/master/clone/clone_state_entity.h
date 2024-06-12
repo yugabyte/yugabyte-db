@@ -75,6 +75,13 @@ class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
   DISALLOW_COPY_AND_ASSIGN(CloneStateInfo);
 };
 
+struct CloneStateInfoComparator {
+    bool operator()(const CloneStateInfoPtr& a, const CloneStateInfoPtr& b) const {
+        return a->LockForRead()->pb.clone_request_seq_no() <
+               b->LockForRead()->pb.clone_request_seq_no();
+    }
+};
+
 DECLARE_MULTI_INSTANCE_LOADER_CLASS(CloneState, std::string, SysCloneStatePB);
 
 } // namespace yb::master

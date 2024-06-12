@@ -13,7 +13,7 @@
   failed_when: False
 
 - set_fact:
-    node_exporter_group: "prometheus"
+    node_exporter_group: "{{ node_exporter_user }}"
   when: user_group.rc != 0
 
 - set_fact:

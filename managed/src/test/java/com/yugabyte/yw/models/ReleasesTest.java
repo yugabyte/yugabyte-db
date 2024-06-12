@@ -71,6 +71,8 @@ public class ReleasesTest extends FakeDBApplication {
   public void testGetForArtifactType() {
     Release release1 = Release.create(UUID.randomUUID(), "1.2.3", "LTS");
     Release release2 = Release.create(UUID.randomUUID(), "1.2.4", "LTS");
+    // Artifact not mapped to release, testing PLAT-14057
+    ReleaseArtifact.create("sha257", ReleaseArtifact.Platform.KUBERNETES, null, "k89s_url");
     ReleaseArtifact art1 =
         ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "file_url");
     ReleaseArtifact art2 =

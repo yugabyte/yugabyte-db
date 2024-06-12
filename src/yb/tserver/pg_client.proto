@@ -316,6 +316,8 @@ message PgCreateTableRequestPB {
   PgObjectIdPB old_relfilenode_oid = 22;
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   bool is_truncate = 23;
+
+  PgVectorIdxOptionsPB vector_idx_options = 24;
 }
 
 message PgCreateTableResponsePB {

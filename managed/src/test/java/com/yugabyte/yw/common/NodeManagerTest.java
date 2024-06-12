@@ -2059,7 +2059,12 @@ public class NodeManagerTest extends FakeDBApplication {
               "--private_key_file",
               "/path/to/private.key",
               "--custom_ssh_port",
-              "3333");
+              "3333",
+              "--install_node_exporter",
+              "--node_exporter_port",
+              "9300",
+              "--node_exporter_user",
+              "yugabyte");
       expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

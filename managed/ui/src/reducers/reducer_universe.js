@@ -63,8 +63,6 @@ import {
   DELETE_READ_REPLICA_RESPONSE,
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
-  SET_ALERTS_CONFIG,
-  SET_ALERTS_CONFIG_RESPONSE,
   FETCH_SUPPORTED_RELEASES,
   FETCH_SUPPORTED_RELEASES_RESPONSE
 } from '../actions/universe';
@@ -307,10 +305,6 @@ export default function (state = INITIAL_STATE, action) {
     case GET_HEALTH_CHECK_RESPONSE:
       return setPromiseResponse(state, 'healthCheck', action);
 
-    case SET_ALERTS_CONFIG:
-      return { ...state, alertsConfig: getInitialState([]) };
-    case SET_ALERTS_CONFIG_RESPONSE:
-      return setPromiseResponse(state, 'alertsConfig', action);
     case UPDATE_BACKUP_STATE:
       return { ...state, backupState: getInitialState([]) };
     case UPDATE_BACKUP_STATE_RESPONSE:

@@ -46,8 +46,8 @@ CREATE INDEX idx_id on scores(id);
 Load some data into the tables by adding some students:
 
 ```sql
-INSERT INTO students (id,name) 
-   SELECT n, (ARRAY['Natasha', 'Lisa', 'Mike', 'Michael', 'Anthony'])[floor(random() * 4 + 1)] 
+INSERT INTO students (id,name)
+   SELECT n, (ARRAY['Natasha', 'Lisa', 'Mike', 'Michael', 'Anthony'])[floor(random() * 4 + 1)]
       FROM generate_series(1, 20) AS n;
 ```
 
@@ -91,8 +91,8 @@ explain (analyze, dist, costs off)
     nestloop(students scores)
     set(yb_enable_optimizer_statistics on)
 */
-SELECT name, subject, score 
-      FROM students JOIN scores USING(id) 
+SELECT name, subject, score
+      FROM students JOIN scores USING(id)
       WHERE name = 'Natasha' and score > 70;
 ```
 
@@ -133,8 +133,8 @@ explain (analyze, dist, costs off)
     mergejoin(students scores)
     set(yb_enable_optimizer_statistics on)
 */
-SELECT name, subject, score 
-      FROM students JOIN scores USING(id) 
+SELECT name, subject, score
+      FROM students JOIN scores USING(id)
       WHERE name = 'Natasha' and score > 70;
 ```
 
@@ -179,8 +179,8 @@ explain (analyze, dist, costs off)
     hashjoin(students scores)
     set(yb_enable_optimizer_statistics on)
 */
-SELECT name, subject, score 
-      FROM students JOIN scores USING(id) 
+SELECT name, subject, score
+      FROM students JOIN scores USING(id)
       WHERE name = 'Natasha' and score > 70;
 ```
 
@@ -211,27 +211,23 @@ The query plan would be similar to the following:
 
 In the case of Nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
 
-To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter `yb_bnl_batch_size`, which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
+To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter [yb_bnl_batch_size](../../../reference/configuration/yb-tserver/#yb-bnl-batch-size), which defaults to `1` (which effectively means that the feature is `OFF`). The suggested value for this variable is `1024`.
 
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 
+To enable the query planner's use of BNL, use the YB-TServer flag, [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl).
+
 To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute the following:
 
-<!--
-{{/* TOD0: fix this after 2.21 */}}
--->
-
 ```sql
--- For versions <  2.21 : nestloop(students scores)
--- For versions >= 2.21 : ybbatchednl(students scores)
 explain (analyze, dist, costs off)
 /*+
     nestloop(students scores)
     set(yb_bnl_batch_size 1024)
     set(yb_enable_optimizer_statistics on)
 */
-SELECT name, subject, score 
-      FROM students JOIN scores USING(id) 
+SELECT name, subject, score
+      FROM students JOIN scores USING(id)
       WHERE name = 'Natasha' and score > 70;
 ```
 

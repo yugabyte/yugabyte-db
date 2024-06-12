@@ -45,11 +45,13 @@
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/path-handler-util.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -58,15 +60,15 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
@@ -75,10 +77,12 @@
 
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_status.h"
+
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -434,7 +438,7 @@ MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTa
     placement_cluster_counts.active_tablet_peer_count += desc->num_live_replicas();
   }
 
-  auto limits = tserver::GetTabletReplicaPerResourceLimits();
+  auto limits = GetTabletReplicaPerResourceLimits();
   for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
     auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
     cluster_counts.tablet_replica_limit =

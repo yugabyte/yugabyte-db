@@ -255,11 +255,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
-YB_CLIENT_SPECIALIZE_SIMPLE(IsCloneDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListClones);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
@@ -328,6 +328,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsAlterXClusterReplicationDone);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteUniverseReplication);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupAddTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RepairOutboundXClusterReplicationGroupRemoveTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroups);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupInfo);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -1121,11 +1123,11 @@ Status YBClient::Data::WaitForDeleteNamespaceToFinish(YBClient* client,
 }
 
 Status YBClient::Data::IsCloneNamespaceInProgress(
-    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
     CoarseTimePoint deadline, bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
-  IsCloneDoneRequestPB req;
-  IsCloneDoneResponsePB resp;
+  ListClonesRequestPB req;
+  ListClonesResponsePB resp;
 
   req.set_source_namespace_id(source_namespace_id);
   req.set_seq_no(clone_seq_no);
@@ -1133,22 +1135,27 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
   // and SyncLeaderMasterRpc must be explicitly instantiated, else the
   // compiler complains.
   const Status s = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsCloneDone", &master::MasterBackupProxy::IsCloneDoneAsync);
+      deadline, req, &resp, "ListClones", &master::MasterBackupProxy::ListClonesAsync);
 
   RETURN_NOT_OK(s);
-  // IsCloneDone could return a terminal/done state as FAILED. This would result in an error'd
+  // ListClones could return a terminal/done state as FAILED. This would result in an error'd
   // Status.
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
 
-  *create_in_progress = !resp.is_done();
+  if (resp.entries_size() != 1) {
+    return STATUS_FORMAT(InternalError, "Expected 1 clone entry, got $0", resp.entries_size());
+  }
+  auto state = resp.entries(0).aggregate_state();
+  *create_in_progress =
+      !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::RESTORED);
 
   return Status::OK();
 }
 
 Status YBClient::Data::WaitForCloneNamespaceToFinish(
-    YBClient* client, const std::string& source_namespace_id, int clone_seq_no,
+    YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
     CoarseTimePoint deadline) {
   return RetryFunc(
       deadline, "Waiting on Clone Namespace to be completed",

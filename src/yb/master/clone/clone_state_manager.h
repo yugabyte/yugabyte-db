@@ -42,9 +42,7 @@ class CloneStateManager {
 
   Status Run();
 
-  Status IsCloneDone(
-      const IsCloneDoneRequestPB* req,
-      IsCloneDoneResponsePB* resp);
+  Status ListClones(const ListClonesRequestPB* req, ListClonesResponsePB* resp);
 
   Status CloneNamespace(
       const CloneNamespaceRequestPB* req,
@@ -96,8 +94,6 @@ class CloneStateManager {
       const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
       const std::unordered_set<TabletId>& not_snapshotted_tablets);
 
-  Result<CloneStateInfoPtr> GetCloneStateFromSourceNamespace(const NamespaceId& namespace_id);
-
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
@@ -112,8 +108,10 @@ class CloneStateManager {
 
   std::mutex mutex_;
 
-  // Map from clone source namespace id to the latest clone state for that namespace.
-  using CloneStateMap = std::unordered_map<NamespaceId, CloneStateInfoPtr>;
+  using CloneStateSet = std::set<CloneStateInfoPtr, CloneStateInfoComparator>;
+  using CloneStateMap = std::unordered_map<NamespaceId, CloneStateSet>;
+
+  // Map from clone source namespace id to all clone states for that namespace.
   CloneStateMap source_clone_state_map_ GUARDED_BY(mutex_);
 
   std::unique_ptr<CloneStateManagerExternalFunctionsBase> external_funcs_;

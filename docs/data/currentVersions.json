@@ -2,22 +2,22 @@
   "dbVersions":
   [
     {
-      "series": "v2.19",
+      "series": "v2.21",
       "alias": "preview",
-      "display": "v2.19 (Preview)",
-      "version": "2.19.3.0",
-      "versionShort": "2.19.3",
-      "appVersion": "2.19.3.0-b140",
+      "display": "v2.21 (Preview)",
+      "version": "2.21.0.1",
+      "versionShort": "2.21.0",
+      "appVersion": "2.21.0.1-b1",
       "isStable": false,
-      "initialRelease": "2023-06-20"
+      "initialRelease": "2024-03-26"
     },
     {
       "series": "v2.20",
       "alias": "stable",
       "display": "v2.20 (LTS)",
-      "version": "2.20.3.0",
+      "version": "2.20.3.1",
       "versionShort": "2.20.3",
-      "appVersion": "2.20.3.0-b68",
+      "appVersion": "2.20.3.1-b2",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2023-11-13",

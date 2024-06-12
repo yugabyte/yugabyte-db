@@ -525,15 +525,6 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
     }
   }
 
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(operation.op_id());
-  frontier.set_hybrid_time(operation.hybrid_time());
-  // Here we are just recording the fact that we've executed the "delete snapshot" Raft operation
-  // so that it won't get replayed if we crash. No need to force the flushed frontier to be the
-  // exact value set above.
-  RETURN_NOT_OK(tablet().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kUpdate));
-
   LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
 
   return Status::OK();

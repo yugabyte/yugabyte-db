@@ -166,6 +166,7 @@ enum StatefulServiceKind {
   // Test service.
   TEST_ECHO = 0;
   PG_AUTO_ANALYZE = 1;
+  PG_CRON_LEADER = 2;
 }
 
 // CDC SDK Consistent Snapshot Options

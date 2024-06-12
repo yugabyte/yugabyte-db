@@ -39,6 +39,7 @@ import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -79,7 +80,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             runtimeConfGetter,
             mock(CertificateHelper.class),
             mock(AutoFlagUtil.class),
-            mock(XClusterUniverseService.class));
+            mock(XClusterUniverseService.class),
+            mock(TelemetryProviderService.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {

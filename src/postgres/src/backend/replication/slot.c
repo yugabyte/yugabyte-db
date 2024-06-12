@@ -272,8 +272,40 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
+		int32_t max_clock_skew;
+
 		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 								 yb_consistent_snapshot_time);
+
+		/*
+		 * The creation of a replication slot establishes a boundry between the
+		 * snapshot and change records. This is represented as a hybrid time.
+		 * This hybrid time can be chosen up to max_clock_skew us in the future.
+		 * We do not want to return the control back to the client before this
+		 * time passes otherwise the below scenario can cause confusion.
+		 *
+		 * T1: Slot creation (snapshot time chosen as Tsnap)
+		 *  ... command returns to the client before Tsnap is in the past.
+		 * T2: Insert operation where T2 < Tsnap
+		 *
+		 * The user would expect the insert operation to be part of the change
+		 * operations as it was done after the slot creation but it'll be
+		 * treated as snapshot operation. Sleeping here prevents that.
+		 *
+		 * Another scenario faced by the PG Debezium connector is that it
+		 * attempts to set the yb_read_time to the consistent snapshot time as
+		 * soon as the slot is created. Since this time is in the future
+		 * (without the sleep), such an attempt to set the yb_read_time to a
+		 * future time value can fail.
+		 *
+		 * It is fine to sleep like this because slot creation is not expected
+		 * to be a frequent operation.
+		 */
+		max_clock_skew = YBGetMaxClockSkewUsec();
+		elog(DEBUG1,
+			 "Sleeping for %d us after the slot creation to handle clock skew.",
+			 max_clock_skew);
+		pg_usleep(max_clock_skew);
 		return;
 	}
 

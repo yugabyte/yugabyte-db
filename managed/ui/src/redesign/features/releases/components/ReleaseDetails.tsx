@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import clsx from 'clsx';
-import { Box, Typography, makeStyles, Tab, useTheme, Tooltip } from '@material-ui/core';
+import { Box, Typography, makeStyles, Tab, useTheme } from '@material-ui/core';
 import { Add } from '@material-ui/icons';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
 import { DeploymentStatus } from './ReleaseDeploymentStatus';
@@ -14,10 +14,9 @@ import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
-import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+import { MAX_RELEASE_TAG_CHAR, MAX_RELEASE_VERSION_CHAR } from '../helpers/utils';
 
 const DOCS_LINK = 'https://docs.yugabyte.com/preview/releases/yba-releases/';
-const MAX_RELEASE_TAG_CHAR = 10;
 
 const useStyles = makeStyles((theme) => ({
   sidePanel: {
@@ -25,19 +24,21 @@ const useStyles = makeStyles((theme) => ({
     height: '100%',
     width: '50%',
     position: 'fixed',
-    zIndex: 9999,
+    zIndex: 1110,
     top: 0,
     right: 0,
-    borderLeft: `1px solid ${theme.palette.ybacolors.backgroundGrayLight}`,
+    border: `1px solid #E3E3E5`,
     maxHeight: '100%',
-    transition: 'right 0.5s ease-in-out'
+    transition: 'right 0.5s ease-in-out',
+    boxShadow: `inset 4px 0 0 0 rgba(0, 0, 0, 0.1)`
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     padding: `${theme.spacing(2)}px ${theme.spacing(3)}px`,
     background: theme.palette.common.white,
-    borderBottom: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    borderBottom: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
+    boxShadow: `inset 4px 0 0 0 rgba(0, 0, 0, 0.1)`
   },
   headerIcon: {
     marginLeft: 'auto',
@@ -59,7 +60,8 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: '4px',
     justifyContent: 'space-between',
     padding: '16px 20px 16px 20px',
-    backgroundColor: '#E3E3E5',
+    backgroundColor: theme.palette.ybacolors.backgroundGrayLight,
+    borderColor: '#E3E3E5',
     marginTop: theme.spacing(10),
     height: '76px'
   },
@@ -109,6 +111,7 @@ const useStyles = makeStyles((theme) => ({
   },
   releaseTagBox: {
     border: '1px',
+    height: '24px',
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
     backgroundColor: theme.palette.grey[200],
@@ -116,7 +119,11 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(0.5)
   },
   releaseTagText: {
-    color: theme.palette.grey[700]
+    color: theme.palette.grey[700],
+    cursor: 'pointer'
+  },
+  verticalText: {
+    verticalAlign: 'super'
   },
   smallerReleaseText: {
     fontWeight: 400,
@@ -124,6 +131,9 @@ const useStyles = makeStyles((theme) => ({
     fontSize: '11.5px',
     color: theme.palette.grey[900],
     alignSelf: 'center'
+  },
+  importedArchitectureBox: {
+    backgroundColor: theme.palette.common.white
   }
 }));
 
@@ -196,27 +206,28 @@ export const ReleaseDetails = ({
             className={helperClasses.releaseMetadataValue}
             data-testid={'ReleaseDetails-ReleaseVersion'}
           >
-            {value}
+            {value.length > MAX_RELEASE_VERSION_CHAR
+              ? `${value.substring(0, MAX_RELEASE_VERSION_CHAR)}...`
+              : value.version}
+            <span title={value}>{value}</span>
           </Box>
           {isNonEmptyString(data.release_tag) && (
             <>
               <Box className={helperClasses.releaseTagBox}>
                 <span
+                  title={data.release_tag}
                   data-testid={'ReleaseDetails-ReleaseTag'}
-                  className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
+                  className={clsx(
+                    helperClasses.releaseTagText,
+                    helperClasses.smallerReleaseText,
+                    helperClasses.verticalText
+                  )}
                 >
                   {data.release_tag.length > MAX_RELEASE_TAG_CHAR
-                    ? `${data.release_tag.substring(0, 10)}...`
+                    ? `${data.release_tag.substring(0, MAX_RELEASE_TAG_CHAR)}...`
                     : data.release_tag}
                 </span>
               </Box>
-              <span>
-                {data.release_tag.length > MAX_RELEASE_TAG_CHAR && (
-                  <Tooltip title={data.release_tag} arrow placement="top">
-                    <img src={InfoMessageIcon} alt="info" />
-                  </Tooltip>
-                )}
-              </span>
             </>
           )}
         </Box>
@@ -239,7 +250,7 @@ export const ReleaseDetails = ({
         className={helperClasses.releaseMetadataValue}
         data-testid={'ReleaseDetails-ReleaseMetadata'}
       >
-        {value ? ybFormatDate(value, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP) : ''}
+        {value ? ybFormatDate(value, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP) : '-'}
       </Box>
     );
   };
@@ -284,7 +295,7 @@ export const ReleaseDetails = ({
           </YBButton>
         </Box>
       </Box>
-      <Box ml={2} mr={2} className={helperClasses.releaseDetailsBox}>
+      <Box ml={3} mr={2} className={helperClasses.releaseDetailsBox}>
         <Box display="flex" className={helperClasses.releaseMetadataBox}>
           {(['version', 'support', 'releaseDate', 'releaseNote', 'status'] as const).map(
             (releaseDetailsKey) => (
@@ -298,7 +309,7 @@ export const ReleaseDetails = ({
           )}
         </Box>
       </Box>
-      <Box mt={3} ml={2} mr={2}>
+      <Box mt={3} ml={3} mr={2}>
         <TabContext value={currentTab}>
           <TabList
             classes={{ root: helperClasses.overrideMuiTabs }}
@@ -328,7 +339,7 @@ export const ReleaseDetails = ({
               })}
             />
           </TabList>
-          <Box className={helperClasses.tabPanel}>
+          <Box className={clsx(helperClasses.tabPanel, helperClasses.importedArchitectureBox)}>
             <TabPanel value={ReleaseDetailsTab.IMPORTED_ARCHITECTURE}>
               <YBButton
                 className={helperClasses.floatBoxRight}

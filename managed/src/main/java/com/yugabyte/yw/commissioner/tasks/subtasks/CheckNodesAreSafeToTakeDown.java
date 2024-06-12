@@ -151,15 +151,22 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
                 }
               });
       if (!result) {
+        String runtimeConfigInfo =
+            "If temporary unavailability is acceptable, you can briefly "
+                + " disable the runtime config "
+                + UniverseConfKeys.useNodesAreSafeToTakeDown.getKey()
+                + " and retry this operation.";
         if (!lastErrors.isEmpty()) {
           throw new RuntimeException(
-              "Nodes are not safe to take down: "
+              "Aborting because this operation can potentially take down"
+                  + " a majority of copies of some tablets (CheckNodesAreSafeToTakeDown). "
+                  + runtimeConfigInfo
+                  + " Error details: "
                   + lastErrors.stream().collect(Collectors.joining(",")));
         } else {
           throw new RuntimeException(
-              "Failed to check that nodes are not safe to take down: got "
-                  + errorCnt.get()
-                  + " errors");
+              "Failed to execute availability check (CheckNodesAreSafeToTakeDown). "
+                  + runtimeConfigInfo);
         }
       }
 

@@ -5,6 +5,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
@@ -56,9 +57,13 @@ public class CheckNodeSafeToDelete extends UniverseTaskBase {
       if (isNodeInMasterConfig) {
         throw new RuntimeException(
             String.format(
-                "Expected node %s to not be part of the master quorum. %s ip is in the list masters"
-                    + " quorum",
-                currentNode.getNodeName(), currentNode.cloudInfo.private_ip));
+                "Could not verify that node %s (IP %s) is not part of the master quorum. Removal of"
+                    + " a node that is still part of the master quorum can cause data loss."
+                    + " To adjust this check, use the runtime configs %s and %s",
+                currentNode.getNodeName(),
+                currentNode.cloudInfo.private_ip,
+                UniverseConfKeys.clusterMembershipCheckEnabled.getKey(),
+                UniverseConfKeys.clusterMembershipCheckTimeout.getKey()));
       }
     }
 

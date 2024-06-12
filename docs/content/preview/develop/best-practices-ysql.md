@@ -258,23 +258,11 @@ For consistent latency or performance, it is recommended to size columns in the 
 Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE is not MVCC-safe. For more details, see [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/).
 {{</warning>}}
 
-## Number of tables and indexes
+## Minimize the number of tablets you need
 
-Each table and index is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
-
-## Tablets per server
+Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [allowing for tablet replica overheads](#allowing-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
 Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
-
-For a cluster with RF3, 1000 tablets imply 3000 tablet replicas. If the cluster has three nodes, then each node has on average 1000 tablet replicas. A six node cluster would have on average 500 tablet replicas per-node and so on.
-
-Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs).
-
-The overhead is proportional to the number of tablet replicas so 500 tablet replicas would need half as much.
-
-Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
-
-An effort to lower this overhead is currently in progress. See GitHub issue [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317).
 
 You can try one of the following methods to reduce the number of tablets:
 
@@ -282,6 +270,22 @@ You can try one of the following methods to reduce the number of tablets:
 - Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 - Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
+
+Note that multiple tablets can allow work to proceed in parallel so you may not want every table to have only one tablet.
+
+## Allowing for tablet replica overheads
+
+For a universe with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the universe has three nodes, then each node has on average 1000 tablet replicas. A six node universe would have on average 500 tablet replicas per-node and so on.
+
+Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs).
+
+The overhead is proportional to the number of tablet replicas so 500 tablet replicas would need half as much.
+
+Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
+
+Manually provisioning the amount of memory each TServer uses can be done using the [`--memory_limit_hard_bytes`](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [`--default_memory_limit_to_ram_ratio`](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.  Manually provisioning is a bit tricky as you need to take in account how much memory the kernel needs as well as Postgres and any master process that is going to be colocated with the TServer.
+
+Accordingly, it is recommended that you instead use the new [`--use_memory_defaults_optimized_for_ysql`](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives you good memory division settings for using YSQL optimized for your node's size.  Consult the table there showing node RAM versus maximum tablet replicas to see how big of a node you will need based on how many tablet replicas per server you want supported.
 
 ## Settings for CI and CD integration tests
 

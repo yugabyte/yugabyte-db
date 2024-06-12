@@ -2380,8 +2380,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (!result) {
       throw new RuntimeException(
           String.format(
-              "Timed out waiting for tablets on node %s to have 0 tablets",
-              currentNode.getNodeName()));
+              "Could not verify that tserver %s has 0 tablets as expected."
+                  + " Removal of a tserver with non-zero tablets can cause data loss."
+                  + " To adjust this check, use the runtime configs %s and %s.",
+              currentNode.getNodeName(),
+              UniverseConfKeys.clusterMembershipCheckEnabled.getKey(),
+              UniverseConfKeys.clusterMembershipCheckTimeout.getKey()));
     }
   }
 

@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress publication-related tests on YB code.
  */
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressPublication extends BasePgSQLTest {
+public class TestPgRegressPublication extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();

@@ -273,8 +273,15 @@ class CloneStateManagerTest : public YBTest {
     return clone_state_manager_->HandleRestoringState(clone_state);
   }
 
-  Result<CloneStateInfoPtr> GetCloneStateFromSourceNamespace(const NamespaceId& namespace_id) {
-    return clone_state_manager_->GetCloneStateFromSourceNamespace(namespace_id);
+  CloneStateManager::CloneStateSet GetCloneStates() {
+    std::lock_guard lock(clone_state_manager_->mutex_);
+    return clone_state_manager_->source_clone_state_map_.at(kSourceNamespaceId);
+  }
+
+  CloneStateInfoPtr GetLatestCloneState() {
+    auto clone_states = GetCloneStates();
+    DCHECK(!clone_states.empty());
+    return *clone_states.rbegin();
   }
 
   Status ScheduleCloneOps(
@@ -282,7 +289,6 @@ class CloneStateManagerTest : public YBTest {
       const std::unordered_set<TabletId>& not_snapshotted_tablets) {
     return clone_state_manager_->ScheduleCloneOps(clone_state, epoch, not_snapshotted_tablets);
   }
-
   Result<std::pair<NamespaceId, uint32_t>> CloneNamespace(
       const NamespaceIdentifierPB& source_namespace_identifier,
       const HybridTime& restore_time,
@@ -299,6 +305,13 @@ class CloneStateManagerTest : public YBTest {
       CoarseTimePoint deadline, const LeaderEpoch& epoch) {
     return clone_state_manager_->MakeDoneClonePgSchemaCallback(
       clone_state, snapshot_schedule_id, target_namespace_name, deadline, epoch);
+  }
+
+  void AssertCloneIsAborted() {
+    auto clone_state = GetLatestCloneState();
+    auto lock = clone_state->LockForRead();
+    ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
+    ASSERT_FALSE(lock->pb.abort_message().empty());
   }
 
   MockExternalFunctions& MockFuncs() {
@@ -352,8 +365,7 @@ TEST_F(CloneStateManagerTest, CreateCloneState) {
   ASSERT_TRUE(same) << diff;
 
   // Check clone state manager in-memory fields.
-  ASSERT_EQ(ASSERT_RESULT(
-      GetCloneStateFromSourceNamespace(kSourceNamespaceId)), clone_state);
+  ASSERT_EQ(GetLatestCloneState(), clone_state);
 }
 
 TEST_F(CloneStateManagerTest, CreateSecondCloneState) {
@@ -363,7 +375,7 @@ TEST_F(CloneStateManagerTest, CreateSecondCloneState) {
 
   for (int i = SysCloneStatePB::State_MIN; i <= SysCloneStatePB::State_MAX; ++i) {
     auto state = SysCloneStatePB_State(i);
-    auto current_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
+    auto current_clone_state = GetLatestCloneState();
 
     LOG(INFO) << "Setting previous state to " << SysCloneStatePB::State_Name(state);
     auto l = current_clone_state->LockForWrite();
@@ -517,12 +529,6 @@ TEST_F(CloneStateManagerTest, HandleRestoringStateRestored) {
   ASSERT_EQ(clone_state->LockForRead()->pb.aggregate_state(), SysCloneStatePB::RESTORED);
 }
 
-void AssertCloneIsAborted(const CloneStateInfoPtr& clone_state) {
-  auto lock = clone_state->LockForRead();
-  ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
-  ASSERT_FALSE(lock->pb.abort_message().empty());
-}
-
 TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
@@ -535,7 +541,7 @@ TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
       source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
       CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
 
-  AssertCloneIsAborted(ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId)));
+  AssertCloneIsAborted();
 }
 
 TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateManagerPgTest) {
@@ -552,7 +558,7 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
       source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
       CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
 
-  AssertCloneIsAborted(ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId)));
+  AssertCloneIsAborted();
 }
 
 TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) {
@@ -566,7 +572,7 @@ TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) 
   EXPECT_CALL(MockFuncs(), Upsert(_));
   ASSERT_OK(callback(STATUS_FORMAT(IllegalState, "Fail pg schema clone for test")));
 
-  AssertCloneIsAborted(clone_state);
+  AssertCloneIsAborted();
 }
 
 TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManagerPgTest) {
@@ -582,7 +588,7 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
   EXPECT_CALL(MockFuncs(), Upsert(_));
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
 
-  AssertCloneIsAborted(clone_state);
+  AssertCloneIsAborted();
 }
 
 TEST_F(CloneStateManagerTest, AbortInCreatingState) {
@@ -594,7 +600,7 @@ TEST_F(CloneStateManagerTest, AbortInCreatingState) {
   EXPECT_CALL(MockFuncs(), Upsert(_));
   ASSERT_OK(clone_state_manager_->Run());
 
-  AssertCloneIsAborted(clone_state);
+  AssertCloneIsAborted();
 }
 
 TEST_F(CloneStateManagerTest, AbortInRestoringState) {
@@ -611,92 +617,51 @@ TEST_F(CloneStateManagerTest, AbortInRestoringState) {
   EXPECT_CALL(MockFuncs(), Upsert(_));
   ASSERT_OK(clone_state_manager_->Run());
 
-  AssertCloneIsAborted(clone_state);
+  AssertCloneIsAborted();
 }
 
 TEST_F(CloneStateManagerTest, Load) {
-  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
-  {
-    auto lock = clone_state->LockForWrite();
-    lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORED);
-    lock.mutable_data()->pb.set_target_namespace_name(kTargetNamespaceName);
-    lock.mutable_data()->pb.set_restore_time(kRestoreTime.ToUint64());
-    lock.mutable_data()->pb.set_clone_request_seq_no(kSeqNo);
-    lock.Commit();
-  }
+  // Check that multiple clone states are all loaded and can be queried with ListClones.
+  SysCloneStatePB clone_state1;
+  clone_state1.set_aggregate_state(SysCloneStatePB::RESTORED);
+  clone_state1.set_source_namespace_id(kSourceNamespaceId);
+  clone_state1.set_target_namespace_name(kTargetNamespaceName);
+  clone_state1.set_restore_time(kRestoreTime.ToUint64());
+  clone_state1.set_clone_request_seq_no(kSeqNo);
+
+  SysCloneStatePB clone_state2;
+  clone_state2.set_aggregate_state(SysCloneStatePB::ABORTED);
+  clone_state2.set_source_namespace_id(kSourceNamespaceId);
+  clone_state2.set_abort_message("Test abort message");
+  clone_state2.set_target_namespace_name(kTargetNamespaceName);
+  clone_state2.set_restore_time(kRestoreTime.ToUint64() + 1);
+  clone_state2.set_clone_request_seq_no(kSeqNo + 1);
 
   // When the loader runs, we will save the function that is normally passed to
   // sys_catalog Load in 'inserter'.
   std::function<Status(const std::string&, const SysCloneStatePB&)> inserter;
   EXPECT_CALL(MockFuncs(), Load)
-      .WillOnce(DoAll(SaveArg<1>(&inserter), Return(Status::OK())));
+      .WillRepeatedly(DoAll(SaveArg<1>(&inserter), Return(Status::OK())));
   ASSERT_OK(clone_state_manager_->ClearAndRunLoaders());
 
-  // Run the inserter to actually load the data.
-  ASSERT_OK(inserter(clone_state->id(), clone_state->LockForRead()->pb));
+  // Run the inserter to actually load the data. Load them in reverse order to test that the
+  // clone state map ordering works.
+  ASSERT_OK(inserter(GenerateObjectId(), clone_state2));
+  ASSERT_OK(inserter(GenerateObjectId(), clone_state1));
 
-  auto loaded_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
+  ListClonesRequestPB req;
+  ListClonesResponsePB resp;
+  req.set_source_namespace_id(kSourceNamespaceId);
+  ASSERT_OK(clone_state_manager_->ListClones(&req, &resp));
+  ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+  ASSERT_EQ(resp.entries_size(), 2);
 
-  // The loaded clone state should be a new object.
-  ASSERT_NE(clone_state, loaded_clone_state);
-
+  // Check that the clone states were loaded correctly.
   std::string diff;
-  bool same = pb_util::ArePBsEqual(clone_state->LockForRead()->pb,
-                                   loaded_clone_state->LockForRead()->pb, &diff);
+  bool same = pb_util::ArePBsEqual(clone_state1, resp.entries(0), &diff);
   ASSERT_TRUE(same) << diff;
-}
-
-TEST_F(CloneStateManagerTest, LoadUsesLatestSeqNo) {
-  // When there are multiple clone state infos, we should load the one with the latest seq_no.
-
-  // Mark the clone state as RESTORED otherwise we will not be able to create the next clone state.
-  auto clone_state1 = ASSERT_RESULT(CreateCloneStateAndStartCloning());
-  {
-    auto lock = clone_state1->LockForWrite();
-    lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORED);
-    lock.Commit();
-  }
-
-  auto clone_state2 = ASSERT_RESULT(CreateSecondCloneState());
-  {
-    auto lock = clone_state2->LockForWrite();
-    lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORED);
-    lock.Commit();
-  }
-
-  // Should load clone_state2 since it has a higher seq_no.
-  {
-    // When the loader runs, we will save the function that is normally passed to
-    // sys_catalog Load in 'inserter'.
-    std::function<Status(const std::string&, const SysCloneStatePB&)> inserter;
-    EXPECT_CALL(MockFuncs(), Load)
-        .WillRepeatedly(DoAll(SaveArg<1>(&inserter), Return(Status::OK())));
-    ASSERT_OK(clone_state_manager_->ClearAndRunLoaders());
-
-    // Run the inserter to actually load the data.
-    ASSERT_OK(inserter(clone_state1->id(), clone_state1->LockForRead()->pb));
-    ASSERT_OK(inserter(clone_state2->id(), clone_state2->LockForRead()->pb));
-
-    // Should overwrite the first clone state.
-    auto loaded_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
-    ASSERT_EQ(loaded_clone_state->LockForRead()->pb.clone_request_seq_no(),
-              clone_state2->LockForRead()->pb.clone_request_seq_no());
-  }
-
-  // Same test as above but with the reversed sys catalog load order.
-  {
-    std::function<Status(const std::string&, const SysCloneStatePB&)> inserter;
-    EXPECT_CALL(MockFuncs(), Load)
-        .WillRepeatedly(DoAll(SaveArg<1>(&inserter), Return(Status::OK())));
-    ASSERT_OK(clone_state_manager_->ClearAndRunLoaders());
-
-    ASSERT_OK(inserter(clone_state2->id(), clone_state2->LockForRead()->pb));
-    ASSERT_OK(inserter(clone_state1->id(), clone_state1->LockForRead()->pb));
-
-    auto loaded_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
-    ASSERT_EQ(loaded_clone_state->LockForRead()->pb.clone_request_seq_no(),
-              clone_state2->LockForRead()->pb.clone_request_seq_no());
-  }
+  same = pb_util::ArePBsEqual(clone_state2, resp.entries(1), &diff);
+  ASSERT_TRUE(same) << diff;
 }
 
 TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
@@ -731,7 +696,7 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
       EXPECT_CALL(MockFuncs(), Upsert(_));
     }
     ASSERT_OK(inserter(clone_state->id(), orig_lock->pb));
-    auto loaded_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
+    auto loaded_clone_state = GetLatestCloneState();
     auto loaded_lock = loaded_clone_state->LockForRead();
 
     // The state should change to ABORTED if and only if the clone is in a non-terminal state.

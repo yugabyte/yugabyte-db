@@ -261,6 +261,7 @@ void Batcher::FlushAsync(
     }
   }
 
+  ASH_ENABLE_CONCURRENT_UPDATES();
   SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()

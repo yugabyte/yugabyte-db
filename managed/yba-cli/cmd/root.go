@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
@@ -95,6 +96,7 @@ func init() {
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
+	rootCmd.AddCommand(backup.BackupCmd)
 	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 

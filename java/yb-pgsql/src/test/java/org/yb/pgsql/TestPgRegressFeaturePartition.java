@@ -20,7 +20,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressFeaturePartition extends BasePgSQLTest {
+public class TestPgRegressFeaturePartition extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

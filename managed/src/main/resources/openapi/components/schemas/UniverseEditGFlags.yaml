@@ -1,0 +1,24 @@
+title: Edit universe gflags request
+type: object
+properties:
+  upgrade_option:
+    description: 'Universe upgrade option to use. * "Rolling" - Apply GFlags to each node one at a time * "Non-rolling" - Apply GFlags to all nodes at the same time, so has client downtime * "Non-restart" - Apply GFlags without restarting nodes or processes. Applicable to only certain supported GFlags.'
+    type: string
+    enum:
+      - Rolling
+      - Non-rolling
+      - Non-restart
+  kubernetes_resource_details:
+    $ref: "./KubernetesResourceDetails.yaml"
+    x-yba-api-visibility: internal
+  sleep_after_master_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between master restarts. Defaults to 180000.
+    type: integer
+  sleep_after_tserver_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between tserver restarts. Defaults to 180000.
+    type: integer
+  universe_gflags:
+    description: GFlags for each cluster uuid of this universe
+    type: object
+    additionalProperties:
+      $ref: "./ClusterGFlags.yaml"

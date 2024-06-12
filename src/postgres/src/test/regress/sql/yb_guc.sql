@@ -43,42 +43,64 @@ set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-ne
 -- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
--- Don't add (costs off) to EXPLAIN to be able to see when disable_cost=1.0e10
--- is added.
+
+-- We want to know when disable_cost is added, but we don't want to depend on
+-- the exact cost value.
+CREATE OR REPLACE FUNCTION get_plan_details(stmt text) RETURNS TABLE (
+    scan_type text,
+    disabled boolean
+) AS
+$_$
+DECLARE
+    ret text;
+    first_line text;
+BEGIN
+    EXECUTE format('EXPLAIN (FORMAT text) %s', stmt) INTO ret;
+    first_line := split_part(ret, E'\n', 1); -- Extract the first line
+    -- return (first two words of the line, is_disabled)
+    RETURN QUERY
+      SELECT trim(split_part(first_line, ' ', 1) || ' ' || split_part(first_line, ' ', 2)) AS scan_type,
+      first_line SIMILAR TO '%cost=1[0-9]{10}%' AS disabled;
+END;
+$_$
+LANGUAGE plpgsql;
+
 set yb_enable_bitmapscan = on;
 set enable_seqscan = on;
 set enable_indexscan = on;
 set enable_indexonlyscan = on;
 set enable_bitmapscan = on;
-EXPLAIN SELECT * FROM test_scan;
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
 set enable_seqscan = on;
 set enable_indexscan = off;
 set enable_bitmapscan = off;
-EXPLAIN SELECT * FROM test_scan;
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
 set enable_seqscan = off;
 set enable_indexscan = off;
 set enable_bitmapscan = off;
-EXPLAIN SELECT * FROM test_scan;
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
 set enable_seqscan = off;
 set enable_indexscan = on;
 set enable_bitmapscan = off;
-EXPLAIN SELECT * FROM test_scan;
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
 set enable_seqscan = off;
 set enable_indexscan = off;
 set enable_bitmapscan = on;
-EXPLAIN SELECT * FROM test_scan;
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
 set enable_indexonlyscan = off;
-EXPLAIN SELECT j FROM test_scan;
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+
+DROP FUNCTION get_plan_details;
 
 -- Show transaction priority. As it is not possible to have a deterministic
 -- yb_transaction_priority, we set yb_transaction_priority_lower_bound and

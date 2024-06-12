@@ -458,6 +458,8 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	Size *query_offset, int encoding, Counters *counters,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
+static bool yb_track_nested_queries(void);
+
 /*
  * Module load callback
  */
@@ -620,6 +622,9 @@ _PG_init(void)
 	ExecutorEnd_hook = pgss_ExecutorEnd;
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = pgss_ProcessUtility;
+
+	/* Function pointer to check if nested queries should be tracked in ASH */
+	yb_ash_track_nested_queries = yb_track_nested_queries;
 }
 
 /*
@@ -3596,4 +3601,10 @@ yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 static void yb_hdr_reset(hdr_histogram *h)
 {
 	memset(h, 0, sizeof(hdr_histogram) + (sizeof(count_t) * h->counts_len));
+}
+
+static bool
+yb_track_nested_queries(void)
+{
+	return pgss_track == PGSS_TRACK_ALL;
 }

@@ -173,11 +173,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<std::vector<SnapshotScheduleId>> GetSnapshotSchedules(
       SysRowEntryType type, const std::string& object_id);
 
-  Result<SnapshotInfoPB> GetSuitableSnapshot(
+  // Returns the id of a completed snapshot suitable for restoring to the given restore time.
+  Result<TxnSnapshotId> GetSuitableSnapshotForRestore(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline);
-  Result<SnapshotInfoPB> WaitForSnapshotToComplete(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline);
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 
   // Returns true if there are one or more non-deleted

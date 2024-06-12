@@ -332,6 +332,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
 
+  Status CreatePgCronService(const LeaderEpoch& epoch);
+
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                            IsCreateTableDoneResponsePB* resp) override;
@@ -3273,6 +3275,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
           GUARDED_BY(xcluster_consumer_replication_error_map_mutex_);
 
   std::atomic<bool> xcluster_auto_flags_revalidation_needed_{true};
+  std::atomic<bool> pg_cron_service_created_{false};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

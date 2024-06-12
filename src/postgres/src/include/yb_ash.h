@@ -40,13 +40,16 @@ extern int yb_ash_circular_buffer_size;
 extern int yb_ash_sampling_interval_ms;
 extern int yb_ash_sample_size;
 
+typedef bool (*YbAshTrackNestedQueries)(void);
+extern YbAshTrackNestedQueries yb_ash_track_nested_queries;
+
 extern Size YbAshShmemSize(void);
 extern void YbAshShmemInit(void);
 
 extern void YbAshRegister(void);
 extern void YbAshMain(Datum main_arg);
 
-extern void YbAshInstallHooks(void);
+extern void YbAshInit(void);
 extern void YbAshSetSessionId(uint64 session_id);
 extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 
@@ -57,5 +60,8 @@ extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
+
+extern void YbAshSetMetadata(void);
+extern void YbAshUnsetMetadata(void);
 
 #endif							/* YB_ASH_H */

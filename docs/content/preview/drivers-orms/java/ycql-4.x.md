@@ -10,6 +10,7 @@ menu:
     weight: 500
 aliases:
   - /preview/drivers-orms/java/ycql-4.6/
+  - /preview/tutorials/build-apps/java/ycql-4.6/
 type: docs
 ---
 

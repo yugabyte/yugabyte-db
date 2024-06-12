@@ -182,6 +182,8 @@ class PgCreateTable : public PgDdl {
   // Specify the number of tablets explicitly.
   Status SetNumTablets(int32_t num_tablets);
 
+  Status SetVectorOptions(YbPgVectorIdxOptions *options);
+
   Status AddSplitBoundary(PgExpr **exprs, int expr_count);
 
   void UseTransaction() {

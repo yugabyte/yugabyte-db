@@ -729,7 +729,7 @@ Status RpcAndWebServerBase::Start() {
   GenerateInstanceID();
 
   AddDefaultPathHandlers(web_server_.get());
-  AddRpczPathHandlers(messenger_.get(), web_server_.get());
+  AddRpczPathHandlers(messenger_.get(), ShouldExportLocalCalls(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
   RegisterTlsHandler(web_server_.get(), this);

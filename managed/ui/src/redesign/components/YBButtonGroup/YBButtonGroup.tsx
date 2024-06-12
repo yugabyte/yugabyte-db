@@ -17,7 +17,7 @@ export interface YBButtonGroupProps<T> {
   displayLabelFn?: (elem: T) => JSX.Element;
 }
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   button: {
     height: themeVariables.inputHeight,
     borderWidth: '0.5px !important',
@@ -25,6 +25,17 @@ const useStyles = makeStyles(() => ({
   },
   btnGroup: {
     boxShadow: 'none'
+  },
+  overrideMuiButtonGroup: {
+    '& .MuiButton-containedSecondary': {
+      backgroundColor: 'rgba(43, 89, 195, 0.1)',
+      color: theme.palette.primary[600],
+      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    },
+    '& .MuiButton-outlinedSecondary': {
+      color: theme.palette.ybacolors.labelBackground,
+      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    }
   }
 }));
 
@@ -48,7 +59,11 @@ export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
       data-testid={dataTestId ?? 'YBButtonGroup'}
       variant={variant ?? 'outlined'}
       color={color ?? 'default'}
-      className={clsx(btnGroupClassName, classes.btnGroup)}
+      className={clsx(
+        btnGroupClassName,
+        classes.btnGroup,
+        color === 'secondary' && classes.overrideMuiButtonGroup
+      )}
     >
       {values.map((value, i) => {
         return (

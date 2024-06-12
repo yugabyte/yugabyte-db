@@ -91,6 +91,15 @@ class WaitStateInfoWithInboundCall : public ash::WaitStateInfo {
     }
   }
 
+  std::string DumpTraceToString() override {
+    std::shared_ptr<const InboundCall> sptr;
+    {
+      std::lock_guard guard(mutex_);
+      sptr = holder_.lock();
+    }
+    return (sptr && sptr->trace() ? sptr->trace()->DumpToString(true) : "n/a");
+  }
+
  private:
   simple_spinlock mutex_;
   std::weak_ptr<const InboundCall> holder_ GUARDED_BY(mutex_);
@@ -138,6 +147,7 @@ void InboundCall::InitializeWaitState() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
   SET_WAIT_STATUS_TO(wait_state_, Rpc_Done);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
@@ -259,6 +269,7 @@ void InboundCall::QueueResponse(bool is_success) {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
   TRACE_FUNC();
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
   SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 

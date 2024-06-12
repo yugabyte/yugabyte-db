@@ -22,7 +22,7 @@ import java.util.Map;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressNonTxnCopy extends BasePgSQLTest {
+public class TestPgRegressNonTxnCopy extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

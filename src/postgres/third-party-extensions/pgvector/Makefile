@@ -1,9 +1,9 @@
 EXTENSION = vector
-EXTVERSION = 0.4.4-yb-1.1
+EXTVERSION = 0.4.4-yb-1.2
 
 MODULE_big = vector
 DATA = $(wildcard sql/*--*.sql)
-OBJS = src/ivfbuild.o src/ivfflat.o src/ivfinsert.o src/ivfkmeans.o src/ivfscan.o src/ivfutils.o src/ivfvacuum.o src/vector.o
+OBJS = src/ivfbuild.o src/ivfflat.o src/ivfinsert.o src/ivfkmeans.o src/ivfscan.o src/ivfutils.o src/ivfvacuum.o src/vector.o src/ybvector/ybvector.o src/ybvector/ybvectorwrite.o src/ybvector/ybvectorread.o src/ybvector/ybvectorutil.o src/ybvector/ybdummyann.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
@@ -50,6 +50,9 @@ include $(PGXS)
 ifeq ($(PROVE),)
 	PROVE = prove
 endif
+
+LDFLAGS += -lyb_pggate
+LDFLAGS += -L${BUILD_ROOT}/lib
 
 # for Postgres 15
 PROVE_FLAGS += -I ./test/perl

@@ -51,7 +51,7 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
   Status RunBackupCommand(const std::vector<std::string>& args);
 
   static std::unique_ptr<cqlserver::CQLServer> MakeCQLServerForTServer(
-      MiniClusterType* cluster, int idx, client::YBClient* client, std::string* cql_host,
+      MiniClusterType* cluster, int ts_idx, client::YBClient* client, std::string* cql_host,
       uint16_t* cql_port);
 
  protected:

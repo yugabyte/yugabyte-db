@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import javax.inject.Inject;
 
@@ -44,6 +45,12 @@ public class RestartUniverse extends UpgradeTaskBase {
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
     return fetchNodes(taskParams().upgradeOption);
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    addBasicPrecheckTasks();
   }
 
   @Override

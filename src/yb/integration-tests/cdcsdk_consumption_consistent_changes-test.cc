@@ -2340,7 +2340,7 @@ TEST_F(
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
-  int expected_count[] = {1, 3, 0, 0, 0, 0, 2, 2};
+  int expected_count[] = {0, 3, 0, 0, 0, 0, 2, 2};
 
   ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
 
@@ -2406,12 +2406,6 @@ TEST_F(
   ASSERT_TRUE(has_records_from_test1 && has_records_from_test2);
 
   for (int i = 0; i < 8; i++) {
-    // This is because in TSAN builds, the records of txn 2 are received by the VWAL in two
-    // GetChanges calls instead of one. As a result VWAL does not ship a DDL record for txn 2 in
-    // TSAN builds.
-    if (IsTsan() && i == 0) {
-      ASSERT_EQ(0, count[i]);
-    }
     ASSERT_EQ(expected_count[i], count[i]);
   }
 }
@@ -2426,7 +2420,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierRaceWithUpdat
   SyncPoint::GetInstance()->LoadDependency(
       {{"SetupCDCSDKRetentionOnNewTablet::End", "UpdatePeersAndMetrics::Start"},
        {"UpdateTabletPeersWithMaxCheckpoint::Done",
-        "PopulateCDCStateTableOnNewTableCreation::Start"}});
+        "PopulateCDCStateTableOnNewTableCreation::Start"},
+       {"ProcessNewTablesForCDCSDKStreams::Start",
+        "PopulateCDCStateTableOnNewTableCreation::End"}});
   SyncPoint::GetInstance()->EnableProcessing();
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
@@ -2982,6 +2978,34 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
     ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWhileUpdatingNonExistingRow) {
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Update a row that does not exist in table. We expect to not receive any record corresponding to
+  // this update. Although, we will receive a DDL record from cdc_service but that DDL doesnt have a
+  // commit_time, therefore will be filtered out by the VWAL.
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 10 WHERE key = 50"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test_table ($0, $1) select i, i+1 from generate_series(1,10) as i",
+      kKeyColumnName, kValueColumnName));
+
+  // 10 insert records should be received.
+  int expected_dml_records = 10;
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+
+  CheckRecordsConsistencyFromVWAL(get_consistent_changes_resp.records);
+  CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
 }
 
 }  // namespace cdc

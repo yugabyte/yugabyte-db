@@ -462,6 +462,9 @@ void WaitStateTestCheckMethodCounts::VerifyCountsUnlocked() {
   // It is acceptable that some calls may not have populated their aux_info yet.
   // This probability should be very low.
   ASSERT_LE(method_counts_[""], 2 * num_ash_calls * kProbNoMethod);
+
+  // We ignore ASH calls from showing up during the pull.
+  ASSERT_EQ(wait_state_code_counts_["kDumpRunningRpc_WaitOnReactor"], 0);
 }
 
 bool WaitStateTestCheckMethodCounts::IsDone() {

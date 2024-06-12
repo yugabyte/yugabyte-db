@@ -33,6 +33,8 @@
 
 DECLARE_bool(TEST_duplicate_create_table_request);
 
+DECLARE_string(ysql_yb_default_replica_identity);
+
 namespace yb {
 namespace tserver {
 
@@ -115,7 +117,17 @@ Status PgCreateTable::Exec(
     } else if (req_.schema_name() == "information_schema") {
       table_properties.SetReplicaIdentity(PgReplicaIdentity::DEFAULT);
     } else {
-      table_properties.SetReplicaIdentity(PgReplicaIdentity::CHANGE);
+      // TODO(#22409): Propagate the default replica identity in the request from PG rather than
+      // having the logic to set default replica identity based on the flag
+      // 'ysql_yb_default_replica_identity' at two places.
+      PgReplicaIdentity replica_identity = PgReplicaIdentity::CHANGE;
+      if (!PgReplicaIdentity_Parse(
+              FLAGS_ysql_yb_default_replica_identity, &replica_identity)) {
+        LOG(WARNING)
+            << "Invalid replica identity provided in the flag ysql_yb_default_replica_identity.";
+        return STATUS_FORMAT(InvalidArgument, "Invalid replica identity");
+      }
+      table_properties.SetReplicaIdentity(replica_identity);
     }
     schema_builder_.SetTableProperties(table_properties);
   }
@@ -169,6 +181,10 @@ Status PgCreateTable::Exec(
   auto old_relfilenode_id = PgObjectId::FromPB(req_.old_relfilenode_oid());
   if (old_relfilenode_id.IsValid()) {
     table_creator->old_rewrite_table_id(old_relfilenode_id.GetYbTableId());
+  }
+
+  if (req_.has_vector_idx_options()) {
+    table_creator->add_vector_options(req_.vector_idx_options());
   }
 
   // For index, set indexed (base) table id.

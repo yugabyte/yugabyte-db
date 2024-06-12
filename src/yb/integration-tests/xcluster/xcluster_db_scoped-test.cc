@@ -727,6 +727,22 @@ TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
   ASSERT_OK(CallAdmin(
       producer_cluster(), "setup_xcluster_replication", kReplicationGroupId,
       target_master_address));
+
+  result =
+      ASSERT_RESULT(CallAdmin(producer_cluster(), "list_xcluster_outbound_replication_groups"));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  const auto source_namespace_id = producer_table_->name().namespace_id();
+  result = ASSERT_RESULT(CallAdmin(
+      producer_cluster(), "list_xcluster_outbound_replication_groups", source_namespace_id));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  result = ASSERT_RESULT(CallAdmin(
+      producer_cluster(), "get_xcluster_outbound_replication_group_info",
+      kReplicationGroupId.ToString()));
+  ASSERT_STR_CONTAINS(result, source_namespace_id);
+  ASSERT_STR_CONTAINS(result, producer_table_->id());
+  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
+  ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
+
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   ASSERT_OK(InsertRowsInProducer(0, 10));
@@ -741,6 +757,14 @@ TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
   ASSERT_OK(CallAdmin(
       producer_cluster(), "add_namespace_to_xcluster_replication", kReplicationGroupId,
       namespace_name2_, target_master_address));
+
+  result = ASSERT_RESULT(CallAdmin(
+      producer_cluster(), "get_xcluster_outbound_replication_group_info",
+      kReplicationGroupId.ToString()));
+  ASSERT_STR_CONTAINS(result, namespace_name);
+  ASSERT_STR_CONTAINS(result, producer_table_->id());
+  ASSERT_STR_CONTAINS(result, namespace_name2_);
+  ASSERT_STR_CONTAINS(result, source_namespace2_table_->id());
 
   // Remove database from both sides with one command.
   ASSERT_OK(CallAdmin(
@@ -769,7 +793,6 @@ TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
   ASSERT_NOK_STR_CONTAINS(
       VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
 
-  const auto source_namespace_id = producer_table_->name().namespace_id();
   ASSERT_NOK_STR_CONTAINS(GetAllXClusterStreams(source_namespace_id), "Not found");
 
   result = ASSERT_RESULT(CallAdmin(
