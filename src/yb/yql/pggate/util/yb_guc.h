@@ -163,6 +163,13 @@ extern int yb_locks_txn_locks_per_tablet;
 extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 
 /*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
+/*
  * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
  * changes from the CDC service in case the last received response was empty. The response can be
  * empty in case there are no DMLs happening in the system.

@@ -156,6 +156,8 @@ typedef struct ReorderBufferDiskChange
  * At some point in the future it probably makes sense to have a more elaborate
  * resource management here, but it's not entirely clear what that would look
  * like.
+ *
+ * YB NOTE: This is overridden by yb_reorderbuffer_max_changes_in_memory GUC.
  */
 static const Size max_changes_in_memory = 4096;
 
@@ -2311,7 +2313,8 @@ ReorderBufferCheckSerializeTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	 * TODO: improve accounting so we cheaply can take subtransactions into
 	 * account here.
 	 */
-	if (txn->nentries_mem >= max_changes_in_memory)
+	if (txn->nentries_mem >= 
+			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
 	{
 		if (IsYugaByteEnabled())
 			elog(DEBUG1, "Serializing txn %d to disk.", txn->xid);
@@ -2655,7 +2658,9 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while (restored < max_changes_in_memory && *segno <= last_segno)
+	while ((restored < 
+			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
+		  && (*segno <= last_segno))
 	{
 		int			readBytes;
 		ReorderBufferDiskChange *ondisk;

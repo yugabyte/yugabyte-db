@@ -184,6 +184,13 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
  */
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
+/*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);

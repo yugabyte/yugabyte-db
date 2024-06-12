@@ -69,5 +69,7 @@ int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 1 * 1000;
 
+int yb_reorderbuffer_max_changes_in_memory = 4096;
+
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
