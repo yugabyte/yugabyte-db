@@ -88,7 +88,7 @@ ysqlsh returns the following to the shell on exit:
 
 {{< note title="YugabyteDB Managed" >}}
 
-For information on connecting to a YugabyteDB Managed cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Managed cluster using ysqlsh, refer to [Connect via client shells](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
