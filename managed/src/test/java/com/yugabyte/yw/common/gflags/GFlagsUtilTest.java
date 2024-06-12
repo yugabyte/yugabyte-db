@@ -7,12 +7,15 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.*;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
-public class GFlagsUtilTest {
+public class GFlagsUtilTest extends FakeDBApplication {
 
   @Test
   public void testGflagsAndIntentConsistency() {
@@ -114,5 +117,25 @@ public class GFlagsUtilTest {
 
     String mergeKeyValues = mergeCSVs(csv1, csv2, true);
     assertThat(mergeKeyValues, equalTo("key1=val1,key2=val2,qwe,key3=val3,qwe asd"));
+  }
+
+  @Test
+  public void testCheckGFlagGroups() {
+
+    SpecificGFlags specificGFlags1 = new SpecificGFlags();
+    List<GFlagGroup.GroupName> gflagGroups = new ArrayList<>();
+    gflagGroups.add(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+    specificGFlags1.setGflagGroups(gflagGroups);
+
+    // Test with incorrect DB version
+    PlatformServiceException exception2 =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGFlagGroups(specificGFlags1, "2.0", mockGFlagsValidation));
+
+    // Test with lower DB version
+    SpecificGFlags specificGFlags2 =
+        GFlagsUtil.checkGFlagGroups(specificGFlags1, "2024.0.0.0", mockGFlagsValidation);
+    assertEquals(specificGFlags1, specificGFlags2);
   }
 }

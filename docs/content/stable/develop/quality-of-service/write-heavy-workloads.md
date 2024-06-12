@@ -3,7 +3,7 @@ title: Write-heavy workloads
 headerTitle: Write-heavy workloads
 linkTitle: Write-heavy workloads
 description: Write-heavy database workloads in YugabyteDB
-headcontent: Write-heavy workloads in YugabyteDB.
+headcontent: Write-heavy workloads in YugabyteDB
 menu:
   stable:
     name: Write-heavy workloads

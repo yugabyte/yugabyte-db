@@ -151,6 +151,27 @@ public class ApiHelper {
     return handleJSONPromise(jsonPromise);
   }
 
+  public JsonNode deleteRequest(String url) {
+    return deleteRequest(url, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(String url, Map<String, String> headers) {
+    return deleteRequest(url, headers, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(
+      String url, Map<String, String> headers, Map<String, String> params) {
+    WSRequest request = requestWithHeaders(url, headers);
+    request.setFollowRedirects(true);
+    if (!params.isEmpty()) {
+      for (Map.Entry<String, String> entry : params.entrySet()) {
+        request.setQueryParameter(entry.getKey(), entry.getValue());
+      }
+    }
+    CompletionStage<String> jsonPromise = request.delete().thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
   private JsonNode handleJSONPromise(CompletionStage<String> jsonPromise) {
     try {
       String jsonString = jsonPromise.toCompletableFuture().get();

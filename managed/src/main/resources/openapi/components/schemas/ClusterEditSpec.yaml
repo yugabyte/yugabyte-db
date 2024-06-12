@@ -20,11 +20,11 @@ properties:
     type: string
     example: c5.xlarge
   storage_spec:
-    $ref: "./ClusterStorageSpec.yaml"
+    $ref: ./ClusterStorageSpec.yaml
   provider_spec:
-    $ref: "./ClusterProviderEditSpec.yaml"
+    $ref: ./ClusterProviderEditSpec.yaml
   placement_spec:
-    $ref: "./ClusterPlacementSpec.yaml"
+    $ref: ./ClusterPlacementSpec.yaml
   instance_tags:
     description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
     type: object

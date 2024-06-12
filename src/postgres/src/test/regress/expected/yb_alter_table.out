@@ -412,3 +412,30 @@ ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+--
+-- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE
+--
+CREATE TABLE foo_unique(a int);
+INSERT INTO foo_unique VALUES (1), (2), (3);
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE NOT NULL; -- should fail
+ERROR:  column "b" contains null values
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE;
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE DEFAULT 1.0; -- should fail
+ERROR:  duplicate key value violates unique constraint "foo_unique_c_key"
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE NOT NULL DEFAULT random();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1) DEFAULT random(); -- should fail
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  check constraint "foo_unique_d_check" is violated by some row
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
+SELECT a,b,d FROM foo_unique ORDER BY a;
+ a | b | d
+---+---+---
+ 1 |   |
+ 2 |   |
+ 3 |   |
+(3 rows)

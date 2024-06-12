@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -76,8 +76,13 @@ const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 
 export const EditTablesModal = (props: EditTablesModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FormStep.SELECT_TABLES);
-  const [selectionError, setSelectionError] = useState<{ title: string; body: string }>();
-  const [selectionWarning, setSelectionWarning] = useState<{ title: string; body: string }>();
+  const [selectionError, setSelectionError] = useState<{ title: string; body: string } | null>(
+    null
+  );
+  const [selectionWarning, setSelectionWarning] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
   const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState<boolean>(false);
 
@@ -244,11 +249,42 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       getDefaultFormValues(defaultSelectedTableUuids, defaultSelectedNamespaceUuids)
     );
   }
+  /**
+   * Clear any existing table selection errors/warnings
+   * The new table/namespace selection will need to be (re)validated.
+   */
+  const clearTableSelectionFeedback = () => {
+    setSelectionError(null);
+    setSelectionWarning(null);
+    setIsTableSelectionValidated(false);
+  };
+
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    clearTableSelectionFeedback();
+    formMethods.clearErrors('namespaceUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
+  };
+  const setSelectedTableUuids = (tableUuids: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    clearTableSelectionFeedback();
+    formMethods.clearErrors('tableUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
+  };
+
   const sourceUniverse = sourceUniverseQuery.data;
   const onSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES: {
-        setSelectionError(undefined);
+        setSelectionError(null);
         if (formValues.tableUuids.length <= 0) {
           formMethods.setError('tableUuids', {
             type: 'min',
@@ -364,27 +400,6 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     }
   };
 
-  const setSelectedNamespaceUuids = (namespaces: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setIsTableSelectionValidated(false);
-    formMethods.clearErrors('namespaceUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
-  };
-  const setSelectedTableUuids = (tableUuids: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setIsTableSelectionValidated(false);
-    formMethods.clearErrors('tableUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
-  };
-
   const handleBackNavigation = () => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES:
@@ -459,11 +474,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             targetUniverseUuid: targetUniverseUuid,
             xClusterConfigUuid: xClusterConfig.uuid,
             isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
-            sourceDroppedTableUuids: sourceDroppedTableUuids,
-
-            // Users are not allowed to change xCluster table type after creation.
-            isFixedTableType: true,
-            setTableType: (_) => null
+            sourceDroppedTableUuids: sourceDroppedTableUuids
           }}
         />
       </FormProvider>

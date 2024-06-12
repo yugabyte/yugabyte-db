@@ -6,6 +6,7 @@ description: Learn how to use Transactions in YSQL on YugabyteDB.
 aliases:
   - /preview/explore/transactional/acid-transactions/
   - /preview/develop/learn/acid-transactions/
+  - /preview/develop/learn/acid-transactions-ysql/
 menu:
   preview:
     identifier: acid-transactions-1-ysql

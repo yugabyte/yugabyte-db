@@ -838,6 +838,7 @@ public class ModelFactory {
     userIntent.accessKeyCode = "akc";
     userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
 
     UniverseUpdater updater =
         u -> {

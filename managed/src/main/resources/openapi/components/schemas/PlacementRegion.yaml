@@ -16,7 +16,7 @@ properties:
     description: The list of AZs inside this region into which we want to place data.
     type: array
     items:
-      $ref: "./PlacementAZ.yaml"
+      $ref: ./PlacementAZ.yaml
   lb_fqdn:
     description: The Load Balancer FQDN.
     type: string

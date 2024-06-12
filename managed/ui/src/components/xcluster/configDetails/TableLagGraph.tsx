@@ -67,7 +67,7 @@ export const TableLagGraph: FC<Props> = ({
   // At the moment, we don't support a custom time range which uses the 'current time' as the end time.
   // Thus, all custom time ranges are fixed.
   const isFixedTimeRange = isCustomTimeRange;
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     streamId: tableDetails.streamId,
     tableId: getTableUuid(tableDetails),
     nodePrefix,
@@ -76,13 +76,13 @@ export const TableLagGraph: FC<Props> = ({
   };
   const tableMetricsQuery = useQuery(
     isFixedTimeRange
-      ? metricQueryKey.detail(replciationLagMetricRequestParams)
+      ? metricQueryKey.detail(replicationLagMetricRequestParams)
       : metricQueryKey.live(
-          replciationLagMetricRequestParams,
+          replicationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
         ),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled && !!nodePrefix,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent

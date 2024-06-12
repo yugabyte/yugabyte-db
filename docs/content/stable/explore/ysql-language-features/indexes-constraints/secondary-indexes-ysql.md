@@ -180,7 +180,7 @@ EXPLAIN SELECT * FROM employees WHERE last_name='Davolio' AND first_name='Nancy'
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
  Seq Scan on employees  (cost=0.00..105.00 rows=1000 width=1240)
-   Remote Filter: (((last_name)::text = 'Davolio'::text) AND ((first_name)::text = 'Nancy'::text))
+   Storage Filter: (((last_name)::text = 'Davolio'::text) AND ((first_name)::text = 'Nancy'::text))
 (2 rows)
 ```
 

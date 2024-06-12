@@ -2,6 +2,8 @@
 title: PostgreSQL compatibility
 linkTitle: PostgreSQL compatibility
 description: Summary of YugabyteDB's PostgreSQL compatibility
+aliases:
+  - /preview/ysql/postgresql-compatibility/
 menu:
   preview:
     identifier: explore-ysql-postgresql-compatibility

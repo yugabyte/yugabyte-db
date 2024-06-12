@@ -59,9 +59,9 @@ type: indexpage
     icon="/images/section_icons/deploy/public-clouds.png">}}
 
   {{<index/item
-    title="Real world examples"
-    body="Try out the Yugastore e-commerce and IoT Fleet Management end-to-end sample applications."
-    href="realworld-apps/"
-    icon="/images/section_icons/develop/real-world-apps.png">}}
+    title="Tutorials"
+    body="Try out sample applications built using AI, pg_vector, Kafka, and more."
+    href="/preview/tutorials/"
+    icon="fa-sharp fa-light fa-chalkboard-user">}}
 
 {{</index/block>}}

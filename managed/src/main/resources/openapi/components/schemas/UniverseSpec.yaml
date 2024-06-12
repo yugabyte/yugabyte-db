@@ -16,13 +16,13 @@ properties:
     type: string
     example: 2024.2.0.0-b600
   encryption_at_rest_spec:
-    $ref: "./EncryptionAtRestSpec.yaml"
+    $ref: ./EncryptionAtRestSpec.yaml
   encryption_in_transit_spec:
-    $ref: "./EncryptionInTransitSpec.yaml"
+    $ref: ./EncryptionInTransitSpec.yaml
   ysql:
-    $ref: "./YSQLSpec.yaml"
+    $ref: ./YSQLSpec.yaml
   ycql:
-    $ref: "./YCQLSpec.yaml"
+    $ref: ./YCQLSpec.yaml
   use_time_sync:
     description: Whether to use time sync services like chrony on DB nodes of this cluster
     type: boolean
@@ -41,10 +41,10 @@ properties:
     type: boolean
     x-yba-api-visibility: internal
   networking_spec:
-    $ref: "./UniverseNetworkingSpec.yaml"
+    $ref: ./UniverseNetworkingSpec.yaml
   clusters:
     type: array
     items:
-      $ref: "./ClusterSpec.yaml"
+      $ref: ./ClusterSpec.yaml
     maxItems: 16
     minItems: 1

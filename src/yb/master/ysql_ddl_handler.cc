@@ -298,7 +298,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
   // TABLE and DROP COLUMN.
   auto& l = txn_data.write_lock;
   if (l->is_being_deleted_by_ysql_ddl_txn()) {
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    return YsqlDdlTxnDropTableHelper(txn_data, true /* success */);
   }
 
   vector<string> cols_being_dropped;
@@ -334,7 +334,7 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
   const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
   if (ddl_state.contains_create_table_op()) {
     // This table was created in this aborted transaction. Drop this table.
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    return YsqlDdlTxnDropTableHelper(txn_data, false /* success */);
   }
   if (ddl_state.contains_alter_table_op()) {
     std::vector<DdlLogEntry> ddl_log_entries;
@@ -402,7 +402,8 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
 }
 
-Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data) {
+Status CatalogManager::YsqlDdlTxnDropTableHelper(
+    const YsqlTableDdlTxnState txn_data, bool success) {
   auto table = txn_data.table;
   txn_data.write_lock.Commit();
   DeleteTableRequestPB dtreq;
@@ -411,6 +412,8 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(table->is_index());
+  auto action = success ? "roll forward" : "rollback";
+  LOG(INFO) << "Delete table " << table->id() << " as part of " << action;
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
 

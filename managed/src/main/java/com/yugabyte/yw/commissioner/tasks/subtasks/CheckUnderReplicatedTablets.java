@@ -74,6 +74,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
         taskParams().targetSoftwareVersion != null
             ? taskParams().targetSoftwareVersion
             : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     log.debug("Current master db software version {}", softwareVersion);
     if (!supportsUnderReplicatedCheck(softwareVersion)) {
       log.debug(
@@ -81,6 +82,12 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
               + "does not support under-replicated tablets check.",
           universe.getName(),
           softwareVersion);
+      return;
+    }
+    if (CheckNodesAreSafeToTakeDown.isApiSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
+        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)) {
+      log.debug("Skipping check, CheckNodesAreSafeToTakeDown should have been applied");
       return;
     }
 

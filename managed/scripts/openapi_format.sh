@@ -5,7 +5,8 @@ echo "npm bin at: $NPM_BIN"
 
 pushd ../src/main/resources/openapi
 
-echo "Formatting openapi files"
+file=$1
+echo "Formatting openapi file ${file}"
 
 yaml_files=$(find . -name "*.yaml" -print)
 mkdir -p tmp
@@ -28,35 +29,32 @@ then
   fi
   openapi_format_cmd="openapi-format"
 else
-  openapi_format_cmd="$NPM_BIN/npx openapi-format"
+  openapi_format_cmd="$NPM_BIN/npx openapi-format@$openapi_format_ver"
 fi
 
 # Format all the required YML files.
-for file in $yaml_files
-do
+# TODO: Fix processing of this file.
+if [ "${file}" == "./openapi/openapi.yaml" ];
+then
+  echo "${file}"
+  exit 0
+fi
 
-  # TODO: Fix processing of this file.
-  if [ "${file}" == "./openapi/openapi.yaml" ];
-  then
-    continue
-  fi
+$openapi_format_cmd \
+  --sortFile ../openapi_sort_format.json \
+  --sortComponentsFile ../openapi_sort_components.json \
+  --output ${tmp_yml} ${file} # > /dev/null 2>&1
+if [ $? -ne 0 ];
+then
+  echo "Error: Failed to format YML file: $file"
+  exit 1
+fi
 
-  $openapi_format_cmd \
-    --sortFile ../openapi_sort_format.json \
-    --sortComponentsFile ../openapi_sort_components.json \
-    --output ${tmp_yml} ${file} # > /dev/null 2>&1
-  if [ $? -ne 0 ];
-  then
-    echo "Error: Failed to format YML file: $file"
-    exit 1
-  fi
-
-  cmp -s ${tmp_yml} $file
-  if [ $? -ne 0 ];
-  then
-    cp ${tmp_yml} $file
-  fi
-done
+cmp -s ${tmp_yml} $file
+if [ $? -ne 0 ];
+then
+  cp ${tmp_yml} $file
+fi
 
 rm -f ${tmp_yml}
 

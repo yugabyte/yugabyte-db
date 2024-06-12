@@ -123,8 +123,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(RegistrationTest, TestTSRegisters) {
   DontVerifyClusterBeforeNextTearDown();
   // Wait for the TS to register.
-  vector<shared_ptr<TSDescriptor> > descs;
-  ASSERT_OK(cluster_->WaitForTabletServerCount(1, &descs));
+  auto descs = ASSERT_RESULT(cluster_->WaitForTabletServerCount(1));
   ASSERT_EQ(1, descs.size());
 
   // Verify that the registration is sane.

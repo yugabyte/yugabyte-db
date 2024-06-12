@@ -445,46 +445,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
   }
 
   @Test
-  public void testAddColumnWithUnsupportedConstraint() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(id int)");
-      statement.execute("CREATE TABLE test_table_ref(id int)");
-
-      // Constrained variants of UNIQUE fail.
-      for (String addCol : Arrays.asList(
-          "ADD COLUMN",
-          "ADD",
-          "ADD COLUMN IF NOT EXISTS",
-          "ADD IF NOT EXISTS")) {
-        for (String constr : Arrays.asList(
-            "DEFAULT 5",
-            "DEFAULT NOW()",
-            "CHECK (id > 0)",
-            "CHECK (a > 0)",
-            "REFERENCES test_table_ref(id)")) {
-          runInvalidQuery(statement,
-              "ALTER TABLE test_table " + addCol + " a int UNIQUE " + constr,
-              "This ALTER TABLE command is not yet supported");
-        }
-      }
-
-      // GENERATED fails.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD gac int GENERATED ALWAYS AS IDENTITY",
-          "This ALTER TABLE command is not yet supported"
-      );
-
-      // No columns were added.
-      assertQuery(
-          statement,
-          selectAttributesQuery("test_table"),
-          new Row("id", "int4")
-      );
-    }
-  }
-
-  @Test
   public void testRenameTableIfExists() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test_table(id int)");

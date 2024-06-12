@@ -241,7 +241,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     return serverType == MASTER
         ?
         // We need to check that the master leader is upgraded last.
-        (activeRole ? Arrays.asList(1, 3, 2) : Arrays.asList(4, 5))
+        (activeRole ? Arrays.asList(3, 1, 2) : Arrays.asList(4, 5))
         :
         // We need to check that isAffinitized zone node is upgraded getFirst().
         defaultUniverse.getUniverseDetails().getReadOnlyClusters().isEmpty()

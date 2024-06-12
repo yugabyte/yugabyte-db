@@ -55,6 +55,8 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
+	bool		recheck;
+	YbScanDesc	ybscan;
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
@@ -98,12 +100,18 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 		bitmap = yb_tbm_create(work_mem * 1024L);
 	}
 
+	ybscan = (YbScanDesc) scandesc->opaque;
+	recheck = YbPredetermineNeedsRecheck(ybscan->relation, ybscan->index,
+										 true /* xs_want_itup */,
+										 node->biss_ScanKeys,
+										 node->biss_NumScanKeys);
+
 	/*
 	 * Get TIDs from index and insert into bitmap
 	 */
 	while (doscan)
 	{
-		nTuples += (double) yb_index_getbitmap(scandesc, bitmap);
+		nTuples += (double) yb_index_getbitmap(scandesc, bitmap, recheck);
 
 		CHECK_FOR_INTERRUPTS();
 

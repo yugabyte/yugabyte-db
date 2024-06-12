@@ -265,6 +265,18 @@ INSERT INTO test_false VALUES (1, 1), (2, 2);
 /*+ BitmapScan(test_false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT * FROM test_false WHERE (a = 1 AND a = 2) OR b = 0;
 
 --
+-- #21930: test recheck conditions on text columns
+--
+CREATE TABLE test_recheck_text(a TEXT);
+INSERT INTO test_recheck_text(a) VALUES ('i');
+CREATE INDEX ON test_recheck_text(a ASC);
+
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+/*+ BitmapScan(t) */
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+
+--
 -- test recheck index conditions
 --
 create table recheck_test (col int);
@@ -281,6 +293,22 @@ explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
 explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+
+--
+-- #22622: test local recheck of condition for a column that is not a target
+--
+create table local_recheck_test (k1 character(10), k2 character(10));
+insert into local_recheck_test values ('a', 'a');
+create index on local_recheck_test(k1 ASC);
+create index on local_recheck_test(k2 ASC);
+
+/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+
+-- the second condition is necessary to force a recheck
+-- the first condition is rechecked locally, so k2 must be fetched.
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
 
 --
 -- test pk of different types
@@ -354,6 +382,19 @@ SELECT COUNT(*) FROM pk_int WHERE k_int = 2000 OR v_text = 'nonexistent';
 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
 /*+ BitmapScan(pk_text) */
 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
+
+--
+-- #21793: test row compare expressions
+--
+CREATE TABLE test_crash_row_comp (a integer);
+INSERT INTO test_crash_row_comp VALUES (1);
+CREATE INDEX on test_crash_row_comp(a ASC);
+
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+/*+ BitmapScan(t) */
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

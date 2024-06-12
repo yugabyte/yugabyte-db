@@ -259,7 +259,8 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                        const MetricPrometheusOptions& opts) {
+                                        const MetricPrometheusOptions& opts,
+                                        std::vector<MetricMap>* owned_metric_map_holder) {
   AttributeMap attrs;
   MetricMap prometheus_metrics;
   {
@@ -315,6 +316,10 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     WARN_NOT_OK(metric->WriteForPrometheus(
         writer, prometheus_attr, opts, aggregation_levels),
         Format("Failed to write $0 as Prometheus", prototype->name()));
+  }
+
+  if (owned_metric_map_holder) {
+    owned_metric_map_holder->push_back(std::move(prometheus_metrics));
   }
 
   return Status::OK();

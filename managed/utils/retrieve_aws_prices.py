@@ -15,8 +15,9 @@ from urllib.request import urlopen
 
 BASE_PRICING_URL = "https://pricing.us-east-1.amazonaws.com"
 REGION_INDEX_URL = BASE_PRICING_URL + "/offers/v1.0/aws/AmazonEC2/current/region_index.json"
-SUPPORTED_TYPES = ["m3.", "c5.", "c4.", "c5d.", "c3.", "i3.", "t2.", "t3.", "m6g.", "c6gd.", "c6g.",
-                   "t4g.", "m6i.", "m5."]
+SUPPORTED_TYPES = ["m3.", "m4.", "c5.", "c4.", "c5d.", "c3.", "i3.", "t2.", "t3.", "m6a.",
+                   "m6g.", "c6gd.", "c6g.", "t4g.", "m6i.", "m5.", "m5a.", "m7a.", "m7i.",
+                   "c6i.", "c6a.", "c7a.", "c7i."]
 SUPPORTED_STORAGE_TYPES = ["io1", "gp2", "gp3"]
 TARGET_DIRECTORY = os.path.expanduser('')
 YW_DIR = os.path.abspath(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))

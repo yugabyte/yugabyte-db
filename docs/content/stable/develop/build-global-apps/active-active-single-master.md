@@ -46,7 +46,7 @@ Writes still have to go to the primary cluster in `us-west`.
 
 ## Transactional consistency
 
-You can preserve and guarantee transactional atomicity and global ordering when propagating change data from one universe to another by adding the `transactional` flag when setting up the [xCluster replication](../../../deploy/multi-dc/async-replication-transactional/#set-up-unidirectional-transactional-replication). This is the default behavior.
+You can preserve and guarantee transactional atomicity and global ordering when propagating change data from one universe to another by adding the `transactional` flag when setting up the [xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/). This is the default behavior.
 
 You can relax the transactional atomicity guarantee for lower replication lag.
 
@@ -70,5 +70,5 @@ Another thing to note with xCluster is that transaction updates are NOT committe
 ## Learn more
 
 - [xCluster architecture](../../../architecture/docdb-replication/async-replication)
-- [xCluster deployment](../../../explore/multi-region-deployments/asynchronous-replication-ysql/)
+- [xCluster deployment](../../../explore/going-beyond-sql/asynchronous-replication-ysql/)
 - [Raft consensus protocol](../../../architecture/docdb-replication/replication)

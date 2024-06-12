@@ -55,7 +55,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick start](../../../../quick-start/).
+- installed YugabyteDB and created a cluster. Refer to [Quick start](/preview/quick-start/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 

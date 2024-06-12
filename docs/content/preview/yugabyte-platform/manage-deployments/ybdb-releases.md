@@ -4,6 +4,7 @@ headerTitle: Manage YugabyteDB releases
 linkTitle: Manage releases
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
 headcontent: View and import YugabyteDB releases
+earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview_yugabyte-platform:
     identifier: ybdb-releases

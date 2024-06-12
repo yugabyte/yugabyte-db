@@ -421,7 +421,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
     3. Port available for bind
     4. Ulimit
 
-    For more information, see [Prerequisites](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+    For more information, see [Prerequisites](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
     ```yml
     ## Default values

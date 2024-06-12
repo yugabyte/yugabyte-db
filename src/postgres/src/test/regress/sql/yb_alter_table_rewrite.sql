@@ -461,3 +461,13 @@ ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
 ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key;
 ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
 SELECT * FROM test_table;
+
+--
+-- Test ALTER TABLE ... ADD COLUMN ... GENERATED ALWAYS AS IDENTITY
+--
+CREATE TABLE test_identity (id int, PRIMARY KEY (id ASC));
+INSERT INTO test_identity VALUES (1), (2), (3);
+ALTER TABLE test_identity ADD COLUMN id2 int GENERATED ALWAYS AS IDENTITY;
+INSERT INTO test_identity VALUES (4, 4); -- should fail
+INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
+SELECT * FROM test_identity;
