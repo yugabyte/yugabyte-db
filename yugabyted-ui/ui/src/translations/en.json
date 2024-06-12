@@ -596,6 +596,8 @@
       "viewSampleApp": "View a working sample app"
     },
     "clusterDetail": {
+      "cluster": "Cluster",
+      "migrations": "Migrations",
       "loadingTitle": "Hold tight while we create your cluster. This can take 15-20 minutes",
       "connect": "Connect",
       "quickLinks": "More Links",

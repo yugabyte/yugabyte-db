@@ -8,7 +8,7 @@ import { browserStorage } from '@app/helpers';
 import YBLogoFull from '@app/assets/yugabyteDB-logo.svg';
 import YBLogo from '@app/assets/yb-logo.svg';
 import RocketIcon from '@app/assets/rocket.svg';
-import MigrateIcon from '@app/assets/schema.svg';
+import MigrateIcon from '@app/assets/migration.svg';
 import DbSecurityIcon from '@app/assets/database-security.svg';
 import MetricsIcon from '@app/assets/stats.svg';
 import DoubleArrowIcon from '@app/assets/double-arrow-left.svg';
@@ -141,7 +141,14 @@ const useStyles = makeStyles((theme) => ({
     right: theme.spacing(3),
     top: theme.spacing(-0.3),
     height: 9
-  }
+  },
+  label: {
+    color: theme.palette.grey[500],
+    fontWeight: theme.typography.fontWeightMedium as number,
+    margin: theme.spacing(3, 0, 2, 2.2),
+    textTransform: "uppercase",
+    textAlign: "left",
+  },
 }));
 
 interface NavLinkWithDisableProps extends NavLinkProps {
@@ -232,6 +239,9 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
             </Typography>
           </NavLinkWithDisable>
         )} */}
+        <Typography variant="subtitle2" className={classes.label}>
+          {t("clusterDetail.cluster")}
+        </Typography>
         <NavLinkWithDisable
           disabled={isDisabled}
           to={`/`}
@@ -318,6 +328,9 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
             </Typography>
           </NavLinkWithDisable>
         </div>
+        <Typography variant="subtitle2" className={classes.label}>
+          {t("clusterDetail.migrations")}
+        </Typography>
         <NavLinkWithDisable
           disabled={isDisabled}
           to={`/migrations`}
