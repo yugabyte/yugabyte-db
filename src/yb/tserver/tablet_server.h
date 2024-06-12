@@ -90,6 +90,10 @@ class CDCServiceImpl;
 
 }
 
+namespace stateful_service {
+class PgCronLeaderService;
+}  // namespace stateful_service
+
 namespace tserver {
 
 class TserverAutoFlagsManager;
@@ -119,6 +123,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status Init() override;
 
   virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+
+  virtual bool ShouldExportLocalCalls() override {
+    return true;
+  }
 
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
@@ -356,6 +364,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
+  void TEST_SetIsCronLeader(bool is_cron_leader);
+
  protected:
   virtual Status RegisterServices();
 
@@ -371,6 +381,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
+  void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
   std::atomic<bool> initted_{false};
 
@@ -496,6 +508,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+
+  std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

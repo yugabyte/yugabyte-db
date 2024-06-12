@@ -114,6 +114,9 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
 
+// Is this node acting as the pg_cron leader?
+bool YBCIsCronLeader();
+
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
 //--------------------------------------------------------------------------------------------------
@@ -374,7 +377,7 @@ YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
                             YBCPgSplitDatum *split_points,
-                            bool *has_null);
+                            bool *has_null, bool *has_gin_null);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
@@ -403,6 +406,8 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
+
+YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxOptions *options);
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
@@ -515,6 +520,10 @@ YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value);
+
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector);
+
+YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size);
 
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().

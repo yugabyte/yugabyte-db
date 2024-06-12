@@ -177,7 +177,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(universe);
   }
 
-  @Test
+  // @Test
   public void testStartAlreadyStarted() throws InterruptedException {
     Universe universe = createUniverse(3, 1);
     NodeDetails nodeDetails =

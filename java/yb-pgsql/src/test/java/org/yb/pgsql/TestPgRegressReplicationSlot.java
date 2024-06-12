@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress replication_slot-related tests on YB code.
  */
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressReplicationSlot extends BasePgSQLTest {
+public class TestPgRegressReplicationSlot extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

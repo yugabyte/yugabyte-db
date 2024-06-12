@@ -697,6 +697,30 @@ message RepairOutboundXClusterReplicationGroupRemoveTableResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetXClusterOutboundReplicationGroupsRequestPB {
+  optional string namespace_id = 1;
+}
+
+message GetXClusterOutboundReplicationGroupsResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated string replication_group_ids = 2;
+}
+
+message GetXClusterOutboundReplicationGroupInfoRequestPB {
+  required string replication_group_id = 1;
+}
+
+message GetXClusterOutboundReplicationGroupInfoResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message NamespaceInfoPB {
+    required string namespace_id = 1;
+    // Map of Source TableId to xCluster StreamId
+    map<string, string> table_streams = 2;
+  }
+  repeated NamespaceInfoPB namespace_infos = 2;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -793,6 +817,12 @@ service MasterReplication {
   rpc RepairOutboundXClusterReplicationGroupRemoveTable(
       RepairOutboundXClusterReplicationGroupRemoveTableRequestPB)
       returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
+  rpc GetXClusterOutboundReplicationGroups(
+      GetXClusterOutboundReplicationGroupsRequestPB)
+      returns (GetXClusterOutboundReplicationGroupsResponsePB);
+  rpc GetXClusterOutboundReplicationGroupInfo(
+      GetXClusterOutboundReplicationGroupInfoRequestPB)
+      returns (GetXClusterOutboundReplicationGroupInfoResponsePB);
 
   // xCluster APIsV2
   rpc CreateXClusterReplication(CreateXClusterReplicationRequestPB)

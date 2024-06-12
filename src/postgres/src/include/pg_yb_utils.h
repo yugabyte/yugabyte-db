@@ -640,6 +640,11 @@ extern char *yb_test_block_index_phase;
 extern char *yb_test_fail_index_state_change;
 
 /*
+ * GUC variable that specifies default replica identity for tables at the time of creation.
+ */
+extern char* yb_default_replica_identity ;
+
+/*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
  * the new table is created.
  */

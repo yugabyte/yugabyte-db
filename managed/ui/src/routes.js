@@ -40,6 +40,7 @@ import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
+import { Troubleshoot } from './pages/Troubleshoot';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
@@ -284,6 +285,9 @@ export default (store) => {
           <Route path=":tab" component={DataCenterConfiguration} />
           <Route path=":tab/:section" component={DataCenterConfiguration} />
           <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
+        </Route>
+        <Route path="/troubleshoot" component={Troubleshoot}>
+          <Route path=":tab" component={Troubleshoot} />
         </Route>
         <Route path="/nodeagent" component={NodeAgent} />
         <Route path="/alerts" component={Alerts} />

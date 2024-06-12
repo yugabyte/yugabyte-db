@@ -263,7 +263,7 @@ public class OtelCollectorConfigGenerator {
         apiConfig.setKey(dataDogConfig.getApiKey());
         apiConfig.setSite(dataDogConfig.getSite());
         dataDogExporter.setApi(apiConfig);
-        exporterName = "datadog/" + telemetryProvider.getName();
+        exporterName = "datadog/" + telemetryProvider.getUuid();
         exporters.put(exporterName, setExporterCommonConfig(dataDogExporter, true, true));
         break;
       case SPLUNK:
@@ -275,7 +275,7 @@ public class OtelCollectorConfigGenerator {
         splunkExporter.setSource(splunkConfig.getSource());
         splunkExporter.setSourcetype(splunkConfig.getSourceType());
         splunkExporter.setIndex(splunkConfig.getIndex());
-        exporterName = "splunk_hec/" + telemetryProvider.getName();
+        exporterName = "splunk_hec/" + telemetryProvider.getUuid();
         OtelCollectorConfigFormat.TlsSettings tlsSettings =
             new OtelCollectorConfigFormat.TlsSettings();
         tlsSettings.setInsecure_skip_verify(true);
@@ -291,7 +291,7 @@ public class OtelCollectorConfigGenerator {
         awsCloudWatchExporter.setRegion(awsCloudWatchConfig.getRegion());
         awsCloudWatchExporter.setLog_group_name(awsCloudWatchConfig.getLogGroup());
         awsCloudWatchExporter.setLog_stream_name(awsCloudWatchConfig.getLogStream());
-        exporterName = "awscloudwatchlogs/" + telemetryProvider.getName();
+        exporterName = "awscloudwatchlogs/" + telemetryProvider.getUuid();
         exporters.put(exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true));
         break;
       case GCP_CLOUD_MONITORING:
@@ -304,7 +304,7 @@ public class OtelCollectorConfigGenerator {
             new OtelCollectorConfigFormat.GCPCloudMonitoringLog();
         log.setDefault_log_name("YugabyteDB");
         gcpCloudMonitoringExporter.setLog(log);
-        exporterName = "googlecloud/" + telemetryProvider.getName();
+        exporterName = "googlecloud/" + telemetryProvider.getUuid();
         // TODO add retry config to GCP provider once it's supported by Otel COllector
         exporters.put(
             exporterName, setExporterCommonConfig(gcpCloudMonitoringExporter, true, false));
@@ -341,7 +341,7 @@ public class OtelCollectorConfigGenerator {
         new OtelCollectorConfigFormat.AttributeAction("host.name", nodeName, "upsert"));
     attributesProcessor.setActions(attributeActions);
 
-    String processorName = "attributes/" + telemetryProvider.getName();
+    String processorName = "attributes/" + telemetryProvider.getUuid();
     collectorConfig.getProcessors().put(processorName, attributesProcessor);
     List<String> processorNames = new ArrayList<>(currentProcessors);
     processorNames.add(processorName);
@@ -353,7 +353,7 @@ public class OtelCollectorConfigGenerator {
     collectorConfig
         .getService()
         .getPipelines()
-        .put("logs/" + telemetryProvider.getName(), pipeline);
+        .put("logs/" + telemetryProvider.getUuid(), pipeline);
   }
 
   private OtelCollectorConfigFormat.Exporter setExporterCommonConfig(

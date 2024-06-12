@@ -25,7 +25,7 @@ import com.google.common.collect.ImmutableMap;
 
 // Runs the pg_regress test suite on YB code.
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressTablegroup extends BasePgSQLTest {
+public class TestPgRegressTablegroup extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressTablegroup.class);
 
   @Override

@@ -39,6 +39,6 @@ namespace yb {
 
 class Webserver;
 
-void AddRpczPathHandlers(rpc::Messenger* messenger, Webserver* webserver);
+void AddRpczPathHandlers(rpc::Messenger* messenger, bool show_local_calls, Webserver* webserver);
 
 } // namespace yb

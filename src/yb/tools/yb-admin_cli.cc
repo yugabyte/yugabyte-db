@@ -1522,15 +1522,18 @@ Status clone_namespace_action(
   return Status::OK();
 }
 
-const auto is_clone_done_args = "<source_namespace_id> <seq_no>";
-Status is_clone_done_action(
+const auto list_clones_args = "<source_namespace_id> [<seq_no>]";
+Status list_clones_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 2));
 
   auto source_namespace_id = args[0];
-  uint32_t seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+  std::optional<uint32_t> seq_no;
+  if (args.size() >= 2) {
+    seq_no = narrow_cast<uint32_t>(std::stoul(args[1]));
+  }
 
-  return PrintJsonResult(client->IsCloneDone(source_namespace_id, seq_no));
+  return PrintJsonResult(client->ListClones(source_namespace_id, seq_no));
 }
 
 const auto edit_snapshot_schedule_args =
@@ -2515,6 +2518,57 @@ Status repair_xcluster_outbound_replication_remove_table_action(
   return Status::OK();
 }
 
+const auto list_xcluster_outbound_replication_groups_args = "[namespace_id]";
+Status list_xcluster_outbound_replication_groups_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  NamespaceId namespace_id;
+  if (args.size() > 0) {
+    namespace_id = args[0];
+  }
+
+  auto group_ids =
+      VERIFY_RESULT(client->XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id));
+
+  std::cout << group_ids.size() << " Outbound Replication Groups found"
+            << (namespace_id.empty() ? "" : Format(" for namespace $0", namespace_id)) << ": "
+            << std::endl
+            << yb::AsString(group_ids) << std::endl;
+
+  return Status::OK();
+}
+
+const auto get_xcluster_outbound_replication_group_info_args = "<replication_group_id>";
+Status get_xcluster_outbound_replication_group_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto group_info = VERIFY_RESULT(
+      client->XClusterClient().GetXClusterOutboundReplicationGroupInfo(replication_group_id));
+
+  const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
+
+  std::cout << "Outbound Replication Group: " << replication_group_id << std::endl;
+
+  for (const auto& [namespace_id, table_info] : group_info) {
+    std::cout << std::endl << "NamespaceId: " << namespace_id << std::endl;
+    auto* namespace_info = FindOrNull(namespace_map, namespace_id);
+    std::cout << "Namespace name: " << (namespace_info ? namespace_info->id.name() : "<N/A>")
+              << std::endl;
+    for (const auto& [table_id, stream_id] : table_info) {
+      std::cout << "\tTable: " << table_id << ", Stream: " << stream_id << std::endl;
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2589,7 +2643,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_snapshot_schedule);
   REGISTER_COMMAND(restore_snapshot_schedule);
   REGISTER_COMMAND(clone_namespace);
-  REGISTER_COMMAND(is_clone_done);
+  REGISTER_COMMAND(list_clones);
   REGISTER_COMMAND(edit_snapshot_schedule);
   REGISTER_COMMAND(create_keyspace_snapshot);
   REGISTER_COMMAND(create_database_snapshot);
@@ -2642,6 +2696,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(remove_namespace_from_xcluster_replication);
   REGISTER_COMMAND(repair_xcluster_outbound_replication_add_table);
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
+  REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
+  REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

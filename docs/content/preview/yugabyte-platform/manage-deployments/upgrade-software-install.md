@@ -83,7 +83,7 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
 1. If you are performing a rolling upgrade, specify the delay between node upgrades.
 
-    The delay allows the newly restarted node to stabilize before proceeding to the next node. This is a heuristic that varies according to the workload profile of the application hitting the database.
+    The delay allows the newly restarted node to stabilize before proceeding to the next node. For example, it may take some time for the overall query performance to return to the baseline as leader roles move away and back to this node because read caches take time to warm up. The delay value implies the minimal amount of time allocated for all the operations with the node including, stop and start. This is a heuristic that varies according to the workload profile of the application hitting the database.
 
     For a database with very little activity, it's typically safe to set this duration to as low as 0 seconds (for example, the cluster is new and has little data, no leaders getting re-elected, and no database smart clients needing updates to cluster membership).
 

@@ -21,7 +21,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on colocation queries to test legacy colocated database behaviors.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressLegacyColocation extends BasePgSQLTest {
+public class TestPgRegressLegacyColocation extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

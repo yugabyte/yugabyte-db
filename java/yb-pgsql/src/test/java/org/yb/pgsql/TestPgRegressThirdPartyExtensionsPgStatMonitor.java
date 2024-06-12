@@ -11,7 +11,7 @@ import java.sql.Statement;
 import java.util.Map;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgSQLTest {
+public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

@@ -14,7 +14,11 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
 import java.util.Collections;
@@ -80,6 +84,18 @@ public class TelemetryProviderService {
     return provider;
   }
 
+  public boolean checkIfExists(UUID customerUUID, UUID uuid) {
+    try {
+      TelemetryProvider provider = getOrBadRequest(customerUUID, uuid);
+      if (provider != null) {
+        return true;
+      }
+    } catch (Exception e) {
+      return false;
+    }
+    return false;
+  }
+
   public List<TelemetryProvider> list(Set<UUID> uuids) {
     return appendInClause(TelemetryProvider.createQuery(), "uuid", uuids).findList();
   }
@@ -122,5 +138,28 @@ public class TelemetryProviderService {
           .forField("name", "provider with such name already exists.")
           .throwError();
     }
+  }
+
+  public boolean isProviderInUse(Customer customer, UUID providerUUID) {
+    Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
+
+    // Iterate through all universe details and check if any of them have an audit log config.
+    for (Universe universe : allUniverses) {
+      UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+      if (primaryUserIntent.getAuditLogConfig() != null
+          && primaryUserIntent.getAuditLogConfig().getUniverseLogsExporterConfig() != null) {
+        List<UniverseLogsExporterConfig> universeLogsExporterConfigs =
+            primaryUserIntent.getAuditLogConfig().getUniverseLogsExporterConfig();
+
+        // Check if the provider is in the list of export configs in the audit log config.
+        for (UniverseLogsExporterConfig config : universeLogsExporterConfigs) {
+          if (config != null && providerUUID.equals(config.getExporterUuid())) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 }

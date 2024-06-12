@@ -38,6 +38,7 @@ public class BackupApiFilter {
   private Set<UUID> storageConfigUUIDList;
   private Set<UUID> scheduleUUIDList;
   private Set<UUID> universeUUIDList;
+  private Set<UUID> backupUUIDList;
   private boolean onlyShowDeletedUniverses;
   private boolean onlyShowDeletedConfigs;
 
@@ -51,6 +52,9 @@ public class BackupApiFilter {
     }
     if (!CollectionUtils.isEmpty(scheduleUUIDList)) {
       builder.scheduleUUIDList(scheduleUUIDList);
+    }
+    if (!CollectionUtils.isEmpty(backupUUIDList)) {
+      builder.backupUUIDList(backupUUIDList);
     }
     if (!CollectionUtils.isEmpty(universeNameList)) {
       builder.universeNameList(universeNameList);

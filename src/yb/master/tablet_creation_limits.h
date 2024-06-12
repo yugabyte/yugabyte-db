@@ -13,21 +13,19 @@
 
 #pragma once
 
-#include "yb/master/master_fwd.h"
+#include "yb/common/tablet_limits.h"
 
-#include "yb/tserver/tablet_limits.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/status.h"
 
-DECLARE_uint32(tablet_replicas_per_gib_limit);
-DECLARE_uint32(tablet_replicas_per_core_limit);
 DECLARE_bool(enforce_tablet_replica_limits);
 
 namespace yb::master {
 
 // Computes the amount of memory, cores, and live tablet replicas on the TServers with the given
 // placement_uuid.
-tserver::AggregatedClusterInfo ComputeAggregatedClusterInfo(
+AggregatedClusterInfo ComputeAggregatedClusterInfo(
     const TSDescriptorVector& ts_descs, const std::string& placement_uuid);
 
 Status CanCreateTabletReplicas(

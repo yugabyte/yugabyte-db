@@ -20,7 +20,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on extension queries.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressExtension extends BasePgSQLTest {
+public class TestPgRegressExtension extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {

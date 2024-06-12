@@ -1,55 +1,35 @@
-# Getting Started with Create React App
+# yugabytedb/troubleshoot-ui
 
-This project was bootstrapped with [Create React App](https://github.com/facebook
-create-react-app).
+Troubleshoot UI for Yugabyte applications
 
-### `npm run build`
+## install
+```sh
+npm i @yugabytedb/troubleshoot-ui
+```
 
-Builds the app for production to the `dist` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## use
+```js
+import { TroubleshootAdvisor } from '@yugabytedb/troubleshoot-ui';
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+<TroubleshootAdvisor universeUuid={universeUuid} timezone={timezone} />
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs
-deployment) for more information.
+Need to pass the universeUuid or clusterUuid that is assigned to the current universe or cluster
 
-### `npm publish`
+Pass user time zone so as to show anomalies in the primary dashboard based on the user current time
 
-Ensure to login into the NPM registry using Yugabyte credentials.
 
-Once the above step `npm run build` is done, you can go ahead and publish the package using
-`npm publish`.
+Selecting the anomaly to view the secondary dashboard will list the main graph which can be viewed in both Overall or Outlier mode
 
-### Code Splitting
+The corresponding RCA graphs will also be listed in secondary dashboard to help user diagnose the issue
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## license
 
-### Analyzing the Bundle Size
+The MIT License (MIT)
+Copyright (c) 2024 Rajagopalan Madhavan
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs
-analyzing-the-bundle-size)
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-### Making a Progressive Web App
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs
-making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs
-troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io
-create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

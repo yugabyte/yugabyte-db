@@ -6,32 +6,26 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-- name: Copy Swamper config file
-  template:
-    src: swamper.yml.j2
-    dest: "{{ prometheus_config_path }}/prometheus.yml"
-    validate: "{{ prometheus_daemon_dir }}/promtool check-config %s"
-  notify: restart prometheus
-  when: '"prometheus" in prometheus_components'
+- block:
 
-- name: Copy Swamper Rules file
-  template:
-    src: swamper.rules.j2
-    dest: "{{ prometheus_rule_path }}/prometheus.rules"
-    validate: "{{ prometheus_daemon_dir }}/promtool check-rules %s"
-  notify: restart prometheus
-  when: '"prometheus" in prometheus_components'
+  - name: Reload node_exporter to apply the new changes
+    become: yes
+    become_method: sudo
+    raw: "systemctl daemon-reload"
 
-- name: Copy Swamper Alert config file
-  template:
-    src: swamper-alert.yml.j2
-    dest: "{{ prometheus_config_path }}/alertmanager.yml"
-  notify: restart alertmanager
-  when: '"alertmanager" in prometheus_components'
+  - name: Restart node_exporter
+    become: yes
+    become_method: sudo
+    raw: "systemctl restart node_exporter"
 
-- name: Reload node_exporter to apply the new changes
-  raw: systemctl daemon-reload
-  become: yes
-  become_method: sudo
-  notify: restart node_exporter
-  when: '"node_exporter" in prometheus_components'
+  when: use_sudo | default(false)
+
+- block:
+
+  - name: Reload node_exporter to apply the new changes
+    raw: "systemctl --user daemon-reload"
+
+  - name: Restart node_exporter
+    raw: "systemctl --user daemon-reload"
+
+  when: not (use_sudo | default(false))

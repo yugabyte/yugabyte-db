@@ -809,6 +809,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         if not args.skip_preprovision:
             self.preprovision(args)
+            self.extra_vars["device_names"] = self.get_device_names(args, host_info)
 
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
@@ -831,7 +832,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
-        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
@@ -1178,6 +1178,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def prepare(self):
         super(ConfigureInstancesMethod, self).prepare()
 
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to.")
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
@@ -1366,6 +1370,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 raise YBOpsRuntimeError(
                     "Supported actions for this command are only: {}".format(
                         self.CERT_ROTATE_ACTIONS))
+
+        if args.node_exporter_port:
+            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
+        if args.install_node_exporter:
+            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
+        if args.node_exporter_user:
+            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
 
         host_info = None
         if args.search_pattern != 'localhost':

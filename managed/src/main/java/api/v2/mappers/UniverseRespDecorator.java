@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package api.v2.mappers;
 
-import api.v2.models.UniverseResp;
+import api.v2.models.Universe;
 import java.text.ParseException;
 
 public abstract class UniverseRespDecorator implements UniverseRespMapper {
@@ -12,8 +12,8 @@ public abstract class UniverseRespDecorator implements UniverseRespMapper {
   }
 
   @Override
-  public UniverseResp toV2UniverseResp(com.yugabyte.yw.forms.UniverseResp v1UniverseResp) {
-    UniverseResp universeResp = delegate.toV2UniverseResp(v1UniverseResp);
+  public Universe toV2UniverseResp(com.yugabyte.yw.forms.UniverseResp v1UniverseResp) {
+    Universe universeResp = delegate.toV2UniverseResp(v1UniverseResp);
     if (v1UniverseResp == null) {
       return universeResp;
     }

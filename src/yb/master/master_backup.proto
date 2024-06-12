@@ -281,19 +281,19 @@ message CloneNamespaceRequestPB {
 
 message CloneNamespaceResponsePB {
   optional MasterErrorPB error = 1;
-  // If the call returned without error, then these are the fields to pass to IsCloneDone.
+  // If the call returned without error, then these are the fields to pass to ListClones.
   optional string source_namespace_id = 2;
   optional uint32 seq_no = 3;
 }
 
-message IsCloneDoneRequestPB {
+message ListClonesRequestPB {
   optional string source_namespace_id = 1;
   optional uint32 seq_no = 2;
 }
 
-message IsCloneDoneResponsePB {
+message ListClonesResponsePB {
   optional MasterErrorPB error = 1;
-  optional bool is_done = 2;
+  repeated SysCloneStatePB entries = 2;
 }
 
 service MasterBackup {
@@ -317,5 +317,5 @@ service MasterBackup {
       returns (RestoreSnapshotScheduleResponsePB);
   rpc CloneNamespace(CloneNamespaceRequestPB)
       returns (CloneNamespaceResponsePB);
-  rpc IsCloneDone(IsCloneDoneRequestPB) returns (IsCloneDoneResponsePB);
+  rpc ListClones(ListClonesRequestPB) returns (ListClonesResponsePB);
 }

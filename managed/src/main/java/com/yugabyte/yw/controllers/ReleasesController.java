@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -32,12 +33,12 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.File;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -167,9 +168,10 @@ public class ReleasesController extends AuthenticatedController {
     } else {
       releases = Release.getAll();
     }
+    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
     List<ResponseRelease> respReleases = new ArrayList<>();
     for (Release release : releases) {
-      ResponseRelease resp = releaseToResponseRelease(release);
+      ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
       respReleases.add(resp);
     }
     return PlatformResults.withData(respReleases);
@@ -190,7 +192,8 @@ public class ReleasesController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);
-    ResponseRelease resp = releaseToResponseRelease(release);
+    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
     return PlatformResults.withData(resp);
   }
 
@@ -375,7 +378,8 @@ public class ReleasesController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  private ResponseRelease releaseToResponseRelease(Release release) {
+  private ResponseRelease releaseToResponseRelease(
+      Release release, Map<String, List<Universe>> versionUniversesMap) {
     ResponseRelease resp = new ResponseRelease();
     resp.release_uuid = release.getReleaseUUID();
     resp.version = release.getVersion();
@@ -395,7 +399,7 @@ public class ReleasesController extends AuthenticatedController {
       if (artifact.getPackageFileID() != null) {
         respArtifact.package_file_id = artifact.getPackageFileID();
         ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
-        respArtifact.file_name = new File(rlf.getLocalFilePath()).getName();
+        respArtifact.file_name = rlf.getLocalFilePath();
       } else {
         respArtifact.package_url = artifact.getPackageURL();
       }
@@ -403,7 +407,7 @@ public class ReleasesController extends AuthenticatedController {
     }
 
     resp.universes =
-        release.getUniverses().stream()
+        versionUniversesMap.getOrDefault(release.getVersion(), new ArrayList<Universe>()).stream()
             .map(
                 u ->
                     new ResponseRelease.Universe(

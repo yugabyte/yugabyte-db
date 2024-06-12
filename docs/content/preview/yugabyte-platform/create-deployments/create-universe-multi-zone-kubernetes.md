@@ -55,10 +55,13 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 ### Instance Configuration
 
-Complete the **Instance Configuration** section as follows:
+Complete the **Instance Configuration** section for **TServer** and **Master** as follows:
 
-- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/kubernetes/#configure-region-and-zones)).
-- **Volume Info** - specify the number of volumes multiplied by size. The default is 1 x 100GB.
+- **Number of Cores** - specify the total number of processing cores or CPUs assigned to the TServer and Master.
+- **Memory(GiB)** - specify the memory allocation of the TServer and Master.
+- **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
+
+  ![Kubernetes Overrides](/images/yb-platform/instance-config-k8s.png)
 
 ### Security Configurations
 

@@ -51,7 +51,7 @@ import static org.yb.AssertionWrappers.*;
 //   CREATE INDEX airport_type_range_idx ON airports(name ASC, type ASC, ident ASC);
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
+public class TestPgRegressSecondaryIndexScan extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressSecondaryIndexScan.class);
 
   // Number of executions for each statement and the total run time for all executions.

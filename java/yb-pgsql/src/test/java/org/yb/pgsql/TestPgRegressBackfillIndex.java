@@ -28,7 +28,7 @@ import static org.yb.AssertionWrappers.*;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressBackfillIndex extends BasePgSQLTest {
+public class TestPgRegressBackfillIndex extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressBackfillIndex.class);
 
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =

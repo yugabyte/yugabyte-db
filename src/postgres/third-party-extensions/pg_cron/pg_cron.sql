@@ -4,9 +4,9 @@ BEGIN
       RAISE EXCEPTION 'can only create extension in database %',
                       pg_catalog.current_setting('cron.database_name')
       USING DETAIL = 'Jobs must be scheduled from the database configured in 'OPERATOR(pg_catalog.||)
-                     'cron.database_name, since the pg_cron background worker 'OPERATOR(pg_catalog.||)
+                     'ysql_cron_database_name, since the pg_cron background worker 'OPERATOR(pg_catalog.||)
                      'reads job descriptions from this database.',
-            HINT = pg_catalog.format('Add cron.database_name = ''%s'' in postgresql.conf 'OPERATOR(pg_catalog.||)
+            HINT = pg_catalog.format('Set the flag ysql_cron_database_name to ''%s'' on yb-tservers 'OPERATOR(pg_catalog.||)
                           'to use the current database.', pg_catalog.current_database());
    END IF;
 END;

@@ -76,6 +76,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.MasterDdlOuterClass;
@@ -217,6 +218,14 @@ public class XClusterConfigController extends AuthenticatedController {
     Map<String, String> sourceTableIdTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, targetTableInfoList);
+
+    if (createFormData.bootstrapParams != null
+        && createFormData.bootstrapParams.allowBootstrap
+        && !requestedTableInfoList.isEmpty()) {
+      createFormData.bootstrapParams.tables =
+          getAllBootstrapRequiredTableForXClusterRequestedTable(
+              ybService, requestedTableInfoList, createFormData.tables, sourceUniverse);
+    }
 
     xClusterBootstrappingPreChecks(
         requestedTableInfoList,
@@ -603,6 +612,18 @@ public class XClusterConfigController extends AuthenticatedController {
       sourceTableIdTargetTableIdMap =
           XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
               requestedTableInfoList, targetTableInfoList);
+
+      Set<String> tablesInReplication =
+          new HashSet<>(CollectionUtils.union(tableIds, tableIdsToAdd));
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> allTablesInReplicationInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse, tablesInReplication);
+      if (bootstrapParams != null
+          && !allTablesInReplicationInfoList.isEmpty()
+          && bootstrapParams.allowBootstrap) {
+        bootstrapParams.tables =
+            getAllBootstrapRequiredTableForXClusterRequestedTable(
+                ybService, allTablesInReplicationInfoList, tablesInReplication, sourceUniverse);
+      }
 
       // We send null as sourceTableIdTargetTableIdMap because add table does not create tables
       // on the target universe through bootstrapping, and the user is responsible to create the
@@ -1514,7 +1535,8 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> requestedTableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     if (bootstrapParams != null && bootstrapParams.tables != null) {
       // Ensure tables in bootstrapParams is a subset of requestedTableIds.
-      if (!requestedTableIds.containsAll(bootstrapParams.tables)) {
+      if (!bootstrapParams.allowBootstrap
+          && !requestedTableIds.containsAll(bootstrapParams.tables)) {
         throw new IllegalArgumentException(
             String.format(
                 "The set of tables in bootstrapParams (%s) is not a subset of "
@@ -1587,8 +1609,9 @@ public class XClusterConfigController extends AuthenticatedController {
                                             .equals(namespaceId))
                             .map(tableInfo -> tableInfo.getId().toStringUtf8())
                             .collect(Collectors.toSet());
-                    if (tableIdsInNamespace.size()
-                        != selectedTableIdsInNamespaceToBootstrap.size()) {
+                    if (!bootstrapParams.allowBootstrap
+                        && tableIdsInNamespace.size()
+                            != selectedTableIdsInNamespaceToBootstrap.size()) {
                       throw new IllegalArgumentException(
                           String.format(
                               "For YSQL tables, all the tables in a keyspace must be selected: "
@@ -1599,5 +1622,41 @@ public class XClusterConfigController extends AuthenticatedController {
                 });
       }
     }
+  }
+
+  /**
+   * This method retrieves all the tables required for bootstrapping in a cross-cluster setup. It
+   * first checks the type of the tables in the replication info list. If the table type is
+   * PGSQL_TABLE_TYPE, it groups all tables by their namespace ID and adds all table IDs in each
+   * namespace to the bootstrapping list. For YCQL tables, we add all tables in the replication info
+   * list to the bootstrapping list.
+   *
+   * @param ybService The YB client service.
+   * @param tablesInReplicationInfoList A list of all tables in the replication info list.
+   * @param tablesInReplication A set of table IDs that are already in replication.
+   * @param sourceUniverse The source universe of the cross-cluster setup.
+   * @return A set of table IDs that are required for bootstrapping.
+   */
+  public static Set<String> getAllBootstrapRequiredTableForXClusterRequestedTable(
+      YBClientService ybService,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInReplicationInfoList,
+      Set<String> tablesInReplication,
+      Universe sourceUniverse) {
+
+    Set<String> tableIdsForBootstrap = new HashSet<>(tablesInReplication);
+    CommonTypes.TableType tableType = tablesInReplicationInfoList.get(0).getTableType();
+    if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+      XClusterConfigTaskBase.groupByNamespaceId(tablesInReplicationInfoList)
+          .forEach(
+              (namespaceId, tablesInfoList) -> {
+                List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> namespaceTables =
+                    XClusterConfigTaskBase.getTableInfoListByNamespaceId(
+                        ybService, sourceUniverse, tableType, namespaceId);
+                namespaceTables.stream()
+                    .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+                    .forEach(tableIdsForBootstrap::add);
+              });
+    }
+    return tableIdsForBootstrap;
   }
 }

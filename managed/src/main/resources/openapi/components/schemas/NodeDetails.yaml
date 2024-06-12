@@ -7,7 +7,7 @@ properties:
     format: uuid
   cloud_info:
     description: 'Node information, as reported by the cloud provider'
-    $ref: ./CloudSpecificInfo.yaml
+    $ref: "./CloudSpecificInfo.yaml"
   crons_active:
     description: True if cron jobs were properly configured for this node
     type: boolean

@@ -45,7 +45,7 @@ yb_cores_dir: "{{ yb_home_dir }}/cores"
 yb_conf_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/conf"
 yb_logs_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/logs"
 yb_conf_file: "{{ yb_conf_dir }}/server.conf"
-yb_metrics_dir: "{{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
+yb_metrics_dir: "{{ yb_home_dir }}/metrics"
 systemd_option: false
 systemd_unit_dir: "/lib/systemd/system"
 yb_num_clean_cores_to_keep: "{{ yb_num_cores_to_keep | default(5) }}"

@@ -135,6 +135,10 @@ class PgDdlAtomicityTestBase : public LibPqTestBase {
   // initiate rollback on the YB-Master.
   Status RunAllDdlsWithErrorInjection(PGConn* conn);
 
+  // From all possible DDLs supported by this test, randomly select one DDL and run with
+  // error injection. The selected DDL will fail and initiate rollback on the YB-Master.
+  Status RunOneDdlWithErrorInjection(PGConn* conn);
+
   // API that can be used after 'RunAllDdls' above to wait for all the DDL verification to
   // complete.
   Status WaitForDdlVerificationAfterSuccessfulDdl(

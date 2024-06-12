@@ -3,6 +3,7 @@ title: Building applications with Hasura
 linkTitle: Application development
 description: Building applications with Hasura
 aliases:
+  - /preview/develop/graphql/hasura/
 menu:
   preview_integrations:
     identifier: hasura-1

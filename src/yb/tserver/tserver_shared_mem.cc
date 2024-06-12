@@ -449,4 +449,9 @@ SharedExchangeThread::~SharedExchangeThread() {
   thread_->Join();
 }
 
+bool TServerSharedData::IsCronLeader() const {
+  // We are the leader if we have a valid lease time that has not expired.
+  auto lease_end = cron_leader_lease_.load();
+  return lease_end.Initialized() && lease_end > MonoTime::Now();
+}
 } // namespace yb::tserver

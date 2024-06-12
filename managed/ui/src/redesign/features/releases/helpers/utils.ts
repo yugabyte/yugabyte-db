@@ -24,3 +24,6 @@ export const getDeploymentStatus = (deploymentStatus: ReleaseState) => {
   }
   return 'disabled';
 };
+
+export const MAX_RELEASE_TAG_CHAR = 10;
+export const MAX_RELEASE_VERSION_CHAR = 30;

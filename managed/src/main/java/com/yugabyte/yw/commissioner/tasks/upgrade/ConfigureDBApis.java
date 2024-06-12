@@ -122,8 +122,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // intent fetched during runtime will not be correct as universe details are not updated
           // upto this point so passing the new expected user intent as part of the
           // waitForServer(YSQL sevrver check) in params.
-          RUN_BEFORE_STOPPING
-              .builder()
+          UpgradeContext.builder()
+              .runBeforeStopping(true)
               .userIntent(userIntent)
               .communicationPorts(taskParams().communicationPorts)
               .build(),

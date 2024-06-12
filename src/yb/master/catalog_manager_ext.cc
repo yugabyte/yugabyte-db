@@ -1382,10 +1382,9 @@ Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
-  auto suitable_snapshot = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshot(
+  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshotForRestore(
       snapshot_schedule_id, read_time, LeaderTerm(), deadline));
-  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(suitable_snapshot.id()));
-  LOG(INFO) << Format("Found suitable snapshot: $0", snapshot_id);
+  LOG(INFO) << Format("Found suitable snapshot for restore: $0", snapshot_id);
 
   ListSnapshotSchedulesResponsePB resp;
   RETURN_NOT_OK(snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, &resp));

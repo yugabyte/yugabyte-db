@@ -68,9 +68,10 @@ class GarbageCollector {
   virtual void CollectGarbage(size_t required) = 0;
 };
 
-YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(AddToParent);
 YB_STRONGLY_TYPED_BOOL(CreateMetrics);
+YB_STRONGLY_TYPED_BOOL(IsRootTracker);
+YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 using ConsumptionFunctor = std::function<int64_t()>;
@@ -151,7 +152,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
              ConsumptionFunctor consumption_functor,
              std::shared_ptr<MemTracker> parent,
              AddToParent add_to_parent, CreateMetrics create_metrics,
-             const std::string& metric_name = std::string());
+             const std::string& metric_name,
+             IsRootTracker is_root_tracker);
 
   ~MemTracker();
 
@@ -438,6 +440,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // This is needed in some tests to create deterministic GC behavior.
   static void TEST_SetReleasedMemorySinceGC(int64_t bytes);
 
+  bool IsRoot() {
+    return is_root_tracker_;
+  }
+
  private:
   template<class GC>
   using GarbageCollectorsContainer = boost::container::small_vector<GC, 8>;
@@ -520,6 +526,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Concatenated with parents tracker's metric name.
   const std::string metric_name_;
+
+  const bool is_root_tracker_;
 };
 
 // An std::allocator that manipulates a MemTracker during allocation

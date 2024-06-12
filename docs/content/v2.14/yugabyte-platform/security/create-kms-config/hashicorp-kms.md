@@ -61,7 +61,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   max_lease_ttl = "8760h"
   ```
 
-  <br>Replace `127.0.0.1` with the vault web address.
+  Replace `127.0.0.1` with the vault web address.
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
@@ -75,7 +75,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault secrets enable transit
   ```
 
-  <br>For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
+  For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
 
 - Create the vault policy, as per the following sample:
 
@@ -107,11 +107,15 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault token create -no-default-policy -policy=trx
   ```
 
-  <br>You may also specify the following for your token:
+  You may also specify the following for your token:
 
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
   - `period` — If specified, the token can be infinitely renewed.
+
+  YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+
+  For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 
 ## Create a KMS configuration
 
@@ -128,9 +132,9 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Vault Address** — Enter the web address of your vault. For example, `http://127.0.0.1:8200`
     - **Secret Token** — Enter the token you obtained from the vault.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
-    - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br><br>
+    - **Mount Path** — Specify the path to the secret engine in the vault. The default value is `transit/`.
 
-    ![Create config](/images/yp/security/hashicorp-config.png)<br><br>
+    ![Create config](/images/yp/security/hashicorp-config.png)
 
 1. Click **Save**. Your new configuration should appear in the list of configurations.
 

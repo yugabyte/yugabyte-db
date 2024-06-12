@@ -14,4 +14,4 @@ properties:
     description: GFlags per availability zone uuid
     type: object
     additionalProperties:
-      $ref: ./AvailabilityZoneGFlags.yaml
+      $ref: "./AvailabilityZoneGFlags.yaml"

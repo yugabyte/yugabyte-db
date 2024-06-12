@@ -51,6 +51,7 @@ yb-voyager version
 
 The list of commands for various phases of migration are as follows:
 
+- [Assess migration](../../reference/assess-migration)
 - [Export schema](../../reference/schema-migration/export-schema/)
 - [Analyze schema](../../reference/schema-migration/analyze-schema/)
 - [Import schema](../../reference/schema-migration/import-schema/)

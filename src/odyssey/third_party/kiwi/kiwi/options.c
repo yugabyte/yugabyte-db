@@ -105,7 +105,23 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 		// now we are looking at first char of opt value
 		i = j;
 		optval_pos = i;
-		while (j + 1 < pgoptions_len && !isspace(pgoptions[j + 1])) {
+		while (j + 1 < pgoptions_len) {
+
+			// if space found, check if we really are at the end of value
+			if (isspace(pgoptions[j + 1])) {
+				int k = j + 1;
+				while (k + 1 < pgoptions_len && isspace(pgoptions[k + 1])) {
+					++k;
+				}
+
+				// start of next opt
+				if (k + 1 < pgoptions_len && pgoptions[k + 1] == '-') {
+					break;
+				}
+
+				j = k;
+				continue;
+			}
 			++j;
 		}
 		optval_len = j - i + 1;

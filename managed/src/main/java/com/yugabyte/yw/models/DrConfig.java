@@ -86,24 +86,52 @@ public class DrConfig extends Model {
       UUID sourceUniverseUUID,
       UUID targetUniverseUUID,
       Set<String> tableIds,
-      BootstrapParams bootstrapParams) {
+      BootstrapParams.BootstarpBackupParams bootstrapBackupParams) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
     drConfig.setModifyTime(new Date());
     drConfig.setState(State.Initializing);
-    drConfig.setStorageConfigUuid(bootstrapParams.backupRequestParams.storageConfigUUID);
-    drConfig.setParallelism(bootstrapParams.backupRequestParams.parallelism);
+    drConfig.setStorageConfigUuid(bootstrapBackupParams.storageConfigUUID);
+    drConfig.setParallelism(bootstrapBackupParams.parallelism);
 
     // Create a corresponding xCluster object.
     XClusterConfig xClusterConfig =
-        drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID);
+        drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn);
     xClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
     drConfig.save();
     return drConfig;
   }
 
+  // For DB scoped replication.
+  @Transactional
+  public static DrConfig create(
+      String name,
+      UUID sourceUniverseUUID,
+      UUID targetUniverseUUID,
+      BootstrapParams.BootstarpBackupParams bootstrapBackupParams,
+      Set<String> sourceNamespaceIds) {
+    DrConfig drConfig = new DrConfig();
+    drConfig.name = name;
+    drConfig.setCreateTime(new Date());
+    drConfig.setModifyTime(new Date());
+    drConfig.setState(State.Initializing);
+    drConfig.setStorageConfigUuid(bootstrapBackupParams.storageConfigUUID);
+    drConfig.setParallelism(bootstrapBackupParams.parallelism);
+
+    XClusterConfig xClusterConfig =
+        drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Db);
+    xClusterConfig.updateNamespaces(sourceNamespaceIds);
+    drConfig.save();
+    return drConfig;
+  }
+
   public XClusterConfig addXClusterConfig(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+    return addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn);
+  }
+
+  public XClusterConfig addXClusterConfig(
+      UUID sourceUniverseUUID, UUID targetUniverseUUID, ConfigType type) {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(
             this.getNewXClusterConfigName(sourceUniverseUUID, targetUniverseUUID),
@@ -115,8 +143,8 @@ public class DrConfig extends Model {
     this.xClusterConfigs.add(xClusterConfig);
     // Dr only supports ysql tables.
     xClusterConfig.setTableType(TableType.YSQL);
-    // Dr is only based on transactional replication.
-    xClusterConfig.setType(ConfigType.Txn);
+    // Dr is only based on transactional or db scoped replication.
+    xClusterConfig.setType(type);
     xClusterConfig.update();
     this.setModifyTime(new Date());
 

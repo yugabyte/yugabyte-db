@@ -245,6 +245,7 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
+  stateful_services/pg_cron_leader_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
   xcluster_async_executor.cc
@@ -363,7 +364,6 @@ set(YB_TEST_LINK_LIBS
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
-ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)

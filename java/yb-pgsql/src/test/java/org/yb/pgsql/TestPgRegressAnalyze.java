@@ -25,7 +25,7 @@ import com.google.common.collect.ImmutableMap;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressAnalyze extends BasePgSQLTest {
+public class TestPgRegressAnalyze extends BasePgRegressTest {
 
   private Map<String, String> commonTserverFlags = ImmutableMap.of(
       "ysql_beta_features", "1");

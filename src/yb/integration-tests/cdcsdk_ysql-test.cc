@@ -8411,5 +8411,30 @@ TEST_F(CDCSDKYsqlTest, TestTableIdAndPkInCDCRecordsOnColocatedTables) {
   TestTableIdAndPkInCDCRecords(true);
 }
 
+TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table.table_id()));
+  ASSERT_EQ(resp.tablet_checkpoint_pairs_size(), 1);
+  auto checkpoint = resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 10 WHERE key = 5"));
+
+  GetChangesResponsePB change_resp;
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(), RowMessage::BEGIN);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(1).row_message().op(), RowMessage::DDL);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage::COMMIT);
+}
+
 }  // namespace cdc
 }  // namespace yb

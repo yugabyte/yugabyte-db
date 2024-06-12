@@ -1034,7 +1034,7 @@ TEST_P(PgPackedRowTest, RestorePITRSnapshotAfterOldSchemaGC) {
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
       nullptr, YQL_DATABASE_PGSQL, kDbName,
       client::WaitSnapshot::kFalse, kInterval, kRetention));
-  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, 1, HybridTime::kMin, 10s));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
   auto schedules = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
   ASSERT_EQ(schedules.size(), 1);
 

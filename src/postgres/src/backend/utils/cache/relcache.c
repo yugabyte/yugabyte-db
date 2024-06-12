@@ -1546,7 +1546,21 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		 */
 		if (relation->rd_rel->relkind == RELKIND_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+		{
+			/*
+			 * We don't preload indexes on user-defined AM's for now. Doing so
+			 * results in an issue where we try to load the user-defined AM.
+			 * This AM's handler might not be loaded as pg_proc might not be
+			 * loaded.
+			 */
+			if (relation->rd_rel->relam >= FirstNormalObjectId)
+			{
+				--num_tuples;
+				continue;
+			}
+
 			RelationInitIndexAccessInfo(relation);
+		}
 		else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
 				 relation->rd_rel->relkind == RELKIND_SEQUENCE)
 			RelationInitTableAccessMethod(relation);
@@ -1873,6 +1887,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* Set up constraint/default info */
 	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
 	{
+		if (relation->rd_att->constr)
+			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
 
 		if (ndef > 0)            /* DEFAULTs */
@@ -5641,13 +5657,44 @@ RelationBuildLocalRelation(const char *relname,
 		 relkind == RELKIND_PARTITIONED_TABLE))
 	{
 		/*
-		 * YB NOTE: The default replica identity in case of user defined tables is
-		 * set to 'CHANGE'. In all other cases the default behaviour of PG
-		 * is used, i.e. 'DEFAULT' for relations in information_schema and
-		 * 'NOTHING' for tables in pg_catalog and for non-table objects
+		 * YB NOTE: The default replica identity in case of user defined tables
+		 * is set to 'CHANGE'. The flag ysql_yb_default_replica_identity can be
+		 * used to change the default replica identity at the time of table
+		 * creation for user defined tables. In all other cases the default
+		 * behaviour of PG is used, i.e. 'DEFAULT' for relations in
+		 * information_schema and 'NOTHING' for tables in pg_catalog and for
+		 * non-table objects
 		 */
 		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
-			rel->rd_rel->relreplident = YB_REPLICA_IDENTITY_CHANGE;
+		{
+			const char* replica_identity_name = yb_default_replica_identity;
+			char replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			if (strcmp(replica_identity_name, "FULL") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_FULL;
+			}
+			else if (strcmp(replica_identity_name, "DEFAULT") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_DEFAULT;
+			}
+			else if (strcmp(replica_identity_name, "NOTHING") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_NOTHING;
+			}
+			else if (strcmp(replica_identity_name, "CHANGE") == 0)
+			{
+				replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			}
+			else
+			{
+				/* 
+				 * This should never happen since we check the guc value in 
+				 * check_default_replica_identity.
+				 */
+				Assert(false);	
+			}
+			rel->rd_rel->relreplident = replica_identity;
+		}
 		else
 			rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
 	}

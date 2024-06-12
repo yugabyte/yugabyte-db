@@ -73,15 +73,26 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
       return;
     }
+    String runtimeConfigInfo =
+        "Please contact Yugabyte Support. To override"
+            + " this check (not recommended), briefly disable the runtime config "
+            + UniverseConfKeys.verifyClusterStateBeforeTask.getKey()
+            + ".";
     try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
       errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {
-      throw new RuntimeException("Failed to compare current state", e);
+      throw new RuntimeException(
+          "Unable to verify cluster consistency (CheckClusterConsistency). "
+              + runtimeConfigInfo
+              + " Encountered error: "
+              + e);
     }
     if (!errors.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Current cluster state doesn't correspond to desired state: "
+          "YBA metadata seems inconsistent with actual universe state. "
+              + runtimeConfigInfo
+              + " Error list: "
               + errors.stream().collect(Collectors.joining(",")));
     }
   }

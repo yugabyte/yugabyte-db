@@ -21,7 +21,7 @@ import (
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
-	excludeReleases bool, skipRestart bool, disableVersion bool, verbose bool, plat Platform) {
+	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
 
 	fileName := plat.backupScript()
 	err := os.Chmod(fileName, 0777)
@@ -38,8 +38,8 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 	if excludeReleases {
 		args = append(args, "--exclude_releases")
 	}
-	if skipRestart {
-		args = append(args, "--skip_restart")
+	if restart {
+		args = append(args, "--restart")
 	}
 	if disableVersion {
 		args = append(args, "--disable_version_check")
@@ -232,6 +232,7 @@ func createBackupCmd() *cobra.Command {
 	var skipRestart bool
 	var verbose bool
 	var disableVersion bool
+	var restart bool
 
 	createBackup := &cobra.Command{
 		Use:   "createBackup outputPath",
@@ -254,7 +255,7 @@ func createBackupCmd() *cobra.Command {
 
 			outputPath := args[0]
 			if plat, ok := services["yb-platform"].(Platform); ok {
-				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, skipRestart,
+				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
 													 disableVersion, verbose, plat)
 			} else {
 				log.Fatal("Could not cast service to Platform struct.")
@@ -269,7 +270,10 @@ func createBackupCmd() *cobra.Command {
 	createBackup.Flags().BoolVar(&excludeReleases, "exclude_releases", false,
 		"exclude YBDB releases from backup (default: false)")
 	createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
-		"don't restart processes during execution (default: false)")
+		"[WARNING: DEPRECATED] Flag is ignored and default behavior is to not restart. Pass in" +
+		" --restart to allow.")
+	createBackup.Flags().BoolVar(&restart, "restart", false,
+		"restart YBA and prometheus during backup creation (default: false)")
 	createBackup.Flags().BoolVar(&disableVersion, "disable_version_check", false,
 		"exclude version metadata when creating backup, (default: false)")
 	createBackup.Flags().BoolVar(&verbose, "verbose", false,

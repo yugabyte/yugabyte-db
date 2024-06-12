@@ -447,28 +447,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 
 The joining order in the first query is `/*+Leading(t1 t2 t3)*/`, whereas the joining order for the second query is `/*+Leading(t2 t3 t1)*/`. You can see that the query plan's order of execution follows the joining order specified in the parameter lists of the hint phrases.
 
-### Setting working memory
-
-You can leverage the `work_mem` setting in PostgreSQL to improve the performance of slow queries that sort, join, or aggregate large sets of table rows. For a detailed description of the implications, refer to [Tuning work_mem Setting in PostgreSQL to Speed Up Slow SQL Queries](https://andreigridnev.com/blog/2016-04-16-increase-work_mem-parameter-in-postgresql-to-make-expensive-queries-faster/).
-
-The following example shows how to enable `work_mem` as a part of a hint plan.
-
-``` sql
-set work_mem="1MB";
-
-EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-```
-
-```output
-              QUERY PLAN
---------------------------------------
- Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
-```
-
 ### Configuring the planner method
 
 Planner method configuration parameters provide a crude method of influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters:

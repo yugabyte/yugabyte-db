@@ -12,7 +12,7 @@ properties:
     description: The list of region in this cloud we want to place data in.
     type: array
     items:
-      $ref: ./PlacementRegion.yaml
+      $ref: "./PlacementRegion.yaml"
   default_region:
     description: 'UUID of default region. For universes with more AZs than RF, the default placement for user tables will be RF AZs in the default region. This is commonly encountered in geo-partitioning use cases.'
     type: string
