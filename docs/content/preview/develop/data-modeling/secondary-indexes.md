@@ -11,6 +11,7 @@ menu:
 type: docs
 ---
 
+{{<api-tabs>}}
 
 The primary goal of an index is to enhance the performance of data retrieval operations on the data in the tables. Indexes are designed to quickly locate data without having to search every row in a database table and provide fast access for patterns other than that of the primary key of the table. In YugabyteDB, indexes are internally designed just like tables and operate as such. The main difference between a table and an index is that the primary key of the table has to be unique but it need not be unique for an index.
 

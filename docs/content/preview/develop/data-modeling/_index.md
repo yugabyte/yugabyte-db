@@ -63,11 +63,3 @@ When the data in tables keep growing, you can partition the tables for better pe
 {{<lead link="./partitioning">}}
 To understand partitioning in YugabyteDB, see [Table partitioning](./partitioning).
 {{</lead>}}
-
-## Data modeling in YCQL
-
-YCQL is YugabyteDB's Cassandra-like interface. Tables are organized into Keyspaces (similar to namespaces in SQL).
-
-{{<lead link="./data-modeling-ycql">}}
-To understand how model your data for YCQL, see [YCQL - Data modeling](./data-modeling-ycql).
-{{</lead>}}
