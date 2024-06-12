@@ -48,7 +48,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
+If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
 ### Create the SportsDB database
 
