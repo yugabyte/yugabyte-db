@@ -46,7 +46,7 @@ const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexi
   return <Box className={className}>{complexity || "N/A"}</Box>;
 };
 
-interface MigrationPlanAssessProps {
+interface MigrationAssessmentProps {
   heading: string;
   migration: Migration;
   step: number;
@@ -54,7 +54,7 @@ interface MigrationPlanAssessProps {
   isFetching?: boolean;
 }
 
-export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
+export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   heading,
   migration,
   onRefetch,
