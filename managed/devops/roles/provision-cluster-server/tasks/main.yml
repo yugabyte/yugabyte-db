@@ -127,7 +127,9 @@
     mode: '0711'
   become: yes
   become_method: sudo
-  when: install_node_exporter is defined and install_node_exporter|bool
+  when: (install_node_exporter is defined and install_node_exporter|bool) or
+        ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
