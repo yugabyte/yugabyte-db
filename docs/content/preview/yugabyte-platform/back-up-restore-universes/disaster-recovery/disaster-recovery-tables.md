@@ -19,17 +19,6 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
-| DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
-| :----------- | :----------- | :--- |
-| 1. CREATE TABLE | 2. CREATE TABLE | 3. Add the table to replication |
-| 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication |
-| 1. CREATE INDEX | 2. CREATE INDEX | 3. [Reconcile](#reconcile-configuration) |
-| 2. DROP INDEX   | 1. DROP INDEX   | 3. [Reconcile](#reconcile-configuration) |
-| 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
-| 2. ALTER TABLE or INDEX | 1. ALTER TABLE or INDEX | No changes needed |
-| 1. ALTER TABLE ADD CONSTRAINT UNIQUE | 2. ALTER TABLE ADD CONSTRAINT UNIQUE | 3. [Reconcile](#reconcile-configuration) |
-| 2. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 1. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 3. [Reconcile](#reconcile-configuration) |
-
 | DDL | Step 1 | Step 2 | Step 3 |
 | :-- | :----- | :----- | :----- |
 | CREATE TABLE | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
@@ -48,11 +37,9 @@ In addition, keep in mind the following:
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 
-## Best practices
-
-If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
-
 ## Tables
+
+Note: If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
 
 ### Add a table to DR
 
