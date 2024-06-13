@@ -865,6 +865,7 @@ message PgCancelTransactionResponsePB {
 }
 
 message PgActiveSessionHistoryRequestPB {
+  uint32 sample_size = 7;
   bool fetch_tserver_states = 1;
   bool fetch_flush_and_compaction_states = 2;
   bool fetch_cql_states = 3;
@@ -876,13 +877,16 @@ message PgActiveSessionHistoryRequestPB {
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
   uint32 component = 2;
+  float sample_weight = 3;
 }
 
 message PgActiveSessionHistoryResponsePB {
   AppStatusPB status = 1;
   WaitStatesPB tserver_wait_states = 2;
-  WaitStatesPB flush_and_compaction_wait_states = 3;
-  WaitStatesPB raft_log_appender_wait_states = 4;
+  // flush_and_compaction_wait_states and raft_log_appender_wait_states
+  // are included in tserver_wait_states
+  WaitStatesPB DEPRECATED_flush_and_compaction_wait_states = 3;
+  WaitStatesPB DEPRECATED_raft_log_appender_wait_states = 4;
   WaitStatesPB cql_wait_states = 5;
 }
 

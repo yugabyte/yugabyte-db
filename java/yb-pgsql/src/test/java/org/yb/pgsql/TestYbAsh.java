@@ -19,9 +19,14 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -278,6 +283,52 @@ public class TestYbAsh extends BasePgSQLTest {
           " WHERE query_id = " + catalog_request_query_id + " OR " +
           "wait_event = '" + catalog_read_wait_event + "'").getLong(0).intValue();
       assertGreaterThan(res1, 0);
+    }
+  }
+
+  /**
+   * Test that we don't capture more than 'ysql_yb_ash_sample_size' number of samples
+   */
+  @Test
+  public void testSampleSize() throws Exception {
+    final int sample_size = 3;
+    setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, sample_size);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+    }
+    final int NUM_THREADS = 5;
+    final int NUM_INSERTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    List<Future<?>> futures = new ArrayList<>();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      Future<?> future = ecs.submit(() -> {
+        try (Statement statement = connection.createStatement()) {
+          for (int j = 0; j < NUM_INSERTS_PER_THREAD; ++j) {
+            statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')",
+                threadIndex, j));
+          }
+        } catch (Exception e) {
+          fail(e.getMessage());
+        }
+      });
+      futures.add(future);
+    }
+    for (Future<?> future : futures) {
+      future.get();
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    try (Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT sample_time, wait_event_component, " +
+          "count(*) FROM " + ASH_VIEW + " GROUP BY sample_time, wait_event_component");
+      while (rs.next()) {
+        assertLessThanOrEqualTo(rs.getLong("count"), Long.valueOf(sample_size));
+      }
+      rs = statement.executeQuery("SELECT sample_weight FROM " + ASH_VIEW);
+      while (rs.next()) {
+        assertGreaterThanOrEqualTo(rs.getDouble("sample_weight"), Double.valueOf(1.0));
+      }
     }
   }
 }

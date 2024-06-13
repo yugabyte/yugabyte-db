@@ -305,16 +305,6 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
-    "Size (in KiBs) of ASH circular buffer that stores the samples");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
-    "Time (in milliseconds) between two consecutive sampling events");
-DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
-    "Number of samples captured from each component per sampling event");
-
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
     "Database in which pg_cron metadata is kept.");
 

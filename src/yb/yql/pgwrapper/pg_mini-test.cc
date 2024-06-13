@@ -122,6 +122,7 @@ DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
 DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -455,18 +456,19 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
   req.set_fetch_tserver_states(true);
   req.set_fetch_flush_and_compaction_states(true);
   req.set_fetch_cql_states(true);
+  req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
   tserver::PgActiveSessionHistoryResponsePB resp;
   rpc::RpcController controller;
   std::unordered_map<std::string, size_t> method_counts;
   int calls_without_aux_info_details = 0;
   for (int i = 0; i < kNumCalls; ++i) {
     ASSERT_OK(pg_proxy->ActiveSessionHistory(req, &resp, &controller));
-    VLOG(1) << "Call " << i << " got " << yb::ToString(resp);
+    VLOG(0) << "Call " << i << " got " << yb::ToString(resp);
     controller.Reset();
     SleepFor(10ms);
     int idx = 0;
     for (auto& entry : resp.tserver_wait_states().wait_states()) {
-      VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
+      VLOG(0) << "Entry " << ++idx << " : " << yb::ToString(entry);
       if (entry.has_aux_info() && entry.aux_info().has_method()) {
         ++method_counts[entry.aux_info().method()];
       } else {
