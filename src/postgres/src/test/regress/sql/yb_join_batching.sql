@@ -515,6 +515,15 @@ a = int4table.a;
 drop table oidtable;
 drop table int4table;
 
+CREATE TABLE p_inner(a int, b text, PRIMARY KEY(b asc, a asc));
+CREATE TABLE p_outer(a bigint, b text);
+INSERT INTO p_outer VALUES (0, '1');
+INSERT INTO p_inner VALUES (0, '1');
+EXPLAIN (COSTS OFF) SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
+SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
+DROP TABLE p_inner;
+DROP TABLE p_outer;
+
 create table ss1(a int);
 create table ss2(a int);
 create table ss3(a int, b int, primary key(a asc, b asc));
