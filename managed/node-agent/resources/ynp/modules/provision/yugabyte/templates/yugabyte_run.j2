@@ -38,7 +38,3 @@ if [ -z {{ public_key_filepath }} ]; then
         exit 1
     fi
 fi
-
-# Enable linger for yb_user
-su - {{ yb_user }} loginctl enable-linger yugabyte
-su - {{ yb_user }} export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})
