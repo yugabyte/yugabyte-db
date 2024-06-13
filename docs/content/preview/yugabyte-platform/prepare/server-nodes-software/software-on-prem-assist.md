@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-{{<tip title="v2.20 and earlier">}}
+{{<tip title="For v2.20 and earlier">}}
 For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 {{</tip>}}
 
