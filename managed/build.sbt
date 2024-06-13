@@ -545,11 +545,21 @@ openApiBundle := {
 }
 
 lazy val openApiFormat = taskKey[Unit]("Format openapi files")
+openApiFormat / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiFormat := {
-  val rc = Process("./openapi_format.sh", baseDirectory.value / "scripts").!
-  if (rc != 0) {
-    throw new RuntimeException("openapi format failed!!!")
+  import java.nio.file.Path
+  def formatFile(file: Path): Unit = {
+    ybLog(s"formatting api file $file")
+    val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
+    if (rc != 0) {
+      throw new RuntimeException("openapi format failed!!!")
+    }
   }
+  val changes = openApiFormat.inputFileChanges
+  val changedFiles = (changes.created ++ changes.modified).toSet
+  changedFiles.foreach(formatFile)
+
 }
 
 lazy val openApiLint = taskKey[Unit]("Running lint on openapi spec")
