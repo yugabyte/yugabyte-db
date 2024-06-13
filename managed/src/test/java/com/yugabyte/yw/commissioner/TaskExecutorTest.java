@@ -721,4 +721,120 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     JsonNode taskParams = taskInfo.getTaskParams();
     assertEquals(params, taskParams);
   }
+
+  @Test
+  public void testHandleCompletionFailure() {
+    ITask task = mockTaskCommon(false);
+    ITask subTask1 = mockTaskCommon(false);
+    ITask subTask2 = mockTaskCommon(false);
+    doThrow(RuntimeException.class).when(subTask1).run();
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup1 = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup1.addSubTask(subTask1);
+              runnable.addSubTaskGroup(subTasksGroup1);
+              subTasksGroup1.setAfterRunHandler(
+                  (t, th) -> {
+                    assertTrue(t != null);
+                    assertTrue(th != null);
+                    // Propagate the error to fail the task.
+                    return th;
+                  });
+              SubTaskGroup subTasksGroup2 = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup2.addSubTask(subTask2);
+              runnable.addSubTaskGroup(subTasksGroup2);
+              subTasksGroup2.setAfterRunHandler(
+                  (t, th) -> {
+                    assertTrue(t != null);
+                    assertTrue(th != null);
+                    // Ignore error by returning null.
+                    return null;
+                  });
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    taskUUIDRef.set(taskRunner.getTaskUUID());
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
+    verify(subTask1, times(1)).run();
+    verify(subTask2, times(0)).run();
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(2, subTasksByPosition.size());
+    List<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertEquals(TaskInfo.State.Failure, subTaskStates.get(0));
+    subTaskStates =
+        subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertTrue(subTaskStates.contains(TaskInfo.State.Created));
+  }
+
+  @Test
+  public void testHandleCompletionSuccess() {
+    ITask task = mockTaskCommon(false);
+    ITask subTask1 = mockTaskCommon(false);
+    ITask subTask2 = mockTaskCommon(false);
+    doThrow(RuntimeException.class).when(subTask1).run();
+    doThrow(RuntimeException.class).when(subTask2).run();
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup1 = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup1.addSubTask(subTask1);
+              runnable.addSubTaskGroup(subTasksGroup1);
+              subTasksGroup1.setAfterRunHandler(
+                  (t, th) -> {
+                    assertTrue(t != null);
+                    assertTrue(th != null);
+                    // Ignore error by returning null.
+                    return null;
+                  });
+              SubTaskGroup subTasksGroup2 = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup2.addSubTask(subTask2);
+              runnable.addSubTaskGroup(subTasksGroup2);
+              // Do not run it.
+              subTasksGroup2.setAfterRunHandler(
+                  (t, th) -> {
+                    assertTrue(t != null);
+                    assertTrue(th != null);
+                    // Ignore error by returning null.
+                    return null;
+                  });
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    taskUUIDRef.set(taskRunner.getTaskUUID());
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
+    verify(subTask1, times(1)).run();
+    verify(subTask2, times(1)).run();
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(2, subTasksByPosition.size());
+    List<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertEquals(TaskInfo.State.Success, subTaskStates.get(0));
+    subTaskStates =
+        subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertTrue(subTaskStates.contains(TaskInfo.State.Success));
+  }
 }
