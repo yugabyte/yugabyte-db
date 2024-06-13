@@ -1,4 +1,10 @@
-title: Edit Universe Spec
+title: UniverseEditSpec
+description: |
+  UniverseEditSpec
+
+  Request payload to edit an existing Universe.
+  Not all properties of a UniverseSpec can be updated.
+  This is a partial update. Only the fields that are provided will be updated.
 type: object
 required:
   - clusters
@@ -7,7 +13,7 @@ properties:
   clusters:
     type: array
     items:
-      $ref: "./ClusterEditSpec.yaml"
+      $ref: ./ClusterEditSpec.yaml
     maxItems: 16
     minItems: 1
   expected_universe_version:

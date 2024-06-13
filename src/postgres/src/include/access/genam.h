@@ -170,7 +170,8 @@ extern ItemPointer index_getnext_tid(IndexScanDesc scan,
 extern HeapTuple index_fetch_heap(IndexScanDesc scan);
 extern HeapTuple index_getnext(IndexScanDesc scan, ScanDirection direction);
 extern int64 index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap);
-extern int64 yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *bitmap);
+extern int64 yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *bitmap,
+								bool recheck);
 
 extern IndexBulkDeleteResult *index_bulk_delete(IndexVacuumInfo *info,
 				  IndexBulkDeleteResult *stats,

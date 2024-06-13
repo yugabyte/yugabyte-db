@@ -330,7 +330,7 @@ A database normally obtains its date and time from the underlying server. Howeve
 
 For a detailed explanation of how time is obtained, refer to the blog post describing the [architecture of the storage layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
 
-A simpler explanation is that the time is determined by the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
+A simpler explanation is that the [time](../../../architecture/docdb-replication/raft#replication-of-the-write-operation) is determined by the [tablet leader](../../../architecture/key-concepts/#tablet-leader) of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
 
 The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/):
 

@@ -1,4 +1,8 @@
-title: Data Placement Specification for the cluster
+title: ClusterPlacementSpec
+description: |
+  Data Placement Specification for the cluster. Part of ClusterSpec.
+
+  Note that this is optional to configure. YugabyteDB Anywhere will automatically place the data based on the available resources. If this data placement is configured, then YugabyteDB Anywhere will use this as a "hint" and the data will be placed based on this configuration on a best-effort basis.
 type: object
 required:
   - cloud_list
@@ -6,4 +10,4 @@ properties:
   cloud_list:
     type: array
     items:
-      $ref: "./PlacementCloud.yaml"
+      $ref: ./PlacementCloud.yaml

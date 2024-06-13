@@ -1,6 +1,6 @@
 ---
 title: Data types in YCQL
-headerTitle: Data types
+headerTitle: Data types in YCQL
 linkTitle: Data types
 description: Learn about the data types in YCQL.
 menu:
@@ -19,7 +19,7 @@ This topic lists the various data types available in YugabyteDB's [Cassandra-com
 
 There are a number of different serialization formats for JSON data, one of the popular formats being JSONB (JSON Better) to efficiently model document data.
 
-The YCQL API supports the [JSONB data type](../../../api/ycql/type_jsonb/) to parse, store, and query JSON documents natively. This data type is similar in query language syntax and functionality to the one supported by PostgreSQL. JSONB serialization allows for easy search and retrieval of attributes inside the document. This is achieved by storing all the JSON attributes in a sorted order, which allows for efficient binary search of keys. Similarly, arrays are stored such that random access for a particular array index into the serialized JSON document is possible. In addition, [DocDB](../../../architecture/docdb/persistence/), YugabyteDB's underlying storage engine, is document-oriented, which makes storing JSON data simpler than would otherwise be possible.
+The YCQL API supports the [JSONB data type](../../../api/ycql/type_jsonb/) to parse, store, and query JSON documents natively. This data type is similar in query language syntax and functionality to the one supported by PostgreSQL. JSONB serialization allows for easy search and retrieval of attributes inside the document. This is achieved by storing all the JSON attributes in a sorted order, which allows for efficient binary search of keys. Similarly, arrays are stored such that random access for a particular array index into the serialized JSON document is possible. In addition, [DocDB](../../../architecture/docdb/), YugabyteDB's underlying storage engine, is document-oriented, which makes storing JSON data simpler than would otherwise be possible.
 
 Consider the example of an ecommerce application for an online bookstore. The database for such a bookstore needs to store details of various books, some of which may have custom attributes. The following example shows a JSON document that captures the details of a particular book, Macbeth by William Shakespeare.
 

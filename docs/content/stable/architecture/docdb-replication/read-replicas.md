@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: architecture-docdb-replication-read-replicas
     parent: architecture-docdb-replication
-    weight: 1155
+    weight: 400
 type: docs
 ---
 
@@ -35,3 +35,7 @@ Because read replicas are a Raft replication-level extension, the schema changes
 ## Read replicas vs. eventual consistency
 
 The read-only node (or timeline-consistent node) is still strictly better than eventual consistency, because with the latter the application's view of the data can move back and forth in time and is hard to program.
+
+## Learn more
+
+- [Setup read replicas](../../../explore/multi-region-deployments/read-replicas-ysql)

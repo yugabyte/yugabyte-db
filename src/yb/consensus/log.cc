@@ -449,7 +449,7 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(wait_state_);
   }
   DCHECK(log_min_segments_to_retain_validator_registered);
 }
@@ -565,7 +565,7 @@ void Log::Appender::Shutdown() {
     task_stream_.reset();
   }
   if (wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Untrack(wait_state_);
   }
 }
 
@@ -675,7 +675,7 @@ Log::Log(
     background_synchronizer_wait_state_->UpdateAuxInfo(
         {.tablet_id = tablet_id_, .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(background_synchronizer_wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
 }
 
@@ -1642,7 +1642,7 @@ Status Log::Close() {
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
       if (background_synchronizer_wait_state_) {
-        yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+        yb::ash::RaftLogWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
       }
       VLOG_WITH_PREFIX(1) << "Log closed";
 

@@ -32,6 +32,8 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
@@ -101,6 +103,11 @@ void YBBackupTest::SetUp() {
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util_->SetProxy(&client_->proxy_cache());
   snapshot_util_->SetCluster(cluster_.get());
+
+  // Start Yb Controllers for backup/restore.
+  if (UseYbController()) {
+    CHECK_OK(cluster_->StartYbControllerServers());
+  }
 }
 
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {

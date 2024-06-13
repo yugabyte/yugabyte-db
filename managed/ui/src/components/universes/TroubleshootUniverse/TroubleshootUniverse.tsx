@@ -1,22 +1,32 @@
+import { useState } from 'react';
+import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
+import { Box, makeStyles } from '@material-ui/core';
 import {
   TroubleshootAdvisor,
   TroubleshootAPI,
   QUERY_KEY,
   AttachUniverse
 } from '@yugabytedb/troubleshoot-ui';
-import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
-import { useQuery } from 'react-query';
-import { useState } from 'react';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { Box, makeStyles } from '@material-ui/core';
-import { useSelector } from 'react-redux';
-import { api, QUERY_KEY as TOKEN_KEY } from '../../../redesign/utils/api';
-import { IN_DEVELOPMENT_MODE, ROOT_URL } from '../../../config';
+import { YBPanelItem } from '../../panels';
+import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
+import { toast } from 'react-toastify';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+
+const STATUS = {
+  SUCCESS: 'success',
+  ERROR: 'error'
+};
 
 interface TroubleshootUniverseProps {
   universeUuid: string;
   appName: AppName;
   timezone: string;
+  apiUrl: string;
+  platformUrl: string;
+  metricsUrl: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -28,16 +38,17 @@ const useStyles = makeStyles((theme) => ({
 export const TroubleshootUniverse = ({
   universeUuid,
   appName,
-  timezone
+  timezone,
+  apiUrl,
+  platformUrl,
+  metricsUrl
 }: TroubleshootUniverseProps) => {
   const helperClasses = useStyles();
-  const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
-  const baseUrl = ROOT_URL.split('/api/');
   const { currentCustomer } = useSelector((state: any) => state.customer);
+  const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
 
-  const sessionInfo = useQuery(TOKEN_KEY.getSessionInfo, () => api.getSessionInfo());
   const troubleshootingUniverseMetadata = useQuery(QUERY_KEY.fetchUniverseMetadataList, () =>
-    TroubleshootAPI.fetchUniverseMetadataList()
+    TroubleshootAPI.fetchUniverseMetadataList(apiUrl, currentCustomer.data.uuid)
   );
 
   if (troubleshootingUniverseMetadata.isError) {
@@ -54,39 +65,54 @@ export const TroubleshootUniverse = ({
     (metadata) => metadata.id === universeUuid
   );
 
-  const onAttachUniverseButtonClick = () => {
-    troubleshootingUniverseMetadata.refetch();
-    setShowAttachUniverseDialog(true);
-  };
-
   const onAttachUniverseDialogClose = () => {
     troubleshootingUniverseMetadata.refetch();
     setShowAttachUniverseDialog(false);
   };
 
   const onAttachUniverse = () => {
-    onAttachUniverseButtonClick();
+    troubleshootingUniverseMetadata.refetch();
+    setShowAttachUniverseDialog(true);
   };
 
-  return currentUniverseMetadata ? (
-    <TroubleshootAdvisor universeUuid={universeUuid} appName={appName} timezone={timezone} />
+  const onUpdateMetadata = (status: string) => {
+    if (status === STATUS.SUCCESS) {
+      toast.success('Universe is successfully added to troubleshooting service');
+    } else {
+      toast.error('Unable to add universe to troubleshooting service');
+    }
+  };
+
+  return isNonEmptyObject(currentUniverseMetadata) ? (
+    <TroubleshootAdvisor
+      universeUuid={universeUuid}
+      appName={appName}
+      timezone={timezone}
+      apiUrl={apiUrl}
+    />
   ) : (
-    <Box>
-      {'Universe is currently not registered to the troubleshooting service,'}
-      <a onClick={onAttachUniverse} className={helperClasses.register}>
-        {' please register here'}
-      </a>
-      {showAttachUniverseDialog && (
-        <AttachUniverse
-          universeUuid={universeUuid}
-          customerUuid={currentCustomer.data.uuid}
-          baseUrl={baseUrl[0]}
-          apiToken={sessionInfo?.data?.apiToken}
-          open={showAttachUniverseDialog}
-          onClose={onAttachUniverseDialogClose}
-          isDevMode={IN_DEVELOPMENT_MODE}
-        />
-      )}
-    </Box>
+    <YBPanelItem
+      body={
+        <Box>
+          {'Universe is currently not registered to the troubleshooting service, '}
+          <a onClick={onAttachUniverse} className={helperClasses.register}>
+            {' please register here'}
+          </a>
+          {showAttachUniverseDialog && (
+            <AttachUniverse
+              universeUuid={universeUuid}
+              customerUuid={currentCustomer.data.uuid}
+              platformUrl={platformUrl}
+              apiUrl={apiUrl}
+              metricsUrl={metricsUrl}
+              open={showAttachUniverseDialog}
+              onUpdateMetadata={onUpdateMetadata}
+              onClose={onAttachUniverseDialogClose}
+              isDevMode={IN_DEVELOPMENT_MODE}
+            />
+          )}
+        </Box>
+      }
+    />
   );
 };

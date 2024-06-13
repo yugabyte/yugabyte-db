@@ -32,7 +32,7 @@ Review the following information before starting an upgrade.
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](../../releases/).
+    To view and download releases, refer to [Releases](/preview/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
@@ -212,8 +212,8 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< warning title="Important" >}}
 
-- Roll back is {{<badge/ea>}}.
-- Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 or higher.
+- Roll back is {{<badge/ea>}} in v2.20.3.0 and {{<badge/ga>}} in v2024.1.0 and higher.
+- Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 - You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 

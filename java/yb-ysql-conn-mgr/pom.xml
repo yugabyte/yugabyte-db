@@ -22,35 +22,35 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.86-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   </parent>
   <artifactId>yb-ysql-conn-mgr</artifactId>
   <name>Ysql Connection Manager Tests </name>
-    <version>0.8.86-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   <dependencies>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-pgsql</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-pgsql</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
@@ -58,6 +58,12 @@
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-core_2.12</artifactId>
       <version>3.3.1</version>
+      <exclusions>
+        <exclusion>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j-impl</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>

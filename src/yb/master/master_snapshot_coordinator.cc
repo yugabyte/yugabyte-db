@@ -41,6 +41,7 @@
 #include "yb/master/snapshot_state.h"
 #include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/tablet_split_manager.h"
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/scheduler.h"
@@ -68,8 +69,8 @@ using namespace std::placeholders;
 DECLARE_int32(sys_catalog_write_timeout_ms);
 DECLARE_bool(enable_fast_pitr);
 
-DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
-              "Poll interval for snapshot coordinator in milliseconds.");
+DEFINE_NON_RUNTIME_uint64(snapshot_coordinator_poll_interval_ms, 5000,
+                          "Poll interval for snapshot coordinator in milliseconds.");
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
@@ -190,8 +191,11 @@ std::vector<SnapshotScheduleId> GetSchedulesForTable(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context, CatalogManager* cm)
-      : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
+  Impl(
+      SnapshotCoordinatorContext* context, CatalogManager* cm,
+      TabletSplitManager& tablet_split_manager)
+      : context_(*context), cm_(cm), tablet_split_manager_(tablet_split_manager),
+        poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
@@ -1013,7 +1017,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Result<bool> TableMatchesSchedule(
-      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id) {
+      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id)
+      const {
     for (const auto& table_identifier : table_identifiers.tables()) {
       if (VERIFY_RESULT(TableMatchesIdentifier(id, pb, table_identifier))) {
         return true;
@@ -1022,7 +1027,7 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
-  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const {
     auto lock = table_info.LockForRead();
     {
       std::lock_guard l(mutex_);
@@ -1864,7 +1869,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      context_.ReenableTabletSplitting(kPitrFeatureName);
+      tablet_split_manager_.ReenableSplittingFor(kPitrFeatureName);
     }
   }
 
@@ -2085,6 +2090,7 @@ class MasterSnapshotCoordinator::Impl {
 
   SnapshotCoordinatorContext& context_;
   CatalogManager* cm_;
+  TabletSplitManager& tablet_split_manager_;
 
   // Guards the maps below and their members. Members should not be accessed without holding the
   // mutex to avoid data races, though this is currently unenforced.
@@ -2232,8 +2238,9 @@ void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
 }
 
 MasterSnapshotCoordinator::MasterSnapshotCoordinator(
-    SnapshotCoordinatorContext* context, CatalogManager* cm)
-    : impl_(new Impl(context, cm)) {}
+    SnapshotCoordinatorContext* context, CatalogManager* cm,
+    TabletSplitManager& tablet_split_manager)
+    : impl_(new Impl(context, cm, tablet_split_manager)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
@@ -2356,7 +2363,7 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::GetSuitableSnapshotForRestore(
 }
 
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(
-    const TableInfo& table_info) {
+    const TableInfo& table_info) const {
   return impl_->IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 

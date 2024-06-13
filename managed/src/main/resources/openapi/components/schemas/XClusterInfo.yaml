@@ -1,4 +1,5 @@
-title: XCluster related states in this universe
+title: XClusterInfo
+description: XCluster related states in this universe. Part of UniverseInfo.
 type: object
 properties:
   source_root_cert_dir_path:

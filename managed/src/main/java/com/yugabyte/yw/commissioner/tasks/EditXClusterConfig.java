@@ -11,7 +11,9 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.util.Collections;
@@ -147,6 +149,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 false /* keepEntry */,
                 databaseNamesToBeDropped);
           }
+        } else if (editFormData.databases != null) { // Used for DB scoped replication only.
+          if (!xClusterConfig.getType().equals(ConfigType.Db)) {
+            throw new IllegalArgumentException(
+                "The databases must be provided only for DB scoped replication");
+          }
+          addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, editFormData.databases);
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -179,6 +187,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
         xClusterConfig.updateStatusForTables(
             tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+      }
+      if (editFormData.databases != null) {
+        // Set databases in updating status to failed.
+        Set<String> dbIds = editFormData.databases;
+        Set<String> namespacesInPendingStatus =
+            xClusterConfig.getNamespaceIdsInStatus(
+                dbIds, X_CLUSTER_NAMESPACE_CONFIG_PENDING_STATUS_LIST);
+        xClusterConfig.updateStatusForNamespaces(
+            namespacesInPendingStatus, XClusterNamespaceConfig.Status.Failed);
       }
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
@@ -355,6 +372,26 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
       }
+    }
+  }
+
+  protected void addSubtasksToAddDatabasesToXClusterConfig(
+      XClusterConfig xClusterConfig, Set<String> databases) {
+
+    for (String dbId : databases) {
+      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
+      createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
+      createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
+    }
+
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
 }

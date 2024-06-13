@@ -1,5 +1,5 @@
-title: Audit Log Configuration
-description: Audit Log Configuration Specification for the universe cluster
+title: AuditLogConfig
+description: Audit Log Configuration Specification for the Universe. Part of Clusterspec.
 required:
   - universe_logs_exporter_config
 type: object
@@ -11,10 +11,10 @@ properties:
     description: Universe logs exporter config
     type: array
     items:
-      $ref: "./UniverseLogsExporterConfig.yaml"
+      $ref: ./UniverseLogsExporterConfig.yaml
   ycql_audit_config:
     description: YCQL audit config
-    $ref: "./YCQLAuditConfig.yaml"
+    $ref: ./YCQLAuditConfig.yaml
   ysql_audit_config:
     description: YSQL audit config
-    $ref: "./YSQLAuditConfig.yaml"
+    $ref: ./YSQLAuditConfig.yaml

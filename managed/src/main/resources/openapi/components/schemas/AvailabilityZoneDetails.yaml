@@ -1,5 +1,6 @@
-title: Availability Zone Details for a cloud provider
+title: AvailabilityZoneDetails
+description: Availability Zone Details for a Cloud Provider. Part of AvailabilityZone.
 type: object
 properties:
   cloud_info:
-    $ref: "./AZCloudInfo.yaml"
+    $ref: ./AZCloudInfo.yaml

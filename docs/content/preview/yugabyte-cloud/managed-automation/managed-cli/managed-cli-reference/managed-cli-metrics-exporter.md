@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{< warning >}}
+`metrics-exporter` is deprecated. Use `integration` instead.
+{{< /warning >}}
+
 Use the `metrics-exporter` resource to create metrics export configurations for third-party tools, and assign them to clusters.
 
 ## Syntax
@@ -34,7 +38,7 @@ ybm metrics-exporter create \
 Assign the configuration to a cluster:
 
 ```sh
-ybm metrics-exporter attach \
+ybm metrics-exporter assign \
     --config-name datadog1 \
     --cluster-name my_cluster
 ```

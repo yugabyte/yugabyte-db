@@ -91,7 +91,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
-  const isNodeResizable = !isCreateMode ? universeConfigureTemplate?.nodesResizeAvailable : true;
+  const isNodeResizable = true;
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });

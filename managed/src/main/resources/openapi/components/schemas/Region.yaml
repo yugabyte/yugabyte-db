@@ -1,6 +1,6 @@
-title: Region in a cloud provider
+title: Region
 type: object
-description: 'Region within a given provider. Typically, this maps to a single cloud provider region.'
+description: Describes a single Cloud Provider region.
 required:
   - zones
 properties:
@@ -35,8 +35,8 @@ properties:
     example: -120.01
     readOnly: true
   details:
-    $ref: "./RegionDetails.yaml"
+    $ref: ./RegionDetails.yaml
   zones:
     type: array
     items:
-      $ref: "./AvailabilityZone.yaml"
+      $ref: ./AvailabilityZone.yaml

@@ -78,6 +78,8 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (RepairOutboundXClusterReplicationGroupRemoveTable)
       (GetXClusterOutboundReplicationGroups)
       (GetXClusterOutboundReplicationGroupInfo)
+      (GetUniverseReplications)
+      (GetUniverseReplicationInfo)
   )
 };
 

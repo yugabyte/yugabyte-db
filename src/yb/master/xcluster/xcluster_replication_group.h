@@ -98,5 +98,8 @@ Status ValidateTableListForDbScopedReplication(
     UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
     const std::set<TableId>& replicated_table_ids, const CatalogManager& catalog_manager);
 
+// Returns true if the namespace is part of the DB Scoped replication group.
+bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
 }  // namespace master
 }  // namespace yb

@@ -471,7 +471,10 @@ class PgClientServiceImpl::Impl {
   Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     if (req.invalidate_cache_time_us()) {
-      table_cache_.InvalidateAll(CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
+      const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
+      std::unordered_set<uint32_t> db_oids_updated = { db_oid };
+      table_cache_.InvalidateDbTables(db_oids_updated, {} /* db_oids_deleted */,
+          CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
     }
     if (req.reopen()) {
       table_cache_.Invalidate(req.table_id());
@@ -1436,12 +1439,18 @@ class PgClientServiceImpl::Impl {
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        if (local_uuid) {
-          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
-        }
-        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
+      if (!wait_state_ptr) {
+        continue;
       }
+      WaitStateInfoPB wait_state_pb;
+      wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
+      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+        continue;
+      }
+      if (local_uuid) {
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_yql_endpoint_tserver_uuid());
+      }
+      resp->add_wait_states()->CopyFrom(wait_state_pb);
     }
     VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
@@ -1462,7 +1471,7 @@ class PgClientServiceImpl::Impl {
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          ash::RaftLogWaitStatesTracker(), req.export_wait_state_code_as_string(),
           resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
@@ -1522,6 +1531,12 @@ class PgClientServiceImpl::Impl {
 
   void InvalidateTableCache() {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
+  }
+
+  void InvalidateTableCache(
+      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_set<uint32_t>& db_oids_deleted) {
+    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted, CoarseMonoClock::Now());
   }
 
   // Return the TabletServer hosting the specified status tablet.
@@ -1906,6 +1921,12 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+void PgClientServiceImpl::InvalidateTableCache(
+    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_set<uint32_t>& db_oids_deleted) {
+  impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {

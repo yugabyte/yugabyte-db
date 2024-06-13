@@ -129,8 +129,8 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
-      yql_endpoint_tserver_uuid, root_request_id, query_id, session_id, rpc_request_id,
-      client_host_port);
+      yql_endpoint_tserver_uuid, root_request_id, query_id, session_id, database_id,
+      rpc_request_id, client_host_port);
 }
 
 std::string AshAuxInfo::ToString() const {
@@ -455,7 +455,7 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker() {
   return flush_and_compaction_wait_states_tracker;
 }
 
-WaitStateTracker& RaftLogAppenderWaitStatesTracker() {
+WaitStateTracker& RaftLogWaitStatesTracker() {
   return raft_log_appender_wait_states_tracker;
 }
 

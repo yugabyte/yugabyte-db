@@ -11,13 +11,13 @@
 // under the License.
 //
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
@@ -108,6 +108,28 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+
+  // Verify the groups shows up in GetUniverseReplications and GetUniverseReplicationInfo client
+  // APIs.
+  auto target_xcluster_client = client::XClusterClient(*consumer_client());
+  auto replication_groups = ASSERT_RESULT(target_xcluster_client.GetUniverseReplications(""));
+  ASSERT_EQ(replication_groups.size(), 1);
+  ASSERT_EQ(replication_groups.front(), kReplicationGroupId);
+  replication_groups = ASSERT_RESULT(
+      target_xcluster_client.GetUniverseReplications(producer_table_->name().namespace_id()));
+  ASSERT_EQ(replication_groups.size(), 1);
+  ASSERT_EQ(replication_groups.front(), kReplicationGroupId);
+  auto replication_info =
+      ASSERT_RESULT(target_xcluster_client.GetUniverseReplicationInfo(kReplicationGroupId));
+  ASSERT_EQ(replication_info.replication_type, XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED);
+  ASSERT_EQ(replication_info.db_scope_namespace_id_map.size(), 1);
+  const auto& source_namespace_id = producer_table_->name().namespace_id();
+  ASSERT_TRUE(replication_info.db_scope_namespace_id_map.contains(source_namespace_id));
+  const auto& target_namespace_id = consumer_table_->name().namespace_id();
+  ASSERT_EQ(replication_info.db_scope_namespace_id_map[source_namespace_id], target_namespace_id);
+  ASSERT_EQ(replication_info.table_infos.size(), 1);
+  ASSERT_EQ(replication_info.table_infos[0].source_table_id, producer_table_->id());
+  ASSERT_EQ(replication_info.table_infos[0].target_table_id, consumer_table_->id());
 
   ASSERT_OK(InsertRowsInProducer(50, 100));
 
@@ -742,6 +764,24 @@ TEST_F_EX(XClusterDBScopedTest, TestYbAdmin, XClusterDBScopedTestWithTwoDBs) {
   ASSERT_STR_CONTAINS(result, producer_table_->id());
   ASSERT_STR_NOT_CONTAINS(result, source_namespace2_id_);
   ASSERT_STR_NOT_CONTAINS(result, source_namespace2_table_->id());
+
+  // Test target side commands.
+  const auto target_namespace_id = consumer_table_->name().namespace_id();
+  result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "na"));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace2_id_));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "list_universe_replications", target_namespace_id));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  result = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "get_universe_replication_info", kReplicationGroupId.ToString()));
+  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_DB_SCOPED));
+  ASSERT_STR_CONTAINS(result, namespace_name);
+  ASSERT_STR_CONTAINS(result, target_namespace_id);
+  ASSERT_STR_CONTAINS(result, source_namespace_id);
+  ASSERT_STR_NOT_CONTAINS(result, target_namespace2_id_);
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 

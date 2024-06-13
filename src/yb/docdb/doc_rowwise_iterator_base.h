@@ -110,7 +110,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) = 0;
 
   virtual void Seek(Slice key) = 0;
-  virtual void PrevDocKey(Slice key) = 0;
+  virtual void SeekPrevDocKey(Slice key) = 0;
 
   void CheckInitOnce();
 

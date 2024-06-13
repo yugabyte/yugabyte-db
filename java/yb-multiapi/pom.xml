@@ -9,7 +9,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.86-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-multiapi</artifactId>
@@ -19,14 +19,14 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.86-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>

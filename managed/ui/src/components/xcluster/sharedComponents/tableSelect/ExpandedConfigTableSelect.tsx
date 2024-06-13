@@ -12,7 +12,7 @@ import { XClusterTableStatus } from '../../constants';
 import { formatBytes, tableSort } from '../../ReplicationUtils';
 import { XClusterTableStatusLabel } from '../../XClusterTableStatusLabel';
 import { SortOrder } from '../../../../redesign/helpers/constants';
-import { getTableName, getTableUuid } from '../../../../utils/tableUtils';
+import { getTableName } from '../../../../utils/tableUtils';
 
 import { XClusterTableType } from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
@@ -27,7 +27,6 @@ interface ExpandedConfigTableSelectProps {
   tables: XClusterTable[];
   selectedTableUUIDs: string[];
   tableType: XClusterTableType;
-  sourceUniverseUUID: string;
   handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
@@ -36,7 +35,6 @@ export const ExpandedConfigTableSelect = ({
   tables,
   selectedTableUUIDs,
   tableType,
-  sourceUniverseUUID,
   handleTableSelect,
   handleAllTableSelect
 }: ExpandedConfigTableSelectProps) => {
@@ -87,9 +85,8 @@ export const ExpandedConfigTableSelect = ({
           dataField="status"
           dataFormat={(xClusterTableStatus: XClusterTableStatus, xClusterTable: XClusterTable) => (
             <XClusterTableStatusLabel
-              replicationLag={xClusterTable.replicationLag}
               status={xClusterTableStatus}
-              sourceUniverseUuid={sourceUniverseUUID}
+              errors={xClusterTable.replicationStatusErrors}
             />
           )}
         >

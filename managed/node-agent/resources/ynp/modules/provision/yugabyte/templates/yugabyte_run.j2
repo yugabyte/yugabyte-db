@@ -1,0 +1,44 @@
+# Creating the yb_user
+useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} {{ yb_user }}
+
+# Set the password for the new user
+echo '{{ yb_user }}:{{ yb_user_password }}' | chpasswd
+
+# Add yugabyte user to systemd-journal group
+usermod -aG systemd-journal {{ yb_user }}
+
+# Check SELinux status
+sestatus
+
+# Get SELinux status and store it in a variable
+SELINUX_STATUS=$(sestatus | grep 'SELinux status' | awk '{print $3}')
+
+if [ "$SELINUX_STATUS" == "enabled" ]; then
+    # Configuring the correct SELinux context
+    chcon -R -t ssh_home_t {{ yb_home_dir }}
+fi
+
+# Configure the public key
+if [ -z {{ public_key_filepath }} ]; then
+    CURRENT_USER=$(whoami)
+    PUBKEY_FILE="/home/$CURRENT_USER/.ssh/id_rsa.pub"
+
+    su - {{ yb_user }} mkdir -p /home/{{ yb_user }}/.ssh
+    su - {{ yb_user }} chmod 700 /home/{{ yb_user }}/.ssh
+
+    PUBKEY_CONTENT=$(cat "$PUBKEY_FILE")
+    if [ -n "$PUBKEY_CONTENT" ]; then
+        echo "$PUBKEY_CONTENT" | su - {{ yb_user }} tee -a /home/{{ yb_user }}/.ssh/authorized_keys > /dev/null
+
+        # Set the appropriate permissions for the authorized_keys file
+        su - {{ yb_user }}   chmod 400 /home/{{ yb_user }}/.ssh/authorized_keys
+        chown -R {{ yb_user }}:{{ yb_user }} /home/{{ yb_user }}/.ssh
+    else
+        echo "The public key file is empty: $PUBKEY_FILE"
+        exit 1
+    fi
+fi
+
+# Enable linger for yb_user
+su - {{ yb_user }} loginctl enable-linger yugabyte
+su - {{ yb_user }} export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})

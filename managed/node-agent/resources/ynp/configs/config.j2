@@ -1,0 +1,39 @@
+{# Start of the configuration file #}
+# This is an auto-generated file. Do not edit manually.
+
+[DEFAULT]
+loglevel = DEBUG
+logfile = app.log
+is_airgap = "{{ ynp.is_airgap }}"
+
+[Hello]
+message = hello world
+
+[ConfigureChrony]
+chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
+
+[CreateYugabyteUser]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+yb_user_id = {{ ynp.yb_user_id }}
+yb_user_password = {{ ynp.yb_user_password }}
+public_key_filepath = {{ ynp.public_key_filepath }}
+
+[OS]
+{% for disk in ynp.data_disk %}
+data_disk_deviceName_{{ loop.index }} = {{ disk.deviceName }}
+data_disk_mountPath_{{ loop.index }} = {{ disk.mountPath }}
+{% endfor %}
+
+{% macro render_section(section, prefix="") %}
+{%- for key, value in section.items() if value != '' %}
+{%- if value is mapping %}
+{{ render_section(value, prefix + key + ".") }}
+{%- else %}
+{{ prefix }}{{ key }} = {{ value }}
+{%- endif %}
+{% endfor %}
+{% endmacro %}
+
+[YBA]
+{{ render_section(yba) }}

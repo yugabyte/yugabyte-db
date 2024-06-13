@@ -185,6 +185,7 @@
             - glibc-locale-source
             - glibc-langpack-en
           state: present
+          lock_timeout: 600
 
       - name: Generate UTF-8 locales
         become: yes

@@ -16,6 +16,7 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2024.1](v2024.1/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.21](v2.21/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.21" release >}} | No support | n/a |
 | [v2.20](v2.20/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 | [v2.18](v2.18/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
@@ -26,7 +27,7 @@ cascade:
 Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases/) have moved to their own page.
 {{< /tip >}}
 
-For information on release support policy, see [Release support policy](../#release-support-policy).
+For information on stable release support policy, see [Stable Release support policy](../#stable-release-support-policy).
 
 For information on release versioning, see [Versioning](../versioning/).
 

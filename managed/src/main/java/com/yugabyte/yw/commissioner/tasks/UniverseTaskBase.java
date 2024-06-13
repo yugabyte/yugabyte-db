@@ -568,6 +568,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return true;
   }
 
+  /**
+   * Returns the allowed tasks object when the universe is in a frozen failed state.
+   *
+   * @param placementModificationTaskInfo the task_info for task which froze the universe and
+   *     failed.
+   * @return the allowed tasks.
+   */
   public static AllowedTasks getAllowedTasksOnFailure(TaskInfo placementModificationTaskInfo) {
     TaskType lockedTaskType = placementModificationTaskInfo.getTaskType();
     AllowedTasks.AllowedTasksBuilder builder =
@@ -595,29 +602,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Returns the allowed tasks object when the universe is in a frozen failed state.
-   *
-   * @param lockedTaskType the task which froze the universe and failed.
-   * @return the allowed tasks.
-   */
-  public static AllowedTasks getAllowedTasksOnFailure(TaskType lockedTaskType) {
-    AllowedTasks.AllowedTasksBuilder builder =
-        AllowedTasks.builder().lockedTaskType(lockedTaskType);
-    if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
-      builder.restricted(true);
-      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
-      if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
-        // Allow only this task.
-        builder.taskType(lockedTaskType);
-      }
-      if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
-        builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
-      }
-    }
-    return builder.build();
-  }
-
-  /**
    * Returns the allowed task object when the universe is in a frozen failed state.
    *
    * @param lockedPlacementModificationTaskUuid the placement modification task UUID.
@@ -636,7 +620,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN)
           .build();
     }
-    return getAllowedTasksOnFailure(optional.get().getTaskType());
+    return getAllowedTasksOnFailure(optional.get());
   }
 
   @Override
@@ -2137,6 +2121,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createWaitForKeyInMemoryTasks(List<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForEncryptionKeyInMemory");
+    for (NodeDetails node : nodes) {
+      WaitForEncryptionKeyInMemory.Params params = new WaitForEncryptionKeyInMemory.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.nodeAddress = HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort);
+      params.nodeName = node.nodeName;
+      WaitForEncryptionKeyInMemory task = createTask(WaitForEncryptionKeyInMemory.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createWaitForKeyInMemoryTask(NodeDetails node) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForEncryptionKeyInMemory");
     WaitForEncryptionKeyInMemory.Params params = new WaitForEncryptionKeyInMemory.Params();
@@ -2196,14 +2195,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createCheckFollowerLagTask(NodeDetails node, ServerType serverType) {
+    return createCheckFollowerLagTasks(Collections.singletonList(node), serverType);
+  }
+
+  public SubTaskGroup createCheckFollowerLagTasks(List<NodeDetails> nodes, ServerType serverType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckFollowerLag");
-    ServerSubTaskParams params = new ServerSubTaskParams();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.serverType = serverType;
-    params.nodeName = node.nodeName;
-    CheckFollowerLag task = createTask(CheckFollowerLag.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
+    for (NodeDetails node : nodes) {
+      ServerSubTaskParams params = new ServerSubTaskParams();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.serverType = serverType;
+      params.nodeName = node.nodeName;
+      CheckFollowerLag task = createTask(CheckFollowerLag.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -4154,38 +4159,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Creates tasks to gracefully stop processes on node.
    *
-   * @param node node to stop processes.
+   * @param nodes a list of nodes to stop processes.
    * @param processes set of processes to stop.
    * @param removeMasterFromQuorum true if this stop is a for long time.
    * @param deconfigure true if the server needs to be deconfigured (stopped permanently).
    * @param subTaskGroupType subtask group type.
    */
-  protected void stopProcessesOnNode(
-      NodeDetails node,
+  protected void stopProcessesOnNodes(
+      List<NodeDetails> nodes,
       Set<ServerType> processes,
       boolean removeMasterFromQuorum,
       boolean deconfigure,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
-      addLeaderBlackListIfAvailable(Collections.singletonList(node), subTaskGroupType);
+      addLeaderBlackListIfAvailable(nodes, subTaskGroupType);
 
       if (deconfigure) {
+        UUID placementUuid = nodes.get(0).placementUuid;
         // Remove node from load balancer.
         UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
         createManageLoadBalancerTasks(
             createLoadBalancerMap(
                 universeDetails,
-                ImmutableList.of(universeDetails.getClusterByUuid(node.placementUuid)),
-                ImmutableSet.of(node),
+                ImmutableList.of(universeDetails.getClusterByUuid(placementUuid)),
+                ImmutableSet.copyOf(nodes),
                 null));
       }
     }
     for (ServerType processType : processes) {
-      createServerControlTask(node, processType, "stop", params -> params.deconfigure = deconfigure)
+      createServerControlTasks(
+              nodes, processType, "stop", params -> params.deconfigure = deconfigure)
           .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
         createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);
-        createChangeConfigTasks(node, false /* isAdd */, subTaskGroupType);
+        for (NodeDetails node : nodes) {
+          createChangeConfigTasks(node, false /* isAdd */, subTaskGroupType);
+        }
       }
     }
   }

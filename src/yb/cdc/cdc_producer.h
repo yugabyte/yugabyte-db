@@ -66,7 +66,8 @@ Status GetChangesForCDCSDK(
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
-    const CoarseTimePoint deadline = CoarseTimePoint::max());
+    const CoarseTimePoint deadline = CoarseTimePoint::max(),
+    const std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt);
 
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 

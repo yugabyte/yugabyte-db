@@ -25,7 +25,7 @@ tags:
   - name: Universe
     description: CRUD operations for a Universe
 paths:
-  $ref: "paths/_index.yaml"
+  $ref: paths/_index.yaml
 components:
   securitySchemes:
     apiKeyAuth:

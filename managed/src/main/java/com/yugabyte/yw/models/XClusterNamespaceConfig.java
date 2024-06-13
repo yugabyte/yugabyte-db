@@ -3,6 +3,8 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.ebean.annotation.DbEnumValue;
+import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.Entity;
@@ -32,11 +34,38 @@ public class XClusterNamespaceConfig {
   @Column(length = 64)
   private String sourceNamespaceId;
 
+  @ApiModelProperty(
+      value = "Status",
+      allowableValues = "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed")
+  private Status status;
+
+  // Statuses are declared in reverse severity for showing tables in UI with specific order.
+  public enum Status {
+    Failed("Failed"),
+    Error("Error"), // Not stored in YBA DB.
+    Warning("Warning"), // Not stored in YBA DB.
+    Updating("Updating"),
+    Bootstrapping("Bootstrapping"),
+    Validated("Validated"),
+    Running("Running");
+
+    private final String status;
+
+    Status(String status) {
+      this.status = status;
+    }
+
+    @Override
+    @DbEnumValue
+    public String toString() {
+      return this.status;
+    }
+  }
+
   public XClusterNamespaceConfig(XClusterConfig config, String sourceNamespaceId) {
     this.setConfig(config);
     this.setSourceNamespaceId(sourceNamespaceId);
-
-    // TODO: Add statuses, etc
+    this.setStatus(Status.Validated);
   }
 
   /** This class is the primary key for XClusterNamespaceConfig. */

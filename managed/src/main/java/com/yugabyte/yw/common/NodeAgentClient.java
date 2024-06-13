@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.api.client.util.Throwables;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -345,18 +346,18 @@ public class NodeAgentClient {
       return throwable;
     }
 
-    public void waitFor() throws Throwable {
+    public void waitFor() {
       waitFor(true);
     }
 
-    public void waitFor(boolean throwOnError) throws Throwable {
+    public void waitFor(boolean throwOnError) {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
       if (throwOnError && throwable != null) {
-        throw throwable;
+        Throwables.propagate(throwable);
       }
     }
   }
@@ -400,7 +401,18 @@ public class NodeAgentClient {
     }
 
     public ShellResponse getResponse() {
-      return ShellResponse.create(exitCode.get(), exitCode.get() == 0 ? getStdOut() : getStdErr());
+      waitFor(false);
+      ShellResponse response = new ShellResponse();
+      if (exitCode.get() != 0) {
+        response.code = exitCode.get();
+        response.message = getStdErr();
+      } else if (getThrowable() != null) {
+        response.code = ShellResponse.ERROR_CODE_GENERIC_ERROR;
+        response.message = getThrowable().getMessage();
+      } else {
+        response.message = getStdOut();
+      }
+      return response;
     }
 
     public String getStdOut() {
@@ -568,7 +580,9 @@ public class NodeAgentClient {
   }
 
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, ShellProcessContext.DEFAULT);
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent, command, ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build());
   }
 
   public ShellResponse executeCommand(
@@ -580,7 +594,10 @@ public class NodeAgentClient {
         new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
         ExecuteCommandRequest.newBuilder().addAllCommand(command);
-    builder.setUser(context.getSshUserOrDefault());
+    String user = context.getSshUser();
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
     if (context.getTimeoutSecs() > 0L) {
       stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
     }
@@ -600,12 +617,11 @@ public class NodeAgentClient {
         log.debug("Proc stdout for '{}' :", description);
       }
       stub.executeCommand(builder.build(), responseObserver);
-      responseObserver.waitFor(false);
       ShellResponse response = responseObserver.getResponse();
       response.setDescription(description);
       return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
@@ -673,7 +689,7 @@ public class NodeAgentClient {
       }
       requestObserver.onCompleted();
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in uploading file %s to %s. Error: %s", inputFile, outputFile, e.getMessage()),
@@ -702,7 +718,7 @@ public class NodeAgentClient {
       }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in downloading file %s to %s. Error: %s",

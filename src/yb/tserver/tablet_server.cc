@@ -916,6 +916,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
+  std::unordered_set<uint32_t> db_oids_updated;
+  std::unordered_set<uint32_t> db_oids_deleted;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
     const uint32_t db_oid = db_catalog_version.db_oid();
@@ -961,6 +963,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
         existing_entry.last_breaking_version = new_breaking_version;
         existing_entry.new_version_ignored_count = 0;
         row_updated = true;
+        db_oids_updated.insert(db_oid);
         shm_index = existing_entry.shm_index;
         CHECK(
             shm_index >= 0 &&
@@ -1066,6 +1069,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     const uint32_t db_oid = it->first;
     if (db_oid_set.count(db_oid) == 0) {
       // This means the entry for db_oid no longer exists.
+      db_oids_deleted.insert(db_oid);
       catalog_changed = true;
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
@@ -1093,9 +1097,19 @@ void TabletServer::SetYsqlDBCatalogVersions(
                     << ", new fingerprint: " << new_fingerprint;
 
   if (catalog_changed) {
-    // TODO(myang): see how to only invalidate per-database tables.
-    // https://github.com/yugabyte/yugabyte-db/issues/16114.
-    InvalidatePgTableCache();
+    // If we only inserted new rows, then the existing databases do not have
+    // any catalog version changes and the current catalog caches are valid.
+    if (db_oids_updated.empty() && db_oids_deleted.empty()) {
+      return;
+    }
+    // If many databases have their catalog versions changed, there is
+    // a high chance that a global impact DDL statement has incremented the
+    // catalog versions of all databases.
+    if (db_oids_updated.size() > ysql_db_catalog_version_map_.size() / 2) {
+      InvalidatePgTableCache();
+    } else {
+      InvalidatePgTableCache(db_oids_updated, db_oids_deleted);
+    }
   }
 }
 
@@ -1205,11 +1219,27 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServer::InvalidatePgTableCache() {
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+    LOG(INFO) << "Invalidating all PgTableCache caches since catalog version incremented";
     pg_client_service->InvalidateTableCache();
   }
 }
 
+void TabletServer::InvalidatePgTableCache(
+    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_set<uint32_t>& db_oids_deleted) {
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    string msg = "Invalidating db PgTableCache caches since ";
+    if (!db_oids_updated.empty()) {
+      msg += Format("catalog version incremented for $0 ", yb::ToString(db_oids_updated));
+    }
+    if (!db_oids_deleted.empty()) {
+      msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
+    }
+    LOG(INFO) << msg;
+    pg_client_service->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+  }
+}
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 

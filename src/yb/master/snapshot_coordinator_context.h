@@ -81,8 +81,6 @@ class SnapshotCoordinatorContext {
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
 
-  virtual void ReenableTabletSplitting(const std::string& feature) = 0;
-
   virtual Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const = 0;
 
   virtual void AddPendingBackFill(const TableId& id) = 0;

@@ -42,6 +42,7 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
+#include "yb/cdc/xcluster_util.h"
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/path-handler-util.h"
@@ -761,9 +762,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   auto live_id = cluster_config_result->replication_info().live_replicas().placement_uuid();
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
@@ -837,11 +836,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     jw.String(cluster_config_result.status().ToString());
     return;
   }
-
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
-
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
@@ -993,9 +988,7 @@ void MasterPathHandlers::HandleHealthCheck(
     return;
   }
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto* ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   const auto& live_placement_uuid =
       cluster_config_result->replication_info().live_replicas().placement_uuid();
@@ -3033,9 +3026,11 @@ void MasterPathHandlers::HandleXCluster(
     auto group_fs = AutoFieldsetScope(
         output, Format("Group: $0", inbound_replication_group.replication_group_id));
 
-    output << "<pre class=\"prettyprint\">" << "state: " << inbound_replication_group.state
+    output << "<pre class=\"prettyprint\">"
+           << "state: " << inbound_replication_group.state
            << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
-           << "\ntransactional: " << BoolToString(inbound_replication_group.transactional)
+           << "\ntype: "
+           << xcluster::ShortReplicationType(inbound_replication_group.replication_type)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
     if (!inbound_replication_group.db_scoped_info.empty()) {
       output << "\ndb_scoped_info: " << inbound_replication_group.db_scoped_info;
@@ -3091,9 +3086,7 @@ void MasterPathHandlers::HandlePrettyLB(
   std::stringstream *output = &resp->output;
 
   // Don't render if there are more than 5 tservers.
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   if (descs.size() > 5) {
     *output << "<div class='alert alert-warning'>"
@@ -3263,9 +3256,7 @@ void MasterPathHandlers::HandlePrettyLB(
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
@@ -3278,6 +3269,71 @@ void MasterPathHandlers::HandleLoadBalancer(
   }
 
   RenderLoadBalancerViewPanel(*tserver_tree_result, descs, tables, output);
+}
+
+void MasterPathHandlers::HandleStatefulServices(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+
+  if (!stateful_service_result.ok()) {
+    output << "<div class=\"alert alert-warning\">"
+           << EscapeForHtmlToString(stateful_service_result.status().ToString()) << "</div>";
+    return;
+  }
+
+  output << "<h1>Stateful Services</h1>\n";
+  HTML_PRINT_TABLE_WITH_HEADER_ROW(
+      stateful_services, "Service Name", "Hosting server", "Table Id", "Tablet ID");
+  for (const auto& service : *stateful_service_result) {
+    const auto& reg = service.hosting_node->GetRegistration();
+    const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
+    const auto& cloud_info = reg.common().cloud_info();
+    const auto& host_server = Format(
+        "$0<br/>$1<br/>$2", RegistrationToHtml(reg.common(), host_port),
+        service.hosting_node->permanent_uuid(),
+        EscapeForHtmlToString(Format(
+            "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+            cloud_info.placement_zone())));
+
+    HTML_PRINT_TABLE_ROW(
+        service.service_name, host_server,
+        Format("<a href=\"/table?id=$0\">$0</a>", service.service_table_id),
+        service.service_tablet_id);
+  }
+  HTML_END_TABLE;
+  HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+}
+
+void MasterPathHandlers::HandleStatefulServicesJson(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  JsonWriter jw(&resp->output, JsonWriter::COMPACT);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  jw.StartObject();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+  if (!stateful_service_result.ok()) {
+    jw.String("error");
+    jw.String(stateful_service_result.status().ToString());
+  } else {
+    jw.String("stateful_services");
+    jw.StartArray();
+    for (const auto& service : *stateful_service_result) {
+      jw.StartObject();
+      jw.String("service_name");
+      jw.String(service.service_name);
+      jw.String("hosting_server");
+      jw.String(service.hosting_node->permanent_uuid());
+      jw.String("table_id");
+      jw.String(service.service_table_id);
+      jw.String("tablet_id");
+      jw.String(service.service_tablet_id);
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+  jw.EndObject();
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
@@ -3332,9 +3388,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
       is_styled);
-  server->RegisterPathHandler(
-      "/api/v1/meta-cache", "MetaCache",
-      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
+
+  RegisterLeaderOrRedirect(
+      server, "/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServices, is_styled);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(
@@ -3381,6 +3438,14 @@ Status MasterPathHandlers::Register(Webserver* server) {
 
   RegisterLeaderOrRedirect(
       server, "/api/v1/xcluster", "xCluster", &MasterPathHandlers::HandleGetXClusterJSON);
+
+  server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServicesJson);
 
   return Status::OK();
 }

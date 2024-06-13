@@ -313,6 +313,69 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
  For details on using YCSB with YugabyteDB, see [Benchmark: YCSB](../../../benchmark/ycsb-jdbc/).
 
+## Tablet limits
+
+This feature adds a configurable limit to the total number of tablet replicas that a cluster can support. If you try to create a table whose additional tablet replicas would bring the total number of tablet replicas in the cluster over this limit, the create table request is rejected.
+
+### Configure
+
+You can enable tablet limits using the following steps:
+
+1. Enable the flag [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits) on all YB-Masters.
+1. Choose a resource to limit the total number of tablet replicas. Limits are supported by available CPU cores, GiB of RAM, or both.
+   * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true.
+   * To limit by CPU cores and GiB, or both, set the flags [tablet_replicas_per_core_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-core-limit) and [tablet_replicas_per_gib_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-gib-limit) to the desired positive value on all YB-Masters and YB-TServers.
+
+     These flags limit the number of tablets that can be created in the live placement group in terms of resources available to YB-TServers in the cluster. For example, if [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is 10, each YB-TServer has 10 GiB available, `tablet_replicas_per_gib_limit` is 1000, and there are 3 YB-TServers in the cluster, this feature will prevent you from creating more than 3000 tablet replicas. Assuming a replication factor of 3, this is the same as 1000 tablets. Note that YugabyteDB creates a certain number of system tablets itself, so in this case you are not free to create 1000 tablets.
+
+1. Optionally, set the flag [split_respects_tablet_replica_limits](../../../reference/configuration/yb-master/#split-respects-tablet-replica-limits) to true on all YB-Masters to block tablet splits when the configured limits are reached.
+
+{{< tip title="Tip" >}}
+
+To view the number of live tablets and the limits, open the **YB-Master UI** (`<master_host>:7000/`) and click the **Universe Summary** section. The total number of live tablet replicas is listed under "Active Tablet-Peers", and the limit is listed under "Tablet Peer Limit".
+{{< /tip >}}
+
+To disable the feature, set the flag `enforce_tablet_replica_limits` to false on all YB-Masters.
+
+{{<note title="YSQL restores are not fully supported">}}
+
+Currently, tablets created during a YSQL restore are not entirely covered by this feature. The YSQL restore flow creates tablets in two steps:
+
+1. The restored tables are created by executing SQL DDLs.
+1. If necessary, new tablets are created so the number of tablets supporting the restored tables matches the number of tablets supporting the backed up tables. Any tablets created during this step are _not_ checked against the cluster limits.
+
+{{</note>}}
+
+### Metrics
+
+The following table describes metrics related to tablet limits.
+
+| Metric | Description |
+| :----- | :---------- |
+| ts_supportable_tablet_peers | The number of tablet replicas this TServer can support. -1 if there is no limit. |
+| create_table_too_many_tablets | The number of create table requests failed because the cluster cannot support the additional tablet replicas. |
+| split_tablet_too_many_tablets | The number of split tablet operations failed because the cluster cannot support the additional tablet replicas. |
+
+### Example
+
+{{% explore-setup-single-local %}}
+
+Assuming a cluster has been properly configured, if you try to create a table beyond the configurable limit, the error message you can expect to see in a ysqlsh session is as follows:
+
+```sql
+create table foo (i int primary key, j int) split into 10 tablets;
+```
+
+```output
+ERROR:  Invalid table definition: Error creating table yugabyte.foo on the master: The requested number of tablet replicas (30) would cause the total running tablet replica count (102) to exceed the safe system maximum (93)
+```
+
+### Best practices
+
+YugabyteDB has pre-computed sensible defaults for the memory limiting flags. By setting the [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag to true, the [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is set with a sensible default as well. So, to use the memory limits, the only flag that needs to be set is [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits).
+
+It is recommended to use the pre-computed memory defaults. Setting `use_memory_defaults_optimized_for_ysql` reserves memory for PostgreSQL, which is wasteful if not using YSQL. In this case, set the `tablet_overhead_size_percentage` flag to 10 on all YB-TServers.
+
 ## Limitations
 
 * Tablet splitting is disabled for index tables with range partitioning that are being restored in version 2.14.5 or later from a backup taken in any version prior to 2.14.5. It is not recommended to use tablet splitting for range partitioned index tables prior to version 2.14.5 to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).

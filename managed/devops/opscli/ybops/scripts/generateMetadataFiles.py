@@ -44,18 +44,16 @@ GCP_X86_CMD = f'gcloud compute images \
                     --format=json'
 
 AZU_X86_CMD = f'az vm image list \
-                --architecture x64 \
                 --offer almalinux \
                 --publisher almalinux \
                 --sku {AZU_OS_VERSION} \
                 --all'
 
-AZU_ARM_CMD = f'az vm image list \
-                --architecture Arm64 \
-                --offer almalinux \
-                --publisher almalinux \
-                --sku {AZU_OS_VERSION} \
-                --all'
+# AZU_ARM_CMD = f'az vm image list \
+#                 --offer almalinux \
+#                 --publisher almalinux \
+#                 --sku {AZU_OS_VERSION} \
+#                 --all'
 
 
 def get_aws_image_for_cmd(cmd, reg):
@@ -72,14 +70,14 @@ def get_aws_image_for_cmd(cmd, reg):
         return None
 
 
-def get_azu_image_for_cmd(cmd):
+def get_azu_image_for_cmd(cmd, arch):
     try:
         result = os.popen(cmd).read()
         if 'AuthFailure' in result:
             print('Auth Error')
             return None
         result_json = json.loads(result)
-        filtered_result = [x for x in result_json if x['sku'] == AZU_OS_VERSION]
+        filtered_result = [x for x in result_json if x['sku'] == AZU_OS_VERSION and (arch in x['offer'])]
         filtered_result.sort(key=lambda image: image['version'])
         latest_image = filtered_result[-1]
         return latest_image['urn']
@@ -152,7 +150,7 @@ def update_azure_metadata_file(path):
     with open(path) as config_file:
         config = yaml.load(config_file, yaml.SafeLoader)
     try:
-        x86_image = get_azu_image_for_cmd(AZU_X86_CMD)
+        x86_image = get_azu_image_for_cmd(AZU_X86_CMD, 'x86_64')
         if x86_image is None:
             print('Failed to fetch latest x86 image')
         # arm_image = get_azu_image_for_cmd(AZU_ARM_CMD)

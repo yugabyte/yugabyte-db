@@ -174,7 +174,7 @@ public abstract class YRpc<R> {
     this.propagatedTimestamp = propagatedTimestamp;
   }
 
-  private void handleCallback(final Object result) {
+  private synchronized void handleCallback(final Object result) {
     final Deferred<R> d = deferred;
     if (d == null) {
       return;

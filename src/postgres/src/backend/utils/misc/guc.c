@@ -2782,6 +2782,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum number of changes kept in memory per transaction "
+						 "in reorder buffer, which is used in streaming changes via "
+						 "logical replication. After that, changes are spooled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_reorderbuffer_max_changes_in_memory,
+		4096, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
 		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
 		 NULL
@@ -7088,16 +7101,39 @@ ReportGUCOption(struct config_generic *record)
 		pq_endmessage(&msgbuf);
 
 		/*
-		 * Send the equivalent of a ParameterStatus packet corresponding to role_oid
-		 * back to YSQL Connection Manager.
+		 * Send the equivalent of a ParameterStatus packet corresponding to a
+		 * role oid back to YSQL Connection Manager. Also ensure that we are
+		 * in an active transaction before sending the packet, we cannot search
+		 * for role oids otherwise.
 		 */
-		if ((strcmp(record->name, "role") == 0) && YbIsClientYsqlConnMgr())
+		if (YbIsClientYsqlConnMgr())
 		{
+			int yb_role_oid_type = 0;
 			StringInfoData rolebuf;
 
+			if (strcmp(record->name, "role") == 0)
+				yb_role_oid_type = 1;
+			else if (strcmp(record->name, "session_authorization") == 0)
+				yb_role_oid_type = 2;
+			else
+			{
+				pfree(val);
+				return;
+			}
+			/*
+			 * Header 'r' informs Connection Manager that this packet does
+			 * not need to be forwarded back to the client
+			 */
 			pq_beginmessage(&rolebuf, 'r');
-			pq_sendstring(&rolebuf, "role_oid");
-			if (val != NULL && strcmp(val, "none") != 0)
+
+			if (yb_role_oid_type == 1)
+				pq_sendstring(&rolebuf, "role_oid");
+			else if (yb_role_oid_type == 2)
+				pq_sendstring(&rolebuf, "session_authorization_oid");
+			if (val != NULL &&
+				strcmp(val, "none") != 0 &&
+				strcmp(val, "default") != 0 &&
+				IsTransactionState())
 			{
 				char oid[16];
 				snprintf(oid, 16, "%u", get_role_oid(val, false));
@@ -7705,20 +7741,35 @@ set_config_option(const char *name, const char *value,
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
 
-	/*
-	 * role_oid is a provision made for YSQL Connection Manager to handle
-	 * scenarios around "ALTER ROLE RENAME" queries as it only caches the
-	 * previously used role by that client.
+	/* 
+	 * role_oid and session_authorization_oid are provisions made for YSQL
+	 * Connection Manager to handle scenarios around "ALTER ROLE RENAME"
+	 * queries as it only caches the previously used role by that client.
 	 */
-	if (strcmp(name, "role_oid") == 0)
+	if (YbIsClientYsqlConnMgr())
 	{
-		Assert(YbIsClientYsqlConnMgr());
-		/* Handle RESET ROLE queries */
-		if (!value || strcmp(value, "0") == 0)
-			return set_config_option("role", NULL, context, source,
-								action, changeVal, elevel, is_reload);
-		return set_config_option("role", GetUserNameFromId(atoi(value), false), context, source,
-								action, changeVal, elevel, is_reload);
+		if (strcmp(name, "role_oid") == 0)
+		{
+			/* Handle RESET ROLE queries */
+			if (!value || strcmp(value, "0") == 0)
+				return set_config_option("role", NULL, context, source, action,
+										 changeVal, elevel, is_reload);
+			return set_config_option("role",
+									 GetUserNameFromId(atoi(value), false),
+									 context, source, action, changeVal, elevel,
+									 is_reload);
+		} else if (strcmp(name, "session_authorization_oid") == 0)
+		{
+			/* Handle RESET SESSION AUTHORIZATION queries */
+			if (!value || strcmp(value, "0") == 0)
+				return set_config_option("session_authorization", NULL, context,
+										 source, action, changeVal, elevel,
+										 is_reload);
+			return set_config_option("session_authorization",
+									 GetUserNameFromId(atoi(value), false),
+									 context, source, action, changeVal, elevel,
+									 is_reload);
+		}
 	}
 
 	if (elevel == 0)

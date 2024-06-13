@@ -216,7 +216,7 @@ class CatalogManagerIf {
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
   virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-      GenerateSnapshotInfoFromSchedule(
+  GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
@@ -341,6 +341,21 @@ class CatalogManagerIf {
       const xrepl::StreamId& stream_id,
       const std::vector<TableId>& table_ids,
       CoarseTimePoint deadline) = 0;
+
+  virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
+
+  virtual Status UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+
+  virtual Status UpdateCDCProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+  virtual Status ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
+  virtual Status CanAddPartitionsToTable(
+      size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
+
+  virtual Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

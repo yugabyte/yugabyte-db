@@ -157,15 +157,20 @@ class CDCSDKVirtualWAL {
 
   Status CreatePublicationRefreshTabletQueue();
 
-  Status UpdatePubRefreshTimesInCDCState();
+  Status UpdatePubRefreshInfoInCDCState(bool update_pub_refresh_times);
 
-  Status PushPublicationRefreshRecord(uint64_t pub_refresh_time);
+  Status PushPublicationRefreshRecord(uint64_t pub_refresh_time, bool should_apply);
 
   Status PushNextPublicationRefreshRecord();
 
   std::set<uint64_t> ParsePubRefreshTimes(const std::string& pub_refresh_times_str);
 
+  std::pair<uint64_t, bool> ParseLastDecidedPubRefreshTime(
+      const std::string& last_decided_pub_refresh_time_str);
+
   std::string GetPubRefreshTimesString();
+
+  std::string GetLastDecidedPubRefreshTimeString();
 
   std::vector<TabletId> GetTabletsForTable(const TableId& table_id);
 
@@ -193,6 +198,10 @@ class CDCSDKVirtualWAL {
   std::unordered_map<TabletId, std::unordered_set<TableId>> tablet_id_to_table_id_map_;
 
   const std::string kPublicationRefreshTabletID = "publication_refresh_tablet_id";
+
+  // This dummy txn ID will be set in a pub refresh record, if the value of the flag
+  // cdcsdk_enable_dynamic_table_support is true corresponding to the record.
+  const std::string kDummyTransactionID = "dummy_transaction_id";
 
   // Tablet queues hold the records received from GetChanges RPC call on their respective tablets.
   std::unordered_map<TabletId, std::queue<std::shared_ptr<CDCSDKProtoRecordPB>>> tablet_queues_;
@@ -225,10 +234,16 @@ class CDCSDKVirtualWAL {
   // time.
   uint64_t last_pub_refresh_time;
 
-  // This will hold the list of publication refresh times that were popped from the priority queue
-  // but have not yet been acknowledged, i.e the list of pub refresh times with value greater than
-  // or equal to the restart commit time. It will also hold the value of next pub_refresh_time.
+  // This will hold the list of publication refresh times at which publication's tables list was
+  // refreshed, but have not yet been acknowledged, i.e the list of applied pub refresh times with
+  // value greater than or equal to the restart commit time.
   std::set<uint64_t> pub_refresh_times;
+
+  // This will hold the commit time of the last pub refresh record pushed into the pub refresh
+  // queue, along with the value of the flag cdcsdk_enable_dynamic_table_support corresponding to
+  // the record. In other words, this holds the last decided pub refresh time along with the
+  // decision whether to perform pub refresh at that time or not.
+  std::pair<uint64_t, bool> last_decided_pub_refresh_time;
 
   // This map stores all information for the next GetChanges call on a per tablet basis except for
   // the explicit checkpoint. The key is the tablet id. The value is a struct used to populate the

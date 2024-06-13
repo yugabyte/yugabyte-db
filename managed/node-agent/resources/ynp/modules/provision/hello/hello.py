@@ -12,7 +12,7 @@ class Hello(BaseYnpModule):
 
         templates = {
             "run": self.run_template,
-            "precheck": self.run_template
+            "precheck": self.precheck_template
         }
         env = Environment(loader=FileSystemLoader(template_dir))
         output = {}

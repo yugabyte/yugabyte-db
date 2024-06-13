@@ -85,7 +85,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YBA using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-availability)), see [Use Yugabyte Kubernetes Operator to automate YBA deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+    To install YBA using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YBA deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 

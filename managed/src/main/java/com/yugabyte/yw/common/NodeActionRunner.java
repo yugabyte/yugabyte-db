@@ -103,7 +103,7 @@ public class NodeActionRunner {
       String ybHomeDir,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user = context.getSshUserOrDefault();
+    String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = node.getNodeName() + "-support_package.tar.gz";
     List<String> command = new ArrayList<>();
@@ -146,7 +146,7 @@ public class NodeActionRunner {
       String fileListFilepath,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user = context.getSshUserOrDefault();
+    String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = String.format("%s-%s.tar.gz", node.getNodeName(), UUID.randomUUID());
     String targetNodeFilesPath = fileListFilepath;
@@ -222,11 +222,6 @@ public class NodeActionRunner {
       ShellProcessContext context) {
     int perm = StringUtils.isBlank(permissions) ? 0 : Integer.parseInt(permissions.trim(), 8);
     nodeAgentClient.uploadFile(
-        nodeAgent,
-        sourceFile,
-        targetFile,
-        context.getSshUserOrDefault(),
-        perm,
-        context.getTimeout());
+        nodeAgent, sourceFile, targetFile, context.getSshUser(), perm, context.getTimeout());
   }
 }

@@ -70,6 +70,10 @@
 
 using namespace std::literals;
 
+using yb::common::GetMemberAsArray;
+using yb::common::GetMemberAsStr;
+using yb::common::PrettyWriteRapidJsonToString;
+
 namespace yb {
 namespace tools {
 
@@ -378,7 +382,7 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
       GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), &error_string, StdFdTypes{StdFdType::kErr}));
+      "-timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -402,22 +406,21 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   // Check bad optional integer argument.
   args.resize(args_size);
   args.push_back("bad");
-  std::string output;
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
+  std::string error;
+  ASSERT_NOK(Subprocess::Call(args, /* output */ nullptr, &error));
   // Due to greedy algorithm all bad arguments are treated as table identifier.
-  ASSERT_NE(output.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
+  ASSERT_NE(error.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
   // Check multiple tables when single one is expected.
   args.resize(args_size);
   args.push_back(table_id_arg);
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
-  ASSERT_NE(output.find("Single table expected, 2 found"), std::string::npos);
+  ASSERT_NOK(Subprocess::Call(args, /* output */ nullptr, &error));
+  ASSERT_NE(error.find("Single table expected, 2 found"), std::string::npos);
   // Check wrong table id.
   args.resize(args_size - 1);
   const auto bad_table_id = table_id + "_bad";
   args.push_back(Format("tableid.$0", bad_table_id));
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
-  ASSERT_NE(
-      output.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
+  ASSERT_NOK(Subprocess::Call(args, /*output*/ nullptr, &error));
+  ASSERT_NE(error.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
 }
 
 TEST_F(AdminCliTest, TestSnapshotCreation) {
@@ -918,21 +921,22 @@ TEST_F(AdminCliTest, DdlLog) {
 
   auto document = ASSERT_RESULT(CallJsonAdmin("ddl_log"));
 
-  auto log = ASSERT_RESULT(Get(document, "log")).get().GetArray();
+  auto log = ASSERT_RESULT(GetMemberAsArray(document, "log"));
   ASSERT_EQ(log.Size(), 3);
   std::vector<std::string> actions;
+  actions.reserve(log.Size());
   for (const auto& entry : log) {
-    LOG(INFO) << "Entry: " << common::PrettyWriteRapidJsonToString(entry);
+    LOG(INFO) << "Entry: " << PrettyWriteRapidJsonToString(entry);
     TableType type;
     bool parse_result = TableType_Parse(
-        ASSERT_RESULT(Get(entry, "table_type")).get().GetString(), &type);
+        std::string(ASSERT_RESULT(GetMemberAsStr(entry, "table_type"))), &type);
     ASSERT_TRUE(parse_result);
     ASSERT_EQ(type, TableType::YQL_TABLE_TYPE);
-    auto namespace_name = ASSERT_RESULT(Get(entry, "namespace")).get().GetString();
+    auto namespace_name = ASSERT_RESULT(GetMemberAsStr(entry, "namespace"));
     ASSERT_EQ(namespace_name, kNamespaceName);
-    auto table_name = ASSERT_RESULT(Get(entry, "table")).get().GetString();
+    auto table_name = ASSERT_RESULT(GetMemberAsStr(entry, "table"));
     ASSERT_EQ(table_name, kTableName);
-    actions.emplace_back(ASSERT_RESULT(Get(entry, "action")).get().GetString());
+    actions.emplace_back(ASSERT_RESULT(GetMemberAsStr(entry, "action")));
   }
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");

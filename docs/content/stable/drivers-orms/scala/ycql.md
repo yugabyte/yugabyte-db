@@ -32,7 +32,7 @@ type: docs
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](/preview/quick-start/).
 - installed Scala version 2.12 or later.
 - installed sbt 1.3.8 or later.
 

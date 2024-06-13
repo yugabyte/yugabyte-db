@@ -400,6 +400,52 @@ XClusterClient::GetXClusterOutboundReplicationGroupInfo(
   return result;
 }
 
+Result<std::vector<xcluster::ReplicationGroupId>> XClusterClient::GetUniverseReplications(
+    const NamespaceId& consumer_namespace_id) {
+  master::GetUniverseReplicationsRequestPB req;
+  if (!consumer_namespace_id.empty()) {
+    req.set_namespace_id(consumer_namespace_id);
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(GetUniverseReplications, req);
+
+  std::vector<xcluster::ReplicationGroupId> replication_group_ids;
+  for (const auto& replication_group_id : resp.replication_group_ids()) {
+    replication_group_ids.emplace_back(replication_group_id);
+  }
+
+  return replication_group_ids;
+}
+
+Result<XClusterClient::XClusterInboundReplicationGroupInfo>
+XClusterClient::GetUniverseReplicationInfo(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  master::GetUniverseReplicationInfoRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(GetUniverseReplicationInfo, req);
+
+  XClusterClient::XClusterInboundReplicationGroupInfo result;
+  result.replication_type = resp.replication_type();
+  result.source_master_addrs = resp.source_master_addresses();
+
+  for (const auto& pb_table_info : resp.table_infos()) {
+    XClusterClient::XClusterInboundReplicationGroupInfo::XClusterInboundReplicationGroupTableInfo
+        table_info;
+    table_info.target_table_id = pb_table_info.target_table_id();
+    table_info.source_table_id = pb_table_info.source_table_id();
+    table_info.stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(pb_table_info.stream_id()));
+    result.table_infos.emplace_back(std::move(table_info));
+  }
+
+  for (const auto& db_scoped_info : resp.db_scoped_infos()) {
+    result.db_scope_namespace_id_map.emplace(
+        db_scoped_info.target_namespace_id(), db_scoped_info.source_namespace_id());
+  }
+
+  return result;
+}
+
 // XClusterRemoteClient
 
 XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)

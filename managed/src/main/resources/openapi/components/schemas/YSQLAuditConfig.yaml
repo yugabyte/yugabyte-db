@@ -1,4 +1,5 @@
-title: YSQL Audit Logging Configuration
+title: YSQLAuditConfig
+description: YSQL Audit Logging Configuration. Part of AuditLogConfig.
 type: object
 required:
   - classes
@@ -12,7 +13,6 @@ required:
   - log_rows
   - log_statement
   - log_statement_once
-description: YSQL Audit Logging Configuration
 properties:
   classes:
     description: YSQL statement classes

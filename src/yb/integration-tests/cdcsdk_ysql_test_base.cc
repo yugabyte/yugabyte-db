@@ -1683,6 +1683,34 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry) {
+    GetChangesResponsePB change_resp;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          GetChangesResponsePB resp;
+          RpcController get_changes_rpc;
+          auto status = cdc_proxy_->GetChanges(change_req, &resp, &get_changes_rpc);
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+          }
+
+          // Retry only on LeaderNotReadyToServe or NotFound errors
+          if (should_retry && (status.IsLeaderNotReadyToServe() || status.IsNotFound())) {
+            LOG(INFO) << "Retrying GetChanges in test";
+            return false;
+          }
+
+          change_resp = resp;
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return change_resp;
+  }
+
+  Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp,
@@ -3743,12 +3771,14 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         slot_row->record_id_commit_time = HybridTime(*(row.record_id_commit_time));
         slot_row->last_pub_refresh_time = HybridTime(*(row.last_pub_refresh_time));
         slot_row->pub_refresh_times = *(row.pub_refresh_times);
+        slot_row->last_decided_pub_refresh_time = *(row.last_decided_pub_refresh_time);
         LOG(INFO) << "Read cdc_state table slot entry for slot with stream id: " << stream_id
                   << " confirmed_flush_lsn: " << slot_row->confirmed_flush_lsn
                   << " restart_lsn: " << slot_row->restart_lsn << " xmin: " << slot_row->xmin
                   << " record_id_commit_time: " << slot_row->record_id_commit_time.ToUint64()
                   << " last_pub_refresh_time: " << slot_row->last_pub_refresh_time.ToUint64()
-                  << " pub_refresh_times: " << slot_row->pub_refresh_times;
+                  << " pub_refresh_times: " << slot_row->pub_refresh_times
+                  << " last_decided_pub_refresh_time: " << slot_row->last_decided_pub_refresh_time;
       }
     }
     RETURN_NOT_OK(s);

@@ -1,4 +1,8 @@
-title: Add a Cluster to an existing Universe
+title: ClusterAddSpec
+description: |
+  ClusterAddSpec
+
+  Request payload to add a new cluster to an existing YugabyteDB Universe.
 type: object
 required:
   - cluster_type
@@ -24,15 +28,15 @@ properties:
     type: string
     example: c5.xlarge
   storage_spec:
-    $ref: "./ClusterStorageSpec.yaml"
+    $ref: ./ClusterStorageSpec.yaml
   provider_spec:
-    $ref: "./ClusterProviderEditSpec.yaml"
+    $ref: ./ClusterProviderEditSpec.yaml
   placement_spec:
-    $ref: "./ClusterPlacementSpec.yaml"
+    $ref: ./ClusterPlacementSpec.yaml
   instance_tags:
     description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
     type: object
     additionalProperties:
       type: string
   gflags:
-    $ref: "./ClusterGFlags.yaml"
+    $ref: ./ClusterGFlags.yaml

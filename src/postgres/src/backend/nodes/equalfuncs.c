@@ -1859,6 +1859,8 @@ _equalAlterTableMoveAllStmt(const AlterTableMoveAllStmt *a,
 	COMPARE_NODE_FIELD(roles);
 	COMPARE_STRING_FIELD(new_tablespacename);
 	COMPARE_SCALAR_FIELD(nowait);
+	COMPARE_NODE_FIELD(yb_relation);
+	COMPARE_SCALAR_FIELD(yb_cascade);
 
 	return true;
 }

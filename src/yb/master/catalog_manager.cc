@@ -543,13 +543,6 @@ METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
     "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
     "The number of CreateTable request errors due to attempting to create too many tablets.");
 
-METRIC_DEFINE_counter(
-    cluster, split_tablet_too_many_tablets,
-    "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
-    yb::MetricUnit::kRequests,
-    "The number of SplitTablet operations failed because the cluster cannot host any more "
-    "tablets.");
-
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -976,8 +969,8 @@ CatalogManager::CatalogManager(Master* master)
       encryption_manager_(new EncryptionManager()),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
-      tablet_split_manager_(this, this, this, master_->metric_entity()),
-      snapshot_coordinator_(this, this) {
+      tablet_split_manager_(*this, master_->metric_entity(), master_->metric_entity_cluster()),
+      snapshot_coordinator_(this, this, tablet_split_manager_) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
                .set_max_threads(1)
@@ -1017,8 +1010,6 @@ Status CatalogManager::Init() {
 
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
-  metric_split_tablet_too_many_tablets_ =
-    METRIC_split_tablet_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
@@ -1471,8 +1462,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   xcluster_manager_->Clear();
 
-  std::vector<std::shared_ptr<TSDescriptor>> descs;
-  master_->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);
   }
@@ -3748,10 +3738,6 @@ Status CatalogManager::CanSupportAdditionalTabletsForTableCreation(
 Status CatalogManager::CanSupportAdditionalTablet(
     const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const {
   return CanCreateTabletReplicas(1, replication_info, GetAllLiveNotBlacklistedTServers());
-}
-
-void CatalogManager::IncrementSplitBlockedByTabletLimitCounter() {
-  IncrementCounter(metric_split_tablet_too_many_tablets_);
 }
 
 // Create a new table.
@@ -6848,6 +6834,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
       if (!res.ok() || res.get() == TransactionId::Nil()) {
         continue;
       }
+      VLOG(3) << "Cleanup deleted table " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
@@ -6905,8 +6892,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
               << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
 
-    std::vector<std::shared_ptr<TSDescriptor>> descs;
-    master_->ts_manager()->GetAllDescriptors(&descs);
+    auto descs = master_->ts_manager()->GetAllDescriptors();
     for (auto& ts_desc : descs) {
       LOG(INFO) << "Deleting on " << ts_desc->permanent_uuid() << ": "
                 << ts_desc->PendingTabletDeleteToString();
@@ -7240,14 +7226,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
-    // If this is a colocated table, it does not make sense to set placement
-    // policy for this table, as the tablet associated with it is shared by
-    // multiple tables.
-    if (table->colocated()) {
-      const Status s = STATUS(InvalidArgument,
-          "Placement policy cannot be altered for a colocated table");
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
-    }
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       const Status s = STATUS(InvalidArgument,
             "Placement policy cannot be altered for YSQL tables, use Tablespaces");
@@ -8997,6 +8975,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->namespace_id() != database->id()) {
         continue;
       }
+      // todo(zdrudi): we're acquiring table locks out of order here.
       auto l = table->LockForWrite();
       if (l->started_deleting()) {
         continue;
@@ -9569,50 +9548,6 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
       udtype->mutable_namespace_()->set_name(ns->name());
     }
   }
-  return Status::OK();
-}
-
-Status CatalogManager::DisableTabletSplitting(
-    const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  DisableTabletSplittingInternal(disable_duration, req->feature_name());
-  return Status::OK();
-}
-
-void CatalogManager::DisableTabletSplittingInternal(
-    const MonoDelta& duration, const std::string& feature) {
-  tablet_split_manager_.DisableSplittingFor(duration, feature);
-}
-
-void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
-  tablet_split_manager_.ReenableSplittingFor(feature);
-}
-
-bool CatalogManager::IsTabletSplittingCompleteInternal(
-    bool wait_for_parent_deletion, CoarseTimePoint deadline) {
-  vector<TableInfoPtr> tables;
-  {
-    SharedLock lock(mutex_);
-    // All non-colocated tables are primary tables. Only non-colocated tables can be split.
-    auto tables_it = tables_->GetPrimaryTables();
-    tables = std::vector(std::begin(tables_it), std::end(tables_it));
-  }
-  for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table,
-                                                         wait_for_parent_deletion,
-                                                         deadline)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-Status CatalogManager::IsTabletSplittingComplete(
-    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  resp->set_is_tablet_splitting_complete(
-      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
 }
 
@@ -10251,6 +10186,8 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
     bool transaction_status_tablet;
   };
 
+  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::Start");
+
   std::vector<TabletInfoPtr> marked_as_hidden;
 
   std::vector<TabletData> tablets_data;
@@ -10259,20 +10196,16 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   tablet_infos.reserve(tablets_data.size());
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
-  {
-    SharedLock read_lock(mutex_);
+  for (const auto& tablet : tablets) {
+    auto tablet_data = TabletData{
+        .tablet = tablet,
+        .lock = tablet->LockForWrite(),
+        .transaction_status_tablet =
+            (tablet->table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE),
+    };
 
-    for (const auto& tablet : tablets) {
-      auto tablet_data = TabletData{
-          .tablet = tablet,
-          .lock = tablet->LockForWrite(),
-          .transaction_status_tablet =
-              (tablet->table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE),
-      };
-
-      tablets_data.emplace_back(std::move(tablet_data));
-      tablet_infos.emplace_back(tablet.get());
-    }
+    tablets_data.emplace_back(std::move(tablet_data));
+    tablet_infos.emplace_back(tablet.get());
   }
 
   // Use the same hybrid time for all hidden tablets.
@@ -10305,6 +10238,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   // Update all the tablet states in raft in bulk.
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
 
+  TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
   RecordHiddenTablets(marked_as_hidden, delete_retainer);
 
   for (auto& tablet_data : tablets_data) {
@@ -11705,14 +11639,11 @@ void CatalogManager::ReportMetrics() {
   load_balance_policy_->ReportMetrics();
 
   // Report metrics on how many tservers are alive.
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  const auto num_live_servers = ts_descs.size();
+  auto num_live_servers = master_->ts_manager()->NumLiveDescriptors();
   metric_num_tablet_servers_live_->set_value(narrow_cast<uint32_t>(num_live_servers));
-
-  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  auto num_servers = master_->ts_manager()->NumDescriptors();
   metric_num_tablet_servers_dead_->set_value(
-      narrow_cast<uint32_t>(ts_descs.size() - num_live_servers));
+      narrow_cast<uint32_t>(num_servers - num_live_servers));
 }
 
 void CatalogManager::ResetMetrics() {
@@ -12280,6 +12211,37 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     WARN_NOT_OK(
         res, "Failed to get current DDL transaction for table " + table->ToString());
     if (res.ok() && res.get() != TransactionId::Nil()) {
+      // When deleting an index, we also need to update the indexed table
+      // to remove this index from it. Updating the indexed table involves
+      // setting up a fully_applied_schema and incrementing its schema version.
+      // Then the indexed table is altered with the new schema asynchronously.
+      // It is possible that the next statement after this drop index statement
+      // starts too soon and reads the fully_applied_schema_version which is
+      // the old schema version of the indexed table and later fails with
+      // "schema version mismatch" error. To mitigate this error, we wait
+      // for the indexed table's fully_applied_schema to be cleared or until
+      // a maximum number of iterations.
+      // Note that if res.get() == TransactionId::Nil() it means DDL atomicity
+      // is disabled, in this case PgClientSession::DropTable will call
+      // WaitUntilIndexPermissionsAtLeast which takes care of the purpose of
+      // doing this wait. Therefore this wait only applies when DDL atomicity
+      // is enabled.
+      if (table->is_index()) {
+        auto table_id = table->indexed_table_id();
+        WARN_NOT_OK(
+          WaitFor(
+              [this, &table_id]() -> Result<bool> {
+                auto indexed_table = GetTableInfo(table_id);
+                return !indexed_table ||
+                       !indexed_table->LockForRead()->pb.has_fully_applied_schema();
+              },
+              20s,
+              Format("Waiting for fully_applied_schema of $0 to clear", table_id),
+              500ms /* initial_delay */,
+              1.0 /* delay_multiplier */),
+          Format("fully_applied_schema of $0 fail to clear", table_id));
+      }
+      VLOG(3) << "Check table deleted " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
   }), "Failed to submit update table task");
@@ -12887,6 +12849,53 @@ std::optional<UniverseUuid> CatalogManager::GetUniverseUuidIfExists() const {
   }
 
   return *universe_uuid_res;
+}
+
+Result<std::vector<CatalogManager::StatefulServiceStatus>>
+CatalogManager::GetStatefulServicesStatus() const {
+  std::vector<CatalogManager::StatefulServiceStatus> result;
+  std::vector<TableInfoPtr> tables_hosting_services;
+
+  {
+    SharedLock lock(mutex_);
+    for (const auto& table_info : tables_->GetAllTables()) {
+      if (!table_info->GetHostedStatefulServices().empty()) {
+        tables_hosting_services.emplace_back(table_info);
+      }
+    }
+  }
+
+  for (const auto& table_info : tables_hosting_services) {
+    const auto services = table_info->GetHostedStatefulServices();
+    if (services.empty()) {
+      continue;
+    }
+    for (const auto& service_kind : services) {
+      CatalogManager::StatefulServiceStatus service_status;
+      RSTATUS_DCHECK(
+          StatefulServiceKind_IsValid(service_kind), IllegalState,
+          Format("Unknown service kind $0", service_kind));
+      service_status.service_name = StatefulServiceKind_Name((StatefulServiceKind)service_kind);
+
+      service_status.service_table_id = table_info->id();
+      if (!table_info->GetTablets().empty()) {
+        const auto tablet = table_info->GetTablets().front();
+        service_status.service_tablet_id = tablet->tablet_id();
+        auto leader_result = tablet->GetLeader();
+        if (leader_result.ok()) {
+          service_status.hosting_node = leader_result.get();
+        } else {
+          VLOG(1) << Format(
+              "Failed to get leader for Stateful Service $0: $1", service_status.service_name,
+              leader_result.status());
+        }
+      }
+
+      result.emplace_back(std::move(service_status));
+    }
+  }
+
+  return result;
 }
 
 }  // namespace master
