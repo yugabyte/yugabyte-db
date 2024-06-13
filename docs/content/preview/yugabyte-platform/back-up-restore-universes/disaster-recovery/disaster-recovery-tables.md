@@ -30,11 +30,11 @@ You should perform these actions in a specific order, depending on whether perfo
 | 1. ALTER TABLE ADD CONSTRAINT UNIQUE | 2. ALTER TABLE ADD CONSTRAINT UNIQUE | 3. [Reconcile](#reconcile-configuration) |
 | 2. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 1. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 3. [Reconcile](#reconcile-configuration) |
 
-| DDL | Step 1 | Step 2 |  Step 3 |
-| :--- | :--- | :--- | :--- |
-| CREATE TABLE | Execute on Primary | Execute on Replica | Add table to replication |
-| CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | Add table to replication |
-| DROP TABLE   | Remove table from replication | Execute on Replica | Execute on Primary |
+| DDL | Step 1 | Step 2 | Step 3 |
+| :-- | :----- | :----- | :----- |
+| CREATE TABLE | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
+| DROP TABLE   | [Remove table from replication](#remove-a-table-from-dr) | Execute on Replica | Execute on Primary |
+| CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
 | CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile](#reconcile-configuration) |
 | DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile](#reconcile-configuration) |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
@@ -90,7 +90,8 @@ Remove tables from DR in the following sequence:
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
-1. Drop the table from both DR primary and replica databases separately.
+1. Drop the table from the DR replica database.
+1. Drop the table from the DR primary database.
 
 ## Indexes
 
