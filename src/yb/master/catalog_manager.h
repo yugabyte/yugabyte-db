@@ -1481,6 +1481,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
+  bool CanTableBeAddedToCDCSDKStream(
+      const TableInfoPtr& table_info, const Schema& schema) const REQUIRES_SHARED(mutex_);
+
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
