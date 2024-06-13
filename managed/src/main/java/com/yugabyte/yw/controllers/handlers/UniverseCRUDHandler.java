@@ -209,6 +209,11 @@ public class UniverseCRUDHandler {
             || isKubernetesVolumeUpdate(cluster, currentCluster)
             || isKubernetesNodeSpecUpdate(cluster, currentCluster);
 
+    boolean nodeSettingsChanges =
+        isAwsArnChanged(cluster, currentCluster)
+            || areCommunicationPortsChanged(taskParams, universe)
+            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
         hasChangedNodes = true;
@@ -229,7 +234,7 @@ public class UniverseCRUDHandler {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
       }
     }
-    if (smartResizePossible && !nonNodeChanges && samePlacement) {
+    if (smartResizePossible && !nonNodeChanges && samePlacement && !nodeSettingsChanges) {
       if (isSameInstanceTypes(
           cluster.userIntent,
           currentCluster.userIntent,
@@ -283,6 +288,21 @@ public class UniverseCRUDHandler {
       }
     }
     return true;
+  }
+
+  public static boolean isAwsArnChanged(Cluster cluster, Cluster currentCluster) {
+    String curArnString = currentCluster.userIntent.awsArnString;
+    String newArnString = cluster.userIntent.awsArnString;
+    return cluster.userIntent.providerType == Common.CloudType.aws
+        && (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
+        && !Objects.equals(curArnString, newArnString);
+  }
+
+  public static boolean areCommunicationPortsChanged(
+      UniverseDefinitionTaskParams taskParams, Universe universe) {
+    return taskParams.communicationPorts != null
+        && !Objects.equals(
+            taskParams.communicationPorts, universe.getUniverseDetails().communicationPorts);
   }
 
   private boolean proxyConfigChanged(

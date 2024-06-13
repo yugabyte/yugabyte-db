@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -408,7 +409,8 @@ public class PlacementInfoUtil {
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .forEach(
             node -> {
-              boolean shouldReplaceNode = shouldReplaceNode(node, cluster, universe, clusterOpType);
+              boolean shouldReplaceNode =
+                  shouldReplaceNode(node, cluster, taskParams, universe, clusterOpType);
               if (node.state == NodeState.ToBeRemoved) {
                 if (!shouldReplaceNode) {
                   NodeDetails addedNode =
@@ -500,7 +502,8 @@ public class PlacementInfoUtil {
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
     // STEP 5: Sync nodes with placement info
-    configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe, clusterOpType);
+    configureNodesUsingPlacementInfo(
+        cluster, taskParams.nodeDetailsSet, taskParams, universe, clusterOpType);
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
@@ -528,12 +531,17 @@ public class PlacementInfoUtil {
    *
    * @param node
    * @param cluster modified cluster
+   * @param taskParams task params from request
    * @param universe current universe state
    * @param clusterOpType cluster operation being performed
    * @return {@code true} if node should be replaced
    */
   private static boolean shouldReplaceNode(
-      NodeDetails node, Cluster cluster, Universe universe, ClusterOperationType clusterOpType) {
+      NodeDetails node,
+      Cluster cluster,
+      UniverseDefinitionTaskParams taskParams,
+      Universe universe,
+      ClusterOperationType clusterOpType) {
     if (!Objects.equals(
         node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))) {
       return true;
@@ -549,6 +557,27 @@ public class PlacementInfoUtil {
       DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo) && newDeviceInfo != null) {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
+        return true;
+      }
+      if (UniverseCRUDHandler.isAwsArnChanged(cluster, currentCluster)) {
+        LOG.debug(
+            "awsArnString info has changed from {} to {}",
+            currentCluster.userIntent.awsArnString,
+            cluster.userIntent.awsArnString);
+        return true;
+      }
+      if (UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)) {
+        LOG.debug(
+            "communicationPorts has changed from {} to {}",
+            universe.getUniverseDetails().communicationPorts,
+            taskParams.communicationPorts);
+        return true;
+      }
+      if (currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP) {
+        LOG.debug(
+            "assignPublicIP has changed from {} to {}",
+            currentCluster.userIntent.assignPublicIP,
+            cluster.userIntent.assignPublicIP);
         return true;
       }
     }
@@ -1342,12 +1371,14 @@ public class PlacementInfoUtil {
    *
    * @param cluster
    * @param nodes
+   * @param taskParams
    * @param universe
    * @param clusterOpType
    */
   private static void configureNodesUsingPlacementInfo(
       Cluster cluster,
       Collection<NodeDetails> nodes,
+      UniverseDefinitionTaskParams taskParams,
       Universe universe,
       ClusterOperationType clusterOpType) {
     Collection<NodeDetails> nodesInCluster =
@@ -1376,7 +1407,7 @@ public class PlacementInfoUtil {
                   node ->
                       node.state == NodeState.ToBeRemoved
                           && node.isTserver
-                          && !shouldReplaceNode(node, cluster, universe, clusterOpType),
+                          && !shouldReplaceNode(node, cluster, taskParams, universe, clusterOpType),
                   nodesInCluster,
                   placementAZ.uuid,
                   true);
