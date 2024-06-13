@@ -32,14 +32,14 @@ You should perform these actions in a specific order, depending on whether perfo
 
 | DDL | Step 1 | Step 2 |  Step 3 |
 | :--- | :--- | :--- | :--- |
-| CREATE TABLE | Execute DDL on Primary | Execute DDL on Standby | Add table to replication |
-| CREATE TABLE foo<br>PARTITION OF bar | Execute DDL on Primary | Execute DDL on Standby | Add table to replication |
-| DROP TABLE   | Remove table from replication | Execute DDL on Standby | Execute DDL on Primary |
-| CREATE INDEX | Execute DDL on Primary | Execute&nbsp;DDL&nbsp;on&nbsp;Standby | [Reconcile](#reconcile-configuration) |
-| DROP INDEX   | Execute DDL on Standby | Execute DDL on Primary | [Reconcile](#reconcile-configuration) |
-| ALTER TABLE or INDEX | Execute&nbsp;DDL&nbsp;on&nbsp;Standby | Execute DDL on Primary | No changes needed |
-| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute DDL on Primary | Execute DDL on Standby | [Reconcile](#reconcile-configuration) |
-| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute DDL on Standby | Execute DDL on Primary | [Reconcile](#reconcile-configuration) |
+| CREATE TABLE | Execute on Primary | Execute on Replica | Add table to replication |
+| CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | Add table to replication |
+| DROP TABLE   | Remove table from replication | Execute on Replica | Execute on Primary |
+| CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile](#reconcile-configuration) |
+| DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile](#reconcile-configuration) |
+| ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
+| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile](#reconcile-configuration) |
+| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile](#reconcile-configuration) |
 
 In addition, keep in mind the following:
 
