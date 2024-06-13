@@ -88,7 +88,6 @@ set(COMMON_SRCS
   key_encoder.cc
   opid.cc
   pgsql_error.cc
-  path-handler-util.cc
   placement_info.cc
   pg_types.cc
   ql_protocol_util.cc
