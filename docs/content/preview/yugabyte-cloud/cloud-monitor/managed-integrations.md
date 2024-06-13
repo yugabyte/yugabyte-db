@@ -105,7 +105,7 @@ To view the configurations, click the **View** button for the provider.
 
 To delete a configuration, click **View** and choose **Delete**.
 
-If you need to replace or update an API key for an integration for a particular tool, do the following:
+If you need to edit an integration (for example, to replace or update an API key) for a particular tool, do the following:
 
 1. Create a new integration with the updated information.
 1. Assign the new configuration to your clusters.
