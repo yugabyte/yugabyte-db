@@ -32,7 +32,7 @@ Review the following information before starting an upgrade.
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](../../releases/).
+    To view and download releases, refer to [Releases](/preview/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
