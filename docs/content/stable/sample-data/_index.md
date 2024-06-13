@@ -22,7 +22,7 @@ Local install
 YugabyteDB Managed
 : For information on connecting to your YugabyteDB Managed cluster using `ysqlsh` in cloud shell, refer to [Connect using cloud shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
 : For information on connecting to your YugabyteDB Managed cluster using the `ysqlsh` client installed on your computer, refer to [Connect via client shells](../yugabyte-cloud/cloud-connect/connect-client-shell/).
-: The exercises can be run on free or standard clusters. To get started with YugabyteDB Managed, refer to [Quick start](../yugabyte-cloud/cloud-quickstart/).
+: The exercises can be run on free or standard clusters. To get started with YugabyteDB Managed, refer to [Quick start](/preview/yugabyte-cloud/cloud-quickstart/).
 
 <div class="row">
 
