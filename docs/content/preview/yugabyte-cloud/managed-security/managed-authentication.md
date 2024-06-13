@@ -182,6 +182,51 @@ You are redirected to sign in to your IdP to test the connection. After the test
 
   {{% /tab %}}
 
+  {{% tab header="Jumpcloud" lang="Jumpcloud" %}}
+
+**Create an application in Jumpcloud**
+
+To use Jumpcloud for your IdP, do the following:
+
+1. Sign in to your Jumpcloud account and create an application.
+
+    - Log in to Jumpcloud with an administrator account.
+    - Under **SSO Applications**, click **Add New Application**.
+    - Select **Create a Custom Integration**, click **Next** until you can select **Create New Application Integration**.
+    - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**.
+    - Under **Enter General Info**, add some general information and select **Show this application in User Portal**; the information gets displayed as a tile when you log in the next time.
+    - Add the tile to the **Application** section.
+
+1. Select the application tile you created, click **Configure Your New Application**, and set the following options:
+
+    - **Redirect URIs** - enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
+    - **Client Authentication Type** - select **Client Secret Post**.
+    - **Login URI** - enter `https://cloud.yugabyte.com/login`.
+
+    Click the green activate icon when you are done. You will get a pop up to save the **Client ID** and **Client Secret**.
+
+1. Integrate the user within Jumpcloud.
+
+To configure Jumpcloud federated authentication in YugabyteDB Managed, you need the following application properties:
+
+- Client ID and secret of the application you created. These are provided on the **Overview** and **Configuration** tabs.
+
+For more information, refer to the [Jumpcloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
+
+**Configure**
+
+To configure federated authentication in YugabyteDB Managed, do the following:
+
+1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Choose Jumpcloud identity provider.
+1. Enter the client ID and secret of the Jumpcloud application you created.
+1. Enter the Authorization URL for your application.
+1. Click **Enable**.
+
+You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
+
+  {{% /tab %}}
+
 {{< /tabpane >}}
 
 ## Learn more
