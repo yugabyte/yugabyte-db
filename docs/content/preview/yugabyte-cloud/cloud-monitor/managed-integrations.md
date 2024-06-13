@@ -37,7 +37,7 @@ The page lists the configured and available third-party integrations.
 
 ### Manage integrations
 
-You can add, edit, and delete export configurations for the following tools. You can't delete a configuration that is assigned to a cluster.
+You can add and delete export configurations for the following tools. You can't delete a configuration that is assigned to a cluster.
 
 {{< tabpane text=true >}}
 
@@ -104,3 +104,10 @@ To create an export configuration, do the following:
 To view the configurations, click the **View** button for the provider.
 
 To delete a configuration, click **View** and choose **Delete**.
+
+If you need to replace or update an API key for an integration for a particular tool, do the following:
+
+1. Create a new integration with the updated information.
+1. Assign the new configuration to your clusters.
+1. Unassign the old configuration.
+1. Delete the old integration.
