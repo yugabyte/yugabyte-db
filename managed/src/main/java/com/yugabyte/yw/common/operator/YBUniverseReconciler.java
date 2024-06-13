@@ -892,9 +892,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
             .orElse(null);
 
-    // requestParams.taskType = UpgradeTaskParams.UpgradeTaskType.Software;
-    // requestParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
-    requestParams.ybSoftwareVersion = taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion;
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
     log.info("Upgrading universe with new info now");
     return upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
