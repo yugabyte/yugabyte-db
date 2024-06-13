@@ -180,21 +180,76 @@ The highlighted fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
+### Before image modes
+
+YugabyteDB supports the following type of records types in the context of before image:
+
+* ALL
+* FULL_ROW_NEW_IMAGE
+* MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+* CHANGE
+
 Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
 
 ```sql
-create table employee(employee_id int primary key, employee_name varchar);
+create table employee (employee_id int primary key, employee_name varchar, employee_dept text);
 
-insert into employee values(1001, 'Alice');
+insert into employee values(1001, 'Alice', 'Packaging');
 
 update employee set employee_name='Bob' where employee_id=1001;
 
 delete from employee where employee_id=1001;
 ```
 
-CDC records for update and delete statements without enabling before image would be as follows:
+CDC records for update and delete statements without enabling before image i.e. the default record type `CHANGE` would be as follows:
 
-With before image enabled, the update and delete records look like the following:
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": null
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": null,
+    "employee_dept": null
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `ALL`, the update and delete records look like the following:
 
 <table>
 <tr>
@@ -207,31 +262,31 @@ With before image enabled, the update and delete records look like the following
 <pre>
 {
   "before": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Alice"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
     }
   },
   "after": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Bob"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
     }
   },
   "op": "u"
@@ -244,17 +299,128 @@ With before image enabled, the update and delete records look like the following
 <pre>
 {
   "before": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Bob"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `FULL_ROW_NEW_IMAGE`, the update and delete records look like the following:
+
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES`, the update and delete records look like the following:
+
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    }
+  },
+  "after": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    }
+  },
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
     }
   },
   "after": null,
