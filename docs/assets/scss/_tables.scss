@@ -99,23 +99,8 @@ main {
         }
       }
 
-      tr {
-        &:not(:last-child) {
-          border-color: #e9eef2;
-          border-style: solid;
-          border-width: 0 0 1px 0;
-        }
-
+      &.sortable tr {
         th {
-          border-width: 0;
-          font-family: 'Inter';
-          font-style: normal;
-          color: #4e5f6d;
-          text-transform: uppercase;
-          font-weight: 600;
-          font-size: 12px;
-          line-height: 24px;
-          padding: 12.75px 15px;
           position: relative;
 
           &.empty-th .sort-btn {
@@ -151,6 +136,26 @@ main {
               content: "\f0d8";
             }
           }
+        }
+      }
+
+      tr {
+        &:not(:last-child) {
+          border-color: #e9eef2;
+          border-style: solid;
+          border-width: 0 0 1px 0;
+        }
+
+        th {
+          border-width: 0;
+          font-family: 'Inter';
+          font-style: normal;
+          color: #4e5f6d;
+          text-transform: uppercase;
+          font-weight: 600;
+          font-size: 12px;
+          line-height: 24px;
+          padding: 12.75px 15px;
         }
 
         td {

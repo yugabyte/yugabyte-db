@@ -510,7 +510,7 @@ $(document).ready(() => {
    Sort option in table.
    */
   (() => {
-    const tables = document.querySelectorAll('.td-content .table-responsive table');
+    const tables = document.querySelectorAll('.td-content .table-responsive table.sortable');
     tables.forEach(table => {
       const headersEmpty = table.querySelectorAll('th:empty');
       headersEmpty.forEach((innerDiv) => {
