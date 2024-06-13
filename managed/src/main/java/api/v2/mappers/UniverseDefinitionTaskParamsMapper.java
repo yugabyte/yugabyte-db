@@ -18,12 +18,14 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.OffsetDateTime;
@@ -108,6 +110,22 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "nonPrimaryClusters", ignore = true)
   public ThirdpartySoftwareUpgradeParams toThirdpartySoftwareUpgradeParams(
       UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public UpgradeTaskParams toUpgradeTaskParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public RestartTaskParams toRestartTaskParams(UniverseDefinitionTaskParams source);
 
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);

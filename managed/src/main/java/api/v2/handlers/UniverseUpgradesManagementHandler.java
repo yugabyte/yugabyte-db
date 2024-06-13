@@ -3,6 +3,7 @@ package api.v2.handlers;
 
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
+import api.v2.mappers.UniverseRestartParamsMapper;
 import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeRespMapper;
@@ -10,6 +11,7 @@ import api.v2.mappers.UniverseSoftwareUpgradePrecheckMapper;
 import api.v2.mappers.UniverseSoftwareUpgradeStartMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.models.UniverseEditGFlags;
+import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -22,15 +24,19 @@ import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Universe;
@@ -45,6 +51,7 @@ import play.mvc.Http;
 @Slf4j
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public UpgradeUniverseHandler v1Handler;
+  @Inject public Commissioner commissioner;
   @Inject private RuntimeConfGetter confGetter;
 
   public YBATask editGFlags(
@@ -189,5 +196,45 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     SoftwareUpgradeInfoResponse v1Resp = v1Handler.softwareUpgradeInfo(cUUID, uniUUID, v1Params);
     return UniverseSoftwareUpgradePrecheckMapper.INSTANCE.toUniverseSoftwareUpgradePrecheckResp(
         v1Resp);
+  }
+
+  public YBATask restartUniverse(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniRestart)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid = null;
+    if (uniRestart == null) {
+      uniRestart = new UniverseRestart();
+    }
+    // Kubernetes services only can do a service level restart.
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        || uniRestart.getRestartType().equals(UniverseRestart.RestartTypeEnum.SERVICE)) {
+      log.debug("performing universe restart (service only)");
+      RestartTaskParams v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toRestartTaskParams(
+              universe.getUniverseDetails());
+      UniverseRestartParamsMapper.INSTANCE.copyToV1RestartTaskParams(uniRestart, v1Params);
+      taskUuid = v1Handler.restartUniverse(v1Params, customer, universe);
+    } else if (uniRestart.getRestartType().equals(UniverseRestart.RestartTypeEnum.OS)) {
+      // Soft reboot can use the v1 handler still
+      log.debug("performing universe reboot (SOFT)");
+      UpgradeTaskParams v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toUpgradeTaskParams(
+              universe.getUniverseDetails());
+      UniverseRestartParamsMapper.INSTANCE.copyToV1UpgradeTaskParams(uniRestart, v1Params);
+      taskUuid = v1Handler.rebootUniverse(v1Params, customer, universe);
+    } else {
+      log.debug("performing universe reboot (HARD)");
+      throw new UnsupportedOperationException("HARD reboots are not supported in v2");
+    }
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    log.info("Started universe restart task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
   }
 }

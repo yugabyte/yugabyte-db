@@ -9,6 +9,7 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -109,5 +110,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradePrecheckReq req)
       throws Exception {
     return universeUpgradeHandler.precheckSoftwareUpgrade(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask restartUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniUpgrade) throws Exception {
+    return universeUpgradeHandler.restartUniverse(request, cUUID, uniUUID, uniUpgrade);
   }
 }
