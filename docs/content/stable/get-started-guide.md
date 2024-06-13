@@ -78,7 +78,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Video**: [How to Start YugabyteDB on Your Laptop](https://www.youtube.com/watch?v=ah_fPDpZjnc)
 : Try YugabyteDB out by running it on your laptop in five minutes.
 
-**Product Lab**: [Create Global Applications](../yugabyte-cloud/managed-labs/)
+**Product Lab**: [Create Global Applications](/preview/yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
 **Documentation**: [Quick Start](/preview/quick-start-yugabytedb-managed/)
@@ -101,7 +101,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Blog**: [Simplify Database Migration with New YugabyteDB Voyager](https://www.yugabyte.com/blog/simplify-database-migration-voyager/)
 : Use YugabyteDB Voyager to migrate from legacy and single-cloud databases.
 
-**Documentation**: [YugabyteDB Voyager](../yugabyte-voyager/)
+**Documentation**: [YugabyteDB Voyager](/preview/yugabyte-voyager/)
 : Simplify migration from legacy and cloud databases to YugabyteDB.
 
 **Blog**: [Improving PostgreSQL: How to Overcome the Tough Challenges with YugabyteDB](https://www.yugabyte.com/blog/improve-postgresql/)
