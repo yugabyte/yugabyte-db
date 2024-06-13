@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -758,6 +759,20 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // This helm upgrade will only create the new statefulset with the new disk size, nothing else
       // should change here and this is idempotent, since its a helm_upgrade.
 
+      // universeOverrides is a string
+      // azOverrides is a map because it comes from AZ
+      // If we are here we must have primary cluster defined.
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Map<String, Object> universeOverrides =
+          HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
+      Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+      if (azOverrides == null) {
+        azOverrides = new HashMap<String, String>();
+      }
+      Map<String, Object> azOverridesPerAZ = HelmUtils.convertYamlToMap(azOverrides.get(azName));
+      if (azOverridesPerAZ == null) {
+        azOverridesPerAZ = new HashMap<String, Object>();
+      }
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
@@ -769,14 +784,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           azConfig,
           0,
           0,
-          null,
-          null,
+          universeOverrides,
+          azOverridesPerAZ,
           isReadOnlyCluster,
           null,
           newDiskSizeGi,
           false,
           enableYbc,
           ybcSoftwareVersion);
+
       createPostExpansionValidateTask(
           universeName,
           azConfig,
