@@ -22,11 +22,24 @@ You should perform these actions in a specific order, depending on whether perfo
 | DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
 | 1. CREATE TABLE | 2. CREATE TABLE | 3. Add the table to replication |
-| 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication. |
-| 1. CREATE INDEX | 2. CREATE INDEX | 3. [Resynchronize](#resynchronize-yba) |
-| 2. DROP INDEX   | 1. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
+| 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication |
+| 1. CREATE INDEX | 2. CREATE INDEX | 3. [Reconcile](#reconcile-configuration) |
+| 2. DROP INDEX   | 1. DROP INDEX   | 3. [Reconcile](#reconcile-configuration) |
 | 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
 | 2. ALTER TABLE or INDEX | 1. ALTER TABLE or INDEX | No changes needed |
+| 1. ALTER TABLE ADD CONSTRAINT UNIQUE | 2. ALTER TABLE ADD CONSTRAINT UNIQUE | 3. [Reconcile](#reconcile-configuration) |
+| 2. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 1. ALTER TABLE DROP CONSTRAINT (unique constraints only) | 3. [Reconcile](#reconcile-configuration) |
+
+| DDL | Step 1 | Step 2 |  Step 3 |
+| :--- | :--- | :--- | :--- |
+| CREATE TABLE | Execute DDL on Primary | Execute DDL on Standby | Add table to replication |
+| CREATE TABLE foo<br>PARTITION OF bar | Execute DDL on Primary | Execute DDL on Standby | Add table to replication |
+| DROP TABLE   | Remove table from replication | Execute DDL on Standby | Execute DDL on Primary |
+| CREATE INDEX | Execute DDL on Primary | Execute&nbsp;DDL&nbsp;on&nbsp;Standby | [Reconcile](#reconcile-configuration) |
+| DROP INDEX   | Execute DDL on Standby | Execute DDL on Primary | [Reconcile](#reconcile-configuration) |
+| ALTER TABLE or INDEX | Execute&nbsp;DDL&nbsp;on&nbsp;Standby | Execute DDL on Primary | No changes needed |
+| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute DDL on Primary | Execute DDL on Standby | [Reconcile](#reconcile-configuration) |
+| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute DDL on Standby | Execute DDL on Primary | [Reconcile](#reconcile-configuration) |
 
 In addition, keep in mind the following:
 
@@ -76,7 +89,6 @@ Remove tables from DR in the following sequence:
 1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
-1. Click **Next: Confirm Full Copy**.
 1. Click **Apply Changes**.
 1. Drop the table from both DR primary and replica databases separately.
 
@@ -100,7 +112,7 @@ Add indexes to replication in the following sequence:
 
     For instructions on monitoring backfill, refer to [Create indexes and track the progress](../../../../explore/ysql-language-features/indexes-constraints/index-backfill/).
 
-1. [Resynchronize YBA](#resynchronize-yba).
+1. [Reconcile the configuration](#reconcile-configuration).
 
 ### Remove an index from DR
 
@@ -112,7 +124,7 @@ Remove indexes from replication in the following sequence:
 
 1. Drop the index on the DR primary.
 
-1. [Resynchronize YBA](#resynchronize-yba).
+1. [Reconcile the configuration](#reconcile-configuration).
 
 ## Table partitions
 
@@ -152,9 +164,9 @@ To add a table partition to DR, follow the same steps for [Add a table to DR](#a
 
 To remove a table partition from DR, follow the same steps as [Remove a table from DR](#remove-a-table-from-dr).
 
-## Resynchronize YBA
+## Reconcile configuration
 
-To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI as follows:
+To ensure changes made outside of YugabyteDB Anywhere are reflected in YugabyteDB Anywhere, you need to reconcile the configuration as follows:
 
-1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
+1. In YugabyteDB Anywhere, navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
