@@ -43,9 +43,9 @@
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
 #include "yb/cdc/xcluster_util.h"
+
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/path-handler-util.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/tablet_limits.h"
@@ -79,6 +79,7 @@
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/server/html_print_helper.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
@@ -95,7 +96,7 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_UNKNOWN_int32(
+DEFINE_RUNTIME_int32(
     hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
@@ -151,26 +152,6 @@ std::optional<HostPortPB> GetRpcBindAddress(const ServerRegistrationPB& reg) {
 }
 
 std::string BoolToString(bool val) { return val ? "true" : "false"; }
-
-class AutoFieldsetScope {
- public:
-  explicit AutoFieldsetScope(std::stringstream& output, const std::string& name) : output_(output) {
-    output_ << kFieldsetStart;
-    output << kFieldsetLegendStart << name << kFieldsetLegendEnd;
-  }
-  ~AutoFieldsetScope() { output_ << kFieldsetEnd; }
-
- private:
-  static constexpr auto kFieldsetStart =
-      "<br><fieldset style=\"border: solid; border-width: thin;padding: 10px 10px;border-color:  "
-      "#a8a8a8;\">\n";
-  static constexpr auto kFieldsetEnd = "</fieldset>\n";
-  static constexpr auto kFieldsetLegendStart =
-      "<legend visible=\"true\" style=\"width:auto;padding: 0px 10px;\">";
-  static constexpr auto kFieldsetLegendEnd = "</legend>\n";
-
-  std::stringstream& output_;
-};
 
 std::optional<uint64_t> ToUnsignedOrNullopt(int64_t val) {
   if (val == std::numeric_limits<int64_t>::max()) {
@@ -1123,6 +1104,8 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
 void MasterPathHandlers::HandleAllTables(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_tables) {
   std::stringstream* output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
+
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
@@ -1162,8 +1145,10 @@ void MasterPathHandlers::HandleAllTables(
     string href_table_id = table_uuid;
     string table_name = table_locked->name();
     table_row[kState] = SysTablesEntryPB_State_Name(table_locked->pb.state());
-    table_row[kHidden] = table_locked->is_hidden() ? "true" : "false";
     Capitalize(&table_row[kState]);
+    if (table_locked->is_hidden()) {
+      table_row[kState] += " (HIDDEN)";
+    }
     table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
@@ -1236,82 +1221,62 @@ void MasterPathHandlers::HandleAllTables(
       continue;
     }
 
-    (*output) << "<div class='panel panel-default'>\n"
-              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[type_index]
-              << " tables</h2></div>\n";
-    (*output) << "<div class='panel-body table-responsive'>";
+    auto fs = html_print_helper.CreateFieldset(table_type_[type_index] + " tables");
 
     if (ordered_tables[type_index].empty()) {
       (*output) << "There are no " << static_cast<char>(tolower(table_type_[type_index][0]))
                 << table_type_[type_index].substr(1) << " tables.\n";
     } else {
-      (*output) << "<table class='table table-responsive'>\n";
-      (*output) << "  <tr><th>Keyspace</th>\n"
-                << "  <th>Table Name</th>\n"
-                << "  <th>State</th>\n"
-                << "  <th>Message</th>\n"
-                << "  <th>UUID</th>\n"
-                << "  <th>YSQL OID</th>\n"
-                << "  <th>Hidden</th>\n";
+      std::vector<std::string> columns = {"Keyspace", "Table Name", "State",
+                                          "Message",  "UUID",       "YSQL OID"};
 
       if (type_index == kUserTable || type_index == kUserIndex) {
         if (has_tablegroups[type_index]) {
-          (*output) << "  <th>Parent OID</th>\n";
+          columns.push_back("Parent OID");
         }
 
         if (has_colocated_tables[type_index]) {
-          (*output) << "  <th>Colocation ID</th>\n";
+          columns.push_back("Colocation ID");
         }
       }
 
       if (type_index != kSystemTable) {
-        (*output) << "  <th>On-disk size</th></tr>\n";
+        columns.push_back("On-disk size");
       }
 
+      auto html_table = html_print_helper.CreateTablePrinter("table", type_index, columns);
+
       for (const StringMap::value_type& table : ordered_tables[type_index]) {
-        (*output) << Format(
-            "<tr>"
-            "<td>$0</td>"
-            "<td>$1</td>"
-            "<td>$2</td>"
-            "<td>$3</td>"
-            "<td>$4</td>"
-            "<td>$5</td>"
-            "<td>$6</td>",
-            table.second[kKeyspace],
-            table.second[kTableName],
-            table.second[kState],
-            table.second[kMessage],
-            table.second[kUuid],
-            table.second[kYsqlOid],
-            table.second[kHidden]);
+        auto& row = html_table.AddRow();
+
+        row.AddColumn(table.second[kKeyspace]);
+        row.AddColumn(table.second[kTableName]);
+        row.AddColumn(table.second[kState]);
+        row.AddColumn(table.second[kMessage]);
+        row.AddColumn(table.second[kUuid]);
+        row.AddColumn(table.second[kYsqlOid]);
 
         if (type_index == kUserTable || type_index == kUserIndex) {
           if (has_tablegroups[type_index]) {
-            (*output) << Format("<td>$0</td>", table.second[kParentOid]);
+            row.AddColumn(table.second[kParentOid]);
           }
 
           if (has_colocated_tables[type_index]) {
-            (*output) << Format("<td>$0</td>", table.second[kColocationId]);
+            row.AddColumn(table.second[kColocationId]);
           }
         }
 
         if (type_index != kSystemTable) {
-          (*output) << Format("<td>$0</td>", table.second[kOnDiskSize]);
+          row.AddColumn(table.second[kOnDiskSize]);
         }
-
-        (*output) << "</tr>\n";
       }
-
-      (*output) << "</table>\n";
+      html_table.Print();
 
       if (show_missing_size_footer[type_index]) {
         (*output) << "<p>* Some tablets did not provide disk size estimates,"
                   << " and were not added to the displayed totals.</p>";
       }
     }
-    (*output) << "</div> <!-- panel-body -->\n";
-    (*output) << "</div> <!-- panel -->\n";
   }
 }
 
@@ -2950,6 +2915,8 @@ void MasterPathHandlers::HandleGetXClusterJSON(
 void MasterPathHandlers::HandleXCluster(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
+
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
   auto xcluster_status_result = master_->xcluster_manager()->GetXClusterStatus();
 
@@ -2971,8 +2938,8 @@ void MasterPathHandlers::HandleXCluster(
     output << "<br><h3>Outbound Replication Groups</h3>\n";
     for (const auto& outbound_replication_group :
          xcluster_status.outbound_replication_group_statuses) {
-      auto group_fs = AutoFieldsetScope(
-          output, Format("Group: $0", outbound_replication_group.replication_group_id));
+      auto group_fs = html_print_helper.CreateFieldset(
+          Format("Group: $0", outbound_replication_group.replication_group_id));
 
       output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
       if (!outbound_replication_group.target_universe_info.empty()) {
@@ -2981,8 +2948,8 @@ void MasterPathHandlers::HandleXCluster(
       output << "</pre>";
 
       for (const auto& namespace_status : outbound_replication_group.namespace_statuses) {
-        auto namespace_fs =
-            AutoFieldsetScope(output, Format("Namespace: $0", namespace_status.namespace_name));
+        auto namespace_fs = html_print_helper.CreateFieldset(
+            Format("Namespace: $0", namespace_status.namespace_name));
 
         output << "<pre class=\"prettyprint\">";
         output << "NamespaceId: " << namespace_status.namespace_id
@@ -2991,40 +2958,41 @@ void MasterPathHandlers::HandleXCluster(
                << "\nstatus: " << namespace_status.status;
         output << "</pre>";
 
-        HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-            outbound_replication_group, outbound_group_table_id, "Table name", "Table Id",
-            "Stream Id", "State", "Checkpointing", "Part of initial bootstrap");
+        auto outbound_replication_group = html_print_helper.CreateTablePrinter(
+            "outbound_replication_group", outbound_group_table_id,
+            {"Table name", "Table Id", "Stream Id", "State", "Checkpointing",
+             "Part of initial bootstrap"});
         outbound_group_table_id++;
 
         for (const auto& table_status : namespace_status.table_statuses) {
-          HTML_PRINT_TABLE_ROW(
+          outbound_replication_group.AddRow(
               table_status.full_table_name, table_status.table_id, table_status.stream_id,
               table_status.state, BoolToString(table_status.is_checkpointing),
               BoolToString(table_status.is_part_of_initial_bootstrap));
         }
-        HTML_END_TABLE;
+        outbound_replication_group.Print();
       }
     }
   }
 
   if (!xcluster_status.outbound_table_stream_statuses.empty()) {
     output << "<br><h3>Outbound table streams</h3>\n";
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(
-        outbound_table_streams, "Table name", "Table Id", "Stream Id", "State");
+    auto outbound_streams = html_print_helper.CreateTablePrinter(
+        "outbound_table_streams", {"Table name", "Table Id", "Stream Id", "State"});
     for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
-      HTML_PRINT_TABLE_ROW(
+      outbound_streams.AddRow(
           table_status.full_table_name, table_status.table_id, table_status.stream_id,
           table_status.state);
     }
-    HTML_END_TABLE;
+    outbound_streams.Print();
   }
 
   output << "<br><h3>Inbound Replication Groups</h3>\n";
 
   uint32 inbound_group_table_id = 0;
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
-    auto group_fs = AutoFieldsetScope(
-        output, Format("Group: $0", inbound_replication_group.replication_group_id));
+    auto group_fs = html_print_helper.CreateFieldset(
+        Format("Group: $0", inbound_replication_group.replication_group_id));
 
     output << "<pre class=\"prettyprint\">"
            << "state: " << inbound_replication_group.state
@@ -3045,27 +3013,25 @@ void MasterPathHandlers::HandleXCluster(
 
     for (const auto& [namespace_name, table_statuses] :
          inbound_replication_group.table_statuses_by_namespace) {
-      auto namespace_fs = AutoFieldsetScope(output, Format("Namespace: $0", namespace_name));
+      auto namespace_fs = html_print_helper.CreateFieldset(Format("Namespace: $0", namespace_name));
 
-      HTML_PRINT_TABLE_WITH_HEADER_ROW_WITH_ID(
-          inbound_replication_group, inbound_group_table_id, "Table name", "Producer Table Id",
-          "Stream Id", "Consumer Table Id", "Producer Tablet Count", "Consumer Tablet Count",
-          "Local tserver optimized", "Producer schema version", "Consumer schema version",
-          "Status");
+      auto inbound_replication_group = html_print_helper.CreateTablePrinter(
+          "inbound_replication_group", inbound_group_table_id,
+          {"Table name", "Producer Table Id", "Stream Id", "Consumer Table Id",
+           "Producer Tablet Count", "Consumer Tablet Count", "Local tserver optimized",
+           "Producer schema version", "Consumer schema version", "Status"});
       inbound_group_table_id++;
       for (const auto& table_status : table_statuses) {
-        HTML_PRINT_TABLE_ROW(
+        inbound_replication_group.AddRow(
             table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
             table_status.target_table_id, table_status.source_tablet_count,
             table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
             table_status.source_schema_version, table_status.target_schema_version,
             table_status.status);
       }
-      HTML_END_TABLE;
+      inbound_replication_group.Print();
     }
   }
-
-  HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
 }
 
 void MasterPathHandlers::HandleVersionInfoDump(
@@ -3274,6 +3240,8 @@ void MasterPathHandlers::HandleLoadBalancer(
 void MasterPathHandlers::HandleStatefulServices(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
+
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
   auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
 
@@ -3284,8 +3252,9 @@ void MasterPathHandlers::HandleStatefulServices(
   }
 
   output << "<h1>Stateful Services</h1>\n";
-  HTML_PRINT_TABLE_WITH_HEADER_ROW(
-      stateful_services, "Service Name", "Hosting server", "Table Id", "Tablet ID");
+  auto stateful_services = html_print_helper.CreateTablePrinter(
+      "stateful_services", {"Service Name", "Hosting server", "Table Id", "Tablet ID"});
+
   for (const auto& service : *stateful_service_result) {
     const auto& reg = service.hosting_node->GetRegistration();
     const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
@@ -3297,13 +3266,12 @@ void MasterPathHandlers::HandleStatefulServices(
             "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
             cloud_info.placement_zone())));
 
-    HTML_PRINT_TABLE_ROW(
+    stateful_services.AddRow(
         service.service_name, host_server,
         Format("<a href=\"/table?id=$0\">$0</a>", service.service_table_id),
         service.service_tablet_id);
   }
-  HTML_END_TABLE;
-  HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+  stateful_services.Print();
 }
 
 void MasterPathHandlers::HandleStatefulServicesJson(

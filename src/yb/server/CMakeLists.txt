@@ -88,6 +88,7 @@ set(SERVER_PROCESS_SRCS
   default-path-handlers.cc
   generic_service.cc
   glog_metrics.cc
+  html_print_helper.cc
   monitored_task.cc
   pprof-path-handlers.cc
   rpc_server.cc
