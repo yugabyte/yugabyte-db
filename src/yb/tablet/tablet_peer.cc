@@ -1814,5 +1814,12 @@ RetryableRequestsFlushState TabletPeer::TEST_RetryableRequestsFlusherState() con
 
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
+bool TabletPeer::HasSufficientDiskSpaceForWrite() {
+  if (log_) {
+    return log_->HasSufficientDiskSpaceForWrite();
+  }
+  return true;
+}
+
 }  // namespace tablet
 }  // namespace yb

@@ -485,6 +485,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return local_peer_pb_.permanent_uuid();
   }
 
+  bool HasSufficientDiskSpaceForWrite();
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
