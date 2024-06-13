@@ -15,9 +15,11 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +39,8 @@ public class ApiControllerUtils {
       Json.mapper()
           .copy()
           .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-          .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+          .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
+          .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
 
   protected <T> void registerDeserializer(Class<T> type, JsonDeserializer<? extends T> deser) {
     SimpleModule module = new SimpleModule();
@@ -102,5 +105,17 @@ public class ApiControllerUtils {
 
   protected AuditService auditService() {
     return auditService;
+  }
+
+  /** Pretty print a json serializable object */
+  protected String prettyPrint(Object obj) {
+    try {
+      ObjectNode objNode = CommonUtils.maskConfig((ObjectNode) Json.toJson(obj));
+      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(objNode);
+    } catch (JsonProcessingException e) {
+      log.error("Failed at pretty printing object", e);
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Failed at pretty printing object");
+    }
   }
 }
