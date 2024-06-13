@@ -2863,10 +2863,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void AddCDCStreamToUniverseAndInitConsumer(
       const cdc::ReplicationGroupId& replication_group_id, const TableId& table,
-      const Result<xrepl::StreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
+      const Result<xrepl::StreamId>& stream_id, std::function<Status()> on_success_cb = nullptr);
 
-  void MergeUniverseReplication(
-      scoped_refptr<UniverseReplicationInfo> info, cdc::ReplicationGroupId original_id);
+  Status AddCDCStreamToUniverseAndInitConsumerInternal(
+      scoped_refptr<UniverseReplicationInfo> universe, const TableId& table,
+      const xrepl::StreamId& stream_id, std::function<Status()> on_success_cb = nullptr);
+
+  Status MergeUniverseReplication(
+      scoped_refptr<UniverseReplicationInfo> info, cdc::ReplicationGroupId original_id,
+      std::function<Status()> on_success_cb);
 
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   Status DeleteUniverseReplication(

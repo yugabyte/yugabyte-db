@@ -144,6 +144,7 @@ DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
 
 namespace yb {
 
@@ -3869,6 +3870,31 @@ TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   }
 
   ASSERT_OK(VerifyNumCDCStreams(producer_client(), producer_cluster(), /* num_streams = */ 0));
+}
+
+TEST_F_EX(XClusterTest, FailedSetupStreamUpdate, XClusterTestNoParam) {
+  ASSERT_OK(SetUpWithParams({1}, /*replication_factor=*/1));
+  auto bootstrap_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), producer_tables_));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_setup_stream_update) = true;
+  // Set up replication with bootstrap IDs.
+
+  ASSERT_NOK(SetupUniverseReplication(producer_tables_, bootstrap_ids));
+
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));
+
+  // Make sure the stream is still in INITIATED state.
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+  auto state = master::SysCDCStreamEntryPB::DELETED;
+  for (const auto& option : stream_resp.streams(0).options()) {
+    if (option.key() == cdc::kStreamState) {
+      ASSERT_TRUE(master::SysCDCStreamEntryPB::State_Parse(option.value(), &state))
+          << option.value();
+    }
+  }
+  ASSERT_EQ(state, master::SysCDCStreamEntryPB::INITIATED);
 }
 
 }  // namespace yb
