@@ -1177,12 +1177,12 @@
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = ":version/quick-start/*"
+  from = "/:version/quick-start/*"
   to = "/preview/quick-start/"
   force = true
 
 [[redirects]]
-  from = ":version/quick-start-yugabytedb-managed/*"
+  from = "/:version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
