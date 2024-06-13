@@ -60,6 +60,8 @@ class CloneStateManager {
     const NamespaceIdentifierPB& source_namespace,
     const HybridTime& read_time,
     const std::string& target_namespace_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
 
@@ -75,8 +77,12 @@ class CloneStateManager {
 
   // Create PG schema objects of the clone database.
   Status ClonePgSchemaObjects(
-      CloneStateInfoPtr clone_state, const std::string& source_db_name,
-      const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
+      CloneStateInfoPtr clone_state,
+      const std::string& source_db_name,
+      const std::string& target_db_name,
+      const std::string& pg_source_owner,
+      const std::string& pg_target_owner,
+      const SnapshotScheduleId& snapshot_schedule_id,
       const LeaderEpoch& epoch);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of

@@ -83,6 +83,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 template<class T> class scoped_refptr;
 
 namespace yb {
@@ -456,13 +458,11 @@ class YBClient {
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
                          CoarseTimePoint deadline = CoarseTimePoint(),
-                         const std::optional<std::string> source_namespace_name = std::nullopt,
-                         std::optional<HybridTime> clone_time = std::nullopt);
+                         std::optional<YbCloneInfo> yb_clone_info = std::nullopt);
 
   Status CloneNamespace(const std::string& target_namespace_name,
-                        const std::string& source_namespace_name,
                         const YQLDatabase& database_type,
-                        std::optional<HybridTime> clone_time);
+                        YbCloneInfo& yb_clone_info);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.

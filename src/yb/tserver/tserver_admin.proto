@@ -350,6 +350,8 @@ message ClonePgSchemaRequestPB {
   optional bytes source_db_name = 1;
   optional bytes target_db_name = 2;
   optional fixed64 restore_ht = 3;
+  optional bytes source_owner = 4;
+  optional bytes target_owner = 5;
 }
 
 message ClonePgSchemaResponsePB{

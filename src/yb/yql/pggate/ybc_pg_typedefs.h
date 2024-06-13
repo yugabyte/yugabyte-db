@@ -783,6 +783,14 @@ typedef enum PgYbrowidMode {
 // kPgSequencesDataTableOid (defined in entity_ids.h).
 static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;
 
+typedef struct YbCloneInfo {
+  // The clone time in microseconds since the unix epoch (not a hybrid time).
+  uint64_t clone_time;
+  const char* src_db_name;
+  const char* src_owner;
+  const char* tgt_owner;
+} YbCloneInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
