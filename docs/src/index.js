@@ -575,7 +575,7 @@ $(document).ready(() => {
         } else {
           returnVal = sortOrder * aText.localeCompare(bText, 'en', {
             numeric: true,
-            sensitivity: 'base'
+            sensitivity: 'base',
           });
         }
 
