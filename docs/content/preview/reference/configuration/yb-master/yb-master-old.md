@@ -1,16 +1,16 @@
 ---
 title: yb-master configuration reference
 headerTitle: yb-master
-linkTitle: yb-master
+linkTitle: yb-master-old
 description: YugabyteDB Master Server (yb-master) binary and configuration flags to manage cluster metadata and coordinate cluster-wide operations.
+private: true
 menu:
   preview:
-    identifier: yb-master
-    parent: configuration
+    identifier: yb-master-old
     weight: 2450
 type: docs
 ---
-
+Hello
 Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
@@ -36,6 +36,11 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 ```sh
 ./bin/yb-master --help
 ```
+
+{{<nav/pages>}}
+{{<nav/page title="General" href="../yb-master">}}
+{{<nav/page title="Memory" href="../yb-master-memory">}}
+{{</nav/pages>}}
 
 ## General flags
 
