@@ -51,10 +51,6 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 											Datum ybbasectid,
 											bool ybctid_as_value);
 
-extern void YBCTupleTableInsert(ResultRelInfo  *resultRelInfo,
-								TupleTableSlot *slot,
-								YBCPgStatement blockInsertStmt, EState *estate);
-
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
@@ -65,7 +61,6 @@ extern void YBCTupleTableInsert(ResultRelInfo  *resultRelInfo,
  */
 extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 						  TupleTableSlot *slot,
-						  HeapTuple tuple,
 						  YBCPgStatement blockInsertStmt,
 						  EState *estate);
 
@@ -78,13 +73,11 @@ extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
  * to the generated value.
  */
 extern void YBCExecuteInsert(Relation rel,
-							 TupleDesc tupleDesc,
-							 HeapTuple tuple,
+							 TupleTableSlot *slot,
 							 OnConflictAction onConflictAction);
 extern void YBCExecuteInsertForDb(Oid dboid,
 								  Relation rel,
-								  TupleDesc tupleDesc,
-								  HeapTuple tuple,
+								  TupleTableSlot *slot,
 								  OnConflictAction onConflictAction,
 								  Datum *ybctid,
 								  YBCPgTransactionSetting transaction_setting);
@@ -100,13 +93,11 @@ extern void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation);
  * to the generated value.
  */
 extern void YBCExecuteNonTxnInsert(Relation rel,
-								   TupleDesc tupleDesc,
-								   HeapTuple tuple,
+								   TupleTableSlot *slot,
 								   OnConflictAction onConflictAction);
 extern void YBCExecuteNonTxnInsertForDb(Oid dboid,
 										Relation rel,
-										TupleDesc tupleDesc,
-										HeapTuple tuple,
+										TupleTableSlot *slot,
 										OnConflictAction onConflictAction,
 										Datum *ybctid);
 

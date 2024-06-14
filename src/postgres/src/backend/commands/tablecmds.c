@@ -6563,17 +6563,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			if (newrel)
 			{
 				if (IsYBRelation(newrel))
-				{
-					HeapTuple	tuple;
-					bool		shouldFree;
-
-					tuple = ExecFetchSlotHeapTuple(newslot, false, &shouldFree);
-					Assert(!shouldFree);
 					YBCExecuteInsert(newrel,
-									 RelationGetDescr(newrel),
-									 tuple,
+					                 newslot,
 									 ONCONFLICT_NONE);
-				}
 				else
 					table_tuple_insert(newrel, insertslot, mycid,
 									   ti_options, bistate);
@@ -21633,8 +21625,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		ExecStoreHeapTuple(tuple, newslot, false);
 
 		/* Write the tuple out to the new relation */
-		YBCExecuteInsert(new_rel, newslot->tts_tupleDescriptor, tuple,
-						 ONCONFLICT_NONE);
+		YBCExecuteInsert(new_rel, newslot, ONCONFLICT_NONE);
 
 		MemoryContextReset(econtext->ecxt_per_tuple_memory);
 

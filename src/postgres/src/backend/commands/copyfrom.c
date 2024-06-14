@@ -1210,34 +1210,21 @@ yb_process_more_batches:
 					/* OK, store the tuple */
 					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
-						/*YB_TODO(later): Remove the conversion to heap tuple.*/
-						bool shouldFree;
-						TupleDesc tupDesc = RelationGetDescr(cstate->rel);
-						HeapTuple tuple =
-							ExecFetchSlotHeapTuple(myslot, false, &shouldFree);
-
 						/* Update the tuple with table oid */
 						myslot->tts_tableOid =
 							RelationGetRelid(resultRelInfo->ri_RelationDesc);
-						tuple->t_tableOid = myslot->tts_tableOid;
 						if (useNonTxnInsert)
 						{
 							YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
-												   tupDesc,
-												   tuple,
+												   myslot,
 												   cstate->opts.on_conflict_action);
 						}
 						else
 						{
 							YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
-											 tupDesc,
-											 tuple,
+											 myslot,
 											 cstate->opts.on_conflict_action);
 						}
-						ItemPointerCopy(&tuple->t_self, &myslot->tts_tid);
-
-						if (shouldFree)
-							pfree(tuple);
 
 						/* And create index entries for it */
 						if (resultRelInfo->ri_NumIndices > 0)
