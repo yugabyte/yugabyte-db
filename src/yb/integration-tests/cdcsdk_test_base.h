@@ -162,9 +162,11 @@ class CDCSDKTestBase : public YBTest {
 
   Status InitPostgres(PostgresMiniCluster* cluster);
 
+  Status InitPostgres(PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
-      bool cdc_populate_safepoint_record = false);
+      bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
