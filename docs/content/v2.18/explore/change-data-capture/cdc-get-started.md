@@ -180,7 +180,7 @@ The highlighted fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
-Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
+Consider the following employee table into which a row is inserted, subsequently updated, and deleted:
 
 ```sql
 create table employee(employee_id int primary key, employee_name varchar);
@@ -401,7 +401,7 @@ To configure a content-based router, you need to add the following lines to your
 
 The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to the following:
 
-```
+```regexp
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 

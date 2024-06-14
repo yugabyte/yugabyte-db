@@ -736,7 +736,7 @@ Default: `14400` (4 hours)
 
 ##### --enable_truncate_cdcsdk_table
 
-By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
+By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
 
 Default: `false`
 

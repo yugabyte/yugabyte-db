@@ -182,14 +182,14 @@ The highlighted fields in the update event are:
 
 ### Before image modes
 
-YugabyteDB supports the following type of records types in the context of before image:
+YugabyteDB supports the following record types in the context of before image:
 
-* ALL
-* FULL_ROW_NEW_IMAGE
-* MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
-* CHANGE
+- ALL
+- FULL_ROW_NEW_IMAGE
+- MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+- CHANGE
 
-Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
+Consider the following employee table into which a row is inserted, subsequently updated, and deleted:
 
 ```sql
 create table employee (employee_id int primary key, employee_name varchar, employee_dept text);
@@ -201,7 +201,7 @@ update employee set employee_name='Bob' where employee_id=1001;
 delete from employee where employee_id=1001;
 ```
 
-CDC records for update and delete statements without enabling before image i.e. the default record type `CHANGE` would be as follows:
+CDC records for update and delete statements without enabling before image (that is, the default record type `CHANGE`) would be as follows:
 
 <table>
 <tr>
@@ -567,7 +567,7 @@ To configure a content-based router, you need to add the following lines to your
 
 The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to the following:
 
-```
+```regexp
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 

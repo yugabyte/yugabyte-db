@@ -877,7 +877,7 @@ Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user 
 
 ##### --enable_truncate_cdcsdk_table
 
-By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables. 
+By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
 
 Default: `false`
 
