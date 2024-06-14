@@ -33,6 +33,7 @@ using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 struct Comparator;
 class SetPreferredZonesRequestPB;
 
+static std::once_flag sequences_data_table_filter_once_flag_;
 static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
 
 class CatalogManagerUtil {
@@ -140,9 +141,10 @@ class CatalogManagerUtil {
   }
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
-    if (sequences_data_table_filter_.empty()) {
+    std::call_once(sequences_data_table_filter_once_flag_, []() {
       *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
-    }
+    });
+
     return sequences_data_table_filter_;
   }
 
