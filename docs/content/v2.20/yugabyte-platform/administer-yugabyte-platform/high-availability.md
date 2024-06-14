@@ -67,7 +67,7 @@ You can configure the active instance as follows:
 
     - If you installed YBA using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if you configured yba installer using the [configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
 
-    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
+    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/default/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
 1. Add the active instance CA certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
 
@@ -93,7 +93,7 @@ After the active instance has been configured, you can configure one or more sta
 
     - If you installed YBA using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if you configured yba installer using the [configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
 
-    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
+    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/default/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
 1. Switch to the active instance.
 
