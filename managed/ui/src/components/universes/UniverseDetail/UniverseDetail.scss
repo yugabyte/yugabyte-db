@@ -186,7 +186,7 @@ $padding: 30px;
     & > li > a {
       padding: 0 2px;
       line-height: 57px;
-      margin-right: 30px;
+      margin-right: 25px;
       @media (max-width: 991px) {
         margin-right: 10px;
       }
@@ -202,7 +202,7 @@ $padding: 30px;
         color: colors.$YB_ORANGE;
       }
     }
-    & > li:last-child > a{
+    & > li:last-child > a {
       margin-right: 10px;
     }
     li.active {
@@ -219,7 +219,7 @@ $padding: 30px;
         }
       }
     }
-    li:has(.page-action-buttons){
+    li:has(.page-action-buttons) {
       float: right;
     }
   }
@@ -534,10 +534,10 @@ h2 {
 }
 
 .widget-panel {
-  &.overview-widget-database{
+  &.overview-widget-database {
     height: 48px;
     align-items: center;
-    .version__label{
+    .version__label {
       font-weight: 700;
       line-height: 2.25;
     }

@@ -58,6 +58,7 @@ import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/
 import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
 import { ReplicationSlotTable } from '../../../redesign/features/universe/universe-tabs/replication-slots/ReplicationSlotTable';
+import { AuditLog } from '../../../redesign/features/universe/universe-tabs/db-audit-logs/AuditLog';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
@@ -391,6 +392,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
       )?.value === 'true';
 
+    const isAuditLogEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+      )?.value === 'true';
+
     if (
       getPromiseState(currentUniverse).isLoading() ||
       getPromiseState(currentUniverse).isInit() ||
@@ -661,6 +667,20 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
+            isAuditLogEnabled && (
+              <Tab.Pane
+                eventKey={'db-audit-log'}
+                tabtitle="Logs"
+                key="db-audit-log"
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <AuditLog
+                  universeData={currentUniverse.data}
+                  nodePrefix={currentUniverse.data.universeDetails.nodePrefix}
+                />
+              </Tab.Pane>
+            ),
             isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
               <Tab.Pane
                 eventKey={'backups'}
