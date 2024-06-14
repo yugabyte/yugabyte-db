@@ -66,6 +66,7 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
+| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
@@ -93,6 +94,12 @@ To get more details about the various steps of a query execution, use the [Expla
       body="Troubleshoot problems and identify long-running queries with the activity view."
       href="./pg-stat-activity/"
       icon="/images/section_icons/manage/diagnostics.png">}}
+
+  {{<index/item
+      title="View YQL and tablet metadata with yb_local_tablets"
+      body="See metadata about the YSQL and YCQL statements, and system tablets of a node."
+      href="./yb-local-tablets/"
+      icon="/images/section_icons/explore/json_documents.png">}}
 
   {{<index/item
       title="View terminated queries with yb_terminated_queries"
