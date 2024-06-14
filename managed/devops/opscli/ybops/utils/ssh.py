@@ -424,14 +424,18 @@ class SSHClient(object):
                 logging.info("Executing command {}".format(command))
             _, stdout, stderr = self.client.exec_command(command)
             if not output_only:
-                return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
+                output = stdout.readlines()
+                error = stderr.readlines()
+                return stdout.channel.recv_exit_status(), output, error
             else:
+                output = self.read_output(stdout)
+                error = self.read_output(stderr)
+                # We should read output first before we call recv_exit_status()
+                # see https://github.com/paramiko/paramiko/issues/448
                 return_code = stdout.channel.recv_exit_status()
                 if return_code != 0:
-                    error = self.read_output(stderr)
                     raise YBOpsRuntimeError('Command \'{}\' returned error code {}: {}'.format(
                         "" if skip_cmd_logging else command, return_code, error))
-                output = self.read_output(stdout)
                 return output
         else:
             cmd = self.__generate_shell_command(
