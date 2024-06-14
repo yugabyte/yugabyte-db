@@ -605,21 +605,12 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 		if (IsYBRelation(myState->rel))
 		{
-			/* YB_TODO(later) Wait for slot API */
-			bool shouldFree;
-			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
-
 			/* Update the tuple with table oid */
 			slot->tts_tableOid = RelationGetRelid(myState->rel);
-			tuple->t_tableOid = slot->tts_tableOid;
 
 			YBCExecuteInsert(myState->rel,
-							 RelationGetDescr(myState->rel),
-							 tuple,
+							 slot,
 							 ONCONFLICT_NONE);
-			ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
-			if (shouldFree)
-				pfree(tuple);
 		}
 		else
 			/*
