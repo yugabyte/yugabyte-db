@@ -11,17 +11,15 @@
 // under the License.
 //
 
-#include <rapidjson/document.h>
-#include "yb/client/yb_table_name.h"
-#include "yb/tserver/xcluster_consumer.h"
-#include "yb/tserver/xcluster_output_client.h"
-#include "yb/yql/pgwrapper/libpq_utils.h"
-
 #pragma once
+
+#include "yb/tserver/xcluster_consumer_if.h"
 
 namespace yb {
 
 namespace tserver {
+
+struct XClusterOutputClientResponse;
 
 // Handler for the ddl_queue table, used for xCluster DDL replication.
 // This handler is called by XClusterPoller after ApplyChanges has been processed successfully for
@@ -34,9 +32,9 @@ namespace tserver {
 class XClusterDDLQueueHandler {
  public:
   XClusterDDLQueueHandler(
-      std::shared_ptr<XClusterClient> local_client, const NamespaceName& namespace_name,
+      client::YBClient* local_client, const NamespaceName& namespace_name,
       const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func);
-  virtual ~XClusterDDLQueueHandler() = default;
+  virtual ~XClusterDDLQueueHandler();
 
   Status ProcessDDLQueueTable(const XClusterOutputClientResponse& response);
 
@@ -64,7 +62,7 @@ class XClusterDDLQueueHandler {
   virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& apply_safe_time);
 
-  const std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient* local_client_;
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
   NamespaceName namespace_name_;

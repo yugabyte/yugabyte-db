@@ -20,21 +20,17 @@
 
 #include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/rpc/messenger.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/source_location.h"
-#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"
 
@@ -115,11 +111,11 @@ XClusterPoller::XClusterPoller(
     const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const NamespaceId& consumer_namespace_id,
     std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
-    rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
+    rpc::Rpcs* rpcs, client::YBClient& local_client,
     const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
     SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
     std::function<int64_t(const TabletId&)> get_leader_term)
-    : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
+    : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       consumer_namespace_id_(consumer_namespace_id),
@@ -157,7 +153,7 @@ void XClusterPoller::InitDDLQueuePoller(
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
-      local_client_, namespace_name, consumer_namespace_id_, std::move(connect_to_pg_func));
+      &local_client_, namespace_name, consumer_namespace_id_, std::move(connect_to_pg_func));
 }
 
 void XClusterPoller::StartShutdown() {
