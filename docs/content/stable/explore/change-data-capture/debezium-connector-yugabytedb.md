@@ -45,6 +45,7 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.16 | 1.9.5.y.24 |
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.2 |
+| 2024.1 | 1.9.5.y.220.2 |
 
 {{< note title="Note" >}}
 
