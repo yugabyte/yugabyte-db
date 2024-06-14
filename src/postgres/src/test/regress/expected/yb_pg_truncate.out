@@ -9,16 +9,17 @@ SELECT * FROM truncate_a;
     2
 (2 rows)
 
--- TRUNCATE is currently NOT a transactional operation
 -- Roll truncate back
 BEGIN;
 TRUNCATE truncate_a;
 ROLLBACK;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a; -- YB: TRUNCATE is currently not rolled back
  col1
 ------
 (0 rows)
 
+INSERT INTO truncate_a VALUES (1); -- YB: add rows back
+INSERT INTO truncate_a VALUES (2); -- YB: add rows back
 -- Commit the truncate this time
 BEGIN;
 TRUNCATE truncate_a;
@@ -91,36 +92,6 @@ TRUNCATE TABLE trunc_c,truncate_a,trunc_d,trunc_e;
 ERROR:  cannot truncate a table referenced in a foreign key constraint
 DETAIL:  Table "trunc_b" references "truncate_a".
 HINT:  Truncate table "trunc_b" at the same time, or use TRUNCATE ... CASCADE.
-SELECT * FROM truncate_a;
- col1
-------
-    1
-(1 row)
-
-SELECT * FROM trunc_b;
- a
----
- 1
-(1 row)
-
-SELECT * FROM trunc_c;
- a
----
- 1
-(1 row)
-
-SELECT * FROM trunc_d;
- a
----
- 1
-(1 row)
-
-SELECT * FROM trunc_e;
- a | b
----+---
- 1 | 1
-(1 row)
-
 TRUNCATE TABLE trunc_c,truncate_a,trunc_d,trunc_e,trunc_b;
 -- Verify that truncating did actually work
 SELECT * FROM truncate_a
@@ -167,7 +138,6 @@ SELECT * FROM trunc_e;
 (0 rows)
 
 DROP TABLE truncate_a,trunc_c,trunc_b,trunc_d,trunc_e CASCADE;
--- TODO(yifan): uncomment when issue #1129 is closed
 -- Test TRUNCATE with inheritance
 CREATE TABLE trunc_f (col1 integer primary key);
 INSERT INTO trunc_f VALUES (1);
@@ -177,42 +147,7 @@ ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE trunc_fa (col2a text) INHERITS (trunc_f);
                                            ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-INSERT INTO trunc_fa VALUES (3, 'three');
-ERROR:  relation "trunc_fa" does not exist
-LINE 1: INSERT INTO trunc_fa VALUES (3, 'three');
-                    ^
--- CREATE TABLE trunc_fb (col2b int) INHERITS (trunc_f);
--- INSERT INTO trunc_fb VALUES (4, 444);
--- CREATE TABLE trunc_faa (col3 text) INHERITS (trunc_fa);
--- INSERT INTO trunc_faa VALUES (5, 'five', 'FIVE');
--- BEGIN;
--- SELECT * FROM trunc_f;
--- TRUNCATE trunc_f;
--- SELECT * FROM trunc_f;
--- ROLLBACK;
--- BEGIN;
--- SELECT * FROM trunc_f;
--- TRUNCATE ONLY trunc_f;
--- SELECT * FROM trunc_f;
--- ROLLBACK;
--- BEGIN;
--- SELECT * FROM trunc_f;
--- SELECT * FROM trunc_fa;
--- SELECT * FROM trunc_faa;
--- TRUNCATE ONLY trunc_fb, ONLY trunc_fa;
--- SELECT * FROM trunc_f;
--- SELECT * FROM trunc_fa;
--- SELECT * FROM trunc_faa;
--- ROLLBACK;
--- BEGIN;
--- SELECT * FROM trunc_f;
--- SELECT * FROM trunc_fa;
--- SELECT * FROM trunc_faa;
--- TRUNCATE ONLY trunc_fb, trunc_fa;
--- SELECT * FROM trunc_f;
--- SELECT * FROM trunc_fa;
--- SELECT * FROM trunc_faa;
--- ROLLBACK;
+-- YB: port remaining queries when INHERITS is supported
 DROP TABLE trunc_f CASCADE;
 -- Test ON TRUNCATE triggers
 CREATE TABLE trunc_trigger_test (f1 int, f2 text, f3 text);
@@ -295,11 +230,11 @@ DROP FUNCTION trunctrigger();
 -- test TRUNCATE ... RESTART IDENTITY
 CREATE SEQUENCE truncate_a_id1 START WITH 33;
 CREATE TABLE truncate_a (id serial,
-                         id1 integer default nextval('truncate_a_id1'));
+                         id1 integer default nextval('truncate_a_id1'), PRIMARY KEY (id ASC)); -- YB: add pk for query ordering
 ALTER SEQUENCE truncate_a_id1 OWNED BY truncate_a.id1;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a ORDER BY id;
+SELECT * FROM truncate_a;
  id | id1
 ----+-----
   1 |  33
@@ -309,7 +244,7 @@ SELECT * FROM truncate_a ORDER BY id;
 TRUNCATE truncate_a;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a ORDER BY id;
+SELECT * FROM truncate_a;
  id | id1
 ----+-----
   3 |  35
@@ -319,17 +254,17 @@ SELECT * FROM truncate_a ORDER BY id;
 TRUNCATE truncate_a RESTART IDENTITY;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a ORDER BY id;
+SELECT * FROM truncate_a;
  id | id1
 ----+-----
   1 |  33
   2 |  34
 (2 rows)
 
-CREATE TABLE truncate_b (id int GENERATED ALWAYS AS IDENTITY (START WITH 44));
+CREATE TABLE truncate_b (id int GENERATED ALWAYS AS IDENTITY (START WITH 44), PRIMARY KEY (id ASC)); -- YB: add pk for query ordering
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
-SELECT * FROM truncate_b ORDER BY id;
+SELECT * FROM truncate_b;
  id
 ----
  44
@@ -339,7 +274,7 @@ SELECT * FROM truncate_b ORDER BY id;
 TRUNCATE truncate_b;
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
-SELECT * FROM truncate_b ORDER BY id;
+SELECT * FROM truncate_b;
  id
 ----
  46
@@ -349,33 +284,31 @@ SELECT * FROM truncate_b ORDER BY id;
 TRUNCATE truncate_b RESTART IDENTITY;
 INSERT INTO truncate_b DEFAULT VALUES;
 INSERT INTO truncate_b DEFAULT VALUES;
-SELECT * FROM truncate_b ORDER BY id;
+SELECT * FROM truncate_b;
  id
 ----
  44
  45
 (2 rows)
 
--- TRUNCATE is currently NOT a transactional operation
+/* YB: uncomment when TRUNCATE rollback is supported
 -- check rollback of a RESTART IDENTITY operation
 BEGIN;
 TRUNCATE truncate_a RESTART IDENTITY;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a ORDER BY id;
+SELECT * FROM truncate_a;
+ROLLBACK;
+*/ -- YB
+INSERT INTO truncate_a DEFAULT VALUES;
+INSERT INTO truncate_a DEFAULT VALUES;
+SELECT * FROM truncate_a;
  id | id1
 ----+-----
   1 |  33
-(1 row)
-
-ROLLBACK;
-INSERT INTO truncate_a DEFAULT VALUES;
-INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a ORDER BY id;
- id | id1
-----+-----
   2 |  34
   3 |  35
-(2 rows)
+  4 |  36
+(4 rows)
 
 DROP TABLE truncate_a;
 SELECT nextval('truncate_a_id1'); -- fail, seq should have been dropped
@@ -395,11 +328,6 @@ TRUNCATE ONLY truncparted;
 ERROR:  cannot truncate only a partitioned table
 HINT:  Do not specify the ONLY keyword, or use TRUNCATE ONLY on the partitions directly.
 TRUNCATE truncparted;
-SELECT * FROM truncparted;
- a | b
----+---
-(0 rows)
-
 DROP TABLE truncparted;
 -- foreign key on partitioned table: partition key is referencing column.
 -- Make sure truncate did execute on all tables
@@ -426,23 +354,15 @@ CREATE TABLE truncpart_2 PARTITION OF truncpart FOR VALUES FROM (100) TO (200)
   PARTITION BY RANGE (a);
 CREATE TABLE truncpart_2_1 PARTITION OF truncpart_2 FOR VALUES FROM (100) TO (150);
 CREATE TABLE truncpart_2_d PARTITION OF truncpart_2 DEFAULT;
-select tp_ins_data();
- tp_ins_data
--------------
-
-(1 row)
-
 TRUNCATE TABLE truncprim;	-- should fail
 ERROR:  cannot truncate a table referenced in a foreign key constraint
 DETAIL:  Table "truncpart" references "truncprim".
 HINT:  Truncate table "truncpart" at the same time, or use TRUNCATE ... CASCADE.
-SELECT * FROM truncprim;
-  a
------
-   1
- 150
- 100
-(3 rows)
+select tp_ins_data();
+ tp_ins_data 
+-------------
+ 
+(1 row)
 
 -- should truncate everything
 TRUNCATE TABLE truncprim, truncpart;
@@ -458,9 +378,12 @@ select tp_ins_data();
 (1 row)
 
 -- should truncate everything
-SET client_min_messages TO WARNING;	-- suppress cascading notices
 TRUNCATE TABLE truncprim CASCADE;
-RESET client_min_messages;
+NOTICE:  truncate cascades to table "truncpart"
+NOTICE:  truncate cascades to table "truncpart_1"
+NOTICE:  truncate cascades to table "truncpart_2"
+NOTICE:  truncate cascades to table "truncpart_2_1"
+NOTICE:  truncate cascades to table "truncpart_2_d"
 SELECT * FROM tp_chk_data();
  pktb | pkval | fktb | fkval
 ------+-------+------+-------
@@ -474,11 +397,6 @@ SELECT tp_ins_data();
 
 -- should truncate all partitions
 TRUNCATE TABLE truncpart;
-SELECT * FROM truncpart;
- a
----
-(0 rows)
-
 SELECT * FROM tp_chk_data();
    pktb    | pkval | fktb | fkval
 -----------+-------+------+-------
@@ -489,3 +407,20 @@ SELECT * FROM tp_chk_data();
 
 DROP TABLE truncprim, truncpart;
 DROP FUNCTION tp_ins_data(), tp_chk_data();
+-- test cascade when referencing a partitioned table
+CREATE TABLE trunc_a (a INT PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE trunc_a1 PARTITION OF trunc_a FOR VALUES FROM (0) TO (10);
+CREATE TABLE trunc_a2 PARTITION OF trunc_a FOR VALUES FROM (10) TO (20)
+  PARTITION BY RANGE (a);
+CREATE TABLE trunc_a21 PARTITION OF trunc_a2 FOR VALUES FROM (10) TO (12);
+CREATE TABLE trunc_a22 PARTITION OF trunc_a2 FOR VALUES FROM (12) TO (16);
+CREATE TABLE trunc_a2d PARTITION OF trunc_a2 DEFAULT;
+CREATE TABLE trunc_a3 PARTITION OF trunc_a FOR VALUES FROM (20) TO (30);
+INSERT INTO trunc_a VALUES (0), (5), (10), (15), (20), (25);
+-- truncate a partition cascading to a table
+CREATE TABLE ref_b (
+    b INT PRIMARY KEY,
+    a INT REFERENCES trunc_a(a) ON DELETE CASCADE
+);
+ERROR:  cannot reference partitioned table "trunc_a"
+DROP TABLE trunc_a; -- YB_TODO: port remaining tests after fixing "YB_TODO(feat): begin: Remove after adding support for foreign keys that reference partitioned tables"

@@ -137,7 +137,7 @@ SELECT * FROM itest1 ORDER BY a;
 (4 rows)
 
 INSERT INTO itest2 VALUES (10, 'xyz');
-ERROR:  cannot insert into column "a"
+ERROR:  cannot insert a non-DEFAULT value into column "a"
 DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO itest2 OVERRIDING SYSTEM VALUE VALUES (10, 'xyz');
@@ -245,7 +245,7 @@ SELECT * FROM itestv10 ORDER BY a;
 (4 rows)
 
 INSERT INTO itestv11 VALUES (10, 'xyz');
-ERROR:  cannot insert into column "a"
+ERROR:  cannot insert a non-DEFAULT value into column "a"
 DETAIL:  Column "a" is an identity column defined as GENERATED ALWAYS.
 HINT:  Use OVERRIDING SYSTEM VALUE to override.
 INSERT INTO itestv11 OVERRIDING SYSTEM VALUE VALUES (11, 'xyz');

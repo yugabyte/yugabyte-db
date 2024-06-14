@@ -16,45 +16,27 @@ CREATE SCHEMA test_ns_schema_1
               a serial,
               b int UNIQUE
        );
-
--- TODO(dmitry): Remove separate statements for creation each element in schema after
---               `schema creation with elements` command will be supported.
-CREATE SCHEMA test_ns_schema_1;
-CREATE TABLE test_ns_schema_1.abc (a serial, b int UNIQUE);
-CREATE UNIQUE INDEX abc_a_idx ON test_ns_schema_1.abc (a);
-CREATE VIEW test_ns_schema_1.abc_view AS SELECT a+1 AS a, b+1 AS b FROM test_ns_schema_1.abc;
+CREATE SCHEMA test_ns_schema_1; -- YB: TODO(dmitry): workaround for schema creation with elements
+CREATE TABLE test_ns_schema_1.abc (a serial, b int UNIQUE); -- YB
+CREATE UNIQUE INDEX abc_a_idx ON test_ns_schema_1.abc (a); -- YB
+CREATE VIEW test_ns_schema_1.abc_view AS SELECT a+1 AS a, b+1 AS b FROM test_ns_schema_1.abc; -- YB
 
 -- verify that the correct search_path restored on abort
 SET search_path to public;
 BEGIN;
 SET search_path to public, test_ns_schema_1;
-CREATE SCHEMA test_ns_schema_2
-       CREATE VIEW abc_view AS SELECT c FROM abc;
+CREATE SCHEMA test_ns_schema_2; -- YB: TODO(dmitry): schema creation with elements
+CREATE VIEW test_ns_schema_2.abc_view AS SELECT c FROM abc; -- YB
 COMMIT;
-BEGIN;
-SET search_path to public, test_ns_schema_1;
--- TODO(dmitry): Remove separate statements for creation each element in schema after
---               `schema creation with elements` command will be supported.
-CREATE SCHEMA test_ns_schema_2;
-CREATE VIEW test_ns_schema_2.abc_view AS SELECT c FROM abc;
-COMMIT;
+DROP SCHEMA test_ns_schema_2 CASCADE; -- YB: manually drop SCHEMA because above COMMIT rollback fails to roll back CREATE SCHEMA DDL
 SHOW search_path;
 
 -- verify that the correct search_path preserved
 -- after creating the schema and on commit
--- Note that CREATE SCHEMA is not transactional, hence we need to drop `test_ns_schema_2`.
-DROP SCHEMA test_ns_schema_2 CASCADE;
 BEGIN;
 SET search_path to public, test_ns_schema_1;
-CREATE SCHEMA test_ns_schema_2
-       CREATE VIEW abc_view AS SELECT a FROM abc;
-COMMIT;
-BEGIN;
-SET search_path to public, test_ns_schema_1;
--- TODO(dmitry): Remove separate statements for creation each element in schema after
---               `schema creation with elements` command will be supported.
-CREATE SCHEMA test_ns_schema_2;
-CREATE VIEW test_ns_schema_2.abc_view AS SELECT a FROM abc;
+CREATE SCHEMA test_ns_schema_2; -- YB: TODO(dmitry): schema creation with elements
+CREATE VIEW test_ns_schema_2.abc_view AS SELECT a FROM abc; -- YB
 SHOW search_path;
 COMMIT;
 SHOW search_path;
@@ -68,8 +50,8 @@ INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 
-SELECT * FROM test_ns_schema_1.abc ORDER BY a;
-SELECT * FROM test_ns_schema_1.abc_view ORDER BY a;
+SELECT * FROM test_ns_schema_1.abc ORDER BY a; -- YB: add ordering
+SELECT * FROM test_ns_schema_1.abc_view ORDER BY a; -- YB: add ordering
 
 ALTER SCHEMA test_ns_schema_1 RENAME TO test_ns_schema_renamed;
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =

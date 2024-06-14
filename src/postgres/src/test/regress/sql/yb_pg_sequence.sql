@@ -3,7 +3,6 @@
 --
 
 -- various error cases
-CREATE UNLOGGED SEQUENCE sequence_testx;
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
 CREATE SEQUENCE sequence_testx INCREMENT BY 1 MAXVALUE -20;
@@ -14,7 +13,9 @@ CREATE SEQUENCE sequence_testx CACHE 0;
 -- OWNED BY errors
 CREATE SEQUENCE sequence_testx OWNED BY nobody;  -- nonsense word
 CREATE SEQUENCE sequence_testx OWNED BY pg_class_oid_index.oid;  -- not a table
--- CREATE SEQUENCE sequence_testx OWNED BY pg_class.relname;  -- not same schema
+SET SESSION AUTHORIZATION postgres; -- YB: the following query expects to be run as the owner of pg_class
+CREATE SEQUENCE sequence_testx OWNED BY pg_class.relname;  -- not same schema
+RESET SESSION AUTHORIZATION; -- YB: undo above
 CREATE TABLE sequence_test_table (a int);
 CREATE SEQUENCE sequence_testx OWNED BY sequence_test_table.b;  -- wrong column
 DROP TABLE sequence_test_table;
@@ -59,7 +60,7 @@ INSERT INTO serialTest1 VALUES ('bar');
 INSERT INTO serialTest1 VALUES ('force', 100);
 INSERT INTO serialTest1 VALUES ('wrong', NULL);
 
-SELECT * FROM serialTest1 ORDER BY f1;
+SELECT * FROM serialTest1 ORDER BY f2; -- YB: add ordering
 
 SELECT pg_get_serial_sequence('serialTest1', 'f2');
 
@@ -136,14 +137,15 @@ ALTER TABLE foo_seq RENAME TO foo_seq_new;
 SELECT * FROM foo_seq_new;
 SELECT nextval('foo_seq_new');
 SELECT nextval('foo_seq_new');
--- YB log_cnt is always zero
-SELECT last_value, log_cnt, is_called FROM foo_seq_new;
+-- log_cnt can be higher if there is a checkpoint just at the right
+-- time, so just test for the expected range
+SELECT last_value, log_cnt IN (0) AS log_cnt_ok, is_called FROM foo_seq_new; -- YB: log_cnt is always zero
 DROP SEQUENCE foo_seq_new;
 
 -- renaming serial sequences
 ALTER TABLE serialtest1_f2_seq RENAME TO serialtest1_f2_foo;
 INSERT INTO serialTest1 VALUES ('more');
-SELECT * FROM serialTest1 ORDER BY f1;
+SELECT * FROM serialTest1 ORDER BY substr(f1, 3); -- YB: add ordering
 
 --
 -- Check dependencies of serial and ordinary sequences
@@ -236,8 +238,7 @@ SELECT * FROM information_schema.sequences
   WHERE sequence_name ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequence_name ASC;
 
--- Yugabyte does not store last_value in the pg_sequences
-SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size
+SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size -- YB: YB doesn't store last_value in pg_sequences
 FROM pg_sequences
 WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequencename ASC;
@@ -272,7 +273,16 @@ DROP SEQUENCE seq2;
 -- should fail
 SELECT lastval();
 
-CREATE USER regress_seq_user;
+-- unlogged sequences
+-- (more tests in src/test/recovery/)
+CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
+/* YB: uncomment when UNLOGGED SEQUENCE is supported
+ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
+\d sequence_test_unlogged
+ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
+\d sequence_test_unlogged
+DROP SEQUENCE sequence_test_unlogged;
+*/ -- YB
 
 -- Test sequences in read-only transactions
 CREATE TEMPORARY SEQUENCE sequence_test_temp1;
@@ -287,6 +297,8 @@ ROLLBACK;
 
 -- privileges tests
 
+CREATE USER regress_seq_user;
+
 -- nextval
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -295,8 +307,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -305,8 +316,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -315,8 +325,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 -- currval
 BEGIN;
@@ -327,8 +336,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -338,8 +346,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -349,8 +356,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 -- lastval
 BEGIN;
@@ -361,8 +367,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT lastval();
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -372,8 +377,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT lastval();
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -383,8 +387,7 @@ REVOKE ALL ON seq3 FROM regress_seq_user;
 GRANT USAGE ON seq3 TO regress_seq_user;
 SELECT lastval();
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 -- setval
 BEGIN;
@@ -398,8 +401,7 @@ GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT setval('seq3', 5);
 SELECT nextval('seq3');
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 
 -- ALTER SEQUENCE
 BEGIN;
