@@ -3,6 +3,8 @@ title: Alert policy templates
 headerTitle: Alert policy templates
 linkTitle: Alert policy templates
 description: Alert policy template reference
+aliases:
+  - preview/yugabyte-platform/configure-yugabyte-platform/alert-policy-templates
 menu:
   preview_yugabyte-platform:
     identifier: alert-policy-templates

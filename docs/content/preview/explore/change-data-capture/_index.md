@@ -30,25 +30,25 @@ YugabyteDB CDC captures changes made to data in the database and streams those c
 
 ![What is CDC](/images/explore/cdc-overview-what.png)
 
-{{<tip>}}
+{{<lead link="./cdc-overview">}}
 To know more about the internals of CDC, see [Overview](./cdc-overview).
-{{</tip>}}
+{{</lead>}}
 
 ## Debezium connector
 
 To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the Debezium connector. Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
-{{<tip>}}
+{{<lead link="./debezium-connector-yugabytedb">}}
 To understand how the various features and configuration of the connector, see [Debezium connector](./debezium-connector-yugabytedb).
-{{</tip>}}
+{{</lead>}}
 
 ## Monitoring
 
 You can monitor the activities and status of the deployed connectors using the http end points provided by YugabyteDB.
 
-{{<tip>}}
+{{<lead link="./cdc-monitor">}}
 To know more about how to monitor your CDC setup, see [Monitor](./cdc-monitor).
-{{</tip>}}
+{{</lead>}}
 
 For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
 

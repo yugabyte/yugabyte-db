@@ -1,7 +1,7 @@
 ---
 title: xCluster replication (2+ regions) in YugabyteDB
 headerTitle: Native asynchronous replication
-linkTitle: Asynchronous replication
+linkTitle: Native async replication
 description: Multi-region deployment using asynchronous replication across two or more data centers.
 headContent: xCluster unidirectional and bidirectional replication (2+ regions)
 aliases:

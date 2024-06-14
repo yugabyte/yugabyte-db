@@ -768,6 +768,13 @@ typedef struct PgExplicitRowLockParams {
   int docdb_wait_policy;
 } YBCPgExplicitRowLockParams;
 
+// For creating a new table...
+typedef enum PgYbrowidMode {
+  PG_YBROWID_MODE_NONE,   // ...do not add ybrowid
+  PG_YBROWID_MODE_HASH,   // ...add ybrowid HASH
+  PG_YBROWID_MODE_RANGE,  // ...add ybrowid ASC
+} YBCPgYbrowidMode;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -761,7 +761,7 @@ DefineIndex(Oid relationId,
 		 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		 *   is safe to be disabled.
 		 */
-		if (concurrent && IsCatalogRelation(rel))
+		if (concurrent && YbIsSysCatalogTabletRelation(rel))
 		{
 			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 				ereport(ERROR,

@@ -151,9 +151,9 @@ All applications need to be tuned to get the best performance. YugabyteDB suppor
 - [Uninterrupted long scans](../transactions-performance-ysql/#large-scans-and-batch-jobs)
 - [Minimize round trips](../transactions-performance-ysql/#stored-procedures-minimize-round-trips) with stored procedures.
 
-{{<tip>}}
+{{<lead link="../transactions-performance-ysql/">}}
 For more examples and details on how to tune your application's performance, see [Performance tuning](../transactions-performance-ysql/).
-{{</tip>}}
+{{</lead>}}
 
 ## Observability
 

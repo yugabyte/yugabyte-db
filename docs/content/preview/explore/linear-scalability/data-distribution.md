@@ -42,9 +42,9 @@ Now, the tablet `T1` splits into two by creating a new tablet, `T2`. Tablet spli
 
 ![Split into two](/images/explore/scalability/sharding-single-tablet-split.png)
 
-{{<tip>}}
+{{<lead link="../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting">}}
 For more details on how tablets can be split and the various parameters that can affect them, see [Approaches to tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting).
-{{</tip>}}
+{{</lead>}}
 
 ## Rebalancing
 

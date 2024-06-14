@@ -932,8 +932,9 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               YBCPgOid database_oid,
                               YBCPgOid table_relfilenode_oid,
                               bool is_shared_table,
+                              bool is_sys_catalog_table,
                               bool if_not_exist,
-                              bool add_primary_key,
+                              YBCPgYbrowidMode ybrowid_mode,
                               bool is_colocated_via_database,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
@@ -950,8 +951,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
 
   return ToYBCStatus(pgapi->NewCreateTable(
-      database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
+      database_name, schema_name, table_name, table_id, is_shared_table, is_sys_catalog_table,
+      if_not_exist, ybrowid_mode, is_colocated_via_database, tablegroup_id, colocation_id,
       tablespace_id, is_matview, pg_table_id, old_relfilenode_id, is_truncate, handle));
 }
 
@@ -1132,6 +1133,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const YBCPgOid index_oid,
                               const YBCPgOid table_relfilenode_oid,
                               bool is_shared_index,
+                              bool is_sys_catalog_index,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
@@ -1150,8 +1152,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
 
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
-                                           table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist,
+                                           table_id, is_shared_index, is_sys_catalog_index,
+                                           is_unique_index, skip_index_backfill, if_not_exist,
                                            is_colocated_via_database, tablegroup_id,
                                            colocation_id, tablespace_id, pg_table_id,
                                            old_relfilenode_id, handle));
