@@ -3980,7 +3980,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TabletInfoPtr colocated_tablet = nullptr;
 
   {
-    LockGuard lock(mutex_);
+    UniqueLock lock(mutex_);
     auto ns_lock = ns->LockForRead();
     TRACE("Acquired catalog manager lock");
 
@@ -4149,6 +4149,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         auto tablet = tablegroup ?
             tablegroup->tablet() :
             colocated_db_tablets_map_[ns->id()];
+        lock.unlock();
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             Format("Colocation group tablet $0 should be marked as colocated",
