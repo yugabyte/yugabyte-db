@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-After [creating a local cluster](../../../quick-start/), follow the instructions on this page to run the Yugastore application.
+After [creating a local cluster](/preview/quick-start/), follow the instructions on this page to run the Yugastore application.
 
 [Yugastore-java](https://github.com/yugabyte/yugastore-java) is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework, and YugabyteDB (both YSQL and YCQL) are used as the underlying technology stack.
 

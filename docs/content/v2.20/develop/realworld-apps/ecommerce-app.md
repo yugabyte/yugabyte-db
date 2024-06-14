@@ -71,7 +71,7 @@ The sections below describe the architecture / data model for the various featur
 
 ### Product catalog management
 
-The inventory of products is modeled as a table using the Cassandra-compatible YCQL API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is colocated in the database.
+The inventory of products is modeled as a table using the Cassandra-compatible YCQL API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling-ycql/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is colocated in the database.
 
 ```sql
 ycqlsh> DESCRIBE TABLE yugastore.products;

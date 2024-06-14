@@ -149,7 +149,7 @@ The following is an example for connecting to a YugabyteDB cluster with SSL enab
 conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/path/to/root.crt")
 ```
 
-The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Managed, use the cluster credentials for user and password, and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+The Yugabyte Psycopg2 smart driver does not support SSL mode verify-full for clusters in [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Use verify-ca or the upstream psycopg2 driver. If your cluster is on YugabyteDB Managed, use the cluster credentials for user and password, and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
 
 ### Step 3: Write your application
 
