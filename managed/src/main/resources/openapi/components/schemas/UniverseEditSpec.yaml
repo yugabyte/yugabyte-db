@@ -13,7 +13,7 @@ properties:
   clusters:
     type: array
     items:
-      $ref: ./ClusterEditSpec.yaml
+      $ref: "./ClusterEditSpec.yaml"
     maxItems: 16
     minItems: 1
   expected_universe_version:

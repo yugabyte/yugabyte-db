@@ -5,7 +5,7 @@ description: |
   Payload to start a YugabyteDB software upgrade on a Universe. Part of UniverseSoftwareUpgradeReq
 type: object
 allOf:
-  - $ref: ./SleepAfterRestartSchema.yaml
+  - $ref: "./SleepAfterRestartSchema.yaml"
   - type: object
     required:
       - version
