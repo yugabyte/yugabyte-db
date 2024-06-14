@@ -6,6 +6,7 @@ description: Learn about the persistent storage layer of DocDB.
 image: fa-thin fa-database
 aliases:
   - /architecture/concepts/docdb/
+  - /preview/docdb/persistence
 headcontent: The document store responsible for transactions, sharding, replication, and persistence
 menu:
   preview:
@@ -23,22 +24,22 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 DocDB is a persistent key-value store, which means that data is stored and retrieved using unique keys. It supports ordered data operations, allowing efficient range queries and iteration over keys. The keys are designed for fast lookups and efficient range scans.
 
-{{<tip>}}
+{{<lead link="./data-model">}}
 To understand more about how row data is stored as keys and values in DocDB, see [DocDB data model](./data-model).
-{{</tip>}}
+{{</lead>}}
 
 ## Storage engine
 
 DocDB is a log-structured merge-tree (LSM) based storage engine. This design is optimized for high write throughput and efficient storage utilization. Data is stored in multiple SSTs (Sorted String Tables) to store key-value data on disk. It is designed to be efficient for both sequential and random access patterns. DocDB periodically compacts data by merging and sorting multiple SST files into a smaller set of files. This process helps to maintain a consistent on-disk format and reclaim space from obsolete data.
 
-{{<tip>}}
+{{<lead link="./lsm-sst">}}
 To understand more about how LSM tree stores data in SSTs, see [LSM and SST](./lsm-sst).
-{{</tip>}}
+{{</lead>}}
 
 ## Performance
 
 DocDB is written in C++ and is designed to be highly performant across various platforms and architectures, including Linux, macOS, Windows, and various UNIX-like systems.
 
-{{<tip>}}
+{{<lead link="./performance">}}
 To understand more about how DocDB enhances RocksDB, see [Performance](./performance).
-{{</tip>}}
+{{</lead>}}

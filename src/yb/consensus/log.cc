@@ -1641,6 +1641,9 @@ Status Log::Close() {
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
+      if (background_synchronizer_wait_state_) {
+        yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+      }
       VLOG_WITH_PREFIX(1) << "Log closed";
 
       // Release FDs held by these objects.
@@ -1655,9 +1658,6 @@ Status Log::Close() {
 
     default:
       return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
-  }
-  if (background_synchronizer_wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
   }
 }
 

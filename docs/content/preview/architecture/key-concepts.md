@@ -9,6 +9,7 @@ aliases:
   - /preview/architecture/concepts
   - /preview/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
+  - /preview/key-concepts/
 menu:
   preview:
     identifier: architecture-concepts-universe
@@ -36,9 +37,9 @@ CDC is a software design pattern used in database systems to capture and propaga
 
 A cluster is a group of [nodes](#node) on which YugabyteDB is deployed. The table data is distributed across the various [nodes](#node) in the cluster. Typically used as [*Primary cluster*](#primary-cluster) and [*Read replica cluster*](#read-replica-cluster).
 
-{{<tip>}}
+{{<lead link="#universe">}}
 Sometimes the term *cluster* is used interchangeably with the term *universe*. However, the two are not always equivalent, as described in [Universe](#universe).
-{{</tip>}}
+{{</lead>}}
 
 ## DocDB
 

@@ -34,9 +34,9 @@ Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` 
 'abc' ~ 'a.*c'              --> true
 ```
 
-{{<tip>}}
+{{<lead link="./pattern-matching">}}
 To learn more about pattern matching, see [Pattern matching](./pattern-matching).
-{{</tip>}}
+{{</lead>}}
 
 ## Similarity search
 
@@ -44,9 +44,9 @@ Similarity matching works by determining how similar two strings are by taking i
 
 For example, the distance between `warehoused` and `warehouse` is `1`, as it has one additional character (`d`) than `warehouse`.
 
-{{<tip>}}
+{{<lead link="./similarity-matching">}}
 To learn more about similarity search, see [Similarity search](./similarity-matching).
-{{</tip>}}
+{{</lead>}}
 
 ## Full-text search
 
@@ -64,9 +64,9 @@ would be parsed as follows:
 
 This enables you to search for the document which has `fox` and `quick` or `jumping dog`.
 
-{{<tip>}}
+{{<lead link="./full-text-search">}}
 To learn more about full-text search, see [Full-text search](./full-text-search).
-{{</tip>}}
+{{</lead>}}
 
 ## Phonetic search
 
@@ -76,9 +76,9 @@ In the case where you do not know the exact search term and want to find similar
 select word from words where dmetaphone(word) = dmetaphone('anapistagafi') limit 5;
 ```
 
-{{<tip>}}
+{{<lead link="./phonetic-matching">}}
 To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
-{{</tip>}}
+{{</lead>}}
 
 ## Learn more
 

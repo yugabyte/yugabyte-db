@@ -1231,6 +1231,7 @@ public class DrConfigController extends AuthenticatedController {
     BootstrapParams bootstrapParams = new BootstrapParams();
     bootstrapParams.tables = tableIds;
     bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
+    bootstrapParams.allowBootstrap = true;
     return bootstrapParams;
   }
 

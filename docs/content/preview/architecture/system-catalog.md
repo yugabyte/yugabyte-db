@@ -75,9 +75,9 @@ The _pg_stat_activity_ view shows detailed information about active sessions, in
 The pg_stat_activity view is not based on any specific tables. Instead, it provides real-time information about the current activity of each session based on internal data structures. This includes information such as the user, current query, state of the query (active, idle, and more), and other session-level information.
 {{</note>}}
 
-{{<tip>}}
+{{<lead link="../../explore/observability/pg-stat-activity">}}
 To learn more about how the pg_stat_activity can be used to monitor live queries, see [View live queries](../../explore/observability/pg-stat-activity).
-{{</tip>}}
+{{</lead>}}
 
 ## Table activity
 
@@ -110,9 +110,9 @@ The _pg_stat_statements_ view provides detailed statistical insights into SQL qu
 By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are associated with a query. This has proved insufficient to debug large volumes of queries. To get a better insight, YugabyteDB introduces an additional column, [yb_latency_histogram](../../explore/query-1-performance/pg-stat-statements#yb-latency-histogram-column), that stores a list of latency ranges and the number of query executions in that range.
 {{</note>}}
 
-{{<tip>}}
+{{<lead link="../../explore/query-1-performance/pg-stat-statements/">}}
 To understand how to improve query performance using these stats, see [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
-{{</tip>}}
+{{</lead>}}
 
 ## Data statistics
 
