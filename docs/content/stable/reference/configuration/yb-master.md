@@ -875,6 +875,10 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
+##### --enable_truncate_cdcsdk_table
+
+By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
+
 Default: `false`
 
 ## Metric export flags
