@@ -51,6 +51,16 @@ func Install(version string) error {
 		return err
 	}
 
+	// Set ownership of yba-ctl.yml and yba-ctl.log
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
+
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
+
 	if err := createInstallDirs(); err != nil {
 		return err
 	}
@@ -207,7 +217,14 @@ func Upgrade(version string) error {
 	if err := os.Chdir(GetBinaryDir()); err != nil {
 		return err
 	}
-
+	// Change ownership as part of upgrade to allow non-root commands
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
 	if err := createUpgradeDirs(); err != nil {
 		return err
 	}
