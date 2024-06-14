@@ -240,6 +240,9 @@ bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
 bool EnableCursorsOnAggregationQueryRewrite =
 	DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE;
 
+#define DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE 200
+int MaxWildcardIndexKeySize = DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -644,6 +647,15 @@ InitApiConfigurations(char *prefix)
 		NULL,
 		&EnableCursorsOnAggregationQueryRewrite,
 		DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		"helio_api.maxWildcardIndexKeySize",
+		gettext_noop("GUC for the max wildcard index key size."),
+		NULL, &MaxWildcardIndexKeySize,
+		DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE, 1, INT32_MAX,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);

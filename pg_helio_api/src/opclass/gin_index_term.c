@@ -519,27 +519,55 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		.string = indexElement->path
 	};
 
-	if (termMetadata->pathPrefix.length > 0 && indexPath.length > 0)
-	{
-		if (!termMetadata->isWildcardPathPrefix)
-		{
-			if (!StringViewEquals(&indexPath, &termMetadata->pathPrefix))
-			{
-				ereport(ERROR, (errcode(MongoInternalError),
-								errmsg(
-									"Wildcard Prefix path encountered with non-wildcard index - path %s, prefix %s",
-									indexPath.string, termMetadata->pathPrefix.string),
-								errhint(
-									"Wildcard Prefix path encountered with non-wildcard index")));
-			}
+	char *newPath = NULL;
 
-			/* Index term should occupy a minimal amount of space */
-			indexPath.length = 1;
-			indexPath.string = "$";
-		}
-		else
+	if (termMetadata->pathPrefix.length > 0 && indexPath.length > 0 &&
+		!termMetadata->isWildcard)
+	{
+		if (!StringViewEquals(&indexPath, &termMetadata->pathPrefix))
 		{
-			/* Wildcard index path: TODO: Consider how to support this. For now just use full paths */
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg(
+								"Wildcard Prefix path encountered with non-wildcard index - path %s, prefix %s",
+								indexPath.string, termMetadata->pathPrefix.string),
+							errhint(
+								"Wildcard Prefix path encountered with non-wildcard index")));
+		}
+
+		/* Index term should occupy a minimal amount of space */
+		indexPath.length = 1;
+		indexPath.string = "$";
+	}
+	else if (termMetadata->indexTermSizeLimit > 0 && termMetadata->isWildcard)
+	{
+		/* If it is a single path wildcard index with a non root projection we can trim down the key by removing the prefix. */
+		if (!termMetadata->isWildcardProjection && termMetadata->pathPrefix.length > 0 &&
+			indexPath.length > 0)
+		{
+			uint32_t newIndexPathLength = indexPath.length -
+										  termMetadata->pathPrefix.length;
+
+			/* We only proceed with the optimization if the new index path length > 0, otherwise we lose the root term */
+			if (newIndexPathLength > 0)
+			{
+				newPath = palloc0(sizeof(char) * (newIndexPathLength + 2));
+
+				/* Build the $.suffix string i.e if the pathPrefix is a.b.c.d.e.$** and the index element path is a.b.c.d.e.f.g we can transform to $.f.g */
+				newPath[0] = '$';
+				memcpy(&newPath[1], indexPath.string + termMetadata->pathPrefix.length,
+					   newIndexPathLength);
+
+				indexPath.string = newPath;
+				indexPath.length = newIndexPathLength + 1; /* account for the added $ at the beginning. */
+			}
+		}
+
+		if (indexPath.length > termMetadata->wildcardIndexTruncatedPathLimit)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"Wildcard index key exceeded the maximum allowed size of %d.",
+								termMetadata->wildcardIndexTruncatedPathLimit)));
 		}
 	}
 
@@ -563,6 +591,8 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 							dataSize, termMetadata->indexTermSizeLimit)));
 	}
 
+	bool truncated = false;
+
 	switch (indexElement->bsonValue.value_type)
 	{
 		/* These types are not truncated */
@@ -581,7 +611,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		{
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return false;
+			break;
 		}
 
 		case BSON_TYPE_ARRAY:
@@ -613,7 +643,6 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 			bson_iter_t arrayIterator;
 			pgbson_array_writer arrayWriter;
-			bool truncated = false;
 			BsonValueInitIterator(&indexElement->bsonValue, &arrayIterator);
 			PgbsonWriterStartArray(writer, indexPath.string, indexPath.length,
 								   &arrayWriter);
@@ -621,7 +650,8 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 										  termMetadata->indexTermSizeLimit,
 										  &arrayIterator, &arrayWriter);
 			PgbsonWriterEndArray(writer, &arrayWriter);
-			return truncated;
+
+			break;
 		}
 
 		case BSON_TYPE_DOCUMENT:
@@ -640,7 +670,6 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			int32_t hardLimit = termMetadata->indexTermSizeLimit - 2;
 
 			bson_iter_t documentIterator;
-			bool truncated = false;
 			pgbson_writer documentWriter;
 			BsonValueInitIterator(&indexElement->bsonValue, &documentIterator);
 			PgbsonWriterStartDocument(writer, indexPath.string, indexPath.length,
@@ -650,7 +679,8 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 											 &documentIterator,
 											 &documentWriter);
 			PgbsonWriterEndDocument(writer, &documentWriter);
-			return truncated;
+
+			break;
 		}
 
 		/* TODO: These types need to be truncated */
@@ -663,28 +693,28 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			 */
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return false;
+			break;
 		}
 
 		case BSON_TYPE_BINARY:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize,
-														termMetadata->indexTermSizeLimit,
-														BSON_TYPE_BINARY,
-														&indexElement->bsonValue.value.
-														v_binary.data_len);
+			truncated = TruncateStringOrBinaryTerm(dataSize,
+												   termMetadata->indexTermSizeLimit,
+												   BSON_TYPE_BINARY,
+												   &indexElement->bsonValue.value.
+												   v_binary.data_len);
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return truncated;
+			break;
 		}
 
 		case BSON_TYPE_CODE:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize,
-														termMetadata->indexTermSizeLimit,
-														BSON_TYPE_CODE,
-														&indexElement->bsonValue.value.
-														v_code.code_len);
+			truncated = TruncateStringOrBinaryTerm(dataSize,
+												   termMetadata->indexTermSizeLimit,
+												   BSON_TYPE_CODE,
+												   &indexElement->bsonValue.value.
+												   v_code.code_len);
 
 			/* Code ignores code_len when writing. We need to manually truncate */
 			if (truncated)
@@ -697,40 +727,47 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return truncated;
+			break;
 		}
 
 		case BSON_TYPE_SYMBOL:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize,
-														termMetadata->indexTermSizeLimit,
-														BSON_TYPE_SYMBOL,
-														&indexElement->bsonValue.value.
-														v_symbol.len);
+			truncated = TruncateStringOrBinaryTerm(dataSize,
+												   termMetadata->indexTermSizeLimit,
+												   BSON_TYPE_SYMBOL,
+												   &indexElement->bsonValue.value.
+												   v_symbol.len);
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return truncated;
+			break;
 		}
 
 		case BSON_TYPE_UTF8:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize,
-														termMetadata->indexTermSizeLimit,
-														BSON_TYPE_UTF8,
-														&indexElement->bsonValue.value.
-														v_utf8.len);
+			truncated = TruncateStringOrBinaryTerm(dataSize,
+												   termMetadata->indexTermSizeLimit,
+												   BSON_TYPE_UTF8,
+												   &indexElement->bsonValue.value.
+												   v_utf8.len);
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return truncated;
+			break;
 		}
 
 		default:
 		{
 			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
-			return false;
+			break;
 		}
 	}
+
+	if (newPath != NULL)
+	{
+		pfree(newPath);
+	}
+
+	return truncated;
 }
 
 

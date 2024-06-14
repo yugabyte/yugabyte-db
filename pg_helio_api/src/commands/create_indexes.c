@@ -222,6 +222,7 @@ static const int NumberOfMongoIndexTypes = sizeof(MongoIndexSupportedList) /
 extern bool EnableExtendedIndexFilters;
 extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
+extern int MaxWildcardIndexKeySize;
 extern bool DefaultEnableLargeIndexKeys;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
@@ -1800,12 +1801,6 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 	if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 	{
-		if (indexDef->key->isWildcard || indexDef->wildcardProjectionDocument != NULL)
-		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
-							errmsg(
-								"enableLargeIndexKeys not supported with wildcard indexes.")));
-		}
 		if (indexDef->key->hasHashedIndexes ||
 			indexDef->key->hasTextIndexes ||
 			indexDef->key->has2dIndex ||
@@ -5092,6 +5087,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 
 	bool firstColumnWritten = false;
 	char indexTermSizeLimitArg[22] = { 0 };
+	bool enableTruncation = enableLargeIndexKeys || ForceIndexTermTruncation;
 
 	if (list_length(indexDefKey->keyPathList) == 0)
 	{
@@ -5107,8 +5103,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 							errmsg("Cannot create wildcard unique indexes")));
 		}
 
-		if (enableLargeIndexKeys || ForceIndexTermTruncation)
+		char wildcardIndexTruncatedPathLimit[12] = { 0 };
+		if (enableTruncation)
 		{
+			sprintf(wildcardIndexTruncatedPathLimit, ",wkl=%d", MaxWildcardIndexKeySize);
 			sprintf(indexTermSizeLimitArg, ",tl=%u",
 					ComputeIndexTermLimit(SINGLE_PATH_INDEX_TERM_SIZE_LIMIT));
 		}
@@ -5132,10 +5130,11 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		{
 			appendStringInfo(indexExprStr,
 							 "%s document %s.bson_rum_single_path_ops"
-							 "(path='', iswildcard=true%s)",
+							 "(path='', iswildcard=true%s%s)",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
-							 indexTermSizeLimitArg);
+							 indexTermSizeLimitArg,
+							 wildcardIndexTruncatedPathLimit);
 
 			firstColumnWritten = true;
 		}
@@ -5158,11 +5157,12 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 			bool includeId = wpPathOps->idFieldInclusion == WP_IM_INCLUDE;
 			appendStringInfo(indexExprStr,
 							 "%s document %s.bson_rum_wildcard_project_path_ops"
-							 "(includeid=%s%s",
+							 "(includeid=%s%s%s",
 							 firstColumnWritten ? "," : "",
 							 ApiCatalogSchemaName,
 							 includeId ? "true" : "false",
-							 indexTermSizeLimitArg);
+							 indexTermSizeLimitArg,
+							 wildcardIndexTruncatedPathLimit);
 
 			firstColumnWritten = true;
 

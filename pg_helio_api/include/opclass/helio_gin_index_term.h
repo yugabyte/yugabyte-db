@@ -49,11 +49,17 @@ typedef struct IndexTermCreateMetadata
 	/* Index term size limit for the term. */
 	int32_t indexTermSizeLimit;
 
+	/* The key size limit for wildcard indexes with truncation enabled. */
+	uint32_t wildcardIndexTruncatedPathLimit;
+
 	/* The path prefix to truncate from the index term path. */
 	StringView pathPrefix;
 
-	/* If the path prefix is a wildcard path */
-	bool isWildcardPathPrefix;
+	/* If the term belongs to a wildcard index. */
+	bool isWildcard;
+
+	/* If the term belongs to a wildcard projection index. */
+	bool isWildcardProjection;
 
 	/* The index version for this index */
 	IndexOptionsVersion indexVersion;

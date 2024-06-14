@@ -62,6 +62,7 @@ static Size FillWildcardProjectPathSpec(const char *prefix, void *buffer);
 
 
 extern Datum gin_bson_exclusion_pre_consistent(PG_FUNCTION_ARGS);
+extern uint32_t MaxWildcardIndexKeySize;
 
 /*
  * gin_bson_single_path_extract_value is run on the insert/update path and collects the terms
@@ -390,8 +391,12 @@ gin_bson_get_single_path_generated_terms(PG_FUNCTION_ARGS)
 
 		options->path = sizeof(BsonGinSinglePathOptions);
 		options->isWildcard = PG_GETARG_BOOL(2);
-		options->base.indexTermTruncateLimit = PG_GETARG_INT32(5);
 		options->generateNotFoundTerm = PG_GETARG_BOOL(3);
+
+		int32_t truncateLimit = PG_GETARG_INT32(5);
+		options->base.indexTermTruncateLimit = truncateLimit;
+		options->base.wildcardIndexTruncatedPathLimit = truncateLimit > 0 ?
+														MaxWildcardIndexKeySize : 0;
 
 		GenerateSinglePathTermsCore(document, context, options);
 		context->index = 0;
@@ -472,7 +477,11 @@ gin_bson_get_wildcard_project_generated_terms(PG_FUNCTION_ARGS)
 		options->isExclusion = PG_GETARG_BOOL(2);
 		options->includeId = PG_GETARG_BOOL(3);
 		options->base.type = IndexOptionsType_Wildcard;
-		options->base.indexTermTruncateLimit = PG_GETARG_INT32(5);
+
+		int32_t truncateLimit = PG_GETARG_INT32(5);
+		options->base.indexTermTruncateLimit = truncateLimit;
+		options->base.wildcardIndexTruncatedPathLimit = truncateLimit > 0 ?
+														MaxWildcardIndexKeySize : 0;
 
 		GenerateWildcardPathTermsCore(document, context, options);
 
@@ -584,6 +593,14 @@ gin_bson_single_path_options(PG_FUNCTION_ARGS)
 							offsetof(BsonGinSinglePathOptions,
 									 base.indexTermTruncateLimit));
 
+	add_local_int_reloption(relopts, "wkl",
+							"The key size limit for wildcard index truncation.",
+							INT32_MAX, /* default value */
+							0, /* min */
+							INT32_MAX, /* max */
+							offsetof(BsonGinWildcardProjectionPathOptions,
+									 base.wildcardIndexTruncatedPathLimit));
+
 	add_local_int_reloption(relopts, "v",
 							"The version of the options struct.",
 							IndexOptionsVersion_V0,         /* default value */
@@ -663,6 +680,13 @@ gin_bson_wildcard_project_options(PG_FUNCTION_ARGS)
 							INT32_MAX, /* max */
 							offsetof(BsonGinWildcardProjectionPathOptions,
 									 base.indexTermTruncateLimit));
+	add_local_int_reloption(relopts, "wkl",
+							"The key size limit for wildcard index truncation.",
+							INT32_MAX, /* default value */
+							0, /* min */
+							INT32_MAX, /* max */
+							offsetof(BsonGinWildcardProjectionPathOptions,
+									 base.wildcardIndexTruncatedPathLimit));
 
 	add_local_int_reloption(relopts, "v",
 							"The version of the options struct.",
@@ -895,65 +919,65 @@ GetIndexTermMetadata(void *indexOptions)
 {
 	BsonGinIndexOptionsBase *options = (BsonGinIndexOptionsBase *) indexOptions;
 
-	if (options->version >= IndexOptionsVersion_V1)
-	{
-		/* Turn on truncation by default */
-		if (options->type != IndexOptionsType_SinglePath)
-		{
-			ereport(ERROR, (errmsg(
-								"Index version V1 is not supported by non-single path indexes"),
-							errhint(
-								"Index version V1 is not supported by non-single path indexes")));
-		}
-
-		BsonGinSinglePathOptions *singlePathOptions =
-			(BsonGinSinglePathOptions *) options;
-		if (singlePathOptions->isWildcard ||
-			singlePathOptions->generateNotFoundTerm)
-		{
-			ereport(ERROR, (errmsg(
-								"Index term version V1 is not supported by wildcard or unique path indexes"),
-							errhint(
-								"Index term version V1 is not supported by wildcard or unique path indexes")));
-		}
-
-		StringView pathPrefix = { 0 };
-		Get_Index_Path_Option(singlePathOptions, path, pathPrefix.string,
-							  pathPrefix.length);
-		return (IndexTermCreateMetadata) {
-				   .indexTermSizeLimit = options->indexTermTruncateLimit,
-				   .pathPrefix = pathPrefix,
-				   .isWildcardPathPrefix = false,
-				   .indexVersion = options->version
-		};
-	}
-
-	if (options->indexTermTruncateLimit > 0)
+	if (options->version >= IndexOptionsVersion_V1 || options->indexTermTruncateLimit > 0)
 	{
 		StringView pathPrefix = { 0 };
-		bool isWildcardPrefix = false;
+		bool isWildcard = false;
+		bool isWildcardProjection = false;
 		if (options->type == IndexOptionsType_SinglePath)
 		{
 			/* For single path indexes, we can elide the index path prefix */
 			BsonGinSinglePathOptions *singlePathOptions =
 				(BsonGinSinglePathOptions *) options;
+
+			if (options->version >= IndexOptionsVersion_V1 &&
+				singlePathOptions->generateNotFoundTerm)
+			{
+				ereport(ERROR, (errmsg(
+									"Index term version V1 is not supported by unique path indexes"),
+								errhint(
+									"Index term version V1 is not supported by unique path indexes")));
+			}
+
 			Get_Index_Path_Option(singlePathOptions, path, pathPrefix.string,
 								  pathPrefix.length);
-			isWildcardPrefix = singlePathOptions->isWildcard;
+			isWildcard = singlePathOptions->isWildcard;
 		}
+		else if (options->type == IndexOptionsType_Wildcard)
+		{
+			isWildcard = true;
+			isWildcardProjection = true;
+		}
+		else if (options->version >= IndexOptionsVersion_V1)
+		{
+			ereport(ERROR, (errmsg(
+								"Index version V1 is not supported by hashed, text or 2d sphere indexes"),
+							errhint(
+								"Index version V1 is not supported by hashed, text or 2d sphere indexes")));
+		}
+
+		uint32_t wildcardIndexTruncatedPathLimit =
+			options->wildcardIndexTruncatedPathLimit == 0 ?
+			UINT32_MAX :
+			options->
+			wildcardIndexTruncatedPathLimit;
 
 		return (IndexTermCreateMetadata) {
 				   .indexTermSizeLimit = options->indexTermTruncateLimit,
+				   .wildcardIndexTruncatedPathLimit = wildcardIndexTruncatedPathLimit,
 				   .pathPrefix = pathPrefix,
-				   .isWildcardPathPrefix = isWildcardPrefix,
+				   .isWildcard = isWildcard,
+				   .isWildcardProjection = isWildcardProjection,
 				   .indexVersion = options->version
 		};
 	}
 
 	return (IndexTermCreateMetadata) {
 			   .indexTermSizeLimit = 0,
+			   .wildcardIndexTruncatedPathLimit = UINT32_MAX,
 			   .pathPrefix = { 0 },
-			   .isWildcardPathPrefix = false,
+			   .isWildcard = false,
+			   .isWildcardProjection = false,
 			   .indexVersion = options->version
 	};
 }

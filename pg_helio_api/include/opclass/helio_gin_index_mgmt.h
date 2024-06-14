@@ -65,6 +65,7 @@ typedef struct
 	IndexOptionsVersion version;
 	int intOption_deprecated;   /* This is a deprecated field for int type fields */
 	int32_t indexTermTruncateLimit; /* this must be the next field in all index options */
+	uint32_t wildcardIndexTruncatedPathLimit;
 } BsonGinIndexOptionsBase;
 
 /*
