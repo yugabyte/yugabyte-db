@@ -235,8 +235,6 @@ As **initial-delay-secs** is specified, to ensure that the tests start together,
 
 {{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
 
-¸
-
 On a 2vCPU cluster, 6,415 tpmC was achieved with 99.78% efficiency keeping the new order latency around 64ms.
 
 {{% /tab %}}
