@@ -163,7 +163,7 @@ The `DESC INDEX <index-name>` command gives just the description of the specifie
 DESC INDEX idx_zip2;
 ```
 
-The ouput includes the description of just the index as follows:
+The output includes the description of just the index as follows:
 
 ```cql{.nocopy}
 CREATE INDEX idx_zip2 ON yugabyte.census (zipcode, id) INCLUDE (name)
