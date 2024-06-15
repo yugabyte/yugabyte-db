@@ -12,6 +12,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.gflags.GFlagGroup;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagValidationDetails;
@@ -120,6 +121,24 @@ public class GFlagsValidationHandler {
         .orElseThrow(
             () ->
                 new PlatformServiceException(BAD_REQUEST, gflag + " is not present in metadata."));
+  }
+
+  public List<GFlagGroup> getGFlagGroups(String version, String gflagGroup) throws IOException {
+    validateVersionFormat(version);
+    List<GFlagGroup> gflagGroupsList = gflagsValidation.extractGFlagGroups(version);
+    if (StringUtils.isEmpty(gflagGroup)) {
+      return gflagGroupsList;
+    }
+    List<GFlagGroup> result = new ArrayList<>();
+    for (GFlagGroup group : gflagGroupsList) {
+      if (group.groupName.toString().contains(gflagGroup)) {
+        result.add(group);
+      }
+    }
+    if (result.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Unknown gflag group: " + gflagGroup);
+    }
+    return result;
   }
 
   private GFlagValidationDetails checkGflags(
