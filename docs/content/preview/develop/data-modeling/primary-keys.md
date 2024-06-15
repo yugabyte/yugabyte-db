@@ -13,21 +13,21 @@ type: docs
 
 {{<api-tabs>}}
 
-The Primary key is a column or a set of columns that uniquely identifies a row, such as a user ID or order number. The primary key should chosen based on the most common access pattern. Columns of data type [string](../../../explore/ysql-language-features/data-types/#strings), [number](../../../explore/ysql-language-features/data-types/#numeric-types), [serial](../../../explore/ysql-language-features/data-types/#serial-pseudotype), or [UUID](../../../api/ysql/datatypes/type_uuid/) make good choices for primary keys.
+The Primary key is a column or a set of columns that uniquely identifies a row, such as a user ID or order number. You should choose the primary key based on the most common access pattern. Columns of data type [string](../../../explore/ycql-language/data-types/#strings), [number](../../../explore/ycql-language/data-types/#numeric-types), [serial](../../../explore/ysql-language-features/data-types/#serial-pseudotype), or [UUID](../../../explore/ycql-language/data-types/#universally-unique-id-types) make good choices for primary keys.
 
 ## Automatically generating the primary key
 
-For uniquely identifying a record, it is typically advantageous to allow the database to assign a unique identifier to the row. YugabyteDB supports multiple identifier generation schemes that can be chosen depending on the needs of your application.
+The best way to uniquely identify a record is to allow the database to assign a unique identifier to the row. YugabyteDB supports multiple schemes for generating identifiers that you can choose based on the needs of your application.
 
 ### UUID
 
-The UUID is a 128-bit number represented as a string of 36 characters including hyphens For e.g, `7b4245cb-1be4-4c0b-b64a-e92ca3750715`. YugabyteDB natively supports [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) generation as per [RFC 4122](https://datatracker.ietf.org/doc/html/rfc4122) via the uuid-ossp extension. UUIDs have several advantages.
+A UUID is a 128-bit number represented as a string of 36 characters, including hyphens. For example, `4b6aa2ff-53e6-44f5-8bd0-ef9de90a8095`. YugabyteDB natively supports [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) generation as per [RFC 4122](https://datatracker.ietf.org/doc/html/rfc4122) via the uuid-ossp extension. UUIDs have several advantages:
 
-- The random nature of UUID ensures that the likelihood of generating duplicate UUIDs is extremely low.
-- The decentralized generation of UUID allows for different nodes in the cluster to generate unique numbers independently without any coordination with other systems.
-- The randomness in UUID makes it hard to predict the next ID, providing an additional layer of security.
+- The likelihood of generating duplicate UUIDs is extremely low.
+- UUIDs can be independently generated on different nodes in the cluster without any coordination with other systems.
+- The randomness of UUIDs makes it hard to predict the next ID, providing an additional layer of security.
 
-You can easily add a UUID to your schema as,
+You can add a UUID to your schema as follows:
 
 ```sql
 CREATE TABLE users (
@@ -40,13 +40,13 @@ The [DEFAULT](../../../api/ysql/the-sql-language/statements/ddl_create_table/#de
 
 ### Serial
 
-[Serial](../../../api/ysql/datatypes/type_serial/) is a special data type in YugabyteDB that creates an auto-incrementing integer column starting with `1`. It is essentially a shorthand for creating a sequence and using it as a default value for a column. You can choose between three types of serial data types depending on the needs of your application.
+[Serial](../../../api/ysql/datatypes/type_serial/) is a special data type in YugabyteDB that creates an auto-incrementing integer column starting with `1`. It is essentially a shorthand for creating a sequence and using it as a default value for a column. You can choose between three types of serial data types depending on the needs of your application:
 
-- **SMALLSERIAL**:  An integer column in the range of 1 to 32,767
-- **SERIAL**: An integer column in the range of 1 to 2,147,483,647
-- **BIGSERIAL**:  An integer column in the range of 1 to 9,223,372,036,854,775,807
+- **SMALLSERIAL** - An integer column in the range of 1 to 32,767.
+- **SERIAL** - An integer column in the range of 1 to 2,147,483,647.
+- **BIGSERIAL** -  An integer column in the range of 1 to 9,223,372,036,854,775,807.
 
-It can be used directly within table definitions to simplify the creation of auto-incrementing columns.
+Serial can be used directly in table definitions to simplify the creation of auto-incrementing columns.
 
 ```sql
 DROP TABLE IF EXISTS users;
@@ -57,7 +57,7 @@ CREATE TABLE users (
 );
 ```
 
-For each row inserted into the table, an auto-incremented `id` value will be automatically inserted along with the row.
+For each row inserted into the table, an auto-incremented `id` value is automatically inserted along with the row.
 
 ### Sequence
 
@@ -74,15 +74,15 @@ CREATE TABLE users (
 );
 ```
 
-Now, for every row inserted, user-ids will be automatically generated as 100,200,300 and so on.
+For every row inserted, user-IDs are automatically generated as 100, 200,300, and so on.
 
 {{<tip>}}
-Use serial for simple use cases and opt for sequences when you need more control over the sequence behavior, need to share a sequence between multiple tables or columns, or require custom incrementing logic.
+Use serial for basic use cases and opt for sequences when you need more control over the sequence behavior, need to share a sequence between multiple tables or columns, or require custom incrementing logic.
 {{</tip>}}
 
 ## Existing columns as primary keys
 
-Let us see how to choose existing columns as primary keys. Let us understand this with a sample census schema.
+To illustrate how to choose existing columns as primary keys, first create a sample census schema.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere" active="local" repeatedTabs="true"/>}}
@@ -97,7 +97,7 @@ Let us see how to choose existing columns as primary keys. Let us understand thi
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For illustration, create a census table as follows.
+Create a census table as follows:
 
 ```sql
 CREATE TABLE census(
@@ -141,7 +141,7 @@ In the `census` table, the most likely way to look up a person is by their `id`,
 select * from census where id=9;
 ```
 
-You will see an output similar to the following:
+You will see output similar to the following:
 
 ```yaml{.nocopy}
  id | name  | age | zipcode | employed
@@ -155,7 +155,7 @@ One row matching ID 9 was quickly fetched with just one request. You can also do
 select * from census where id>=5 and id<=15;
 ```
 
-You will see an output similar to:
+You will see an output similar to the following:
 
 ```tablegen{.nocopy}
  id |    name    | age | zipcode | employed
@@ -194,13 +194,15 @@ CREATE TABLE census2(
 INSERT INTO census2 SELECT * FROM census;
 ```
 
-Note how the `name` column is specified first, and `id` second. This ensures that the data is stored sorted based on `name` first, and for all matching names, the `id` will be stored sorted in ascending order, and all the people with the same name will be in the same tablet. This allows you to do a fast lookup on `name` even though `(name, id)` is the primary key. Retrieve all the people with the name James as follows:
+When specifying the primary key, the `name` column is specified first, and `id` second. This ensures that the data is stored sorted based on `name` first, and for all matching names, the `id` is stored sorted in ascending order, ensuring all people with the same name will be stored in the same tablet. This allows you to do a fast lookup on `name` even though `(name, id)` is the primary key.
+
+Retrieve all the people with the name James as follows:
 
 ```sql
 select * from census2 where name = 'James';
 ```
 
-You will see an output similar to the following:
+You will see output similar to the following:
 
 ```tablegen{.nocopy}
  id | name  | age | zipcode | employed

@@ -19,7 +19,7 @@ The primary goal of an index is to enhance the performance of data retrieval ope
 In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
 {{</note>}}
 
-Let us understand indexes in details with a sample census schema.
+To illustrate secondary indexes, first create a sample census schema.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere" active="local" repeatedTabs="true"/>}}
@@ -34,7 +34,7 @@ Let us understand indexes in details with a sample census schema.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For illustration, create a census table as follows.
+Create a census table as follows:
 
 ```sql
 CREATE TABLE census(
@@ -72,7 +72,7 @@ INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
 
 ## Basic index
 
-Suppose you also need to look up the data based on the zip codes of the people in the census. You can fetch details with a query similar to the following:
+Suppose you need to look up the data based on the zip codes of the people in the census. You can fetch details with a query similar to the following:
 
 ```sql
 select id from census where zipcode=94085;
@@ -109,13 +109,13 @@ The same 23 rows were fetched from the table, but much faster. This is because t
 
 ## Covering index
 
-In the prior example, to retrieve 23 rows the index was first looked up, and then more columns were fetched for the same rows from the table. This additional round trip to the table is needed because the columns are not present in the index. To avoid this, you can store the column along with the index as follows:
+In the prior example, to retrieve the rows the index was first looked up, and then more columns were fetched for the same rows from the table. This additional round trip to the table is needed because the columns are not present in the index. To avoid this, you can store the column along with the index as follows:
 
 ```sql
 create index idx_zip2 on census(zipcode ASC) include(id);
 ```
 
-Now, for a query to get all the people in zip code 94085 as follows:
+Now, for a query to get all people in zip code 94085 as follows:
 
 ```sql
 explain (analyze, dist, costs off) select id from census where zipcode=94085;
@@ -150,13 +150,11 @@ You can list the indexes associated with a table using the following methods.
 
 The `\d+ <table>` meta command lists the indexes associated with a table along with the schema details.
 
-The command:
-
 ```sql
 \d+ census
 ```
 
-gives an output where the indexes are listed at the end of the output as follows:
+The indexes are listed at the end of the output as follows:
 
 ```yaml{.nocopy}
   Column  |          Type          | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -209,7 +207,7 @@ You can get an idea of how many times the index was scanned and how many tuples 
 
 ## Conclusion
 
-While primary keys are essential for ensuring data uniqueness and facilitating efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. Using secondary indexes, applications can boost performance and provide a robust and scalable solution for managing large-scale, distributed datasets.
+While primary keys are essential to ensure data uniqueness and facilitate efficient data distribution, secondary indexes provide the flexibility needed to optimize queries based on non-primary key columns. Using secondary indexes, applications can boost performance and provide a robust and scalable solution for managing large-scale, distributed datasets.
 
 ## Learn more
 
